@@ -1,0 +1,383 @@
+{% extends 'extractor/base.html' %}
+{% load static %}
+{% load extractor_filters %}
+
+{% block title %}System Audit Trail{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Premium Audit Trail Styles */
+    .audit-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+    
+    .audit-title-section h2 {
+        font-family: var(--font-display);
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 6px 0;
+        color: var(--text-main);
+        letter-spacing: -0.02em;
+    }
+    
+    .audit-title-section p {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin: 0;
+    }
+
+    .filter-card {
+        margin-bottom: 24px;
+        border: 1px solid var(--border-glass);
+        background: rgba(255, 255, 255, 0.015);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
+
+    .filter-form {
+        display: grid;
+        grid-template-columns: 2fr 1.2fr 1.2fr auto;
+        gap: 16px;
+        align-items: flex-end;
+    }
+
+    @media (max-width: 900px) {
+        .filter-form {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .filter-form .form-group {
+        margin-bottom: 0;
+    }
+
+    .filter-form label {
+        font-family: var(--font-display);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+        display: block;
+    }
+
+    .filter-input {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border-glass);
+        border-radius: 8px;
+        padding: 10px 14px;
+        color: var(--text-main);
+        font-size: 13px;
+        width: 100%;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    [data-theme="dark"] .filter-input {
+        background: rgba(0, 0, 0, 0.45);
+    }
+
+    .filter-input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .filter-select {
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        background-size: 14px;
+        padding-right: 36px;
+    }
+
+    .filter-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .audit-logs-card {
+        border: 1px solid var(--border-glass);
+        background: var(--bg-glass);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .audit-table th {
+        background: rgba(0, 0, 0, 0.04);
+        color: var(--text-main);
+    }
+
+    [data-theme="dark"] .audit-table th {
+        background: rgba(0, 0, 0, 0.25);
+    }
+
+    .audit-table td {
+        font-size: 13px;
+        border-bottom: 1px solid var(--border-glass);
+        color: var(--text-main);
+    }
+
+    /* Action Status Pills */
+    .action-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    .action-pill.login, .action-pill.logout {
+        background: #1e3a8a;
+        border: 1px solid #3b82f6;
+        color: #f8fafc;
+    }
+
+    .action-pill.upload {
+        background: #065f46;
+        border: 1px solid #10b981;
+        color: #f8fafc;
+    }
+
+    .action-pill.upload_cached {
+        background: #115e59;
+        border: 1px solid #14b8a6;
+        color: #f8fafc;
+    }
+
+    .action-pill.extraction_start {
+        background: #9a3412;
+        border: 1px solid #f97316;
+        color: #f8fafc;
+    }
+
+    .action-pill.extraction_completed {
+        background: #166534;
+        border: 1px solid #22c55e;
+        color: #f8fafc;
+    }
+
+    .action-pill.extraction_failed {
+        background: #991b1b;
+        border: 1px solid #ef4444;
+        color: #f8fafc;
+    }
+
+    .action-pill.delete, .action-pill.purge_all {
+        background: #831843;
+        border: 1px solid #ec4899;
+        color: #f8fafc;
+    }
+
+    .action-pill.document_edited {
+        background: #581c87;
+        border: 1px solid #a855f7;
+        color: #f8fafc;
+    }
+
+    .action-pill.document_requeued {
+        background: #0369a1;
+        border: 1px solid #0ea5e9;
+        color: #f8fafc;
+    }
+
+    .action-pill.system_control {
+        background: #312e81;
+        border: 1px solid #6366f1;
+        color: #f8fafc;
+    }
+
+    .user-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        color: var(--text-main);
+    }
+
+    .user-cell i, .user-cell svg {
+        width: 14px;
+        height: 14px;
+        color: var(--text-muted);
+    }
+
+    .ip-cell {
+        font-family: monospace;
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
+    .details-cell {
+        max-width: 400px;
+        color: var(--text-main);
+        line-height: 1.4;
+    }
+
+    .doc-link {
+        color: var(--text-glow);
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-weight: 500;
+    }
+
+    .doc-link:hover {
+        text-decoration: underline;
+    }
+
+    .doc-link i, .doc-link svg {
+        width: 12px;
+        height: 12px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container margin-top-lg margin-bottom-xl">
+    <!-- Header -->
+    <div class="audit-header animate-fade-in">
+        <div class="audit-title-section">
+            <h2>Security Audit & Trace Logs</h2>
+            <p>Complete immutable audit trail tracking database sessions, user operations, and AI API costs.</p>
+        </div>
+        <div>
+            <a href="{% url 'dashboard' %}" class="btn btn-secondary">
+                <i data-lucide="arrow-left"></i> Back to Library
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="glass-card padding-lg filter-card animate-fade-in delay-100">
+        <form method="get" class="filter-form">
+            <div class="form-group">
+                <label for="search-input">Search Log Details</label>
+                <input type="text" id="search-input" name="q" value="{{ search_query }}" placeholder="Filter by details, IP address, file name..." class="filter-input">
+            </div>
+
+            <div class="form-group">
+                <label for="action-filter">Action Type</label>
+                <select id="action-filter" name="action" class="filter-input filter-select">
+                    <option value="">-- All Actions --</option>
+                    {% for val, name in action_choices %}
+                        <option value="{{ val }}" {% if selected_action == val %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="user-filter">Username</label>
+                <input type="text" id="user-filter" name="user" value="{{ selected_user }}" placeholder="Username..." class="filter-input">
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary" aria-label="Apply filters to audit logs">
+                    <i data-lucide="filter"></i> Filter
+                </button>
+                {% if search_query or selected_action or selected_user %}
+                    <a href="{% url 'audit_logs' %}" class="btn btn-secondary" aria-label="Clear all active filters">
+                        <i data-lucide="rotate-ccw"></i> Clear
+                    </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Audit Logs List Card -->
+    <div class="glass-card audit-logs-card animate-fade-in delay-200">
+        <div class="table-container">
+            <table class="audit-table">
+                <thead>
+                    <tr>
+                        <th style="width: 180px;">Timestamp</th>
+                        <th style="width: 140px;">User</th>
+                        <th style="width: 180px;">Action</th>
+                        <th style="width: 130px;">IP Address</th>
+                        <th>Target File</th>
+                        <th>Transaction Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                        <tr>
+                            <td>
+                                <span class="doc-meta-sub local-datetime" data-utc="{{ log.created_at|date:'c' }}">{{ log.created_at|date:"Y-m-d H:i:s" }} UTC</span>
+                            </td>
+                            <td>
+                                <span class="user-cell">
+                                    <i data-lucide="user"></i>
+                                    {% if log.user %}
+                                        {{ log.user.username }}
+                                    {% else %}
+                                        <span class="doc-meta-sub">System</span>
+                                    {% endif %}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="action-pill {{ log.action|lower }}">
+                                    {% if log.action == 'LOGIN' %}
+                                        <i data-lucide="log-in" style="width: 12px; height: 12px;"></i>
+                                    {% elif log.action == 'LOGOUT' %}
+                                        <i data-lucide="log-out" style="width: 12px; height: 12px;"></i>
+                                    {% elif log.action == 'UPLOAD' or log.action == 'UPLOAD_CACHED' %}
+                                        <i data-lucide="upload-cloud" style="width: 12px; height: 12px;"></i>
+                                    {% elif log.action == 'EXTRACTION_START' or log.action == 'DOCUMENT_REQUEUED' %}
+                                        <i data-lucide="play" style="width: 12px; height: 12px;"></i>
+                                    {% elif log.action == 'EXTRACTION_COMPLETED' %}
+                                        <i data-lucide="check-circle-2" style="width: 12px; height: 12px;"></i>
+                                    {% elif log.action == 'EXTRACTION_FAILED' %}
+                                        <i data-lucide="alert-circle" style="width: 12px; height: 12px;"></i>
+                                    {% elif log.action == 'DELETE' or log.action == 'PURGE_ALL' %}
+                                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                                    {% elif log.action == 'DOCUMENT_EDITED' %}
+                                        <i data-lucide="edit-3" style="width: 12px; height: 12px;"></i>
+                                    {% elif log.action == 'SYSTEM_CONTROL' %}
+                                        <i data-lucide="settings" style="width: 12px; height: 12px;"></i>
+                                    {% endif %}
+                                    {{ log.get_action_display|default:log.action|replace_underscore }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="ip-cell">{{ log.ip_address|default:"--" }}</span>
+                            </td>
+                            <td>
+                                {% if log.document and log.document.uuid %}
+                                    <a href="{% url 'document_detail' log.document.uuid %}" class="doc-link">
+                                        <i data-lucide="file-text"></i>
+                                        {{ log.document.original_filename|truncatechars:25 }}
+                                    </a>
+                                {% else %}
+                                    <span class="doc-meta-sub">--</span>
+                                {% endif %}
+                            </td>
+                            <td class="details-cell">
+                                {{ log.details }}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6" class="empty-table-cell">
+                                <i data-lucide="shield-alert"></i>
+                                <p>No audit trail matches the selected filter parameters.</p>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

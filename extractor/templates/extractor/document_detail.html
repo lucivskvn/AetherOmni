@@ -1,0 +1,312 @@
+{% extends 'extractor/base.html' %}
+{% load extractor_filters %}
+{% load static %}
+
+{% block title %}{{ document.title }} - Curated Document Detail{% endblock %}
+
+{% block content %}
+<!-- Back to Workspace and Curation Controls Header -->
+<div class="detail-header">
+    <div class="detail-header-left">
+        <a href="{% url 'dashboard' %}" class="btn btn-secondary btn-back-workspace">
+            <i data-lucide="arrow-left" style="width:14px; height:14px;"></i> Back to Library
+        </a>
+        {% if document.status == 'COMPLETED' or document.refined_markdown %}
+        <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 12px;">
+            <label for="doc-title-input" style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Document Title</label>
+            <input type="text" id="doc-title-input" name="title" value="{{ document.title }}" form="editor-form" style="font-family: var(--font-display); font-size: 20px; font-weight: 700; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: #fff; max-width: 600px; outline: none; transition: border-color 0.2s; margin-bottom: 4px;" required>
+            <span class="original-filename">Original Filename: {{ document.original_filename }} (Hash: {{ document.file_hash }})</span>
+        </div>
+        {% else %}
+        <h2>{{ document.title }}</h2>
+        <span class="original-filename">Original Filename: {{ document.original_filename }} (Hash: {{ document.file_hash }})</span>
+        {% endif %}
+    </div>
+    <div class="detail-header-actions" style="display: flex; gap: 12px; align-items: center;">
+        <button type="button" class="btn btn-secondary btn-retry-doc" data-doc-id="{{ document.uuid }}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; border-radius: 8px; font-weight: 600; font-size: 0.85rem; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; transition: all 0.2s;">
+            <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> Restart Curation
+        </button>
+        <form id="delete-document-form" action="{% url 'delete_document' document.uuid %}" method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">
+                <i data-lucide="trash-2"></i> Delete Document
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Live Processing Milestones Timeline -->
+<div class="glass-card timeline-container" aria-label="Processing Timeline">
+    <!-- Step 1: Upload & Verify -->
+    <div class="timeline-step completed">
+        <div class="step-node"><i data-lucide="check" style="width:14px; height:14px;"></i></div>
+        <div class="step-label">Upload & Verify</div>
+    </div>
+
+    <!-- Step 2: OCR Ingestion -->
+    <div class="timeline-step 
+        {% if document.status == 'EXTRACTING' %}active{% elif document.status in 'REFINING,EMBEDDING,COMPLETED' %}completed{% endif %}"
+        {% if document.status == 'EXTRACTING' %}aria-current="step"{% endif %}>
+        <div class="step-node">
+            {% if document.status == 'EXTRACTING' %}<i data-lucide="loader" class="spinner" style="width:14px; height:14px;"></i>
+            {% elif document.status in 'REFINING,EMBEDDING,COMPLETED' %}<i data-lucide="check" style="width:14px; height:14px;"></i>
+            {% else %}2{% endif %}
+        </div>
+        <div class="step-label">OCR Ingestion</div>
+    </div>
+
+    <!-- Step 3: Reasoning & Taxonomy -->
+    <div class="timeline-step 
+        {% if document.status == 'REFINING' %}active{% elif document.status in 'EMBEDDING,COMPLETED' %}completed{% endif %}"
+        {% if document.status == 'REFINING' %}aria-current="step"{% endif %}>
+        <div class="step-node">
+            {% if document.status == 'REFINING' %}<i data-lucide="loader" class="spinner" style="width:14px; height:14px;"></i>
+            {% elif document.status in 'EMBEDDING,COMPLETED' %}<i data-lucide="check" style="width:14px; height:14px;"></i>
+            {% else %}3{% endif %}
+        </div>
+        <div class="step-label">Reasoning & Taxonomy</div>
+    </div>
+
+    <!-- Step 4: Vector Indexing -->
+    <div class="timeline-step 
+        {% if document.status == 'EMBEDDING' %}active{% elif document.status == 'COMPLETED' %}completed{% endif %}"
+        {% if document.status == 'EMBEDDING' %}aria-current="step"{% endif %}>
+        <div class="step-node">
+            {% if document.status == 'EMBEDDING' %}<i data-lucide="loader" class="spinner" style="width:14px; height:14px;"></i>
+            {% elif document.status == 'COMPLETED' %}<i data-lucide="check" style="width:14px; height:14px;"></i>
+            {% else %}4{% endif %}
+        </div>
+        <div class="step-label">Vector Indexing</div>
+    </div>
+</div>
+
+<!-- Detailed Taxonomy Meta Grid -->
+<div class="meta-grid">
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="globe"></i></div>
+        <div>
+            <div class="meta-box-label">Language</div>
+            <div class="meta-box-value" id="detail-lang">
+                {% if document.status == 'FAILED' %}
+                    <span class="text-danger">Failed</span>
+                {% elif document.status == 'PENDING' %}
+                    <span class="text-muted">Queued...</span>
+                {% elif document.status != 'COMPLETED' and document.language == 'Unknown' %}
+                    <span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>
+                {% elif document.status == 'COMPLETED' or document.refined_markdown %}
+                    <input type="text" name="language" value="{{ document.language }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: #fff; width: 100%; max-width: 180px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
+                {% else %}
+                    {{ document.language|normalize_language }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="user"></i></div>
+        <div>
+            <div class="meta-box-label">Author / Publisher</div>
+            <div class="meta-box-value" id="detail-author">
+                {% if document.status == 'FAILED' %}
+                    <span class="text-danger">Failed</span>
+                {% elif document.status == 'PENDING' %}
+                    <span class="text-muted">Queued...</span>
+                {% elif document.status != 'COMPLETED' and document.author == 'Unknown' %}
+                    <span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>
+                {% elif document.status == 'COMPLETED' or document.refined_markdown %}
+                    <input type="text" name="author" value="{{ document.author }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: #fff; width: 100%; max-width: 280px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
+                {% else %}
+                    {{ document.author }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="file-type-2"></i></div>
+        <div>
+            <div class="meta-box-label">File Type</div>
+            <div class="meta-box-value">{{ document.document_type }}</div>
+        </div>
+    </div>
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="dollar-sign"></i></div>
+        <div>
+            <div class="meta-box-label">AI Compute Spend</div>
+            <div class="meta-box-value meta-box-value-accent" id="detail-cost">{{ formatted_cost }}</div>
+        </div>
+    </div>
+    {% if parsed_yaml.translator %}
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="languages"></i></div>
+        <div>
+            <div class="meta-box-label">Translator / Editor</div>
+            <div class="meta-box-value">{{ parsed_yaml.translator }}</div>
+        </div>
+    </div>
+    {% endif %}
+    {% if parsed_yaml.isbn %}
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="barcode"></i></div>
+        <div>
+            <div class="meta-box-label">ISBN</div>
+            <div class="meta-box-value">{{ parsed_yaml.isbn }}</div>
+        </div>
+    </div>
+    {% endif %}
+    {% if parsed_yaml.source_link %}
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="link"></i></div>
+        <div>
+            <div class="meta-box-label">Source Link</div>
+            <div class="meta-box-value">
+                <a href="{{ parsed_yaml.source_link }}" target="_blank" rel="noopener" style="color: var(--primary); text-decoration: underline; font-weight: 500;">
+                    Visit Source
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% if document.qa_dataset %}
+{{ document.qa_dataset|json_script:"qa-dataset-json" }}
+<!-- Extracted Supervised Fine-Tuning Q&A dataset block -->
+<div class="glass-card qa-section animate-fade-in delay-100" style="margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--border-glass); padding-bottom: 12px;">
+        <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="help-circle" class="meta-box-value-accent"></i> Supervised Fine-Tuning (SFT) Q&A Dataset
+        </h3>
+        <button type="button" class="btn btn-secondary btn-copy-sft" id="btn-copy-sft" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
+            <i data-lucide="copy" style="width:14px; height:14px;"></i> Export SFT Dataset
+        </button>
+    </div>
+    <div class="qa-section-desc" style="margin-bottom: 16px; font-size: 0.90rem; color: var(--text-muted);">
+        These high-quality dataset question-answer pairs were extracted by the Reasoning Curation Engine (Pass 2) to optimize downstream fine-tuning, training pipelines, and academic research synthesis.
+    </div>
+    
+    <div class="qa-grid">
+        {% for qa in document.qa_dataset %}
+        <div class="qa-card">
+            <div class="qa-question">
+                <i data-lucide="arrow-right-circle" class="qa-question-icon"></i>
+                <span>Q: {{ qa.question }}</span>
+            </div>
+            <div class="qa-answer">A: {{ qa.answer }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if document.status == 'COMPLETED' or document.refined_markdown %}
+<!-- Dual Screen Markdown Split-Pane Workspace -->
+<form id="editor-form" action="{% url 'save_document' document.uuid %}" method="post">
+    {% csrf_token %}
+    <div class="editor-grid" id="curation-workspace-grid">
+        <!-- Editor Input Panel -->
+        <div class="glass-card pane">
+            <div class="pane-header" style="padding: 10px 16px;">
+                <div class="pane-title" id="editor-title"><i data-lucide="edit-3"></i> Refined Markdown Editor</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="saved-badge" id="saved-badge" style="font-size: 11px; color: #10b981; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-right: 8px;">
+                        <span class="saved-dot" style="width: 6px; height: 6px; background-color: #10b981; border-radius: 50%; display: inline-block;"></span> Saved (Latest: {{ document.updated_at|date:"Y-m-d H:i" }})
+                    </span>
+                    <span class="unsaved-badge" id="unsaved-badge" style="display: none; font-size: 11px; color: #f43f5e; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; margin-right: 8px;">
+                        <span class="unsaved-dot" style="width: 6px; height: 6px; background-color: #f43f5e; border-radius: 50%; display: inline-block; animation: pulse 1s infinite;"></span> Unsaved Changes
+                    </span>
+                    <button type="submit" class="btn btn-primary btn-save-curation">
+                        <i data-lucide="save" style="width:14px; height:14px;"></i> Save Curation
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Toolbar bar section -->
+            <div class="editor-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-glass);">
+                <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="tb-btn" data-action="bold" title="Bold (Ctrl+B)" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="bold" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="italic" title="Italic (Ctrl+I)" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="italic" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="heading" title="Heading" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="heading" style="width:15px; height:15px;"></i></button>
+                    <span style="width:1px; height:16px; background:var(--border-glass); margin:0 4px;"></span>
+                    <button type="button" class="tb-btn" data-action="quote" title="Blockquote" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="quote" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="code" title="Code Block" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="code" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="link" title="Insert Link" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="link" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="table" title="Insert Table" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="table" style="width:15px; height:15px;"></i></button>
+                    <span style="width:1px; height:16px; background:var(--border-glass); margin:0 4px;"></span>
+                    <button type="button" class="tb-btn" data-action="bullet" title="Bullet List" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="list" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="number" title="Numbered List" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="list-ordered" style="width:15px; height:15px;"></i></button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 0; user-select: none;">
+                        <input type="checkbox" id="sync-scroll-toggle" checked style="cursor: pointer; width: 14px; height: 14px; margin: 0;">
+                        <span>Sync Scroll</span>
+                    </label>
+                    <button type="button" class="tb-btn" id="btn-fullscreen-toggle" title="Toggle Fullscreen Curation" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="maximize-2" style="width:15px; height:15px;"></i></button>
+                </div>
+            </div>
+
+            <div class="pane-body">
+                <textarea id="markdown-input" name="refined_markdown" class="markdown-editor" aria-labelledby="editor-title" placeholder="Write refined Markdown text here...">{{ document.refined_markdown }}</textarea>
+            </div>
+        </div>
+
+        <!-- Rendered Preview Panel -->
+        <div class="glass-card pane">
+            <div class="pane-header">
+                <div class="pane-title" id="preview-title"><i data-lucide="eye"></i> Live HTML Preview</div>
+                <span class="pane-title-subtext">Updates in real-time</span>
+            </div>
+            <div class="pane-body">
+                <div id="html-preview" class="preview-window" aria-labelledby="preview-title">
+                    {{ rendered_refined|safe }}
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% else %}
+    {% if document.status == 'FAILED' %}
+    <!-- Task Failed Error Area -->
+    <div class="glass-card failed-pipeline-card" data-doc-status="FAILED">
+        <i data-lucide="alert-octagon"></i>
+        <h3>Curation Pipeline Failed</h3>
+        <p>
+            An error occurred during the background processing of this document. Review the error details and debugging logs below:
+        </p>
+        
+        {% if document.error_message %}
+        <div class="failed-error-message">{{ document.error_message }}</div>
+        {% else %}
+        <div class="failed-no-log">No specific traceback log was registered in the database.</div>
+        {% endif %}
+        
+        <div class="failed-actions-row">
+            <a href="{% url 'dashboard' %}" class="btn btn-secondary">
+                <i data-lucide="arrow-left" style="width:14px; height:14px; margin-right:4px;"></i> Back to Library
+            </a>
+            <button type="button" class="btn btn-primary btn-retry-doc" data-doc-id="{{ document.uuid }}">
+                <i data-lucide="refresh-cw" style="width:14px; height:14px; margin-right:4px;"></i> Retry Curation
+            </button>
+        </div>
+    </div>
+    {% elif document.status == 'PENDING' or document.status == 'EXTRACTING' or document.status == 'REFINING' or document.status == 'EMBEDDING' %}
+    <!-- Sleek Intelligent Document Library Processing Board -->
+    <div class="glass-card processing-pipeline-card">
+        <i data-lucide="cpu" class="spinner"></i>
+        <h3>Pipeline Execution in Progress</h3>
+        <p>
+            {% if document.status == 'PENDING' %}
+                Awaiting queue scheduler assignment. The worker node will pick up this document shortly.
+            {% else %}
+                Currently executing <strong class="processing-status-glow">{{ document.get_status_display }}</strong>. Semantic metadata, chunks, and high-fidelity text segments are being generated in real-time.
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<!-- Robust split-pane live editor, scroll synchronization and delete validation script -->
+{% static 'js/editor.js' as editor_js_url %}
+<script defer src="{{ editor_js_url|cache_bust }}"></script>
+{% endblock %}

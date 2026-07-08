@@ -1,0 +1,119 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: data-extractor-web
+  namespace: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
+  labels:
+    cloud.googleapis.com/location: asia-southeast1
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/launch-stage: BETA
+    spec:
+      serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+      containers:
+      - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+        name: web
+        ports:
+        - containerPort: 8080
+        env:
+        - name: RELEASE_VERSION
+          value: "20260707-170800"
+        - name: DJANGO_DEBUG
+          value: "False"
+        - name: SECURE_SSL_REDIRECT
+          value: "False"
+        - name: SESSION_COOKIE_SECURE
+          value: "False"
+        - name: CSRF_COOKIE_SECURE
+          value: "False"
+        - name: GS_BUCKET_NAME
+          value: "cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor"
+        - name: DJANGO_ALLOWED_HOSTS
+          value: "*"
+        - name: DJANGO_CSRF_TRUSTED_ORIGINS
+          value: "https://*.run.app"
+        - name: GCP_PROJECT_ID
+          value: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
+        - name: GCP_REGION
+          value: "asia-southeast1"
+        - name: GCP_QUEUE_LOCATION
+          value: "asia-southeast1"
+        - name: GCP_QUEUE_NAME
+          value: "extractor-tasks"
+        - name: APP_URL
+          value: "https://data-extractor-web-751922320980.asia-southeast1.run.app"
+        - name: WORKER_URL
+          value: "https://data-extractor-worker-751922320980.asia-southeast1.run.app"
+        - name: SURREAL_URL
+          value: "http://localhost:8000"
+        - name: SURREAL_NS
+          value: "omnirag"
+        - name: SURREAL_DB
+          value: "extractor"
+        - name: SURREALDB_OFFLINE
+          value: "False"
+        - name: GOOGLE_CLOUD_PROJECT
+          value: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: DJANGO_SECRET_KEY
+              key: "latest"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: DATABASE_URL
+              key: "latest"
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: GEMINI_API_KEY
+              key: "latest"
+        - name: SURREAL_USER
+          valueFrom:
+            secretKeyRef:
+              name: SURREAL_USER
+              key: "latest"
+        - name: SURREAL_PASS
+          valueFrom:
+            secretKeyRef:
+              name: SURREAL_PASS
+              key: "latest"
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: SUPABASE_URL
+              key: "latest"
+        - name: SUPABASE_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: SUPABASE_PUBLIC_KEY
+              key: "latest"
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+      - image: surrealdb/surrealdb:latest
+        args:
+        - start
+        - --no-banner
+        - --log
+        - warn
+        - --user
+        - root
+        - --pass
+        - rootpass
+        - --bind
+        - 0.0.0.0:8000
+        - mem://
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+  traffic:
+  - latestRevision: true
+    percent: 100
