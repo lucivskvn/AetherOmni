@@ -1,0 +1,302 @@
+{% extends 'extractor/base.html' %}
+{% load extractor_filters %}
+
+{% block title %}Academic Heritage Library{% endblock %}
+
+{% block content %}
+<!-- Top Metrics Highlights Row -->
+<div class="metrics-row">
+    <!-- Total Cost Spend & Budget -->
+    <div class="glass-card metric-card">
+        <div class="metric-title">
+            <i data-lucide="wallet"></i> Monthly AI Compute Spend
+        </div>
+        <div class="metric-value">{{ formatted_monthly_spent }}</div>
+        <div class="metric-sub">
+            Cap: {{ formatted_budget_cap }}
+            <div class="budget-bar-container">
+                <!-- Calc percent in template -->
+                <div class="budget-bar-fill" style="width: {% if budget_exceeded %}100%{% else %}{{ stats.percent_spent }}%{% endif %};"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Processed Books Pages -->
+    <div class="glass-card metric-card">
+        <div class="metric-title">
+            <i data-lucide="book-open"></i> Extracted Pages
+        </div>
+        <div class="metric-value">{{ total_pages }}</div>
+        <div class="metric-sub">High-density semantic memory nodes for LLM fine-tuning & RAG</div>
+    </div>
+
+    <!-- Active tasks status -->
+    <div class="glass-card metric-card">
+        <div class="metric-title">
+            <i data-lucide="refresh-cw"></i> Active Pipelines
+        </div>
+        <!-- Combining active states (PENDING + EXTRACTING + REFINING + EMBEDDING) -->
+        <div class="metric-value">
+            <span id="active-tasks-count">
+                {{ stats.PENDING|add:stats.EXTRACTING|add:stats.REFINING|add:stats.EMBEDDING }}
+            </span>
+        </div>
+        <div class="metric-sub">Success Rate: {% if total_docs_count > 0 %}{{ stats.COMPLETED|dict_pct:total_docs_count }}%{% else %}100%{% endif %}</div>
+    </div>
+
+    <!-- Tokens Spend Chart Visualizer -->
+    <div class="glass-card metric-card metric-card-compact">
+        <div class="metric-title metric-title-compact">
+            <i data-lucide="activity"></i> LLM Token Usage
+        </div>
+        <div class="flex-between-center">
+            <div>
+                <div class="token-value-text">{{ total_tokens|format_compact_tokens }}</div>
+                <div class="token-sub-text">
+                    In: {{ prompt_tokens|format_compact_tokens }}<br>
+                    Out: {{ candidates_tokens|format_compact_tokens }}
+                </div>
+            </div>
+            <div class="chart-wrapper-sm">
+                <canvas id="tokensChart" data-prompt="{{ prompt_tokens|default:1 }}" data-candidates="{{ candidates_tokens|default:0 }}"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if budget_exceeded %}
+<!-- Cap Reached Alert Overlay -->
+<div class="glass-card alert-card alert-error alert-card-margin">
+    <i data-lucide="shield-alert"></i>
+    <div>
+        <strong class="alert-card-title">Monthly API Billing Cap Triggered</strong>
+        <span class="alert-card-desc">The platform has safely paused out-of-boundary AI API calls since cumulative expenses reached your customized limit. All fresh uploads will queue as 'PENDING'. Adjust your monthly budget in the <a href="#" id="error-settings-trigger">Console Settings</a> to resume processing.</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Primary Dual-Section Workspace layout -->
+<div class="dashboard-grid">
+    <!-- Left Section: Drag-And-Drop and Files table -->
+    <div class="flex-column-gap-lg">
+        <!-- Drop-Zone card -->
+        <div class="glass-card padding-lg">
+            <form id="upload-form" action="{% url 'upload_document' %}" method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="file" id="file-input" name="file" accept=".pdf,.png,.jpg,.jpeg,.csv,.txt" class="visually-hidden" multiple>
+                <div id="drop-zone" class="upload-zone">
+                    <i data-lucide="cloud-lightning"></i>
+                    <div class="upload-title">Ingest Documents & Files</div>
+                    <div class="upload-subtitle">Drag & drop files or click here to upload (Supports batch uploads of PDF, JPEG, PNG, CSV, TXT up to 30MB)</div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Files Panel card -->
+        <div class="glass-card files-panel">
+            <form id="export-form" action="{% url 'export_zip' %}" method="post">
+                {% csrf_token %}
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <i data-lucide="archive"></i> Academic Publications Library
+                    </div>
+                    <div class="flex-gap-sm" style="display: flex; gap: 12px; align-items: center;">
+                        <div class="sort-select-wrapper" style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted);">
+                            <label for="sort-select" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="arrow-up-down" style="width: 14px; height: 14px;"></i> Sort
+                            </label>
+                            <select id="sort-select" class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px; height: auto; cursor: pointer; border-radius: var(--border-radius-sm);" onchange="window.location.href = '?sort_by=' + this.value">
+                                <option value="-date" {% if sort_by == '-date' %}selected{% endif %}>Newest first</option>
+                                <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Oldest first</option>
+                                <option value="name" {% if sort_by == 'name' %}selected{% endif %}>Name (A-Z)</option>
+                                <option value="-name" {% if sort_by == '-name' %}selected{% endif %}>Name (Z-A)</option>
+                                <option value="-cost" {% if sort_by == '-cost' %}selected{% endif %}>Cost (Highest)</option>
+                                <option value="cost" {% if sort_by == 'cost' %}selected{% endif %}>Cost (Lowest)</option>
+                                <option value="status" {% if sort_by == 'status' %}selected{% endif %}>Status (A-Z)</option>
+                                <option value="-status" {% if sort_by == '-status' %}selected{% endif %}>Status (Z-A)</option>
+                            </select>
+                        </div>
+                        <button type="button" id="btn-select-all" class="btn btn-secondary">Select All</button>
+                        <button type="button" id="btn-clear-all" class="btn btn-secondary">Clear</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="checkbox-col"></th>
+                                <th>
+                                    <a href="?sort_by={% if sort_by == 'name' %}-name{% else %}name{% endif %}" class="sort-link" style="display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none;">
+                                        Name / Source
+                                        {% if sort_by == 'name' %}
+                                            <i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>
+                                        {% elif sort_by == '-name' %}
+                                            <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>Metadata (Language / Author)</th>
+                                <th>
+                                    <a href="?sort_by={% if sort_by == '-cost' %}cost{% else %}-cost{% endif %}" class="sort-link" style="display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none;">
+                                        AI Compute Spend
+                                        {% if sort_by == 'cost' %}
+                                            <i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>
+                                        {% elif sort_by == '-cost' %}
+                                            <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>
+                                    <a href="?sort_by={% if sort_by == 'status' %}-status{% else %}status{% endif %}" class="sort-link" style="display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none;">
+                                        Status
+                                        {% if sort_by == 'status' %}
+                                            <i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>
+                                        {% elif sort_by == '-status' %}
+                                            <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
+                                        {% endif %}
+                                    </a>
+                                </th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if documents %}
+                                {% for d in documents %}
+                                <tr data-doc-id="{{ d.obj.id }}" data-status="{{ d.obj.status }}">
+                                    <td>
+                                        {% if d.obj.status == 'COMPLETED' or d.obj.status == 'FAILED' or d.obj.status == 'PENDING' %}
+                                        <label class="custom-checkbox" for="chk-doc-{{ d.obj.id }}">
+                                            <input type="checkbox" id="chk-doc-{{ d.obj.id }}" name="selected_documents" value="{{ d.obj.id }}" class="doc-selector visually-hidden" aria-label="Select {{ d.obj.title }}" data-status="{{ d.obj.status }}">
+                                            <span class="checkmark"></span>
+                                        </label>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="doc-title-cell">
+                                            <a href="{% url 'document_detail' d.obj.uuid %}">
+                                                {{ d.obj.title }}
+                                            </a>
+                                        </div>
+                                        <span class="doc-subtitle-text">{{ d.obj.original_filename }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="doc-meta-glow">Lang: <strong>{{ d.obj.language|normalize_language }}</strong></span>
+                                        <span class="doc-meta-sub">Author / Publisher: {{ d.obj.author }}</span>
+                                    </td>
+                                    <td>
+                                        <div class="doc-cost-text">{{ d.formatted_cost }}</div>
+                                        <span class="doc-cost-sub">In: {{ d.obj.input_tokens|format_compact_tokens }} / Out: {{ d.obj.output_tokens|format_compact_tokens }}</span>
+                                    </td>
+                                    <td>
+                                        {% if d.obj.status == 'COMPLETED' %}
+                                            <span class="badge badge-completed">
+                                                <i data-lucide="check-circle-2"></i> {{ d.obj.get_status_display }}
+                                            </span>
+                                        {% elif d.obj.status == 'FAILED' %}
+                                            <span class="badge badge-failed" title="{{ d.obj.error_message }}">
+                                                <i data-lucide="x-circle"></i> Failed
+                                            </span>
+                                        {% elif d.obj.status == 'PENDING' %}
+                                            <span class="badge badge-pending">
+                                                <i data-lucide="clock"></i> {{ d.obj.get_status_display }}
+                                            </span>
+                                        {% else %}
+                                            <!-- Any processing state (EXTRACTING, REFINING, EMBEDDING) -->
+                                            <span class="badge badge-processing">
+                                                <i data-lucide="loader" class="spinner"></i> {{ d.obj.get_status_display }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="actions-row-cell">
+                                            <a href="{% url 'document_detail' d.obj.uuid %}" class="btn btn-secondary" title="View Details">
+                                                <i data-lucide="eye"></i>
+                                            </a>
+                                            {% if d.obj.status == 'FAILED' or d.obj.status == 'COMPLETED' %}
+                                            <button type="button" class="btn btn-secondary btn-retry-doc" data-doc-id="{{ d.obj.uuid }}" title="Restart Curation">
+                                                <i data-lucide="refresh-cw"></i>
+                                            </button>
+                                            {% endif %}
+                                            <button type="button" class="btn btn-secondary btn-delete-doc" data-doc-id="{{ d.obj.uuid }}" title="Delete">
+                                                <i data-lucide="trash-2"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="empty-table-cell">
+                                        <i data-lucide="inbox"></i>
+                                        No documents ingested yet. Upload files above to get started.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+
+            </form>
+        </div>
+    </div>
+
+    <!-- Right Section: Semantic RAG Search Panel -->
+    <div>
+        <div class="glass-card search-panel">
+            <div class="search-title">
+                <i data-lucide="sparkles"></i> Semantic Spotlight Search
+            </div>
+            <div class="search-panel-desc">
+                Query the HNSW vector database with natural language to get grounded creed answers.
+            </div>
+            
+            <form id="rag-search-form" class="search-form" action="#" onsubmit="return false;">
+                <label for="rag-query" class="visually-hidden">Search document contents</label>
+                <input type="search" id="rag-query" class="search-input" placeholder="Ask questions on the books..." enterkeyhint="search">
+                <button type="submit" id="rag-btn" class="btn btn-primary" aria-label="Submit search">
+                    <i data-lucide="search"></i>
+                </button>
+            </form>
+
+            <!-- Loader -->
+            <div id="rag-loader" class="search-loader">
+                <i data-lucide="loader" class="spinner"></i>
+                <div class="search-loader-text">Running vector search & generating response...</div>
+            </div>
+
+            <!-- Display box -->
+            <div id="rag-results-container" class="search-results">
+                <div id="rag-answer" class="result-answer"></div>
+                <div id="rag-sources" class="result-sources">
+                    <strong>Grounded Context Sources:</strong>
+                    <ul id="rag-sources-list" class="source-list"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Actions bottom bar (positioned relative to viewport for correct float/sticky behavior) -->
+<div id="export-actions-bar" class="export-footer">
+    <span>
+        <span id="selected-count">0</span> sources selected
+    </span>
+    <div class="flex-gap-sm" style="display: flex; gap: 8px; align-items: center;">
+        <button type="submit" form="export-form" class="btn btn-primary">
+            <i data-lucide="download-cloud"></i> Build Curated Bundle
+        </button>
+        <button type="button" id="btn-bulk-restart" class="btn btn-secondary" data-action-url="{% url 'bulk_action' %}">
+            <i data-lucide="refresh-cw"></i> Bulk Restart
+        </button>
+        <button type="button" id="btn-bulk-delete" class="btn btn-danger" data-action-url="{% url 'bulk_action' %}">
+            <i data-lucide="trash-2"></i> Bulk Delete
+        </button>
+    </div>
+</div>
+
+<!-- Dedicated Hidden delete form -->
+<form id="delete-form" action="" method="post" class="visually-hidden">
+    {% csrf_token %}
+</form>
+{% endblock %}

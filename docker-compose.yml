@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # 1. Main Web Application (Gunicorn server)
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: data_extractor_web
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - SURREAL_URL=http://surrealdb:8000
+    volumes:
+      - ./db.sqlite3:/app/db.sqlite3
+      - ./media:/app/media
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+
+  # 2. SurrealDB — Structured Data, Vector Store & KV Cache
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    container_name: data_extractor_surrealdb
+    user: root
+    restart: always
+    ports:
+      - "8001:8000"
+    command:
+      - start
+      - --log=info
+      - --user=root
+      - --pass=root
+      - surrealkv://data/omnirag.db
+    volumes:
+      - surreal_data:/data
+    healthcheck:
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  surreal_data:

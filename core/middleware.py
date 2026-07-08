@@ -1,0 +1,238 @@
+# Copyright (c) 2026 Elang Swa Buana Putra
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import urllib.parse
+
+from django.conf import settings
+from django.middleware.csrf import CsrfViewMiddleware
+from django.utils.functional import cached_property
+
+logger = logging.getLogger(__name__)
+
+# Patch CsrfViewMiddleware to make its cached properties dynamic.
+# This is necessary because settings.CSRF_TRUSTED_ORIGINS can be modified dynamically
+# by DynamicCsrfTrustedOriginsMiddleware, but CsrfViewMiddleware caches
+# 'csrf_trusted_origins_hosts', 'allowed_origins_exact', and 'allowed_origin_subdomains'
+# on the first request, ignoring any future dynamic updates.
+for prop_name in ["csrf_trusted_origins_hosts", "allowed_origins_exact", "allowed_origin_subdomains"]:
+    prop = getattr(CsrfViewMiddleware, prop_name, None)
+    if prop and isinstance(prop, cached_property):
+        setattr(CsrfViewMiddleware, prop_name, property(prop.func))
+
+
+# Monkeypatch CsrfViewMiddleware.process_view to allow insecure HTTP referrers
+# for local loopback connections (e.g. localhost:8080) when running behind SSL proxies.
+# Django's CsrfViewMiddleware enforces a strict referer.scheme == "https" check
+# for secure requests, causing 403 errors when local developers access the app over HTTP.
+_orig_process_view = CsrfViewMiddleware.process_view
+
+def _patched_process_view(self, request, callback, callback_args, callback_kwargs):
+    referer = request.META.get("HTTP_REFERER")
+    is_loopback_referer = False
+    if referer:
+        try:
+            parsed = urllib.parse.urlsplit(referer)
+            host = parsed.hostname
+            if host:
+                host = host.strip("[]").lower()
+                if host in ("localhost", "127.0.0.1", "::1"):
+                    is_loopback_referer = True
+        except Exception:
+            pass
+
+    if is_loopback_referer:
+        orig_is_secure = request.is_secure
+        request.is_secure = lambda: False
+        try:
+            return _orig_process_view(self, request, callback, callback_args, callback_kwargs)
+        finally:
+            request.is_secure = orig_is_secure
+    else:
+        return _orig_process_view(self, request, callback, callback_args, callback_kwargs)
+
+CsrfViewMiddleware.process_view = _patched_process_view
+
+
+
+class DynamicCsrfTrustedOriginsMiddleware:
+    """
+    Dynamically registers the request's origin and referer in CSRF_TRUSTED_ORIGINS
+    during local development or proxy access to allow seamless access behind tunnels
+    and custom proxy domains without manual configuration.
+    """
+
+    _base_origins = None
+    _db_origins_loaded: bool = False
+    _last_query_time: float = 0.0
+    _cached_db_origins: list[str] = []
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def _is_loopback(self, origin_str: str) -> bool:
+        if not origin_str:
+            return False
+        origin_str = origin_str.strip().lower()
+        if origin_str in ("localhost", "127.0.0.1", "::1"):
+            return True
+        try:
+            url = origin_str if "://" in origin_str else f"http://{origin_str}"
+            parsed = urllib.parse.urlparse(url)
+            host = parsed.hostname
+            if not host:
+                return False
+            # Strip IPv6 brackets if present (e.g. [::1])
+            host = host.strip("[]")
+            return host in ("localhost", "127.0.0.1", "::1")
+        except Exception:
+            return False
+
+    def __call__(self, request):
+        # 1. Capture base static origins from settings if not already cached
+        if DynamicCsrfTrustedOriginsMiddleware._base_origins is None:
+            DynamicCsrfTrustedOriginsMiddleware._base_origins = list(settings.CSRF_TRUSTED_ORIGINS)
+
+        # 2. Reset the trusted origins to the base configuration to prevent stale whitelist buildup
+        settings.CSRF_TRUSTED_ORIGINS = list(DynamicCsrfTrustedOriginsMiddleware._base_origins)
+
+        # 3. Always trust the host origin (derived from the current request Host header)
+        # to ensure CSRF protection matches the active domain serving the request.
+        self._trust_host_origin(request)
+
+        # 4. Trust headers if DEBUG is enabled, or if they point to a local loopback interface
+        self._trust_header_origins_if_safe(request)
+
+        # 5. Load and append current database-configured origins
+        self._trust_database_origins()
+
+        return self.get_response(request)
+
+    def _trust_database_origins(self):
+        """Load CSRF trusted origins from the database with eventual consistency (60s cache).
+
+        Gap E-28: queries database at most once every 60 seconds per process.
+        Origins are merged into the shared settings list.
+        """
+        import time
+
+        now = time.time()
+        if not DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded or (
+            now - DynamicCsrfTrustedOriginsMiddleware._last_query_time >= 60
+        ):
+            try:
+                from extractor.models import SystemSettings
+
+                settings_obj = SystemSettings.get_settings()
+                db_origins = settings_obj.csrf_trusted_origins
+                parsed = []
+                if db_origins:
+                    for origin in db_origins.split(","):
+                        clean_origin = origin.strip()
+                        if clean_origin:
+                            parsed.append(clean_origin)
+                DynamicCsrfTrustedOriginsMiddleware._cached_db_origins = parsed
+                DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = True
+                DynamicCsrfTrustedOriginsMiddleware._last_query_time = now
+            except Exception as e:
+                logger.debug("[Middleware] Could not load CSRF trusted origins from DB: %s", e)
+
+        for origin in DynamicCsrfTrustedOriginsMiddleware._cached_db_origins:
+            if origin not in settings.CSRF_TRUSTED_ORIGINS:
+                settings.CSRF_TRUSTED_ORIGINS.append(origin)
+
+    def _trust_host_origin(self, request):
+        host = request.get_host()
+        for scheme in ("http", "https"):
+            host_origin = f"{scheme}://{host}"
+            if host_origin not in settings.CSRF_TRUSTED_ORIGINS:
+                settings.CSRF_TRUSTED_ORIGINS.append(host_origin)
+
+    def _trust_header_origins_if_safe(self, request):
+        # Origin header
+        origin = request.META.get("HTTP_ORIGIN")
+        if origin:
+            if settings.DEBUG or self._is_loopback(origin):
+                if origin not in settings.CSRF_TRUSTED_ORIGINS:
+                    settings.CSRF_TRUSTED_ORIGINS.append(origin)
+
+        # Referer header
+        referer = request.META.get("HTTP_REFERER")
+        if referer:
+            try:
+                parsed = urllib.parse.urlparse(referer)
+                if parsed.scheme and parsed.netloc:
+                    ref_origin = f"{parsed.scheme}://{parsed.netloc}"
+                    if settings.DEBUG or self._is_loopback(ref_origin):
+                        if ref_origin not in settings.CSRF_TRUSTED_ORIGINS:
+                            settings.CSRF_TRUSTED_ORIGINS.append(ref_origin)
+            except Exception as e:
+                logger.debug("[Middleware] Could not parse referer header for CSRF trust: %s", e)
+
+
+class ForcePasswordChangeMiddleware:
+    """
+    Forces any logged-in user with the default password 'admin' to change their password
+    before they can access any other page (except password change, password change done, logout, and static files).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def _is_allowed_path(self, path):
+        allowed_names = ["password_change", "password_change_done", "logout"]
+        allowed_paths = []
+        from django.urls import reverse
+
+        for name in allowed_names:
+            try:
+                allowed_paths.append(reverse(name))
+            except Exception as e:
+                logger.debug("[Middleware] Could not resolve URL name '%s': %s", name, e)
+        return (
+            any(path == p for p in allowed_paths)
+            or path.startswith("/static/")
+            or path.startswith("/media/")
+            or "favicon.ico" in path
+        )
+
+    def __call__(self, request):
+        if not request.user.is_authenticated:
+            return self.get_response(request)
+
+        path = request.path
+        if not self._is_allowed_path(path):
+            if "is_default_password" not in request.session:
+                request.session["is_default_password"] = request.user.check_password("admin")
+
+            if request.session.get("is_default_password"):
+                from django.shortcuts import redirect
+
+                return redirect("password_change")
+
+        try:
+            from django.urls import reverse
+
+            if path == reverse("password_change_done"):
+                # Gap F-9: re-verify the password to prevent bypassing the change
+                # by resetting back to the default 'admin' password.
+                still_default = request.user.check_password("admin")
+                request.session["is_default_password"] = still_default
+                if still_default:
+                    # User reset their password back to 'admin' — redirect again!
+                    return redirect("password_change")
+        except Exception as e:
+            logger.debug("[Middleware] Could not resolve identity reset finished URL: %s", e)
+
+        return self.get_response(request)

@@ -1,0 +1,25 @@
+[tool.ruff]
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "static_root",
+    "media",
+    "db.sqlite3",
+    "scratch"
+]
+
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# Enable Pyflakes (F) and Pycodestyle (E, W) by default, alongside Django, Bugbear, and Security checks
+select = ["E", "F", "W", "I", "C90", "UP", "B", "S", "DJ", "RUF"]
+ignore = ["S101", "S105", "S106", "E501", "S108", "S603", "E402", "F841", "S310", "B904", "S112", "B905", "W291", "W293", "RUF012", "DJ012", "S110", "S607"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.isort]
+combine-as-imports = true

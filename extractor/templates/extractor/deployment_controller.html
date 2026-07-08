@@ -1,0 +1,319 @@
+{% extends "extractor/base.html" %}
+{% load static %}
+{% load extractor_filters %}
+
+{% block title %}Deployment Controller{% endblock %}
+
+{% block extra_css %}
+<style>
+    .deploy-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+    
+    .deploy-title h2 {
+        font-family: var(--font-display);
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 6px 0;
+        color: #fff;
+        letter-spacing: -0.02em;
+    }
+    
+    .deploy-title p {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin: 0;
+    }
+
+    .deploy-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        align-items: start;
+    }
+
+    @media (max-width: 1024px) {
+        .deploy-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+    }
+
+    .status-online {
+        background: rgba(16, 185, 129, 0.15);
+        color: #047857;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-offline {
+        background: rgba(239, 68, 68, 0.15);
+        color: #b91c1c;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .mode-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .mode-hibernate {
+        background: #475569;
+        color: #f8fafc;
+    }
+
+    .mode-ondemand {
+        background: #2563eb;
+        color: #f8fafc;
+    }
+
+    .mode-always {
+        background: #15803d;
+        color: #ffffff;
+    }
+
+    .log-panel {
+        max-height: 350px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+        padding: 12px;
+        background: rgba(15, 23, 42, 0.6);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        color: #e2e8f0;
+    }
+
+    .log-entry {
+        margin-bottom: 6px;
+        line-height: 1.4;
+        word-break: break-all;
+    }
+
+    .log-time {
+        color: #64748b;
+        margin-right: 8px;
+    }
+
+    .log-message {
+        color: #cbd5e1;
+    }
+
+
+
+    .scaling-option {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid var(--border-glass);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.01);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-bottom: 12px;
+    }
+
+    .scaling-option:hover {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .scaling-option input[type="radio"] {
+        margin: 0;
+        accent-color: var(--accent-glow, #6366f1);
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .scaling-label-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .scaling-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+    }
+
+    .scaling-desc {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="deploy-header animate-fade-in">
+    <div class="deploy-title">
+        <h2>Cloud Infrastructure Controller</h2>
+        <p>Monitor Cloud Build logs, check container health probes, and manage cluster revision scaling.</p>
+    </div>
+    <div>
+        <a href="{% url 'dashboard' %}" class="btn btn-secondary">
+            <i data-lucide="arrow-left"></i> Back to Library
+        </a>
+    </div>
+</div>
+
+<div class="deploy-grid">
+    <!-- Left Column: Operations & Status -->
+    <div class="flex-column-gap-lg">
+        <!-- System Health Overview -->
+        <div class="glass-card padding-lg">
+            <h3 class="flex-align-center gap-sm mb-md text-white font-semibold">
+                <i data-lucide="activity"></i> System Environment
+            </h3>
+            
+            <table class="simple-info-table" style="width: 100%; border-collapse: collapse;">
+                <thead style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;">
+                    <tr>
+                        <th scope="col">System Variable</th>
+                        <th scope="col">Status/Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">SurrealDB Status</td>
+                        <td style="padding: 10px 0; text-align: right;">
+                            {% if surreal_health == 'ONLINE' %}
+                            <span class="status-badge status-online">
+                                <i data-lucide="check-circle-2"></i> {{ surreal_health }}
+                            </span>
+                            {% else %}
+                            <span class="status-badge status-offline">
+                                <i data-lucide="alert-octagon"></i> {{ surreal_health }}
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">GCP Project ID</td>
+                        <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 13px; color: #fff;">
+                            {{ project_id|default:"Local Emulator (No Project)" }}
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">GCP Region</td>
+                        <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 13px; color: #fff;">
+                            {{ region }}
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">Knative Scale (Worker)</td>
+                        <td style="padding: 10px 0; text-align: right; font-size: 13px; color: #fff;">
+                            Min: <strong>{{ worker_min }}</strong> / Max: <strong>{{ worker_max }}</strong>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">Knative Scale (Web)</td>
+                        <td style="padding: 10px 0; text-align: right; font-size: 13px; color: #fff;">
+                            Min: <strong>{{ web_min }}</strong> / Max: <strong>{{ web_max }}</strong>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Scale Configuration Form -->
+        <div class="glass-card padding-lg">
+            <h3 class="flex-align-center gap-sm mb-md text-white font-semibold">
+                <i data-lucide="sliders"></i> Worker Scaling Mode
+            </h3>
+            
+            <form action="{% url 'deployment_controller' %}" method="post">
+                {% csrf_token %}
+                
+                <label class="scaling-option" for="mode-hibernate">
+                    <input type="radio" id="mode-hibernate" name="mode" value="hibernate" {% if current_mode == 'hibernate' %}checked{% endif %}>
+                    <span class="scaling-label-text">
+                        <span class="scaling-name">Hibernate (minScale: 0, maxScale: 1)</span>
+                        <span class="scaling-desc">Completely pauses background workers to achieve $0.00 compute spend. Tasks will remain queued.</span>
+                    </span>
+                </label>
+                
+                <label class="scaling-option" for="mode-ondemand">
+                    <input type="radio" id="mode-ondemand" name="mode" value="on-demand" {% if current_mode == 'on-demand' %}checked{% endif %}>
+                    <span class="scaling-label-text">
+                        <span class="scaling-name">On-Demand (minScale: 0, maxScale: 5)</span>
+                        <span class="scaling-desc">Spins up background workers serverlessly when tasks arrive. Powers down to 0 after tasks finish.</span>
+                    </span>
+                </label>
+                
+                <label class="scaling-option" for="mode-always-on">
+                    <input type="radio" id="mode-always-on" name="mode" value="always-on" {% if current_mode == 'always-on' %}checked{% endif %}>
+                    <span class="scaling-label-text">
+                        <span class="scaling-name">Always-On (minScale: 1, maxScale: 5)</span>
+                        <span class="scaling-desc">Maintains at least one active warm worker revision to process uploads instantly without cold startup delays.</span>
+                    </span>
+                </label>
+                
+                <button type="submit" class="btn btn-primary full-width mt-md">
+                    <i data-lucide="cpu"></i> Update Scaling Mode
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right Column: System Logs -->
+    <div class="flex-column-gap-lg">
+        <!-- Worker Service Logs -->
+        <div class="glass-card padding-lg">
+            <h3 class="flex-align-center gap-sm mb-md text-white font-semibold">
+                <i data-lucide="terminal"></i> Cloud Run Worker Logs (data-extractor-worker)
+            </h3>
+            <div class="log-panel">
+                {% if worker_logs %}
+                    {% for entry in worker_logs %}
+                    <div class="log-entry">
+                        <span class="log-time">{{ entry.timestamp }}</span>
+                        <span class="log-message">{{ entry.message }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-slate-400">No worker log entries available.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Web Service Logs -->
+        <div class="glass-card padding-lg">
+            <h3 class="flex-align-center gap-sm mb-md text-white font-semibold">
+                <i data-lucide="terminal"></i> Cloud Run Web Logs (data-extractor-web)
+            </h3>
+            <div class="log-panel">
+                {% if web_logs %}
+                    {% for entry in web_logs %}
+                    <div class="log-entry">
+                        <span class="log-time">{{ entry.timestamp }}</span>
+                        <span class="log-message">{{ entry.message }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-slate-400">No web log entries available.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

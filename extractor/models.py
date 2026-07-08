@@ -1,0 +1,323 @@
+import logging
+import uuid
+
+from django.contrib.auth.models import User
+from django.db import models
+from django.db.models import JSONField
+
+logger = logging.getLogger(__name__)
+
+
+class SafeVectorField(models.Field):
+    """Legacy field stub to prevent Django migration import errors."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.pop("dimensions", 768)
+        super().__init__(*args, **kwargs)
+
+    def db_type(self, connection):
+        return "TEXT"
+
+
+class SourceDocument(models.Model):
+    """
+    Primary document record stored in SQLite.
+    Vector chunks, semantic cache, and user memories live in SurrealDB.
+    """
+
+    STATUS_CHOICES = [
+        ("PENDING", "Queued"),
+        ("EXTRACTING", "OCR & Layout Analysis"),
+        ("REFINING", "Semantic Curation"),
+        ("EMBEDDING", "Vector Indexing"),
+        ("COMPLETED", "Completed"),
+        ("FAILED", "Failed"),
+    ]
+
+    # Secure identifier for URL routing to prevent IDOR / enumeration attacks
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
+    uploaded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="uploaded_documents"
+    )
+
+    # File storage
+    file = models.FileField(upload_to="documents/%Y/%m/%d/", max_length=500)
+    original_filename = models.CharField(max_length=255)
+    file_hash = models.CharField(max_length=64, db_index=True)  # SHA-256 content address
+
+    # Metadata extracted or analyzed
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
+    error_message = models.TextField(blank=True, default="")
+
+    # Curated taxonomy fields for NotebookLM exports
+    language = models.CharField(max_length=50, blank=True, default="Unknown")
+    author = models.CharField(max_length=255, blank=True, default="Unknown")
+    title = models.CharField(max_length=255, blank=True, default="Untitled")
+    document_type = models.CharField(max_length=50, blank=True, default="PDF")
+    page_count = models.IntegerField(default=0)
+
+    # Processing outputs
+    raw_markdown = models.TextField(blank=True)  # Stage 1 OCR output
+    refined_markdown = models.TextField(blank=True)  # Stage 2 editorial output (editor edits this)
+    yaml_metadata = models.TextField(blank=True)  # Extracted YAML metadata block
+    qa_dataset = JSONField(default=list, blank=True)  # Extracted Q&A dataset pairs for SFT
+
+    # Operational metrics & budget auditing
+    input_tokens = models.IntegerField(default=0)
+    output_tokens = models.IntegerField(default=0)
+    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0.0)
+
+    # Deduplication & cross-lingual translation linkages
+    semantic_signature = models.CharField(max_length=64, blank=True, default="", db_index=True)
+
+    # Operational metrics & budget auditing
+    retry_count = models.IntegerField(default=0)
+
+    # Lifespans and GDPR auditing
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField(null=True, blank=True)  # GDPR auto-cleanup target
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.language})"
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+
+        if self.expires_at:
+            return timezone.now() > self.expires_at
+        return False
+
+
+class SystemSettings(models.Model):
+    CURRENCY_CHOICES = [
+        ("auto", "Detected by Browser Locale"),
+        ("USD", "USD ($)"),
+        ("IDR", "IDR (Rp)"),
+        ("SAR", "SAR (SR)"),
+    ]
+    monthly_budget_usd = models.DecimalField(max_digits=10, decimal_places=2, default=10.00)
+    selected_model = models.CharField(max_length=100, default="auto")
+    currency = models.CharField(max_length=10, choices=CURRENCY_CHOICES, default="auto")
+    csrf_trusted_origins = models.TextField(
+        blank=True,
+        default="",
+        help_text="Comma-separated list of custom domains/origins to trust for CSRF (e.g. https://my-custom-domain.com).",
+    )
+    openrouter_api_key = models.CharField(max_length=255, blank=True, default="")
+
+    @property
+    def openrouter_api_key_masked(self) -> str:
+        """Returns a masked placeholder if the key is configured, preventing plain-text leaks to clients."""
+        return "••••••••••••••••" if self.openrouter_api_key else ""
+
+    @classmethod
+    def get_settings(cls):
+        obj, _ = cls.objects.get_or_create(id=1)
+        return obj
+
+    def __str__(self):
+        return f"SystemSettings(Budget=${self.monthly_budget_usd}, Model={self.selected_model})"
+
+
+class AuditAction:
+    """Shared string constants for AuditLog.action to eliminate magic strings."""
+
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
+    UPLOAD = "UPLOAD"
+    UPLOAD_CACHED = "UPLOAD_CACHED"
+    EXTRACTION_START = "EXTRACTION_START"
+    EXTRACTION_COMPLETED = "EXTRACTION_COMPLETED"
+    EXTRACTION_FAILED = "EXTRACTION_FAILED"
+    DELETE = "DELETE"
+    PURGE_ALL = "PURGE_ALL"
+    DOCUMENT_EDITED = "DOCUMENT_EDITED"
+    DOCUMENT_REQUEUED = "DOCUMENT_REQUEUED"
+    SYSTEM_CONTROL = "SYSTEM_CONTROL"
+
+
+class AuditLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="audit_logs")
+    action = models.CharField(max_length=50, db_index=True)  # Use AuditAction constants for all action values
+    document = models.ForeignKey(
+        SourceDocument, on_delete=models.SET_NULL, null=True, blank=True, related_name="audit_logs"
+    )
+    details = models.TextField(blank=True, default="")
+    ip_address = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.created_at} - {self.user} - {self.action}"
+
+
+class UserMemory(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memories")
+    memory_text = models.TextField()
+    embedding = models.JSONField()  # 768-dim float vector
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.memory_text[:30]}"
+
+
+class MonthlySpendLog(models.Model):
+    """
+    Persistent accumulator for AI compute spend, keyed by calendar month.
+    Survives SourceDocument deletions – cost_usd is flushed here via pre_delete
+    signal *before* each document row is removed from the database.
+    """
+
+    year = models.SmallIntegerField(db_index=True)
+    month = models.SmallIntegerField()  # 1-12
+    accumulated_cost_usd = models.DecimalField(max_digits=12, decimal_places=6, default=0)
+    accumulated_input_tokens = models.BigIntegerField(default=0)
+    accumulated_output_tokens = models.BigIntegerField(default=0)
+
+    class Meta:
+        unique_together = (("year", "month"),)
+        ordering = ["-year", "-month"]
+
+    @classmethod
+    def add_cost(cls, year: int, month: int, cost: "Decimal", in_tok: int = 0, out_tok: int = 0):
+        """Thread-safe upsert: add cost to the specified year/month bucket."""
+        from decimal import Decimal as D
+
+        try:
+            cls.objects.update_or_create(
+                year=year,
+                month=month,
+                defaults={},
+            )
+            # Use F-expression to avoid race conditions on concurrent workers
+            cls.objects.filter(year=year, month=month).update(
+                accumulated_cost_usd=models.F("accumulated_cost_usd") + D(str(cost)),
+                accumulated_input_tokens=models.F("accumulated_input_tokens") + in_tok,
+                accumulated_output_tokens=models.F("accumulated_output_tokens") + out_tok,
+            )
+        except Exception as exc:  # pragma: no cover — handles pre-migration state
+            logger.warning("[MonthlyLog] add_cost skipped (table may not exist yet): %s", exc)
+
+    @classmethod
+    def total_for_month(cls, year: int, month: int) -> "Decimal":
+        """Return the total spend for the given calendar month."""
+        from decimal import Decimal as D
+
+        try:
+            row = cls.objects.filter(year=year, month=month).first()
+            return row.accumulated_cost_usd if row else D("0.0")
+        except Exception:  # pragma: no cover — handles pre-migration state
+            return D("0.0")
+
+
+# ── Signal Receivers for Auth Event Auditing ──────────────────────────────────
+from django.contrib.auth.signals import user_logged_in, user_logged_out
+from django.dispatch import receiver
+
+
+@receiver(user_logged_in)
+def log_user_login(sender, request, user, **kwargs):
+    ip = None
+    if request:
+        from extractor.utils import get_client_ip
+
+        ip = get_client_ip(request)
+    from extractor.utils import log_audit_event
+
+    log_audit_event(
+        action=AuditAction.LOGIN,
+        user=user,
+        details=f"User '{user.username}' authenticated successfully.",
+        ip_address=ip,
+    )
+
+
+@receiver(user_logged_out)
+def log_user_logout(sender, request, user, **kwargs):
+    if user:
+        ip = None
+        if request:
+            from extractor.utils import get_client_ip
+
+            ip = get_client_ip(request)
+        from extractor.utils import log_audit_event
+
+        log_audit_event(
+            action=AuditAction.LOGOUT,
+            user=user,
+            details=f"User '{user.username}' logged out.",
+            ip_address=ip,
+        )
+
+
+# ── Signal Receivers for SurrealDB RAG Cache Invalidation ────────────────────
+from django.db.models.signals import post_delete, post_save, pre_delete
+
+
+def purge_rag_cache():
+    """
+    Purges all cached query/answer pairs from the SurrealDB rag_cache table
+    and wipes exact-match KV cache entries with the 'rag_search_cache:' prefix.
+    """
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return
+    try:
+        from extractor import surreal_db
+
+        surreal_db.kv_cache_delete_pattern("rag_search_cache:")
+        surreal_db.purge_all_rag_cache()
+    except Exception as exc:
+        logger.warning("[Cache] Failed to purge SurrealDB RAG cache: %s", exc)
+
+
+@receiver(pre_delete, sender=SourceDocument)
+def flush_cost_to_monthly_log(sender, instance, **kwargs):
+    """
+    Before a SourceDocument row is removed, persist its cost_usd into the
+    MonthlySpendLog for the month in which the document was *created*.
+    This ensures the Monthly AI Compute Spend metric is never reset by deletions.
+    """
+    if instance.cost_usd and instance.cost_usd > 0:
+        ts = instance.created_at
+        try:
+            MonthlySpendLog.add_cost(
+                year=ts.year,
+                month=ts.month,
+                cost=instance.cost_usd,
+                in_tok=instance.input_tokens or 0,
+                out_tok=instance.output_tokens or 0,
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning("[MonthlyLog] Failed to flush cost before delete: %s", exc)
+
+
+@receiver(post_save, sender=SourceDocument)
+def invalidate_rag_cache_on_save(sender, instance, **kwargs):
+    if instance.status == "COMPLETED":
+        purge_rag_cache()
+
+
+@receiver(post_delete, sender=SourceDocument)
+def invalidate_rag_cache_on_delete(sender, instance, **kwargs):
+    from django.conf import settings
+
+    if not getattr(settings, "SURREALDB_OFFLINE", False):
+        try:
+            from extractor import surreal_db
+
+            surreal_db.delete_document(str(instance.uuid))
+        except Exception as exc:
+            logger.warning("[Cleanup] Failed to delete SurrealDB document: %s", exc)
+    purge_rag_cache()

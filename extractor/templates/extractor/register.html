@@ -1,0 +1,215 @@
+{% extends 'extractor/base.html' %}
+
+{% block title %}Register{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Premium Centered Register Container */
+    .register-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 180px);
+        padding: 24px;
+        position: relative;
+    }
+
+    /* Jaw-Dropping Glassmorphic Register Card */
+    .register-card {
+        width: 100%;
+        max-width: 440px;
+        padding: 40px;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+        position: relative;
+        overflow: hidden;
+        animation: card-appear 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes card-appear {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .register-card::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 60%);
+        pointer-events: none;
+    }
+
+    .register-header {
+        text-align: center;
+        margin-bottom: 32px;
+    }
+
+    .register-logo-glow {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: rgba(99, 102, 241, 0.15);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        color: var(--primary);
+        margin-bottom: 16px;
+        box-shadow: 0 0 20px rgba(99, 102, 241, 0.25);
+    }
+
+    .register-header h2 {
+        font-family: var(--font-display);
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        background: linear-gradient(135deg, #fff 40%, var(--text-muted) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 6px;
+    }
+
+    .register-header p {
+        color: var(--text-muted);
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .form-group {
+        margin-bottom: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .form-group label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-main);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .register-input {
+        width: 100%;
+        padding: 12px 16px;
+        background: rgba(3, 7, 18, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        color: var(--text-main);
+        font-size: 16px;
+        font-family: var(--font-body);
+        transition: var(--transition-smooth);
+        outline: none;
+    }
+
+    .register-input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+        background: rgba(3, 7, 18, 0.85);
+    }
+
+    .btn-register-submit {
+        width: 100%;
+        padding: 14px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        border: none;
+        color: white;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);
+        transition: var(--transition-smooth);
+        font-family: var(--font-body);
+    }
+
+    .btn-register-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        filter: brightness(1.1);
+    }
+
+    .register-footer-help {
+        text-align: center;
+        margin-top: 24px;
+        font-size: 12.5px;
+        color: var(--text-muted);
+    }
+
+    .register-footer-help a {
+        color: var(--primary);
+        text-decoration: none;
+        font-weight: 600;
+        transition: var(--transition-smooth);
+    }
+
+    .register-footer-help a:hover {
+        text-decoration: underline;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="register-container">
+    <div class="register-card">
+        <div class="register-header">
+            <div class="register-logo-glow" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="8.5" cy="7" r="4"/>
+                    <line x1="20" y1="8" x2="20" y2="14"/>
+                    <line x1="23" y1="11" x2="17" y2="11"/>
+                </svg>
+            </div>
+            <h2>Create Account</h2>
+            <p>Sign up to access Knowledge Desk</p>
+        </div>
+
+        <form method="post" action="{% url 'register' %}">
+            {% csrf_token %}
+
+            <div class="form-group">
+                <label for="id_email">Email Address</label>
+                <input type="email" id="id_email" name="email" class="register-input" autocomplete="email" required autofocus placeholder="Enter your email" aria-required="true">
+            </div>
+
+            <div class="form-group">
+                <label for="id_password">Password</label>
+                <input type="password" id="id_password" name="password" class="register-input" autocomplete="new-password" required placeholder="Choose a password" aria-required="true">
+            </div>
+
+            <div class="form-group">
+                <label for="id_confirm_password">Confirm Password</label>
+                <input type="password" id="id_confirm_password" name="confirm_password" class="register-input" autocomplete="new-password" required placeholder="Re-enter password" aria-required="true">
+            </div>
+
+            <button type="submit" class="btn-register-submit">
+                <i data-lucide="user-plus"></i> Sign Up
+            </button>
+        </form>
+
+        <p class="register-footer-help">
+            Already have an account? <a href="{% url 'login' %}">Log In here</a>
+        </p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,2827 @@
+---
+insertId: yyyf7hd9d2p
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Factivity
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  authenticationInfo:
+    oauthInfo:
+      oauthClientId: 32555940559.apps.googleusercontent.com
+    principalEmail: elang@fainko.co.id
+    principalSubject: user:elang@fainko.co.id
+  authorizationInfo:
+  - granted: true
+    permission: run.services.update
+    permissionType: ADMIN_WRITE
+    resource: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    resourceAttributes: {}
+  - granted: true
+    permission: run.services.update
+    permissionType: ADMIN_WRITE
+    resource: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    resourceAttributes:
+      name: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+      service: run.googleapis.com/
+      type: run.googleapis.com/Service
+  methodName: google.cloud.run.v1.Services.ReplaceService
+  request:
+    '@type': type.googleapis.com/google.cloud.run.v1.ReplaceServiceRequest
+    name: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    service:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        annotations:
+          serving.knative.dev/creator: elang@fainko.co.id
+          serving.knative.dev/lastModifier: elang@fainko.co.id
+        labels:
+          cloud.googleapis.com/location: asia-southeast1
+        name: data-extractor-worker
+        namespace: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+        resourceVersion: AAZVy3ryKII
+      spec:
+        template:
+          metadata:
+            annotations:
+              run.googleapis.com/launch-stage: BETA
+          spec:
+            containers:
+            - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+              name: web
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            - image: surrealdb/surrealdb:latest
+              name: surrealdb
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+  requestMetadata:
+    callerIp: 182.8.131.78
+    callerSuppliedUserAgent: google-cloud-sdk gcloud/575.0.0 agent-name/antigravity
+      command/gcloud.run.services.replace invocation-id/ff7acb3d99f74597b26c56f0e367d9a7
+      environment/None environment-version/None client-os/LINUX client-os-ver/6.17.0
+      client-pltf-arch/x86_64 interactive/True from-script/False python/3.14.5 term/dumb  (Linux
+      6.17.0-35-generic),gzip(gfe)
+    destinationAttributes: {}
+    requestAttributes:
+      auth: {}
+      time: '2026-07-05T02:30:39.891680Z'
+  resourceLocation:
+    currentLocations:
+    - asia-southeast1
+  resourceName: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+  serviceName: run.googleapis.com
+  status: {}
+receiveTimestamp: '2026-07-05T02:30:40.810066933Z'
+resource:
+  labels:
+    configuration_name: ''
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: ''
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: NOTICE
+timestamp: '2026-07-05T02:30:39.220790Z'
+---
+insertId: 6a49375900050e28bac6bada
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:39:53.673237624Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: Goodbye!
+timestamp: '2026-07-04T16:39:53.331304Z'
+---
+insertId: 6a493759000503ea36e6d5d4
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:39:53.673237624Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:39:53.329416Z  INFO surrealdb::net: Web server stopped.
+  Bye!'
+timestamp: '2026-07-04T16:39:53.328682Z'
+---
+insertId: 6a4937590005012152aeb50f
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:39:53.338923756Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:39:53.328781Z  INFO surrealdb::net: Listening for a system
+  shutdown signal.'
+timestamp: '2026-07-04T16:39:53.327969Z'
+---
+insertId: 6a4937590005009f084fe5e3
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:39:53.340322986Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:39:53.328333Z  WARN surrealdb::net: SIGTERM received.
+  Waiting for a graceful shutdown. A second signal will force an immediate shutdown.'
+timestamp: '2026-07-04T16:39:53.327839Z'
+---
+insertId: 6a4935150005731b5f9f105e
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:30:13.414345609Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "[Security] Production OWASP enforcement active. CSRF Trusted Origins:\
+  \ ['https://*.run.app', 'https://data-extractor-worker-751922320980.asia-southeast1.run.app']"
+timestamp: '2026-07-04T16:30:13.357147Z'
+---
+insertId: 6a4935150005729e874cb341
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:30:13.414345609Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[Storage] Using Google Cloud Storage private bucket: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor'
+timestamp: '2026-07-04T16:30:13.357022Z'
+---
+insertId: 6a49351400010e78e4c9b8ba
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:30:12.080656474Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "[Security] Production OWASP enforcement active. CSRF Trusted Origins:\
+  \ ['https://*.run.app', 'https://data-extractor-worker-751922320980.asia-southeast1.run.app']"
+timestamp: '2026-07-04T16:30:12.069240Z'
+---
+insertId: 6a49351400010e55666f91b1
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:30:12.080656474Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[Storage] Using Google Cloud Storage private bucket: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor'
+timestamp: '2026-07-04T16:30:12.069205Z'
+---
+insertId: 6a4933f600026357fdd172f4
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:25:26.172090683Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:25:25 +0000] [4] [INFO] Control socket listening at /home/django-user/.gunicorn/gunicorn.ctl'
+timestamp: '2026-07-04T16:25:26.156503Z'
+---
+insertId: 6a4933d40007401d7570fbc5
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:52.813181003Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: Goodbye!
+timestamp: '2026-07-04T16:24:52.475165Z'
+---
+insertId: 6a4933d400073934908f7546
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:52.813181003Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:52.473732Z  INFO surrealdb::net: Web server stopped.
+  Bye!'
+timestamp: '2026-07-04T16:24:52.473396Z'
+---
+insertId: 6a4933d4000732eac77e63a0
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:52.480820577Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:52.471321Z  WARN surrealdb::net: SIGTERM received.
+  Waiting for a graceful shutdown. A second signal will force an immediate shutdown.'
+timestamp: '2026-07-04T16:24:52.471786Z'
+---
+insertId: 6a4933d4000730f467793ff0
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:52.475937547Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:52.471869Z  INFO surrealdb::net: Listening for a system
+  shutdown signal.'
+timestamp: '2026-07-04T16:24:52.471284Z'
+---
+insertId: -ydwiv7d66ze
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Fsystem_event
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  methodName: /Services.ReplaceService
+  resourceName: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+  response:
+    '@type': type.googleapis.com/google.cloud.run.v1.Service
+    apiVersion: serving.knative.dev/v1
+    kind: Service
+    metadata:
+      annotations:
+        run.googleapis.com/ingress: all
+        run.googleapis.com/ingress-status: all
+        run.googleapis.com/maxScale: '3'
+        run.googleapis.com/operation-id: 30429e1f-3afe-452c-9c2a-4d7ea410a7b4
+        run.googleapis.com/urls: '["https://data-extractor-worker-751922320980.asia-southeast1.run.app","https://data-extractor-worker-e2hbqrk5tq-as.a.run.app"]'
+        serving.knative.dev/creator: elang@fainko.co.id
+        serving.knative.dev/lastModifier: elang@fainko.co.id
+      creationTimestamp: '2026-07-04T16:07:57.074430Z'
+      generation: 4
+      labels:
+        cloud.googleapis.com/location: asia-southeast1
+        run.googleapis.com/satisfiesPzs: 'true'
+      name: data-extractor-worker
+      namespace: '751922320980'
+      resourceVersion: AAZVy3ryKII
+      selfLink: /apis/serving.knative.dev/v1/namespaces/751922320980/services/data-extractor-worker
+      uid: 99a5bf5c-13d5-41c1-8dfd-d7d60aa4242d
+    spec:
+      template:
+        metadata:
+          annotations:
+            run.googleapis.com/launch-stage: BETA
+          labels:
+            run.googleapis.com/startupProbeType: Default
+        spec:
+          containerConcurrency: 80
+          containers:
+          - env:
+            - name: DJANGO_DEBUG
+              value: 'False'
+            - name: GS_BUCKET_NAME
+              value: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor
+            - name: DJANGO_ALLOWED_HOSTS
+              value: '*'
+            - name: DJANGO_CSRF_TRUSTED_ORIGINS
+              value: https://*.run.app
+            - name: GCP_PROJECT_ID
+              value: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+            - name: GCP_REGION
+              value: asia-southeast1
+            - name: GCP_QUEUE_LOCATION
+              value: asia-southeast1
+            - name: GCP_QUEUE_NAME
+              value: extractor-tasks
+            - name: APP_URL
+              value: https://data-extractor-worker-751922320980.asia-southeast1.run.app
+            - name: SURREAL_URL
+              value: http://localhost:8000
+            - name: SURREAL_NS
+              value: omnirag
+            - name: SURREAL_DB
+              value: extractor
+            - name: SURREALDB_OFFLINE
+              value: 'False'
+            - name: GOOGLE_CLOUD_PROJECT
+              value: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: DJANGO_SECRET_KEY
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: DATABASE_URL
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: GEMINI_API_KEY
+            - name: SURREAL_USER
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SURREAL_USER
+            - name: SURREAL_PASS
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SURREAL_PASS
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUPABASE_URL
+            - name: SUPABASE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUPABASE_PUBLIC_KEY
+            image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+            name: web
+            ports:
+            - containerPort: 8080
+              name: http1
+            resources:
+              limits:
+                cpu: 1000m
+                memory: 1024Mi
+            startupProbe:
+              failureThreshold: 1
+              periodSeconds: 240
+              tcpSocket:
+                port: 8080
+              timeoutSeconds: 240
+          - args:
+            - start
+            - --no-banner
+            - --log
+            - info
+            - --user
+            - root
+            - --pass
+            - rootpass
+            - --bind
+            - 0.0.0.0:8000
+            - mem://
+            image: surrealdb/surrealdb:latest
+            name: surrealdb
+            resources:
+              limits:
+                cpu: 1000m
+                memory: 1024Mi
+          serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+          timeoutSeconds: 300
+      traffic:
+      - latestRevision: true
+        percent: 100
+    status:
+      address:
+        url: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app
+      conditions:
+      - lastTransitionTime: '2026-07-04T16:24:49.676418Z'
+        status: 'True'
+        type: Ready
+      - lastTransitionTime: '2026-07-04T16:24:47.221921Z'
+        status: 'True'
+        type: ConfigurationsReady
+      - lastTransitionTime: '2026-07-04T16:24:49.638037Z'
+        status: 'True'
+        type: RoutesReady
+      latestCreatedRevisionName: data-extractor-worker-00004-td2
+      latestReadyRevisionName: data-extractor-worker-00004-td2
+      observedGeneration: 4
+      traffic:
+      - latestRevision: true
+        percent: 100
+        revisionName: data-extractor-worker-00004-td2
+      url: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app
+  serviceName: run.googleapis.com
+  status:
+    message: Ready condition status changed to True for Service data-extractor-worker.
+receiveTimestamp: '2026-07-04T16:24:50.168154262Z'
+resource:
+  labels:
+    configuration_name: ''
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: ''
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: INFO
+timestamp: '2026-07-04T16:24:49.693317Z'
+---
+insertId: -piygpid6su0
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Fsystem_event
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  methodName: /Services.ReplaceService
+  resourceName: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/revisions/data-extractor-worker-00004-td2
+  response:
+    '@type': type.googleapis.com/google.cloud.run.v1.Revision
+    apiVersion: serving.knative.dev/v1
+    kind: Revision
+    metadata:
+      annotations:
+        run.googleapis.com/operation-id: 30429e1f-3afe-452c-9c2a-4d7ea410a7b4
+        serving.knative.dev/creator: elang@fainko.co.id
+      creationTimestamp: '2026-07-04T16:24:24.259396Z'
+      generation: 1
+      labels:
+        cloud.googleapis.com/location: asia-southeast1
+        run.googleapis.com/satisfiesPzs: 'true'
+        run.googleapis.com/startupProbeType: Default
+        serving.knative.dev/configuration: data-extractor-worker
+        serving.knative.dev/configurationGeneration: '4'
+        serving.knative.dev/route: data-extractor-worker
+        serving.knative.dev/service: data-extractor-worker
+        serving.knative.dev/serviceUid: 99a5bf5c-13d5-41c1-8dfd-d7d60aa4242d
+      name: data-extractor-worker-00004-td2
+      namespace: '751922320980'
+      ownerReferences:
+      - apiVersion: serving.knative.dev/v1
+        blockOwnerDeletion: true
+        controller: true
+        kind: Configuration
+        name: data-extractor-worker
+        uid: f601531d-1a68-4189-8d6e-44c89cc0e410
+      resourceVersion: AAZVy3rLm70
+      selfLink: /apis/serving.knative.dev/v1/namespaces/751922320980/revisions/data-extractor-worker-00004-td2
+      uid: 99d9ecd7-b2ec-450b-8fae-20c724397738
+    spec:
+      containerConcurrency: 80
+      containers:
+      - env:
+        - name: DJANGO_DEBUG
+          value: 'False'
+        - name: GS_BUCKET_NAME
+          value: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor
+        - name: DJANGO_ALLOWED_HOSTS
+          value: '*'
+        - name: DJANGO_CSRF_TRUSTED_ORIGINS
+          value: https://*.run.app
+        - name: GCP_PROJECT_ID
+          value: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+        - name: GCP_REGION
+          value: asia-southeast1
+        - name: GCP_QUEUE_LOCATION
+          value: asia-southeast1
+        - name: GCP_QUEUE_NAME
+          value: extractor-tasks
+        - name: APP_URL
+          value: https://data-extractor-worker-751922320980.asia-southeast1.run.app
+        - name: SURREAL_URL
+          value: http://localhost:8000
+        - name: SURREAL_NS
+          value: omnirag
+        - name: SURREAL_DB
+          value: extractor
+        - name: SURREALDB_OFFLINE
+          value: 'False'
+        - name: GOOGLE_CLOUD_PROJECT
+          value: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: DJANGO_SECRET_KEY
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: DATABASE_URL
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: GEMINI_API_KEY
+        - name: SURREAL_USER
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: SURREAL_USER
+        - name: SURREAL_PASS
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: SURREAL_PASS
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: SUPABASE_URL
+        - name: SUPABASE_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: SUPABASE_PUBLIC_KEY
+        image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app@sha256:0193dfd0f8273b106d7c6ef220daf273e3d3c2aeae20eaf4db27e7380787ff0a
+        name: web
+        ports:
+        - containerPort: 8080
+          name: http1
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+        startupProbe:
+          failureThreshold: 1
+          periodSeconds: 240
+          tcpSocket:
+            port: 8080
+          timeoutSeconds: 240
+      - args:
+        - start
+        - --no-banner
+        - --log
+        - info
+        - --user
+        - root
+        - --pass
+        - rootpass
+        - --bind
+        - 0.0.0.0:8000
+        - mem://
+        image: mirror.gcr.io/surrealdb/surrealdb@sha256:335569b51a53bc0a943c7394a63f6dec07e5a582d3af3ee783c717ad12e06363
+        name: surrealdb
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+      serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+      timeoutSeconds: 300
+    status:
+      conditions:
+      - lastTransitionTime: '2026-07-04T16:24:47.150013Z'
+        message: Deploying revision succeeded in 22.89s.
+        status: 'True'
+        type: Ready
+      - lastTransitionTime: '2026-07-04T16:24:47.081169Z'
+        message: Containers became healthy in 16.7s.
+        status: 'True'
+        type: ContainerHealthy
+      - lastTransitionTime: '2026-07-04T16:24:26.908445Z'
+        message: Container image import completed in 1.27s.
+        status: 'True'
+        type: ContainerReady
+      - lastTransitionTime: '2026-07-04T16:24:29.580182Z'
+        message: Provisioning imported containers completed in 2.67s. Checking container
+          health. This will wait for up to 4m for the configured startup probe, including
+          an initial delay of 0s.
+        status: 'True'
+        type: ResourcesAvailable
+      containerStatuses:
+      - imageDigest: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app@sha256:0193dfd0f8273b106d7c6ef220daf273e3d3c2aeae20eaf4db27e7380787ff0a
+        name: web
+      - imageDigest: mirror.gcr.io/surrealdb/surrealdb@sha256:335569b51a53bc0a943c7394a63f6dec07e5a582d3af3ee783c717ad12e06363
+        name: surrealdb
+      logUrl: https://console.cloud.google.com/logs/viewer?project=cs-poc-pfjoxqspipkzqdfmgnqcd3c&resource=cloud_run_revision/service_name/data-extractor-worker/revision_name/data-extractor-worker-00004-td2&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22data-extractor-worker%22%0Aresource.labels.revision_name%3D%22data-extractor-worker-00004-td2%22
+      observedGeneration: 1
+  serviceName: run.googleapis.com
+  status:
+    message: 'Ready condition status changed to True for Revision data-extractor-worker-00004-td2
+      with message: Deploying revision succeeded in 22.89s.'
+receiveTimestamp: '2026-07-04T16:24:47.403250334Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: INFO
+timestamp: '2026-07-04T16:24:47.167902Z'
+---
+insertId: 6a4933cf0001ed5a494f7518
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:47.134849337Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:24:47 +0000] [6] [INFO] Booting worker with pid: 6'
+timestamp: '2026-07-04T16:24:47.126298Z'
+---
+insertId: 6a4933cf00014ade1b1fd8c4
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:47.134849337Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:24:47 +0000] [5] [INFO] Booting worker with pid: 5'
+timestamp: '2026-07-04T16:24:47.084702Z'
+---
+insertId: 6a4933cf000110d44807cb4e
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fvarlog%2Fsystem
+receiveTimestamp: '2026-07-04T16:24:47.073845305Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: INFO
+textPayload: Default STARTUP TCP probe succeeded after 1 attempt for container "web"
+  on port 8080.
+timestamp: '2026-07-04T16:24:47.069844Z'
+---
+insertId: 6a4933cf00010e1006a7bff7
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:47.134849337Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:24:47 +0000] [4] [INFO] Using worker: gthread'
+timestamp: '2026-07-04T16:24:47.069136Z'
+---
+insertId: 6a4933cf00010dd3eca2f8d7
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:47.134849337Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:24:47 +0000] [4] [INFO] Listening at: http://0.0.0.0:8080
+  (4)'
+timestamp: '2026-07-04T16:24:47.069075Z'
+---
+insertId: 6a4933cf00010b7c8443650b
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:47.134849337Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:24:47 +0000] [4] [INFO] Starting gunicorn 26.0.0'
+timestamp: '2026-07-04T16:24:47.068476Z'
+---
+insertId: 6a4933cd000ad2c9bb9dda51
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:45,710 [INFO] SurrealDB schema initialized successfully!
+timestamp: '2026-07-04T16:24:45.709321Z'
+---
+insertId: 6a4933cd000ad07fc3db6d05
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04 16:24:45,710 [INFO] HTTP Request: POST http://localhost:8000/sql
+  "HTTP/1.1 200 OK"'
+timestamp: '2026-07-04T16:24:45.708735Z'
+---
+insertId: 6a4933cd000951467b75e792
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:45,612 [INFO] Applying schema to SurrealDB...
+timestamp: '2026-07-04T16:24:45.610630Z'
+---
+insertId: 6a4933cd000950439b17cf37
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04 16:24:45,611 [INFO] HTTP Request: POST http://localhost:8000/sql
+  "HTTP/1.1 200 OK"'
+timestamp: '2026-07-04T16:24:45.610371Z'
+---
+insertId: 6a4933cd00086c62a02c2a6d
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04 16:24:45,553 [INFO] HTTP Request: POST http://localhost:8000/sql
+  "HTTP/1.1 200 OK"'
+timestamp: '2026-07-04T16:24:45.552034Z'
+---
+insertId: 6a4933cd0007656504d9965a
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:45,486 [INFO] Ensuring namespace 'omnirag' and database
+  'extractor' exist...
+timestamp: '2026-07-04T16:24:45.484709Z'
+---
+insertId: 6a4933cd00075f33dd50b9da
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:45,484 [INFO] Reading schema from /app/schema.surql...
+timestamp: '2026-07-04T16:24:45.483123Z'
+---
+insertId: 6a4933cd00075e14529a1b10
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:45,484 [INFO] SurrealDB is healthy and ready!
+timestamp: '2026-07-04T16:24:45.482836Z'
+---
+insertId: 6a4933cd00075ce65387a9b1
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.806531325Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04 16:24:45,483 [INFO] HTTP Request: GET http://localhost:8000/health
+  "HTTP/1.1 200 OK"'
+timestamp: '2026-07-04T16:24:45.482534Z'
+---
+insertId: 6a4933cd0006536088e53530
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:45.472928968Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:45,415 [INFO] Checking SurrealDB health (attempt 1/30)...
+timestamp: '2026-07-04T16:24:45.414560Z'
+---
+insertId: 6a4933cc000941ab1e4614d9
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:44.802865695Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:44,607 [INFO] Admin user 'elang@fainko.co.id' already
+  exists and authenticated successfully on Supabase Auth.
+timestamp: '2026-07-04T16:24:44.606635Z'
+---
+insertId: 6a4933c900070881eb741792
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:41.472865328Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:41,461 [INFO] Supabase is configured. Checking if 'elang'
+  user already exists on Supabase Auth...
+timestamp: '2026-07-04T16:24:41.460929Z'
+---
+insertId: 6a4933c90002ff649956a471
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:41.305865198Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "[Security] Production OWASP enforcement active. CSRF Trusted Origins:\
+  \ ['https://*.run.app', 'https://data-extractor-worker-751922320980.asia-southeast1.run.app']"
+timestamp: '2026-07-04T16:24:41.196452Z'
+---
+insertId: 6a4933c90002ff4f48d549fb
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:41.305865198Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[Storage] Using Google Cloud Storage private bucket: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor'
+timestamp: '2026-07-04T16:24:41.196431Z'
+---
+insertId: 6a4933c8000727537b031186
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:24:40.472579813Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:24:40,470 [INFO] Initializing Django administrative superuser...
+timestamp: '2026-07-04T16:24:40.468819Z'
+---
+insertId: 6a4933c500093dd99453c493
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:37.643086980Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '  Applying extractor.0013_remove_systemsettings_source_library_uri...
+  OK'
+timestamp: '2026-07-04T16:24:37.605657Z'
+---
+insertId: 6a4933c50002c1ed7819d7fb
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:37.310835161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 'Running migrations:'
+timestamp: '2026-07-04T16:24:37.180717Z'
+---
+insertId: 6a4933c5000293a227fd2b70
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:37.310835161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '  Apply all migrations: admin, auth, contenttypes, extractor, sessions'
+timestamp: '2026-07-04T16:24:37.168866Z'
+---
+insertId: 6a4933c50002938e7f33f102
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:37.310835161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 'Operations to perform:'
+timestamp: '2026-07-04T16:24:37.168846Z'
+---
+insertId: 6a4933bf0009e7c392d175c7
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.982646135Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "[Security] Production OWASP enforcement active. CSRF Trusted Origins:\
+  \ ['https://*.run.app', 'https://data-extractor-worker-751922320980.asia-southeast1.run.app']"
+timestamp: '2026-07-04T16:24:31.649155Z'
+---
+insertId: 6a4933bf0009e7af221ad059
+labels:
+  container_name: web
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.982646135Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[Storage] Using Google Cloud Storage private bucket: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor'
+timestamp: '2026-07-04T16:24:31.649135Z'
+---
+insertId: 6a4933bf0002f187f6c52ded
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.193653Z  INFO surrealdb::net: Listening for a system
+  shutdown signal.'
+timestamp: '2026-07-04T16:24:31.192903Z'
+---
+insertId: 6a4933bf0002eeb84c79e7b3
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.192705Z  INFO surrealdb::net: Started web server
+  on 0.0.0.0:8000'
+timestamp: '2026-07-04T16:24:31.192184Z'
+---
+insertId: 6a4933bf000287c3853c723b
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.166568Z  INFO surreal::dbs: Operation succeeded
+  operation="Remove nodes" attempts=1'
+timestamp: '2026-07-04T16:24:31.165827Z'
+---
+insertId: 6a4933bf000286f0b66b1e10
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.166506Z  INFO surreal::dbs: Operation succeeded
+  operation="Expire nodes" attempts=1'
+timestamp: '2026-07-04T16:24:31.165616Z'
+---
+insertId: 6a4933bf000283515f5ced83
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.165910Z  INFO surreal::dbs: Operation succeeded
+  operation="Insert node" attempts=1'
+timestamp: '2026-07-04T16:24:31.164689Z'
+---
+insertId: 6a4933bf00027f88677b7747
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.164597Z  INFO surreal::dbs: Operation succeeded
+  operation="initialise_credentials" attempts=1'
+timestamp: '2026-07-04T16:24:31.163720Z'
+---
+insertId: 6a4933bf0001960eab37888c
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "2026-07-04T16:24:31.105110Z  INFO surrealdb::core::kvs::ds: Credentials\
+  \ were provided, and no root users were found. The root user 'root' will be created"
+timestamp: '2026-07-04T16:24:31.103950Z'
+---
+insertId: 6a4933bf000195067d50ad2a
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.104681Z  INFO surreal::dbs: Initialising credentials
+  user=root'
+timestamp: '2026-07-04T16:24:31.103686Z'
+---
+insertId: 6a4933bf0001942f91a1a4c1
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.104634Z  INFO surreal::dbs: Operation succeeded
+  operation="initialise_defaults" attempts=1'
+timestamp: '2026-07-04T16:24:31.103471Z'
+---
+insertId: 6a4933bf0000b9475de4db66
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "2026-07-04T16:24:31.046165Z  INFO surrealdb::core::kvs::ds: This is\
+  \ a new SurrealDB instance. Initialising default namespace 'main' and database 'main'"
+timestamp: '2026-07-04T16:24:31.047431Z'
+---
+insertId: 6a4933bf0000af743cbe81fa
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.041008Z  INFO surreal::dbs: Operation succeeded
+  operation="check_version" attempts=1'
+timestamp: '2026-07-04T16:24:31.044916Z'
+---
+insertId: 6a4933bf00000908367d5f3b
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:31.003296Z  INFO surrealdb::core::kvs::ds: Started
+  kvs store in memory'
+timestamp: '2026-07-04T16:24:31.002312Z'
+---
+insertId: 6a4933bf000002dd0022934c
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:30.999202Z  INFO surrealdb::core::kvs::mem: Storage
+  mode: in-memory only (no persist path)'
+timestamp: '2026-07-04T16:24:31.000733Z'
+---
+insertId: 6a4933bf000001c63b8e2636
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:30.999171Z  INFO surrealdb::core::kvs::mem: Versioning
+  enabled: false with retention period: 0ns'
+timestamp: '2026-07-04T16:24:31.000454Z'
+---
+insertId: 6a4933be000f414420fdee5b
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:31.317548161Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:30.993271Z  INFO surrealdb::core::kvs::ds: Starting
+  kvs store in memory'
+timestamp: '2026-07-04T16:24:30.999748Z'
+---
+insertId: 6a4933be000ee9119250070a
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:30.981262405Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:24:30.978161Z  INFO surrealdb_server::env: Running 3.2.0
+  for linux on x86_64'
+timestamp: '2026-07-04T16:24:30.977169Z'
+---
+insertId: 6a4933bd000a552cab5fd097
+labels:
+  instanceId: 002f8ffd479a19f3b6c024e7a60244ec899bb7cfd2c1cf328ece9084ed2a4d8922d39429dcb63a9640d29d73dd197a0dfa9c92b607fc761dbf70a3253b55bbbf296aab7f205d557c090d19358345a8d4cc9f
+  scaling_reason: DEPLOYMENT_ROLLOUT
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fvarlog%2Fsystem
+receiveTimestamp: '2026-07-04T16:24:29.682606555Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00004-td2
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: INFO
+textPayload: 'Starting new instance. Reason: DEPLOYMENT_ROLLOUT - Instance started
+  due to traffic shifting between revisions due to deployment, traffic split adjustment,
+  or deployment health check.'
+timestamp: '2026-07-04T16:24:29.677164Z'
+---
+insertId: m92483da5k9
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Factivity
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  authenticationInfo:
+    oauthInfo:
+      oauthClientId: 32555940559.apps.googleusercontent.com
+    principalEmail: elang@fainko.co.id
+    principalSubject: user:elang@fainko.co.id
+  authorizationInfo:
+  - granted: true
+    permission: run.services.update
+    permissionType: ADMIN_WRITE
+    resource: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    resourceAttributes: {}
+  - granted: true
+    permission: run.services.update
+    permissionType: ADMIN_WRITE
+    resource: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    resourceAttributes:
+      name: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+      service: run.googleapis.com/
+      type: run.googleapis.com/Service
+  methodName: google.cloud.run.v1.Services.ReplaceService
+  request:
+    '@type': type.googleapis.com/google.cloud.run.v1.ReplaceServiceRequest
+    name: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    service:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        annotations:
+          serving.knative.dev/creator: elang@fainko.co.id
+          serving.knative.dev/lastModifier: elang@fainko.co.id
+        labels:
+          cloud.googleapis.com/location: asia-southeast1
+        name: data-extractor-worker
+        namespace: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+        resourceVersion: AAZVy2V0l1Y
+      spec:
+        template:
+          metadata:
+            annotations:
+              run.googleapis.com/launch-stage: BETA
+          spec:
+            containers:
+            - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+              name: web
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            - image: surrealdb/surrealdb:latest
+              name: surrealdb
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+  requestMetadata:
+    callerIp: 182.8.131.78
+    callerSuppliedUserAgent: google-cloud-sdk gcloud/575.0.0 agent-name/antigravity
+      command/gcloud.run.services.replace invocation-id/cb910c4232d34cf2bb871a9563934dd6
+      environment/None environment-version/None client-os/LINUX client-os-ver/6.17.0
+      client-pltf-arch/x86_64 interactive/True from-script/False python/3.14.5 term/dumb  (Linux
+      6.17.0-35-generic),gzip(gfe)
+    destinationAttributes: {}
+    requestAttributes:
+      auth: {}
+      time: '2026-07-04T16:24:24.196694Z'
+  resourceLocation:
+    currentLocations:
+    - asia-southeast1
+  resourceName: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+  serviceName: run.googleapis.com
+  status: {}
+receiveTimestamp: '2026-07-04T16:24:25.192342841Z'
+resource:
+  labels:
+    configuration_name: ''
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: ''
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: NOTICE
+timestamp: '2026-07-04T16:24:23.065154Z'
+---
+insertId: 6a4933a80002d767b857590a
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:08.193289841Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "[Security] Production OWASP enforcement active. CSRF Trusted Origins:\
+  \ ['https://*.run.app', 'https://data-extractor-worker-751922320980.asia-southeast1.run.app']"
+timestamp: '2026-07-04T16:24:08.186215Z'
+---
+insertId: 6a4933a80002d6e00da0f862
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:24:08.193289841Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[Storage] Using Google Cloud Storage private bucket: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor'
+timestamp: '2026-07-04T16:24:08.186080Z'
+---
+insertId: 6a49338d000d888fc9aca383
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:23:42.230083104Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "[Security] Production OWASP enforcement active. CSRF Trusted Origins:\
+  \ ['https://*.run.app', 'https://data-extractor-worker-751922320980.asia-southeast1.run.app']"
+timestamp: '2026-07-04T16:23:41.886927Z'
+---
+insertId: 6a49338d000d87fce442d7eb
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:23:41.890223308Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[Storage] Using Google Cloud Storage private bucket: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor'
+timestamp: '2026-07-04T16:23:41.886780Z'
+---
+insertId: bes7gsddlgv
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Factivity
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  authenticationInfo:
+    oauthInfo:
+      oauthClientId: 32555940559.apps.googleusercontent.com
+    principalEmail: elang@fainko.co.id
+    principalSubject: user:elang@fainko.co.id
+  authorizationInfo:
+  - granted: true
+    permission: run.services.update
+    permissionType: ADMIN_WRITE
+    resource: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    resourceAttributes: {}
+  - granted: true
+    permission: run.services.update
+    permissionType: ADMIN_WRITE
+    resource: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    resourceAttributes:
+      name: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+      service: run.googleapis.com/
+      type: run.googleapis.com/Service
+  methodName: google.cloud.run.v1.Services.ReplaceService
+  request:
+    '@type': type.googleapis.com/google.cloud.run.v1.ReplaceServiceRequest
+    name: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+    service:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        annotations:
+          serving.knative.dev/creator: elang@fainko.co.id
+          serving.knative.dev/lastModifier: elang@fainko.co.id
+        labels:
+          cloud.googleapis.com/location: asia-southeast1
+        name: data-extractor-worker
+        namespace: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+        resourceVersion: AAZVy2V0l1Y
+      spec:
+        template:
+          metadata:
+            annotations:
+              run.googleapis.com/launch-stage: BETA
+          spec:
+            containers:
+            - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+              name: web
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            - image: surrealdb/surrealdb:latest
+              name: surrealdb
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+  requestMetadata:
+    callerIp: 182.8.131.78
+    callerSuppliedUserAgent: google-cloud-sdk gcloud/575.0.0 agent-name/antigravity
+      command/gcloud.run.services.replace invocation-id/8bdaa29b14fd4750b904b3e9ba1da9d1
+      environment/None environment-version/None client-os/LINUX client-os-ver/6.17.0
+      client-pltf-arch/x86_64 interactive/True from-script/False python/3.14.5 term/dumb  (Linux
+      6.17.0-35-generic),gzip(gfe)
+    destinationAttributes: {}
+    requestAttributes:
+      auth: {}
+      time: '2026-07-04T16:23:14.770787Z'
+  resourceLocation:
+    currentLocations:
+    - asia-southeast1
+  resourceName: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+  serviceName: run.googleapis.com
+  status: {}
+receiveTimestamp: '2026-07-04T16:23:15.046466892Z'
+resource:
+  labels:
+    configuration_name: ''
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: ''
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: NOTICE
+timestamp: '2026-07-04T16:23:14.140120Z'
+---
+insertId: 1uddxdhd787y
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Factivity
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  authenticationInfo:
+    oauthInfo:
+      oauthClientId: '103724750034994776475'
+    principalEmail: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+    principalSubject: serviceAccount:run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+    serviceAccountDelegationInfo:
+    - firstPartyPrincipal:
+        principalEmail: service-751922320980@serverless-robot-prod.iam.gserviceaccount.com
+  authorizationInfo:
+  - granted: true
+    permission: run.services.update
+    permissionType: ADMIN_WRITE
+    resource: namespaces/751922320980/services/data-extractor-worker
+    resourceAttributes: {}
+  methodName: google.cloud.run.v1.Services.ReplaceService
+  request:
+    '@type': type.googleapis.com/google.cloud.run.v1.ReplaceServiceRequest
+    name: namespaces/751922320980/services/data-extractor-worker
+    service:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        annotations:
+          run.googleapis.com/ingress: all
+          run.googleapis.com/ingress-status: all
+          run.googleapis.com/maxScale: '3'
+          run.googleapis.com/operation-id: ff8a2728-cfbc-4fca-9976-38fa0c84eff6
+          run.googleapis.com/urls: '["https://data-extractor-worker-751922320980.asia-southeast1.run.app","https://data-extractor-worker-e2hbqrk5tq-as.a.run.app"]'
+          serving.knative.dev/creator: elang@fainko.co.id
+          serving.knative.dev/lastModifier: elang@fainko.co.id
+        labels:
+          cloud.googleapis.com/location: asia-southeast1
+          run.googleapis.com/satisfiesPzs: 'true'
+        name: data-extractor-worker
+        namespace: '751922320980'
+      spec:
+        template:
+          metadata:
+            annotations:
+              autoscaling.knative.dev/maxScale: '5'
+              autoscaling.knative.dev/minScale: '0'
+              run.googleapis.com/launch-stage: BETA
+            labels:
+              run.googleapis.com/startupProbeType: Default
+          spec:
+            containerConcurrency: 80
+            containers:
+            - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+              name: web
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            - image: surrealdb/surrealdb:latest
+              name: surrealdb
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+            timeoutSeconds: 300
+        traffic:
+        - latestRevision: true
+          percent: 100
+  requestMetadata:
+    callerIp: 2600:1900:0:3e02::1d01
+    callerSuppliedUserAgent: Python-urllib/3.12,gzip(gfe)
+    destinationAttributes: {}
+    requestAttributes:
+      auth: {}
+      time: '2026-07-04T16:21:13.743243Z'
+  resourceLocation:
+    currentLocations:
+    - asia-southeast1
+  resourceName: namespaces/751922320980/services/data-extractor-worker
+  serviceName: run.googleapis.com
+  status:
+    code: 7
+    message: Permission 'artifactregistry.repositories.downloadArtifacts' denied on
+      resource (or it may not exist).
+receiveTimestamp: '2026-07-04T16:21:14.105317628Z'
+resource:
+  labels:
+    configuration_name: ''
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: ''
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: ERROR
+timestamp: '2026-07-04T16:21:08.078436Z'
+---
+insertId: 1sdfptudadjr
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Factivity
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  authenticationInfo:
+    oauthInfo:
+      oauthClientId: '103724750034994776475'
+    principalEmail: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+    principalSubject: serviceAccount:run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+    serviceAccountDelegationInfo:
+    - firstPartyPrincipal:
+        principalEmail: service-751922320980@serverless-robot-prod.iam.gserviceaccount.com
+  authorizationInfo:
+  - granted: true
+    permission: run.services.update
+    permissionType: ADMIN_WRITE
+    resource: namespaces/751922320980/services/data-extractor-worker
+    resourceAttributes: {}
+  methodName: google.cloud.run.v1.Services.ReplaceService
+  request:
+    '@type': type.googleapis.com/google.cloud.run.v1.ReplaceServiceRequest
+    name: namespaces/751922320980/services/data-extractor-worker
+    service:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        annotations:
+          run.googleapis.com/ingress: all
+          run.googleapis.com/ingress-status: all
+          run.googleapis.com/maxScale: '3'
+          run.googleapis.com/operation-id: ff8a2728-cfbc-4fca-9976-38fa0c84eff6
+          run.googleapis.com/urls: '["https://data-extractor-worker-751922320980.asia-southeast1.run.app","https://data-extractor-worker-e2hbqrk5tq-as.a.run.app"]'
+          serving.knative.dev/creator: elang@fainko.co.id
+          serving.knative.dev/lastModifier: elang@fainko.co.id
+        labels:
+          cloud.googleapis.com/location: asia-southeast1
+          run.googleapis.com/satisfiesPzs: 'true'
+        name: data-extractor-worker
+        namespace: '751922320980'
+      spec:
+        template:
+          metadata:
+            annotations:
+              autoscaling.knative.dev/maxScale: '5'
+              autoscaling.knative.dev/minScale: '0'
+              run.googleapis.com/launch-stage: BETA
+            labels:
+              run.googleapis.com/startupProbeType: Default
+          spec:
+            containerConcurrency: 80
+            containers:
+            - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+              name: web
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            - image: surrealdb/surrealdb:latest
+              name: surrealdb
+              resources:
+                limits:
+                  cpu: 1000m
+                  memory: 1024Mi
+            serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+            timeoutSeconds: 300
+        traffic:
+        - latestRevision: true
+          percent: 100
+  requestMetadata:
+    callerIp: 2600:1900:0:3e02::1d01
+    callerSuppliedUserAgent: Python-urllib/3.12,gzip(gfe)
+    destinationAttributes: {}
+    requestAttributes:
+      auth: {}
+      time: '2026-07-04T16:21:13.743397Z'
+  resourceLocation:
+    currentLocations:
+    - asia-southeast1
+  resourceName: namespaces/751922320980/services/data-extractor-worker
+  serviceName: run.googleapis.com
+  status:
+    code: 7
+    message: Permission 'artifactregistry.repositories.downloadArtifacts' denied on
+      resource (or it may not exist).
+receiveTimestamp: '2026-07-04T16:21:14.195504730Z'
+resource:
+  labels:
+    configuration_name: ''
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: ''
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: ERROR
+timestamp: '2026-07-04T16:21:08.028645Z'
+---
+insertId: 6a4932b8000d878f6942176b
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:20:08.889800270Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:20:08 +0000] [4] [INFO] Control socket listening at /home/django-user/.gunicorn/gunicorn.ctl'
+timestamp: '2026-07-04T16:20:08.886671Z'
+---
+insertId: 6a49326b000aa3a29e22f026
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd47e7e02b21a42dd35a72b369d1c4c919f657d1cdd331748a2bd9a31d0e5afd440af987defcccf1d2cc3d2c3461d9c748702bde3e4a98597b269ef69dab7f1fdf222cb87735682d224b06bbb45b631c
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:18:52.037383239Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00002-sfm
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: Goodbye!
+timestamp: '2026-07-04T16:18:51.697250Z'
+---
+insertId: 6a49326b000a9c934bb713e8
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd47e7e02b21a42dd35a72b369d1c4c919f657d1cdd331748a2bd9a31d0e5afd440af987defcccf1d2cc3d2c3461d9c748702bde3e4a98597b269ef69dab7f1fdf222cb87735682d224b06bbb45b631c
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:18:52.037383239Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00002-sfm
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:18:51.695881Z  INFO surrealdb::net: Web server stopped.
+  Bye!'
+timestamp: '2026-07-04T16:18:51.695443Z'
+---
+insertId: 6a49326b000a9818db93cfda
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd47e7e02b21a42dd35a72b369d1c4c919f657d1cdd331748a2bd9a31d0e5afd440af987defcccf1d2cc3d2c3461d9c748702bde3e4a98597b269ef69dab7f1fdf222cb87735682d224b06bbb45b631c
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:18:51.700405533Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00002-sfm
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:18:51.693815Z  INFO surrealdb::net: Listening for a system
+  shutdown signal.'
+timestamp: '2026-07-04T16:18:51.694296Z'
+---
+insertId: 6a49326b000a931d12a93922
+labels:
+  container_name: surrealdb
+  instanceId: 002f8ffd47e7e02b21a42dd35a72b369d1c4c919f657d1cdd331748a2bd9a31d0e5afd440af987defcccf1d2cc3d2c3461d9c748702bde3e4a98597b269ef69dab7f1fdf222cb87735682d224b06bbb45b631c
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:51.696339437Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00002-sfm
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04T16:18:51.693529Z  WARN surrealdb::net: SIGTERM received.
+  Waiting for a graceful shutdown. A second signal will force an immediate shutdown.'
+timestamp: '2026-07-04T16:18:51.693021Z'
+---
+httpRequest:
+  latency: 0s
+  protocol: HTTP/1.1
+  referer: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app/
+  remoteIp: 2607:f8b0:400c:c31::4
+  requestMethod: GET
+  requestSize: '1031'
+  requestUrl: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app/favicon.ico
+  serverIp: '2600:1900:4245:200::'
+  status: 403
+  userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
+    like Gecko) Chrome/149.0.0.0 Safari/537.36
+insertId: 6a49326a0000757903d9bbd4
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Frequests
+receiveTimestamp: '2026-07-04T16:18:50.132861319Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: WARNING
+spanId: 0d203a324f11c83e
+textPayload: 'The request was not authenticated. Either allow unauthenticated invocations
+  or set the proper Authorization header. Empty Authorization header value. Read more
+  at https://cloud.google.com/run/docs/securing/authenticating Additional troubleshooting
+  documentation can be found at: https://cloud.google.com/run/docs/troubleshooting#unauthorized-client'
+timestamp: '2026-07-04T16:18:49.730403Z'
+trace: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/traces/617a96061abe47fab3ff1d53cbfc9669
+---
+httpRequest:
+  latency: 0s
+  protocol: HTTP/1.1
+  referer: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app/
+  remoteIp: 2607:f8b0:4003:c44::7
+  requestMethod: GET
+  requestSize: '1031'
+  requestUrl: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app/favicon.ico
+  serverIp: '2600:1900:4243:200::'
+  status: 403
+  userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
+    like Gecko) Chrome/149.0.0.0 Safari/537.36
+insertId: 6a493269000b36623964dea3
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Frequests
+receiveTimestamp: '2026-07-04T16:18:49.802476389Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: WARNING
+spanId: cf656e18a7fabfe7
+textPayload: 'The request was not authenticated. Either allow unauthenticated invocations
+  or set the proper Authorization header. Empty Authorization header value. Read more
+  at https://cloud.google.com/run/docs/securing/authenticating Additional troubleshooting
+  documentation can be found at: https://cloud.google.com/run/docs/troubleshooting#unauthorized-client'
+timestamp: '2026-07-04T16:18:49.402185Z'
+trace: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/traces/77a68f8e69146b5eb40ff6b8efccfc7e
+---
+insertId: -4ykjiad3eve
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Fsystem_event
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  methodName: /Services.ReplaceService
+  resourceName: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/services/data-extractor-worker
+  response:
+    '@type': type.googleapis.com/google.cloud.run.v1.Service
+    apiVersion: serving.knative.dev/v1
+    kind: Service
+    metadata:
+      annotations:
+        run.googleapis.com/ingress: all
+        run.googleapis.com/ingress-status: all
+        run.googleapis.com/maxScale: '3'
+        run.googleapis.com/operation-id: ff8a2728-cfbc-4fca-9976-38fa0c84eff6
+        run.googleapis.com/urls: '["https://data-extractor-worker-751922320980.asia-southeast1.run.app","https://data-extractor-worker-e2hbqrk5tq-as.a.run.app"]'
+        serving.knative.dev/creator: elang@fainko.co.id
+        serving.knative.dev/lastModifier: elang@fainko.co.id
+      creationTimestamp: '2026-07-04T16:07:57.074430Z'
+      generation: 3
+      labels:
+        cloud.googleapis.com/location: asia-southeast1
+        run.googleapis.com/satisfiesPzs: 'true'
+      name: data-extractor-worker
+      namespace: '751922320980'
+      resourceVersion: AAZVy2V0l1Y
+      selfLink: /apis/serving.knative.dev/v1/namespaces/751922320980/services/data-extractor-worker
+      uid: 99a5bf5c-13d5-41c1-8dfd-d7d60aa4242d
+    spec:
+      template:
+        metadata:
+          annotations:
+            run.googleapis.com/launch-stage: BETA
+          labels:
+            run.googleapis.com/startupProbeType: Default
+        spec:
+          containerConcurrency: 80
+          containers:
+          - env:
+            - name: DJANGO_DEBUG
+              value: 'False'
+            - name: GS_BUCKET_NAME
+              value: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor
+            - name: DJANGO_ALLOWED_HOSTS
+              value: '*'
+            - name: DJANGO_CSRF_TRUSTED_ORIGINS
+              value: https://*.run.app
+            - name: GCP_PROJECT_ID
+              value: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+            - name: GCP_REGION
+              value: asia-southeast1
+            - name: GCP_QUEUE_LOCATION
+              value: asia-southeast1
+            - name: GCP_QUEUE_NAME
+              value: extractor-tasks
+            - name: APP_URL
+              value: https://data-extractor-worker-751922320980.asia-southeast1.run.app
+            - name: SURREAL_URL
+              value: http://localhost:8000
+            - name: SURREAL_NS
+              value: omnirag
+            - name: SURREAL_DB
+              value: extractor
+            - name: SURREALDB_OFFLINE
+              value: 'False'
+            - name: GOOGLE_CLOUD_PROJECT
+              value: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: DJANGO_SECRET_KEY
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: GEMINI_API_KEY
+            - name: SURREAL_USER
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SURREAL_USER
+            - name: SURREAL_PASS
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SURREAL_PASS
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUPABASE_URL
+            - name: SUPABASE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: SUPABASE_PUBLIC_KEY
+            image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+            name: web
+            ports:
+            - containerPort: 8080
+              name: http1
+            resources:
+              limits:
+                cpu: 1000m
+                memory: 1024Mi
+            startupProbe:
+              failureThreshold: 1
+              periodSeconds: 240
+              tcpSocket:
+                port: 8080
+              timeoutSeconds: 240
+          - args:
+            - start
+            - --no-banner
+            - --log
+            - info
+            - --user
+            - root
+            - --pass
+            - rootpass
+            - --bind
+            - 0.0.0.0:8000
+            - mem://
+            image: surrealdb/surrealdb:latest
+            name: surrealdb
+            resources:
+              limits:
+                cpu: 1000m
+                memory: 1024Mi
+          serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+          timeoutSeconds: 300
+      traffic:
+      - latestRevision: true
+        percent: 100
+    status:
+      address:
+        url: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app
+      conditions:
+      - lastTransitionTime: '2026-07-04T16:18:49.125718Z'
+        status: 'True'
+        type: Ready
+      - lastTransitionTime: '2026-07-04T16:18:46.654354Z'
+        status: 'True'
+        type: ConfigurationsReady
+      - lastTransitionTime: '2026-07-04T16:18:49.089288Z'
+        status: 'True'
+        type: RoutesReady
+      latestCreatedRevisionName: data-extractor-worker-00003-rl9
+      latestReadyRevisionName: data-extractor-worker-00003-rl9
+      observedGeneration: 3
+      traffic:
+      - latestRevision: true
+        percent: 100
+        revisionName: data-extractor-worker-00003-rl9
+      url: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app
+  serviceName: run.googleapis.com
+  status:
+    message: Ready condition status changed to True for Service data-extractor-worker.
+receiveTimestamp: '2026-07-04T16:18:49.317138885Z'
+resource:
+  labels:
+    configuration_name: ''
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: ''
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: INFO
+timestamp: '2026-07-04T16:18:49.138643Z'
+---
+httpRequest:
+  latency: 0s
+  protocol: HTTP/1.1
+  remoteIp: 2607:f8b0:400c:c31::4
+  requestMethod: GET
+  requestSize: '1074'
+  requestUrl: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app/
+  serverIp: '2600:1900:4245:200::'
+  status: 403
+  userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
+    like Gecko) Chrome/149.0.0.0 Safari/537.36
+insertId: 6a4932690006657d027ef1f7
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Frequests
+receiveTimestamp: '2026-07-04T16:18:49.470875895Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: WARNING
+spanId: 71ee5b96fc6d8497
+textPayload: 'The request was not authenticated. Either allow unauthenticated invocations
+  or set the proper Authorization header. Empty Authorization header value. Read more
+  at https://cloud.google.com/run/docs/securing/authenticating Additional troubleshooting
+  documentation can be found at: https://cloud.google.com/run/docs/troubleshooting#unauthorized-client'
+timestamp: '2026-07-04T16:18:49.131759Z'
+trace: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/traces/5b2c1035980315d7b3ff1d53cbfc9f93
+---
+httpRequest:
+  latency: 0s
+  protocol: HTTP/1.1
+  remoteIp: 2607:f8b0:4003:c44::7
+  requestMethod: GET
+  requestSize: '1073'
+  requestUrl: https://data-extractor-worker-e2hbqrk5tq-as.a.run.app/
+  serverIp: '2600:1900:4243:200::'
+  status: 403
+  userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
+    like Gecko) Chrome/149.0.0.0 Safari/537.36
+insertId: 6a4932690001f75563951ffd
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Frequests
+receiveTimestamp: '2026-07-04T16:18:49.135117082Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: WARNING
+spanId: 0665cbe1b1a54882
+textPayload: 'The request was not authenticated. Either allow unauthenticated invocations
+  or set the proper Authorization header. Empty Authorization header value. Read more
+  at https://cloud.google.com/run/docs/securing/authenticating Additional troubleshooting
+  documentation can be found at: https://cloud.google.com/run/docs/troubleshooting#unauthorized-client'
+timestamp: '2026-07-04T16:18:48.852034Z'
+trace: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/traces/7b2d68e33d57dd79b40ff6b8efccf954
+traceSampled: true
+---
+insertId: -fi18wad77pq
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/cloudaudit.googleapis.com%2Fsystem_event
+protoPayload:
+  '@type': type.googleapis.com/google.cloud.audit.AuditLog
+  methodName: /Services.ReplaceService
+  resourceName: namespaces/cs-poc-pfjoxqspipkzqdfmgnqcd3c/revisions/data-extractor-worker-00003-rl9
+  response:
+    '@type': type.googleapis.com/google.cloud.run.v1.Revision
+    apiVersion: serving.knative.dev/v1
+    kind: Revision
+    metadata:
+      annotations:
+        run.googleapis.com/operation-id: ff8a2728-cfbc-4fca-9976-38fa0c84eff6
+        serving.knative.dev/creator: elang@fainko.co.id
+      creationTimestamp: '2026-07-04T16:18:21.126119Z'
+      generation: 1
+      labels:
+        cloud.googleapis.com/location: asia-southeast1
+        run.googleapis.com/satisfiesPzs: 'true'
+        run.googleapis.com/startupProbeType: Default
+        serving.knative.dev/configuration: data-extractor-worker
+        serving.knative.dev/configurationGeneration: '3'
+        serving.knative.dev/route: data-extractor-worker
+        serving.knative.dev/service: data-extractor-worker
+        serving.knative.dev/serviceUid: 99a5bf5c-13d5-41c1-8dfd-d7d60aa4242d
+      name: data-extractor-worker-00003-rl9
+      namespace: '751922320980'
+      ownerReferences:
+      - apiVersion: serving.knative.dev/v1
+        blockOwnerDeletion: true
+        controller: true
+        kind: Configuration
+        name: data-extractor-worker
+        uid: f601531d-1a68-4189-8d6e-44c89cc0e410
+      resourceVersion: AAZVy2VONTs
+      selfLink: /apis/serving.knative.dev/v1/namespaces/751922320980/revisions/data-extractor-worker-00003-rl9
+      uid: 5dcf1578-49a9-4402-8559-dde35952d24b
+    spec:
+      containerConcurrency: 80
+      containers:
+      - env:
+        - name: DJANGO_DEBUG
+          value: 'False'
+        - name: GS_BUCKET_NAME
+          value: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor
+        - name: DJANGO_ALLOWED_HOSTS
+          value: '*'
+        - name: DJANGO_CSRF_TRUSTED_ORIGINS
+          value: https://*.run.app
+        - name: GCP_PROJECT_ID
+          value: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+        - name: GCP_REGION
+          value: asia-southeast1
+        - name: GCP_QUEUE_LOCATION
+          value: asia-southeast1
+        - name: GCP_QUEUE_NAME
+          value: extractor-tasks
+        - name: APP_URL
+          value: https://data-extractor-worker-751922320980.asia-southeast1.run.app
+        - name: SURREAL_URL
+          value: http://localhost:8000
+        - name: SURREAL_NS
+          value: omnirag
+        - name: SURREAL_DB
+          value: extractor
+        - name: SURREALDB_OFFLINE
+          value: 'False'
+        - name: GOOGLE_CLOUD_PROJECT
+          value: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: DJANGO_SECRET_KEY
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: GEMINI_API_KEY
+        - name: SURREAL_USER
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: SURREAL_USER
+        - name: SURREAL_PASS
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: SURREAL_PASS
+        - name: SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: SUPABASE_URL
+        - name: SUPABASE_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: SUPABASE_PUBLIC_KEY
+        image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app@sha256:37c5db45e34d941e0e0599fb1711e90a8a3861876af117d31c8da4acad187bad
+        name: web
+        ports:
+        - containerPort: 8080
+          name: http1
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+        startupProbe:
+          failureThreshold: 1
+          periodSeconds: 240
+          tcpSocket:
+            port: 8080
+          timeoutSeconds: 240
+      - args:
+        - start
+        - --no-banner
+        - --log
+        - info
+        - --user
+        - root
+        - --pass
+        - rootpass
+        - --bind
+        - 0.0.0.0:8000
+        - mem://
+        image: mirror.gcr.io/surrealdb/surrealdb@sha256:335569b51a53bc0a943c7394a63f6dec07e5a582d3af3ee783c717ad12e06363
+        name: surrealdb
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+      serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+      timeoutSeconds: 300
+    status:
+      conditions:
+      - lastTransitionTime: '2026-07-04T16:18:46.610235Z'
+        message: Deploying revision succeeded in 25.48s.
+        status: 'True'
+        type: Ready
+      - lastTransitionTime: '2026-07-04T16:18:46.535058Z'
+        message: Containers became healthy in 13.96s.
+        status: 'True'
+        type: ContainerHealthy
+      - lastTransitionTime: '2026-07-04T16:18:29.383690Z'
+        message: Container image import completed in 6.07s.
+        status: 'True'
+        type: ContainerReady
+      - lastTransitionTime: '2026-07-04T16:18:31.928445Z'
+        message: Provisioning imported containers completed in 2.54s. Checking container
+          health. This will wait for up to 4m for the configured startup probe, including
+          an initial delay of 0s.
+        status: 'True'
+        type: ResourcesAvailable
+      containerStatuses:
+      - imageDigest: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app@sha256:37c5db45e34d941e0e0599fb1711e90a8a3861876af117d31c8da4acad187bad
+        name: web
+      - imageDigest: mirror.gcr.io/surrealdb/surrealdb@sha256:335569b51a53bc0a943c7394a63f6dec07e5a582d3af3ee783c717ad12e06363
+        name: surrealdb
+      logUrl: https://console.cloud.google.com/logs/viewer?project=cs-poc-pfjoxqspipkzqdfmgnqcd3c&resource=cloud_run_revision/service_name/data-extractor-worker/revision_name/data-extractor-worker-00003-rl9&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22data-extractor-worker%22%0Aresource.labels.revision_name%3D%22data-extractor-worker-00003-rl9%22
+      observedGeneration: 1
+  serviceName: run.googleapis.com
+  status:
+    message: 'Ready condition status changed to True for Revision data-extractor-worker-00003-rl9
+      with message: Deploying revision succeeded in 25.48s.'
+receiveTimestamp: '2026-07-04T16:18:47.201742873Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: INFO
+timestamp: '2026-07-04T16:18:46.621966Z'
+---
+insertId: 6a49326600093313ca10a533
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:46.845267687Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:18:46 +0000] [6] [INFO] Booting worker with pid: 6'
+timestamp: '2026-07-04T16:18:46.602899Z'
+---
+insertId: 6a493266000851b314733808
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:46.845267687Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:18:46 +0000] [5] [INFO] Booting worker with pid: 5'
+timestamp: '2026-07-04T16:18:46.545203Z'
+---
+insertId: 6a493266000809031c58e319
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fvarlog%2Fsystem
+receiveTimestamp: '2026-07-04T16:18:46.744254352Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+severity: INFO
+textPayload: Default STARTUP TCP probe succeeded after 1 attempt for container "web"
+  on port 8080.
+timestamp: '2026-07-04T16:18:46.526595Z'
+---
+insertId: 6a4932660008075068a08857
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:46.845267687Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:18:46 +0000] [4] [INFO] Using worker: gthread'
+timestamp: '2026-07-04T16:18:46.526160Z'
+---
+insertId: 6a493266000806cac893fff9
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:46.845267687Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:18:46 +0000] [4] [INFO] Listening at: http://0.0.0.0:8080
+  (4)'
+timestamp: '2026-07-04T16:18:46.526026Z'
+---
+insertId: 6a493266000804b9d57edb5a
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:46.845267687Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[2026-07-04 16:18:46 +0000] [4] [INFO] Starting gunicorn 26.0.0'
+timestamp: '2026-07-04T16:18:46.525497Z'
+---
+insertId: 6a4932650003fdcb604de283
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.514639789Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:45,262 [INFO] SurrealDB schema initialized successfully!
+timestamp: '2026-07-04T16:18:45.261579Z'
+---
+insertId: 6a4932650003facdcdb15880
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.514639789Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04 16:18:45,261 [INFO] HTTP Request: POST http://localhost:8000/sql
+  "HTTP/1.1 200 OK"'
+timestamp: '2026-07-04T16:18:45.260813Z'
+---
+insertId: 6a49326500025ef76195a722
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.179376155Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:45,156 [INFO] Applying schema to SurrealDB...
+timestamp: '2026-07-04T16:18:45.155383Z'
+---
+insertId: 6a49326500025d82219a2c02
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.179376155Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04 16:18:45,156 [INFO] HTTP Request: POST http://localhost:8000/sql
+  "HTTP/1.1 200 OK"'
+timestamp: '2026-07-04T16:18:45.155010Z'
+---
+insertId: 6a49326500013947f37ccdb2
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.179376155Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04 16:18:45,081 [INFO] HTTP Request: POST http://localhost:8000/sql
+  "HTTP/1.1 200 OK"'
+timestamp: '2026-07-04T16:18:45.080199Z'
+---
+insertId: 6a49326500000a262bd40fc6
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.179376155Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:45,003 [INFO] Ensuring namespace 'omnirag' and database
+  'extractor' exist...
+timestamp: '2026-07-04T16:18:45.002598Z'
+---
+insertId: 6a493264000f409593c6d7d2
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.179376155Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:45,000 [INFO] Reading schema from /app/schema.surql...
+timestamp: '2026-07-04T16:18:44.999573Z'
+---
+insertId: 6a493264000f3f80a68d6d63
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.179376155Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:45,000 [INFO] SurrealDB is healthy and ready!
+timestamp: '2026-07-04T16:18:44.999296Z'
+---
+insertId: 6a493264000f3dd91d9a4e23
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.179376155Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '2026-07-04 16:18:44,999 [INFO] HTTP Request: GET http://localhost:8000/health
+  "HTTP/1.1 200 OK"'
+timestamp: '2026-07-04T16:18:44.998873Z'
+---
+insertId: 6a493264000e0432307c6f22
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:45.179376155Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:44,919 [INFO] Checking SurrealDB health (attempt 1/30)...
+timestamp: '2026-07-04T16:18:44.918578Z'
+---
+insertId: 6a493264000b65ce99651234
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:44.850018423Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:44,748 [INFO] Local Django admin stub 'elang' created
+  with unusable password.
+timestamp: '2026-07-04T16:18:44.746958Z'
+---
+insertId: 6a493264000b4353895345dc
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:44.850018423Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:44,738 [INFO] Admin user 'elang@fainko.co.id' already
+  exists and authenticated successfully on Supabase Auth.
+timestamp: '2026-07-04T16:18:44.738131Z'
+---
+insertId: 6a493261000a99a4ab6bd0c6
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstderr
+receiveTimestamp: '2026-07-04T16:18:41.847442940Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: 2026-07-04 16:18:41,695 [INFO] Supabase is configured. Checking if 'elang'
+  user already exists on Supabase Auth...
+timestamp: '2026-07-04T16:18:41.694692Z'
+---
+insertId: 6a49326100074830e953110f
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:18:41.556092093Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: "[Security] Production OWASP enforcement active. CSRF Trusted Origins:\
+  \ ['https://*.run.app', 'https://data-extractor-worker-751922320980.asia-southeast1.run.app']"
+timestamp: '2026-07-04T16:18:41.477232Z'
+---
+insertId: 6a4932610007481f93ac38a0
+labels:
+  container_name: web
+  instanceId: 002f8ffd47e18bab779185cda021565deca7570a154d3d21eed00858a7905d60e6ad53ac2243a3b73942324e55a9753c6daada57c583519183addb653d4b0a78c93e3d5dee9b820accfa297a46ba58c6af
+logName: projects/cs-poc-pfjoxqspipkzqdfmgnqcd3c/logs/run.googleapis.com%2Fstdout
+receiveTimestamp: '2026-07-04T16:18:41.556092093Z'
+resource:
+  labels:
+    configuration_name: data-extractor-worker
+    location: asia-southeast1
+    project_id: cs-poc-pfjoxqspipkzqdfmgnqcd3c
+    revision_name: data-extractor-worker-00003-rl9
+    service_name: data-extractor-worker
+  type: cloud_run_revision
+textPayload: '[Storage] Using Google Cloud Storage private bucket: cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor'
+timestamp: '2026-07-04T16:18:41.477215Z'

@@ -1,0 +1,61 @@
+steps:
+  # 1. Pull the previous image to use as cache source for Docker layer caching
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker pull $_IMAGE:latest || exit 0
+    id: 'pull'
+
+  # 2. Build the new container image, using the previous image to cache layers
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--cache-from'
+      - '$_IMAGE:latest'
+      - '-t'
+      - '$_IMAGE:latest'
+      - '-t'
+      - '$_IMAGE:$BUILD_ID'
+      - '.'
+    id: 'build'
+    waitFor: ['pull']
+
+  # 3. Push the images to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_IMAGE:latest']
+    id: 'push-latest'
+    waitFor: ['build']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_IMAGE:$BUILD_ID']
+    id: 'push-sha'
+    waitFor: ['build']
+
+  # 4. Deploy the web service
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'services'
+      - 'replace'
+      - 'service.yaml'
+      - '--region=asia-southeast1'
+    id: 'deploy-web'
+    waitFor: ['push-latest']
+
+  # 5. Deploy the worker service
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'services'
+      - 'replace'
+      - 'service-worker.yaml'
+      - '--region=asia-southeast1'
+    id: 'deploy-worker'
+    waitFor: ['push-latest']
+
+substitutions:
+  _IMAGE: 'asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app'
