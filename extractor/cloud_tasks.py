@@ -1,5 +1,5 @@
 """
-Cloud Tasks Dispatcher — OmniRAG Extractor v2.0
+Cloud Tasks Dispatcher — AetherOmni v2.0
 
 In production (Cloud Run, DEBUG=False):
   - Dispatches OIDC-token-authenticated HTTP POST payloads to Google Cloud Tasks.

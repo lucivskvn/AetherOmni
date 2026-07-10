@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Custom AetherOmni ignores
+scratch/
+Sources/
+data/samples/

@@ -1,5 +1,5 @@
 """
-SurrealDB REST Client Adapter — OmniRAG Extractor v2.0
+SurrealDB REST Client Adapter — AetherOmni v2.0
 
 Implements a thread-safe connection pool using a single global httpx.Client
 instance (Gap B-10) to prevent socket exhaustion under concurrent request load.
