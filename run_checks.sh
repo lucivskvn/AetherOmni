@@ -9,7 +9,7 @@ CYAN='\033[0;36m'
 NC='\033[0;m'
 
 echo -e "${CYAN}====================================================${NC}"
-echo -e "${CYAN}        OmniRAG Extractor - Pre-check QA Runner     ${NC}"
+echo -e "${CYAN}        AetherOmni - Pre-check QA Runner     ${NC}"
 echo -e "${CYAN}====================================================${NC}"
 
 # Ensure virtual env is active

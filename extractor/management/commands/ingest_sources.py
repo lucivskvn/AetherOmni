@@ -15,13 +15,13 @@ from extractor.utils import calculate_file_sha256, check_budget_and_api_limit
 
 
 class Command(BaseCommand):
-    help = "Scan the Sources/ booklet directory and ingest all booklets into the SurrealDB knowledge base."
+    help = "Scan the data/samples/ booklet directory and ingest all booklets into the SurrealDB knowledge base."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--sources-dir",
             type=str,
-            default=os.path.join(settings.BASE_DIR, "Sources"),
+            default=os.path.join(settings.BASE_DIR, "data", "samples"),
             help="Directory containing the booklet files to ingest.",
         )
         parser.add_argument(
@@ -50,7 +50,7 @@ class Command(BaseCommand):
 
         files_to_ingest = self._find_files(sources_dir)
         if not files_to_ingest:
-            self.stdout.write(self.style.WARNING("No supported booklet documents found in the Sources directory."))
+            self.stdout.write(self.style.WARNING("No supported booklet documents found in the data/samples directory."))
             return
 
         self.stdout.write(self.style.SUCCESS(f"Found {len(files_to_ingest)} candidate booklet(s) to process.\n"))

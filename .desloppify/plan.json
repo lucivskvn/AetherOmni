@@ -1,0 +1,386 @@
+{
+  "version": 8,
+  "created": "2026-07-10T06:18:49+00:00",
+  "updated": "2026-07-10T06:18:49+00:00",
+  "queue_order": [
+    "subjective::abstraction_fitness",
+    "subjective::ai_generated_debt",
+    "subjective::api_surface_coherence",
+    "subjective::authorization_consistency",
+    "subjective::contract_coherence",
+    "subjective::convention_outlier",
+    "subjective::cross_module_architecture",
+    "subjective::dependency_health",
+    "subjective::design_coherence",
+    "subjective::error_consistency",
+    "subjective::high_level_elegance",
+    "subjective::incomplete_migration",
+    "subjective::initialization_coupling",
+    "subjective::logic_clarity",
+    "subjective::low_level_elegance",
+    "subjective::mid_level_elegance",
+    "subjective::naming_quality",
+    "subjective::package_organization",
+    "subjective::test_strategy",
+    "subjective::type_safety"
+  ],
+  "deferred": [],
+  "skipped": {},
+  "active_cluster": null,
+  "overrides": {
+    "security::extractor/deployment.py::security::log_sensitive::extractor/deployment.py::149": {
+      "issue_id": "security::extractor/deployment.py::security::log_sensitive::extractor/deployment.py::149",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-log_sensitive",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::extractor/task_handlers.py::security::log_sensitive::extractor/task_handlers.py::80": {
+      "issue_id": "security::extractor/task_handlers.py::security::log_sensitive::extractor/task_handlers.py::80",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-log_sensitive",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::init_surreal.py::security::log_sensitive::init_surreal.py::126": {
+      "issue_id": "security::init_surreal.py::security::log_sensitive::init_surreal.py::126",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-log_sensitive",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::init_surreal.py::security::log_sensitive::init_surreal.py::179": {
+      "issue_id": "security::init_surreal.py::security::log_sensitive::init_surreal.py::179",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-log_sensitive",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::init_surreal.py::security::log_sensitive::init_surreal.py::186": {
+      "issue_id": "security::init_surreal.py::security::log_sensitive::init_surreal.py::186",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-log_sensitive",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::core/middleware.py::security::B110::core/middleware.py::52": {
+      "issue_id": "security::core/middleware.py::security::B110::core/middleware.py::52",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-B110",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::extractor/deployment.py::security::B110::extractor/deployment.py::19": {
+      "issue_id": "security::extractor/deployment.py::security::B110::extractor/deployment.py::19",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-B110",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::extractor/deployment.py::security::B110::extractor/deployment.py::39": {
+      "issue_id": "security::extractor/deployment.py::security::B110::extractor/deployment.py::39",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-B110",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::extractor/deployment.py::security::B110::extractor/deployment.py::45": {
+      "issue_id": "security::extractor/deployment.py::security::B110::extractor/deployment.py::45",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-B110",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::extractor/llm_gateway.py::security::B110::extractor/llm_gateway.py::267": {
+      "issue_id": "security::extractor/llm_gateway.py::security::B110::extractor/llm_gateway.py::267",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-B110",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::extractor/cloud_tasks.py::security::B310::extractor/cloud_tasks.py::129": {
+      "issue_id": "security::extractor/cloud_tasks.py::security::B310::extractor/cloud_tasks.py::129",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-B310",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::init_surreal.py::security::B310::init_surreal.py::119": {
+      "issue_id": "security::init_surreal.py::security::B310::init_surreal.py::119",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-B310",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "security::init_surreal.py::security::B310::init_surreal.py::145": {
+      "issue_id": "security::init_surreal.py::security::B310::init_surreal.py::145",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/security-B310",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::abstraction_fitness": {
+      "issue_id": "subjective::abstraction_fitness",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::ai_generated_debt": {
+      "issue_id": "subjective::ai_generated_debt",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::api_surface_coherence": {
+      "issue_id": "subjective::api_surface_coherence",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::authorization_consistency": {
+      "issue_id": "subjective::authorization_consistency",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::contract_coherence": {
+      "issue_id": "subjective::contract_coherence",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::convention_outlier": {
+      "issue_id": "subjective::convention_outlier",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::cross_module_architecture": {
+      "issue_id": "subjective::cross_module_architecture",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::dependency_health": {
+      "issue_id": "subjective::dependency_health",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::design_coherence": {
+      "issue_id": "subjective::design_coherence",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::error_consistency": {
+      "issue_id": "subjective::error_consistency",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::high_level_elegance": {
+      "issue_id": "subjective::high_level_elegance",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::incomplete_migration": {
+      "issue_id": "subjective::incomplete_migration",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::initialization_coupling": {
+      "issue_id": "subjective::initialization_coupling",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::logic_clarity": {
+      "issue_id": "subjective::logic_clarity",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::low_level_elegance": {
+      "issue_id": "subjective::low_level_elegance",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::mid_level_elegance": {
+      "issue_id": "subjective::mid_level_elegance",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::naming_quality": {
+      "issue_id": "subjective::naming_quality",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::package_organization": {
+      "issue_id": "subjective::package_organization",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::test_strategy": {
+      "issue_id": "subjective::test_strategy",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    },
+    "subjective::type_safety": {
+      "issue_id": "subjective::type_safety",
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "cluster": "auto/initial-review",
+      "updated_at": "2026-07-10T06:18:49+00:00"
+    }
+  },
+  "clusters": {
+    "auto/security-log_sensitive": {
+      "name": "auto/security-log_sensitive",
+      "description": "Fix 5 security issues",
+      "issue_ids": [
+        "security::extractor/deployment.py::security::log_sensitive::extractor/deployment.py::149",
+        "security::extractor/task_handlers.py::security::log_sensitive::extractor/task_handlers.py::80",
+        "security::init_surreal.py::security::log_sensitive::init_surreal.py::126",
+        "security::init_surreal.py::security::log_sensitive::init_surreal.py::179",
+        "security::init_surreal.py::security::log_sensitive::init_surreal.py::186"
+      ],
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "updated_at": "2026-07-10T06:18:49+00:00",
+      "auto": true,
+      "cluster_key": "detector::security::log_sensitive",
+      "action": "review and fix security issues",
+      "execution_status": "review",
+      "user_modified": false,
+      "action_type": "manual_fix",
+      "execution_policy": "planned_only"
+    },
+    "auto/security-B110": {
+      "name": "auto/security-B110",
+      "description": "Fix 5 security issues",
+      "issue_ids": [
+        "security::core/middleware.py::security::B110::core/middleware.py::52",
+        "security::extractor/deployment.py::security::B110::extractor/deployment.py::19",
+        "security::extractor/deployment.py::security::B110::extractor/deployment.py::39",
+        "security::extractor/deployment.py::security::B110::extractor/deployment.py::45",
+        "security::extractor/llm_gateway.py::security::B110::extractor/llm_gateway.py::267"
+      ],
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "updated_at": "2026-07-10T06:18:49+00:00",
+      "auto": true,
+      "cluster_key": "detector::security::B110",
+      "action": "review and fix security issues",
+      "execution_status": "review",
+      "user_modified": false,
+      "action_type": "manual_fix",
+      "execution_policy": "planned_only"
+    },
+    "auto/security-B310": {
+      "name": "auto/security-B310",
+      "description": "Fix 3 security issues",
+      "issue_ids": [
+        "security::extractor/cloud_tasks.py::security::B310::extractor/cloud_tasks.py::129",
+        "security::init_surreal.py::security::B310::init_surreal.py::119",
+        "security::init_surreal.py::security::B310::init_surreal.py::145"
+      ],
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "updated_at": "2026-07-10T06:18:49+00:00",
+      "auto": true,
+      "cluster_key": "detector::security::B310",
+      "action": "review and fix security issues",
+      "execution_status": "review",
+      "user_modified": false,
+      "action_type": "manual_fix",
+      "execution_policy": "planned_only"
+    },
+    "auto/initial-review": {
+      "name": "auto/initial-review",
+      "description": "Initial review of 20 unscored subjective dimensions",
+      "issue_ids": [
+        "subjective::abstraction_fitness",
+        "subjective::ai_generated_debt",
+        "subjective::api_surface_coherence",
+        "subjective::authorization_consistency",
+        "subjective::contract_coherence",
+        "subjective::convention_outlier",
+        "subjective::cross_module_architecture",
+        "subjective::dependency_health",
+        "subjective::design_coherence",
+        "subjective::error_consistency",
+        "subjective::high_level_elegance",
+        "subjective::incomplete_migration",
+        "subjective::initialization_coupling",
+        "subjective::logic_clarity",
+        "subjective::low_level_elegance",
+        "subjective::mid_level_elegance",
+        "subjective::naming_quality",
+        "subjective::package_organization",
+        "subjective::test_strategy",
+        "subjective::type_safety"
+      ],
+      "created_at": "2026-07-10T06:18:49+00:00",
+      "updated_at": "2026-07-10T06:18:49+00:00",
+      "auto": true,
+      "cluster_key": "subjective::unscored",
+      "action": "desloppify review --prepare --dimensions abstraction_fitness,ai_generated_debt,api_surface_coherence,authorization_consistency,contract_coherence,convention_outlier,cross_module_architecture,dependency_health,design_coherence,error_consistency,high_level_elegance,incomplete_migration,initialization_coupling,logic_clarity,low_level_elegance,mid_level_elegance,naming_quality,package_organization,test_strategy,type_safety",
+      "execution_status": "review",
+      "user_modified": false,
+      "action_type": "manual_fix",
+      "execution_policy": "planned_only"
+    }
+  },
+  "superseded": {},
+  "promoted_ids": [],
+  "plan_start_scores": {
+    "strict": 22.0,
+    "overall": 22.0,
+    "objective": 88.2,
+    "verified": 88.2
+  },
+  "refresh_state": {
+    "_subjective_migration_pruned": true,
+    "lifecycle_phase": "plan"
+  },
+  "execution_log": [
+    {
+      "timestamp": "2026-07-10T06:18:49+00:00",
+      "action": "sync_subjective",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-07-10T06:18:49+00:00",
+      "action": "auto_cluster",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "changes": true
+      }
+    },
+    {
+      "timestamp": "2026-07-10T06:18:49+00:00",
+      "action": "sync_lifecycle_phase",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {
+        "phase": "review_initial"
+      }
+    },
+    {
+      "timestamp": "2026-07-10T06:18:49+00:00",
+      "action": "seed_start_scores",
+      "issue_ids": [],
+      "cluster_name": null,
+      "actor": "system",
+      "note": null,
+      "detail": {}
+    }
+  ],
+  "epic_triage_meta": {},
+  "commit_log": [],
+  "uncommitted_issues": [],
+  "commit_tracking_branch": null,
+  "scan_count_at_plan_start": 1
+}

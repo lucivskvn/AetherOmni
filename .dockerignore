@@ -1,0 +1,15 @@
+.git
+.venv
+__pycache__
+*.py[codz]
+.ruff_cache
+.pytest_cache
+.coverage
+htmlcov
+coverage.xml
+scratch/
+Sources/
+data/samples/
+static_root/
+media/
+db.sqlite3

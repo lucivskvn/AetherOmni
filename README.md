@@ -1,17 +1,22 @@
-# OmniRAG Extractor
+# AetherOmni
 
-OmniRAG Extractor is a secure, high-performance web application and background worker architecture designed for semantic document extraction, RAG querying, and memory-grounded Q&A.
+AetherOmni is a secure, high-performance web application and background worker architecture designed for semantic document extraction, RAG querying, and memory-grounded Q&A.
 
 <img src="scorecard.png" width="100%">
+
+[![Version](https://img.shields.io/badge/version-v1.1.0-blue.svg)](https://github.com/aetheromni/aetheromni)
+[![Last Updated](https://img.shields.io/badge/last%20updated-2026--07--10-green.svg)](#)
 
 ---
 
 ## 🚀 Key Features
 
-* **Grounded RAG Pipeline**: Combines document chunking, text-embedding-004 vector embeddings, SurrealDB KV caching, and Google Gemini models for accurate, context-bound Q&A.
+* **Grounded RAG Pipeline**: Combines document chunking, text-embedding-004 vector embeddings, SurrealDB KV caching, and **Google Gemini 3.5 Flash** models for accurate, context-bound Q&A.
+* **Modern LLM Stack**: Migrated to Gemini 3.x generation, using **Gemini 3.5 Flash** as the primary workhorse and **Gemini 3.1 Flash-Lite** for budget-optimized tasks.
 * **Mem0 Hybrid Memory**: Maintains long-term user style and formatting preferences with an LLM token-saving write gate and strict multi-tenant context isolation.
+* **Batched Database Insertion**: Optimized SurrealDB ingestion with batched payloads to prevent HTTP 413 errors on large documents.
 * **Double-Tier Caching**: Uses exact-match SurrealDB KV caching and cosine-distance vector semantic caching (`RAGQueryCache`) to bypass LLM generation costs for repeated queries.
-* **Dual Container Architecture**: Designed for deployment on **Google Cloud Run** as a web handler (`data-extractor-web`) and a steady task queue listener (`data-extractor-worker`).
+* **Dual Container Architecture**: Designed for deployment on **Google Cloud Run** as a web handler (`aetheromni-web`) and a steady task queue listener (`aetheromni-worker`).
 
 ---
 
@@ -42,7 +47,7 @@ We use a 6-gate unified pre-check QA runner to prevent bugs or security leaks fr
 2. **Ruff Formatter**: Assures code layout and indent consistency.
 3. **Django Integrity**: Verifies database schemas, migrations, and settings validations.
 4. **Django Unit Tests**: Executes 102 comprehensive unit tests with coverage generation.
-5. **Bandit SAST**: Scans code for security vulnerabilities (e.g., shell injection, insecure URL methods). Excludes test directories with clear audit justification via `bandit.yaml`.
+5. **Bandit SAST**: Scans code for security vulnerabilities.
 6. **Pip-Audit SCA**: Queries the PyPI database to block any insecure or outdated dependencies.
 
 ---
@@ -52,20 +57,20 @@ We use a 6-gate unified pre-check QA runner to prevent bugs or security leaks fr
 ### Desloppify
 Run the local code health checks:
 ```bash
-nice -n 19 .venv/bin/python3 -m desloppify scan --skip-slow
+.venv/bin/python3 -m desloppify scan --skip-slow
 ```
-* Current Objective/Mechanical Score: **95.1%**
-* Current Security Rating: **93.8%**
+* Current Objective/Mechanical Score: **88.2%**
+* Current Security Rating: **93.9%**
 
 ### SonarQube
 Run the pre-production Sonar scan:
 ```bash
 # 1. Run tests with coverage tracking
-DATABASE_URL=sqlite:///db.sqlite3 nice -n 19 .venv/bin/python3 -m coverage run --source='.' manage.py test --keepdb
+DATABASE_URL=sqlite:///db.sqlite3 .venv/bin/python3 -m coverage run --source='.' manage.py test --keepdb
 .venv/bin/python3 -m coverage xml -o coverage.xml
 
 # 2. Re-map coverage paths and trigger scanner CLI
-nice -n 19 ./run_sonar_scanner.sh
+./run_sonar_scanner.sh
 ```
 
 ---

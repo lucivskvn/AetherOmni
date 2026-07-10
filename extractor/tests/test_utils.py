@@ -103,9 +103,9 @@ class CostCalculatorTestCase(TestCase):
 
     def test_cost_calculation_flash_standard(self):
         # 10k input, 5k output, within 128k context
-        cost = calculate_gemini_cost("gemini-2.5-flash", 10000, 5000)
-        # Expected: (10000/1M * 0.30) + (5000/1M * 2.50) = 0.0030 + 0.0125 = 0.0155 USD
-        self.assertAlmostEqual(float(cost), 0.0155)
+        cost = calculate_gemini_cost("gemini-3.5-flash", 10000, 5000)
+        # Expected: (10000/1M * 1.50) + (5000/1M * 9.00) = 0.0150 + 0.0450 = 0.0600 USD
+        self.assertAlmostEqual(float(cost), 0.0600)
 
     def test_cost_calculation_pro_standard(self):
         # 10k input, 5k output, within 128k context
@@ -491,12 +491,12 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
         response, model_used = execute_generate_content_with_fallback(
             client=mock_ai_studio_client,
-            model_name="gemini-2.5-flash",
+            model_name="gemini-3.5-flash",
             contents=["Hello world"],
         )
 
         self.assertEqual(response, mock_vertex_response)
-        self.assertEqual(model_used, "gemini-2.5-flash")
+        self.assertEqual(model_used, "gemini-3.5-flash")
         self.assertEqual(mock_ai_studio_client.models.generate_content.call_count, 5)
         mock_vertex_client.models.generate_content.assert_called_once()
 
@@ -538,7 +538,7 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
                 response, _ = execute_generate_content_with_fallback(
                     client=mock_ai_studio_client,
-                    model_name="gemini-2.5-flash",
+                    model_name="gemini-3.5-flash",
                     contents=[mock_file, "Explain this pdf"],
                     file_path_for_vertex=temp_path,
                 )
@@ -555,10 +555,12 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         finally:
             os.unlink(temp_path)
 
+    @patch("extractor.llm_gateway.settings")
     @patch("extractor.llm_gateway.get_vertex_client_for_location")
     @patch("google.genai.Client")
     @patch("time.sleep")
-    def test_execute_embed_content_with_fallback_cascades(self, mock_sleep, mock_client_init, mock_get_vertex_client_for_location):
+    def test_execute_embed_content_with_fallback_cascades(self, mock_sleep, mock_client_init, mock_get_vertex_client_for_location, mock_settings):
+        mock_settings.GEMINI_API_KEY = "valid-api-key"
         from extractor.llm_gateway import execute_embed_content_with_fallback
 
         # Mock Vertex Client to fail with 429 (forces fallback to AI Studio)
