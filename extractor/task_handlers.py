@@ -1,5 +1,5 @@
 """
-Cloud Tasks Webhook Receivers — OmniRAG Extractor v2.0
+Cloud Tasks Webhook Receivers — AetherOmni v2.0
 
 Handles authenticated HTTP POST callbacks from Google Cloud Tasks.
 Each task type is registered in TASK_REGISTRY and dispatched to the

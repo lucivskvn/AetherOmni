@@ -1,6 +1,6 @@
 # Google Cloud Run Production Deployment Guide (Version 2.0)
 
-This guide describes how to provision, configure, build, and deploy the **OmniRAG Extractor** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
+This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
 
 ---
 
@@ -49,7 +49,7 @@ gcloud services enable \
 gcloud artifacts repositories create ${ARTIFACT_REGISTRY} \
   --repository-format=docker \
   --location=${REGION} \
-  --description="Docker repository for OmniRAG Extractor"
+  --description="Docker repository for AetherOmni"
 ```
 
 ### D. Create GCS Media Bucket
@@ -77,7 +77,7 @@ To follow security best practices (OWASP/SOC2 compliance), create a dedicated se
 ### A. Create Service Account
 ```bash
 gcloud iam service-accounts create run-service-account \
-  --description="Service account for running OmniRAG Extractor on Cloud Run" \
+  --description="Service account for running AetherOmni on Cloud Run" \
   --display-name="run-service-account"
 ```
 
