@@ -39,7 +39,7 @@ except ImportError:
 
 GEMINI_API_KEY_ERROR = "GEMINI_API_KEY is not configured."
 VAL_ERROR_UNAVAILABLE = "GEMINI_API_KEY is not configured and Vertex AI is unavailable."
-MODEL_GEMINI_31_FLASH = "gemini-3.5-flash"
+MODEL_GEMINI_35_FLASH = "gemini-3.5-flash"
 MIME_PDF = "application/pdf"
 MIME_OCTET_STREAM = "application/octet-stream"
 
@@ -206,70 +206,27 @@ def resolve_realtime_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
 
 
 def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int) -> Decimal:
-    """
-    Calculates API cost based on verified Gemini billing rates.
-    Uses real-time rates resolved dynamically, falling back to static tiers if offline.
-    """
     model_name = model_name.lower().strip()
     input_tokens = int(input_tokens)
     output_tokens = int(output_tokens)
 
-    # Try resolving real-time pricing first
     rt_pricing = resolve_realtime_pricing(model_name)
     if rt_pricing:
         prompt_rate, completion_rate = rt_pricing
         return (Decimal(input_tokens) * prompt_rate) + (Decimal(output_tokens) * completion_rate)
 
-    TIER = 200_000  # Gemini 2.5 pricing tier boundary
-
     if "embedding" in model_name or "embed" in model_name:
-        # Embedding models are free on Vertex AI (quota-limited)
         return Decimal("0.00")
-
     elif "3.5" in model_name and "flash" in model_name:
-        # gemini-3.5-flash -- flat rate regardless of context length
         in_rate = Decimal("1.50")
         out_rate = Decimal("9.00")
-
-    elif "2.5" in model_name and "pro" in model_name:
-        if input_tokens <= TIER:
-            in_rate = Decimal("1.25")
-            out_rate = Decimal("10.00")
-        else:
-            in_rate = Decimal("2.50")
-            out_rate = Decimal("15.00")
-
-    elif "flash-lite" in model_name or "flash_lite" in model_name or model_name.endswith("lite"):
-        # gemini-2.5-flash-lite
-        if input_tokens <= TIER:
-            in_rate = Decimal("0.075")
-            out_rate = Decimal("0.30")
-        else:
-            in_rate = Decimal("0.15")
-            out_rate = Decimal("0.60")
-
-    elif "flash" in model_name:
-        # gemini-2.5-flash (primary workhorse model)
-        if input_tokens <= TIER:
-            in_rate = Decimal("0.30")
-            out_rate = Decimal("2.50")
-        else:
-            in_rate = Decimal("0.40")
-            out_rate = Decimal("3.50")
-
-    elif "pro" in model_name:
-        # Generic pro fallback (gemini-1.5-pro etc.)
-        if input_tokens <= TIER:
-            in_rate = Decimal("1.25")
-            out_rate = Decimal("5.00")
-        else:
-            in_rate = Decimal("2.50")
-            out_rate = Decimal("10.00")
-
+    elif "3.1" in model_name and "lite" in model_name:
+        in_rate = Decimal("0.25")
+        out_rate = Decimal("1.50")
     else:
-        # Unknown model -- use Flash rates as conservative default
-        in_rate = Decimal("0.30")
-        out_rate = Decimal("2.50")
+        # Safe default for modern 3.x general requests
+        in_rate = Decimal("1.50")
+        out_rate = Decimal("9.00")
 
     cost = (Decimal(input_tokens) / Decimal("1000000") * in_rate) + (
         Decimal(output_tokens) / Decimal("1000000") * out_rate
@@ -426,16 +383,9 @@ def _call_direct_gemini(
 KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
     {
         "gemini-3.5-flash",
+        "gemini-3.1-flash",
         "gemini-3.1-flash-lite",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-flash-preview-05-20",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b",
-        "gemini-1.5-pro",
-        "gemini-1.0-pro",
+        "gemini-3.1-pro",
         "auto",
     }
 )
@@ -464,9 +414,9 @@ def _resolve_model_name(model_name: str | None) -> str:
             "[Gateway] Unknown Gemini model '%s' in configuration. "
             "Falling back to default model '%s'.",
             model_name,
-            MODEL_GEMINI_31_FLASH,
+            MODEL_GEMINI_35_FLASH,
         )
-        model_name = MODEL_GEMINI_31_FLASH
+        model_name = MODEL_GEMINI_35_FLASH
 
     return model_name
 
@@ -479,14 +429,14 @@ def _determine_api_routing(model_name: str, is_vision: bool, openrouter_api_key:
     if model_name == "auto":
         if is_vision:
             # gemini-2.5-flash: 1M context window, best multimodal balance
-            final_model = MODEL_GEMINI_31_FLASH  # = gemini-2.5-flash
+            final_model = MODEL_GEMINI_35_FLASH  # = gemini-2.5-flash
         else:
             if openrouter_api_key:
                 final_model = "meta-llama/llama-3-8b-instruct:free"
                 use_openrouter = True
             else:
                 # gemini-2.5-flash: 1M context, $0.30/$2.50 per 1M — best cost/context balance
-                final_model = MODEL_GEMINI_31_FLASH
+                final_model = MODEL_GEMINI_35_FLASH
     else:
         # Check if the requested model is an OpenRouter model (has '/' but is not google/)
         if "/" in model_name and not model_name.startswith(PREFIX_GOOGLE):
@@ -511,7 +461,7 @@ def _call_gemini_with_fallback(
     # Fallback priority:
     # 1. Chosen model  2. gemini-2.5-flash (1M ctx, $0.30/$2.50 — best balance)
     # 3. gemini-2.5-flash-lite (budget fallback)
-    for candidate in [gemini_model, MODEL_GEMINI_31_FLASH, MODEL_GEMINI_FLASH_LITE]:
+    for candidate in [gemini_model, MODEL_GEMINI_35_FLASH, MODEL_GEMINI_FLASH_LITE]:
         if candidate not in fallback_list:
             fallback_list.append(candidate)
 
@@ -598,16 +548,16 @@ def generate_llm_content_unified(
             logger.warning(
                 "[Gateway] OpenRouter model selected but OPENROUTER_API_KEY is missing. Falling back to Gemini."
             )
-            return generate_llm_content_unified(prompt, system_instruction, MODEL_GEMINI_31_FLASH, files)
+            return generate_llm_content_unified(prompt, system_instruction, MODEL_GEMINI_35_FLASH, files)
 
         try:
             return _call_openrouter(prompt, system_instruction, final_model)
         except Exception as or_err:
             logger.warning(
                 f"[Gateway] OpenRouter request failed for model {final_model}: {or_err}. "
-                f"Falling back to direct Gemini model {MODEL_GEMINI_31_FLASH} for resilience."
+                f"Falling back to direct Gemini model {MODEL_GEMINI_35_FLASH} for resilience."
             )
-            return generate_llm_content_unified(prompt, system_instruction, MODEL_GEMINI_31_FLASH, files)
+            return generate_llm_content_unified(prompt, system_instruction, MODEL_GEMINI_35_FLASH, files)
     else:
         return _call_gemini_with_fallback(prompt, system_instruction, final_model, files, openrouter_api_key)
 
@@ -970,11 +920,11 @@ def execute_generate_content_with_fallback(
     """
     model_name = _resolve_model_name(model_name)
     if model_name == "auto":
-        model_name = MODEL_GEMINI_31_FLASH
+        model_name = MODEL_GEMINI_35_FLASH
 
     fallback_list = []
     # Fallback priority: chosen model -> gemini-2.5-flash -> gemini-2.5-flash-lite
-    for candidate in [model_name, MODEL_GEMINI_31_FLASH, MODEL_GEMINI_FLASH_LITE]:
+    for candidate in [model_name, MODEL_GEMINI_35_FLASH, MODEL_GEMINI_FLASH_LITE]:
         if candidate not in fallback_list:
             fallback_list.append(candidate)
 
@@ -1099,7 +1049,7 @@ def _run_ocr_with_upload(client: Any, file_path: str, model_name: str, ocr_promp
                 logger.warning("[OCR Stage 1] Failed to delete remote file %s: %s", file_ref.name, cleanup_err)
 
 
-def run_stage1_multimodal_ocr(file_path: str, model_name: str = "gemini-2.5-flash") -> dict[str, Any]:
+def run_stage1_multimodal_ocr(file_path: str, model_name: str = "gemini-3.5-flash") -> dict[str, Any]:
     """
     Pass 1 Multimodal OCR. Uploads the target PDF/Image using Gemini Files API
     to handle heavy payloads (up to 170+ pages) without timeouts or memory crashes,
@@ -1108,7 +1058,7 @@ def run_stage1_multimodal_ocr(file_path: str, model_name: str = "gemini-2.5-flas
     """
     model_name = _resolve_model_name(model_name)
     if model_name == "auto":
-        model_name = MODEL_GEMINI_31_FLASH
+        model_name = MODEL_GEMINI_35_FLASH
 
     client, use_vertex_directly = _init_ocr_client()
 
@@ -1243,7 +1193,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
     return refined_text, yaml_block.strip(), qa_list
 
 
-def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = "gemini-2.5-flash") -> dict[str, Any]:
+def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = "gemini-3.5-flash") -> dict[str, Any]:
     """
     Pass 2 Reasoning Curation Engine. Removes headers, footers, page numbering,
     re-joins sentences, structures metadata YAML Front-matter block, and
@@ -1251,7 +1201,7 @@ def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = "gemini
     """
     model_name = _resolve_model_name(model_name)
     if model_name == "auto":
-        model_name = MODEL_GEMINI_31_FLASH
+        model_name = MODEL_GEMINI_35_FLASH
 
     client = _init_refinement_client()
 

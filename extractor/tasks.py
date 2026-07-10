@@ -1,5 +1,5 @@
 """
-Async Worker Tasks — OmniRAG Extractor v2.0
+Async Worker Tasks — AetherOmni v2.0
 
 Pipeline: Stage 1 (Gemini Multimodal OCR) → Stage 2 (Editorial Refinement)
           → Stage 3 (SurrealDB Semantic Chunking + Vector Embeddings)
