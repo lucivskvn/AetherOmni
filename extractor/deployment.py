@@ -14,6 +14,7 @@ def _get_subprocess_env():
     env = os.environ.copy()
     try:
         import pwd
+
         # Restore true user home directory to allow gcloud fallback to find user credentials
         env["HOME"] = pwd.getpwuid(os.getuid()).pw_dir
     except Exception:
@@ -340,6 +341,7 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
                     status = http_req.get("status", "")
                     latency = http_req.get("latency", "")
                     from urllib.parse import urlparse
+
                     try:
                         parsed = urlparse(url)
                         path = parsed.path
@@ -395,6 +397,7 @@ def _get_service_logs_local(service_name, project_id, region, limit):
                 status = http_req.get("status", "")
                 latency = http_req.get("latency", "")
                 from urllib.parse import urlparse
+
                 try:
                     parsed = urlparse(url)
                     path = parsed.path

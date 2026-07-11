@@ -23,10 +23,11 @@ class ExtractorConfig(AppConfig):
         Tasks cost and run even if Cloud Tasks are not configured.
         """
         import os
+        import sys
 
         # Only run in the main process (avoids double-scheduling in gunicorn's
         # prefork model and Django test runner).
-        if os.environ.get("RUN_MAIN") == "true" or os.environ.get("GUNICORN_WORKER"):
+        if os.environ.get("RUN_MAIN") == "true" or os.environ.get("GUNICORN_WORKER") or "test" in sys.argv:
             return
 
         # Mark that we are the main process so child gunicorn workers don't
