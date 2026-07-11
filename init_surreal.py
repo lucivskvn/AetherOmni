@@ -106,6 +106,7 @@ def init_django_admin():
             logger.info("Supabase is configured. Checking if 'elang' user already exists on Supabase Auth...")
             import json
             import urllib.request
+
             from extractor.utils import validate_url_scheme
 
             token_url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
@@ -199,6 +200,7 @@ def init_django_admin():
 
         # Clean any stray Q&A descriptions and headers from existing SourceDocuments
         import re
+
         from extractor.models import SourceDocument
         pattern = r'\n{1,4}(?:#{1,6}\s+|(?:\*{1,2}))(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n(?:[^\n]*(?:Reasoning|downstream|training|NotebookLM)[^\n]*\n?)*.*$'
         cleaned_count = 0

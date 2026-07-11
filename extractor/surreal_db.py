@@ -105,7 +105,6 @@ def _run(sql: str, params: dict | None = None) -> list[dict]:
         raise
 
 
-
 def _first_result(results: list[dict]) -> list[Any]:
     """Extract the first statement's result list."""
     if results:
@@ -178,7 +177,7 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
         return
     for chunk in chunk_payloads:
         chunk["doc_uuid"] = doc_uuid
-    
+
     # Bulk insert in a single network request to prevent HTTP connection timeouts
     _run("INSERT INTO chunks $payloads;", {"payloads": chunk_payloads})
 
@@ -196,6 +195,24 @@ def count_document_chunks(doc_uuid: str) -> int:
     if results:
         return results[0].get("n", 0)
     return 0
+
+
+def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
+    """
+    Returns a dictionary mapping doc_uuid to the number of chunks stored in SurrealDB
+    for each doc_uuid in the provided list.
+    """
+    if not doc_uuids:
+        return {}
+    sql = "SELECT count() AS n, doc_uuid FROM chunks WHERE doc_uuid INSIDE $doc_uuids GROUP BY doc_uuid;"
+    results = _first_result(_run(sql, {"doc_uuids": doc_uuids}))
+    counts = {uuid: 0 for uuid in doc_uuids}
+    if results:
+        for row in results:
+            uuid = row.get("doc_uuid")
+            if uuid:
+                counts[uuid] = row.get("n", 0)
+    return counts
 
 
 def clone_chunks(source_uuid: str, target_uuid: str) -> None:
@@ -448,6 +465,8 @@ def log_audit(
         _run(sql, params)
     except Exception as exc:
         logger.warning("[SurrealDB] Failed to write audit log for action=%s user=%s: %s", action, user_id, exc)
+
+
 def find_chunk_embedding(text: str) -> list[float] | None:
     """Finds an existing embedding for the exact text block from any previously ingested document."""
     sql = "SELECT embedding FROM chunks WHERE content = $text LIMIT 1;"

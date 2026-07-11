@@ -508,6 +508,7 @@ def _run_stage3(text_for_chunks: str, document_id: int) -> SourceDocument:
         # Save chunk payloads permanently to storage (GCS/Local) for stateless sync
         try:
             import json
+
             from django.core.files.base import ContentFile
             from django.core.files.storage import default_storage
 
@@ -840,9 +841,14 @@ def store_user_memory_task(payload: dict) -> None:
         return
 
     from django.contrib.auth.models import User
-    from extractor.models import UserMemory
+
     from extractor import surreal_db
-    from extractor.llm_gateway import execute_generate_content_with_fallback, _init_refinement_client, _resolve_model_name
+    from extractor.llm_gateway import (
+        _init_refinement_client,
+        _resolve_model_name,
+        execute_generate_content_with_fallback,
+    )
+    from extractor.models import UserMemory
     from extractor.rag import generate_surreal_embeddings
 
     try:
