@@ -415,6 +415,7 @@ class DocumentDetailView(LoginRequiredMixin, View):
         if doc.yaml_metadata:
             try:
                 import yaml
+
                 from extractor.tasks import _sanitise_yaml_block
                 try:
                     meta_raw = yaml.safe_load(doc.yaml_metadata)
@@ -543,8 +544,9 @@ class DocumentDeleteView(LoginRequiredMixin, View):
                 )
 
         # Gap B-8: purge SurrealDB chunks outside atomic block (surreal_db has its own atomicity)
-        from extractor import surreal_db
         from django.core.files.storage import default_storage
+
+        from extractor import surreal_db
 
         try:
             surreal_db.delete_chunks(str(doc.uuid))
@@ -715,9 +717,10 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
         elif action == "delete":
             # Bulk delete documents
             from django.core.files.storage import default_storage
-            from extractor.models import SourceDocument, AuditAction
-            from extractor.utils import get_client_ip, log_audit_event
+
             from extractor import surreal_db
+            from extractor.models import AuditAction, SourceDocument
+            from extractor.utils import get_client_ip, log_audit_event
 
             docs = SourceDocument.objects.filter(id__in=document_ids)
             deleted_count = 0
@@ -1232,8 +1235,8 @@ def register_view(request):
             return render(request, "extractor/register.html")
 
         import json
-        import urllib.request
         import urllib.parse
+        import urllib.request
 
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
         url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
@@ -1285,8 +1288,8 @@ def forgot_password_view(request):
             return render(request, "extractor/forgot_password.html")
 
         import json
-        import urllib.request
         import urllib.parse
+        import urllib.request
 
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
         url = f"{supabase_url.rstrip('/')}/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"

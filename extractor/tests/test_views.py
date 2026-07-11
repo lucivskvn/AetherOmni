@@ -958,6 +958,7 @@ class SecurityAuthTestCase(TestCase):
     def test_supabase_admin_promotion_security(self, mock_urlopen):
         # Mock successful login response from Supabase for a normal user email but trying to log in as "admin"
         import json
+
         from extractor.auth import SupabaseAuthBackend
 
         # User email is not admin@<domain>
