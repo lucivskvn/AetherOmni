@@ -197,6 +197,24 @@ def count_document_chunks(doc_uuid: str) -> int:
     return 0
 
 
+def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
+    """
+    Returns a dictionary mapping doc_uuid to the number of chunks stored in SurrealDB
+    for each doc_uuid in the provided list.
+    """
+    if not doc_uuids:
+        return {}
+    sql = "SELECT count() AS n, doc_uuid FROM chunks WHERE doc_uuid INSIDE $doc_uuids GROUP BY doc_uuid;"
+    results = _first_result(_run(sql, {"doc_uuids": doc_uuids}))
+    counts = {uuid: 0 for uuid in doc_uuids}
+    if results:
+        for row in results:
+            uuid = row.get("doc_uuid")
+            if uuid:
+                counts[uuid] = row.get("n", 0)
+    return counts
+
+
 def clone_chunks(source_uuid: str, target_uuid: str) -> None:
     """Copy all chunks from source_uuid to target_uuid (deduplication flow)."""
     sql = (  # nosec B608
