@@ -207,6 +207,58 @@ class TemplateFiltersTestCase(TestCase):
         self.assertEqual(format_compact_tokens(None), "0")
         self.assertEqual(format_compact_tokens("invalid"), "0")
 
+    def test_normalize_language(self):
+        from extractor.templatetags.extractor_filters import normalize_language
+
+        self.assertEqual(normalize_language("ar"), "Arabic")
+        self.assertEqual(normalize_language("id"), "Indonesian")
+        self.assertEqual(normalize_language("bahasa"), "Indonesian")
+        self.assertEqual(normalize_language("english"), "English")
+        self.assertEqual(normalize_language("Unknown"), "Unknown")
+        self.assertEqual(normalize_language("xyz"), "Xyz")
+        self.assertEqual(normalize_language(""), "Unknown")
+        self.assertEqual(normalize_language(None), "Unknown")
+
+    @patch("time.time")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_cache_bust_fallback_time(self, mock_time):
+        from extractor.templatetags import extractor_filters
+
+        extractor_filters._CACHE_BUST_VAL = None
+        mock_time.return_value = 123456789
+
+        # Test empty URLs
+        self.assertEqual(extractor_filters.cache_bust(""), "")
+        self.assertEqual(extractor_filters.cache_bust(None), "")
+
+        # Test path without query param
+        res = extractor_filters.cache_bust("/static/css/main.css")
+        self.assertEqual(res, "/static/css/main.css?v=123456789")
+
+        # Test path with existing query param
+        res_with_q = extractor_filters.cache_bust("/static/css/main.css?theme=dark")
+        self.assertEqual(res_with_q, "/static/css/main.css?theme=dark&v=123456789")
+
+        # Clean up
+        extractor_filters._CACHE_BUST_VAL = None
+
+    @patch.dict(os.environ, {"RELEASE_VERSION": "v1.2.3_test"})
+    def test_cache_bust_release_version(self):
+        from extractor.templatetags import extractor_filters
+
+        extractor_filters._CACHE_BUST_VAL = None
+
+        # Test path without query param
+        res = extractor_filters.cache_bust("/static/js/app.js")
+        self.assertEqual(res, "/static/js/app.js?v=v1.2.3_test")
+
+        # Test path with existing query param
+        res_with_q = extractor_filters.cache_bust("/static/js/app.js?debug=true")
+        self.assertEqual(res_with_q, "/static/js/app.js?debug=true&v=v1.2.3_test")
+
+        # Clean up
+        extractor_filters._CACHE_BUST_VAL = None
+
 
 # AdminTestCase removed since DocumentChunk model has been retired.
 
@@ -457,9 +509,7 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
         client = get_vertex_client()
         self.assertIsNotNone(client)
-        mock_client_init.assert_called_once_with(
-            vertexai=True, project="my-test-project", location="us-east4"
-        )
+        mock_client_init.assert_called_once_with(vertexai=True, project="my-test-project", location="us-east4")
 
     @patch("extractor.llm_gateway.settings")
     @patch("extractor.llm_gateway.os.getenv")
@@ -475,7 +525,9 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
     @patch("extractor.llm_gateway.get_vertex_client_for_location")
     @patch("time.sleep")
-    def test_execute_generate_content_with_fallback_cascades_to_vertex(self, mock_sleep, mock_get_vertex_client_for_location):
+    def test_execute_generate_content_with_fallback_cascades_to_vertex(
+        self, mock_sleep, mock_get_vertex_client_for_location
+    ):
         from extractor.llm_gateway import execute_generate_content_with_fallback
 
         # Mock AI Studio client to raise a 429 Rate Limit error
@@ -533,6 +585,7 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         try:
             with patch("google.genai.types.Part.from_bytes") as mock_from_bytes:
                 from google.genai import types
+
                 mock_part = types.Part(inline_data=types.Blob(data=b"PDF-1.5 mock data", mime_type="application/pdf"))
                 mock_from_bytes.return_value = mock_part
 
@@ -559,7 +612,9 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
     @patch("extractor.llm_gateway.get_vertex_client_for_location")
     @patch("google.genai.Client")
     @patch("time.sleep")
-    def test_execute_embed_content_with_fallback_cascades(self, mock_sleep, mock_client_init, mock_get_vertex_client_for_location, mock_settings):
+    def test_execute_embed_content_with_fallback_cascades(
+        self, mock_sleep, mock_client_init, mock_get_vertex_client_for_location, mock_settings
+    ):
         mock_settings.GEMINI_API_KEY = "valid-api-key"
         from extractor.llm_gateway import execute_embed_content_with_fallback
 
