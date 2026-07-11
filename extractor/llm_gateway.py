@@ -263,6 +263,7 @@ def _get_openrouter_api_key() -> str:
     if not key:
         try:
             from extractor.models import SystemSettings
+
             key = SystemSettings.get_settings().openrouter_api_key.strip()
         except Exception:
             pass
@@ -375,7 +376,6 @@ def _call_direct_gemini(
     raise ValueError("Generation failed: both Vertex AI and AI Studio pathways are exhausted.")
 
 
-
 # Allowlist of valid Gemini / Vertex model IDs (without google/ prefix).
 # If a model name from the DB or config is not on this list and doesn't look
 # like a qualified OpenRouter path, it will be replaced with the default to
@@ -411,15 +411,13 @@ def _resolve_model_name(model_name: str | None) -> str:
     # OpenRouter models contain '/' — those are intentionally non-Gemini, skip.
     if "/" not in model_name and model_name not in KNOWN_GEMINI_MODELS:
         logger.warning(
-            "[Gateway] Unknown Gemini model '%s' in configuration. "
-            "Falling back to default model '%s'.",
+            "[Gateway] Unknown Gemini model '%s' in configuration. " "Falling back to default model '%s'.",
             model_name,
             MODEL_GEMINI_35_FLASH,
         )
         model_name = MODEL_GEMINI_35_FLASH
 
     return model_name
-
 
 
 def _determine_api_routing(model_name: str, is_vision: bool, openrouter_api_key: str) -> tuple[str, bool]:
@@ -609,15 +607,12 @@ def is_rate_limit_error(exception: Exception) -> bool:
 # model hasn't been deployed there yet we cascade to us-central1 (global hub)
 # then europe-west4 (Netherlands) as a final option.
 # Override via settings.VERTEX_REGION_FALLBACK_CHAIN or the env variable.
-VERTEX_REGION_FALLBACK_CHAIN: list[str] = (
-    getattr(settings, "VERTEX_REGION_FALLBACK_CHAIN", None)
-    or [
-        "europe-west9",      # Paris — GDPR-compliant, primary region for Gemini 3.1 models
-        "europe-west4",      # Netherlands — GDPR-compliant fallback
-        "us-central1",       # Iowa — universal fallback, all models available
-        "asia-southeast1",   # Singapore — backup region
-    ]
-)
+VERTEX_REGION_FALLBACK_CHAIN: list[str] = getattr(settings, "VERTEX_REGION_FALLBACK_CHAIN", None) or [
+    "europe-west9",  # Paris — GDPR-compliant, primary region for Gemini 3.1 models
+    "europe-west4",  # Netherlands — GDPR-compliant fallback
+    "us-central1",  # Iowa — universal fallback, all models available
+    "asia-southeast1",  # Singapore — backup region
+]
 
 
 def get_vertex_client_for_location(location: str) -> Any | None:
@@ -658,9 +653,7 @@ def get_vertex_client() -> Any | None:
     )
     client = get_vertex_client_for_location(primary_location)
     if client:
-        logger.info(
-            "[Gateway] Initialized Vertex AI Client (primary region: %s).", primary_location
-        )
+        logger.info("[Gateway] Initialized Vertex AI Client (primary region: %s).", primary_location)
     return client
 
 
@@ -815,18 +808,14 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
 
         for attempt_model in fallback_list:
             try:
-                logger.info(
-                    "[Gateway/Vertex] Trying model '%s' in region '%s'.", attempt_model, region
-                )
+                logger.info("[Gateway/Vertex] Trying model '%s' in region '%s'.", attempt_model, region)
                 response = execute_with_backoff(
                     region_client.models.generate_content,
                     model=attempt_model,
                     contents=vertex_contents,
                     config=config,
                 )
-                logger.info(
-                    "[Gateway/Vertex] Success: model '%s' in region '%s'!", attempt_model, region
-                )
+                logger.info("[Gateway/Vertex] Success: model '%s' in region '%s'!", attempt_model, region)
                 return response, attempt_model
             except Exception as ve:
                 err_str = str(ve).lower()
@@ -834,7 +823,8 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
                 if is_region_gap:
                     logger.warning(
                         "[Gateway/Vertex] Model '%s' not available in '%s' — will retry in next region.",
-                        attempt_model, region,
+                        attempt_model,
+                        region,
                     )
                     # Don't try other models in this region for this 404 — break
                     # inner loop and let the outer region loop advance.
@@ -843,7 +833,9 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
                 else:
                     logger.warning(
                         "[Gateway/Vertex] Model '%s' failed in '%s': %s — trying next model.",
-                        attempt_model, region, ve,
+                        attempt_model,
+                        region,
+                        ve,
                     )
                     last_error = ve
                     continue
@@ -1138,7 +1130,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
         if yaml_content.startswith("---"):
             yaml_content = re.sub(r"^---+\s*\n(.*?)\n---+", r"\1", yaml_content, flags=re.DOTALL)
         yaml_block = yaml_content
-        refined_text = refined_text[code_block_match.end():].lstrip("\n")
+        refined_text = refined_text[code_block_match.end() :].lstrip("\n")
     else:
         # Case 2: Standard YAML frontmatter block starting and ending with ---
         yaml_match = re.search(
@@ -1148,7 +1140,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
         )
         if yaml_match:
             yaml_block = yaml_match.group(1).strip()
-            refined_text = refined_text[yaml_match.end():]
+            refined_text = refined_text[yaml_match.end() :]
         else:
             # Case 3: YAML block starting directly with key-value pairs at beginning and ending with ---
             direct_match = re.search(
@@ -1158,7 +1150,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
             )
             if direct_match:
                 yaml_block = direct_match.group("yaml").strip()
-                refined_text = refined_text[direct_match.end():]
+                refined_text = refined_text[direct_match.end() :]
             else:
                 # Case 4: Standard search fallback
                 yaml_match = re.search(
@@ -1168,7 +1160,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
                 )
                 if yaml_match:
                     yaml_block = yaml_match.group(1).strip()
-                    refined_text = refined_text[yaml_match.end():].lstrip("\n")
+                    refined_text = refined_text[yaml_match.end() :].lstrip("\n")
 
     # Find JSON Q&A block
     json_match = re.search(r"`{3,4}json\s*\n(.*?)\n`{3,4}", refined_text, re.DOTALL)

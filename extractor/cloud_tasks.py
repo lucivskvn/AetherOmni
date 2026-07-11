@@ -121,6 +121,7 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
 def get_gcp_service_account() -> str | None:
     """Fetch the service account email from the local GCP Metadata Server."""
     import urllib.request
+
     try:
         req = urllib.request.Request(
             "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",

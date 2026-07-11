@@ -229,7 +229,7 @@ def _sanitise_yaml_block(raw: str) -> str:
 
     fixed_lines = []
     # Matches: optional leading whitespace, key, colon+space, then the value
-    line_re = re.compile(r'^(\s*[\w_]+\s*:\s)(.+)$')
+    line_re = re.compile(r"^(\s*[\w_]+\s*:\s)(.+)$")
     for line in raw.splitlines():
         m = line_re.match(line)
         if m:
@@ -269,7 +269,16 @@ def _parse_yaml_metadata(
     parsed_translator = None
 
     if not yaml_metadata_block:
-        return parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig, parsed_isbn, parsed_source_link, parsed_translator
+        return (
+            parsed_title,
+            parsed_author,
+            parsed_lang,
+            parsed_doc_type,
+            parsed_sig,
+            parsed_isbn,
+            parsed_source_link,
+            parsed_translator,
+        )
 
     for attempt, block in enumerate([yaml_metadata_block, _sanitise_yaml_block(yaml_metadata_block)]):
         try:
@@ -301,8 +310,16 @@ def _parse_yaml_metadata(
             else:
                 logger.warning("[Worker] Metadata YAML parsing failed (using defaults): %s", yaml_err)
 
-    return parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig, parsed_isbn, parsed_source_link, parsed_translator
-
+    return (
+        parsed_title,
+        parsed_author,
+        parsed_lang,
+        parsed_doc_type,
+        parsed_sig,
+        parsed_isbn,
+        parsed_source_link,
+        parsed_translator,
+    )
 
 
 # Maximum characters to send to Stage 2 in a single LLM call.
@@ -378,7 +395,9 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
     if total_chunks > 1:
         logger.info(
             "[Worker] Document ID %s is large (%d chars). Splitting Stage 2 into %d chunks.",
-            document_id, len(raw_markdown), total_chunks,
+            document_id,
+            len(raw_markdown),
+            total_chunks,
         )
 
     refined_parts: list[str] = []
@@ -394,8 +413,7 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
             chunk_results = run_stage2_editorial_refinement(chunk, model_name=selected_model)
         except Exception as chunk_err:
             logger.error(
-                "[Worker] Stage 2 chunk %d/%d failed for Document ID %s: %s",
-                idx, total_chunks, document_id, chunk_err
+                "[Worker] Stage 2 chunk %d/%d failed for Document ID %s: %s", idx, total_chunks, document_id, chunk_err
             )
             # On chunk failure, preserve the raw chunk text so content is not lost
             refined_parts.append(chunk)
@@ -419,9 +437,16 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
     # Merge refined text — join chunks with a light visual separator
     refined_markdown = "\n\n---\n\n".join(p for p in refined_parts if p.strip())
 
-    parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig, parsed_isbn, parsed_source_link, parsed_translator = _parse_yaml_metadata(
-        yaml_metadata_block, doc.title, doc.author, doc.language, doc.document_type
-    )
+    (
+        parsed_title,
+        parsed_author,
+        parsed_lang,
+        parsed_doc_type,
+        parsed_sig,
+        parsed_isbn,
+        parsed_source_link,
+        parsed_translator,
+    ) = _parse_yaml_metadata(yaml_metadata_block, doc.title, doc.author, doc.language, doc.document_type)
 
     with transaction.atomic():
         doc_ref = SourceDocument.objects.select_for_update().get(id=document_id)
@@ -436,6 +461,7 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
         t_val = _truncate(parsed_title, _MAX_TITLE_LEN)
         if is_unknown(t_val):
             import os
+
             t_val = os.path.splitext(doc_ref.original_filename)[0].replace("_", " ").replace("-", " ").strip()
         doc_ref.title = t_val or doc_ref.original_filename
 
@@ -508,16 +534,14 @@ def _run_stage3(text_for_chunks: str, document_id: int) -> SourceDocument:
         # Save chunk payloads permanently to storage (GCS/Local) for stateless sync
         try:
             import json
+
             from django.core.files.base import ContentFile
             from django.core.files.storage import default_storage
 
             chunks_json_path = f"chunks/{doc.uuid}.json"
             if default_storage.exists(chunks_json_path):
                 default_storage.delete(chunks_json_path)
-            default_storage.save(
-                chunks_json_path,
-                ContentFile(json.dumps(chunk_payloads).encode("utf-8"))
-            )
+            default_storage.save(chunks_json_path, ContentFile(json.dumps(chunk_payloads).encode("utf-8")))
             logger.info("[Worker] Chunks and embeddings uploaded to persistent storage for doc: %s", doc.uuid)
         except Exception as exc:
             logger.warning("[Worker] Failed to save chunks to persistent storage: %s", exc)
@@ -721,13 +745,28 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     logger.info("[Cron] Starting reference-counted expired document cleanup...")
     now = timezone.now()
 
-    expired_docs = SourceDocument.objects.filter(expires_at__lte=now)
+    from django.db.models import Count
+
+    expired_docs = list(SourceDocument.objects.filter(expires_at__lte=now))
     purged_count = 0
+
+    if expired_docs:
+        expired_hashes = {doc.file_hash for doc in expired_docs if doc.file_hash}
+        hash_counts = {
+            item["file_hash"]: item["count"]
+            for item in SourceDocument.objects.filter(file_hash__in=expired_hashes)
+            .values("file_hash")
+            .annotate(count=Count("id"))
+        }
+    else:
+        hash_counts = {}
 
     for doc in expired_docs:
         file_hash = doc.file_hash
         doc_uuid = str(doc.uuid)
-        shared_references = SourceDocument.objects.filter(file_hash=file_hash).exclude(id=doc.id).count()
+
+        total_refs = hash_counts.get(file_hash, 0)
+        shared_references = max(0, total_refs - 1)
 
         if shared_references == 0:
             logger.info("[Cron] Purging file hash %s from storage.", file_hash)
@@ -739,6 +778,9 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
             logger.info(
                 "[Cron] Skipping physical delete for hash %s (referenced by %s records).", file_hash, shared_references
             )
+
+        if file_hash in hash_counts:
+            hash_counts[file_hash] = max(0, hash_counts[file_hash] - 1)
 
         # Gap B-8: cascade delete SurrealDB chunks and storage JSON backups for compliance
         try:
@@ -840,9 +882,14 @@ def store_user_memory_task(payload: dict) -> None:
         return
 
     from django.contrib.auth.models import User
-    from extractor.models import UserMemory
+
     from extractor import surreal_db
-    from extractor.llm_gateway import execute_generate_content_with_fallback, _init_refinement_client, _resolve_model_name
+    from extractor.llm_gateway import (
+        _init_refinement_client,
+        _resolve_model_name,
+        execute_generate_content_with_fallback,
+    )
+    from extractor.models import UserMemory
     from extractor.rag import generate_surreal_embeddings
 
     try:
@@ -856,16 +903,16 @@ def store_user_memory_task(payload: dict) -> None:
         "Your task is to analyze the user's query and extract their formatting, style, or language preference.\n"
         "Convert the raw preference query into a clean, concise, third-person declarative preference statement (e.g. 'User prefers concise summaries' or 'User wants classical references').\n"
         "If the text does NOT describe a clear style/formatting preference, output only 'NONE'.\n"
-        f"User Query: \"{raw_text}\"\n"
+        f'User Query: "{raw_text}"\n'
         "Distilled Preference (or 'NONE'):"
     )
 
     client = _init_refinement_client()
     model = _resolve_model_name("google/gemini-2.5-flash-lite")
-    
+
     try:
         response, _ = execute_generate_content_with_fallback(client, model, contents=[distill_prompt])
-        distilled = response.text.strip().strip('"\'')
+        distilled = response.text.strip().strip("\"'")
     except Exception as exc:
         logger.warning("[Memory Task] Gemini preference distillation failed: %s. Using raw query.", exc)
         distilled = raw_text
@@ -882,11 +929,7 @@ def store_user_memory_task(payload: dict) -> None:
         return
 
     try:
-        UserMemory.objects.create(
-            user=user,
-            memory_text=distilled,
-            embedding=vector
-        )
+        UserMemory.objects.create(user=user, memory_text=distilled, embedding=vector)
         logger.info("[Memory Task] Persistent memory created for user %s: '%s'", user.username, distilled)
     except Exception as db_err:
         logger.exception("[Memory Task] Failed to write memory to PostgreSQL: %s", db_err)
@@ -896,4 +939,3 @@ def store_user_memory_task(payload: dict) -> None:
         logger.info("[Memory Task] Memory indexed in SurrealDB for user %s.", user.username)
     except Exception as s_err:
         logger.warning("[Memory Task] Failed to index memory in SurrealDB: %s", s_err)
-
