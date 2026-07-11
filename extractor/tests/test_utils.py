@@ -207,28 +207,57 @@ class TemplateFiltersTestCase(TestCase):
         self.assertEqual(format_compact_tokens(None), "0")
         self.assertEqual(format_compact_tokens("invalid"), "0")
 
-    def test_replace_underscore(self):
-        from extractor.templatetags.extractor_filters import replace_underscore
+    def test_normalize_language(self):
+        from extractor.templatetags.extractor_filters import normalize_language
 
-        # Happy paths
-        self.assertEqual(replace_underscore("hello_world"), "hello world")
-        self.assertEqual(replace_underscore("multiple_words_with_underscores"), "multiple words with underscores")
+        self.assertEqual(normalize_language("ar"), "Arabic")
+        self.assertEqual(normalize_language("id"), "Indonesian")
+        self.assertEqual(normalize_language("bahasa"), "Indonesian")
+        self.assertEqual(normalize_language("english"), "English")
+        self.assertEqual(normalize_language("Unknown"), "Unknown")
+        self.assertEqual(normalize_language("xyz"), "Xyz")
+        self.assertEqual(normalize_language(""), "Unknown")
+        self.assertEqual(normalize_language(None), "Unknown")
 
-        # Falsy and None inputs
-        self.assertEqual(replace_underscore(None), "")
-        self.assertEqual(replace_underscore(""), "")
-        self.assertEqual(replace_underscore([]), "")
+    @patch("time.time")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_cache_bust_fallback_time(self, mock_time):
+        from extractor.templatetags import extractor_filters
 
-        # Strings with no underscores
-        self.assertEqual(replace_underscore("hello"), "hello")
-        self.assertEqual(replace_underscore("hello world"), "hello world")
+        extractor_filters._CACHE_BUST_VAL = None
+        mock_time.return_value = 123456789
 
-        # Consecutive underscores
-        self.assertEqual(replace_underscore("hello__world"), "hello  world")
+        # Test empty URLs
+        self.assertEqual(extractor_filters.cache_bust(""), "")
+        self.assertEqual(extractor_filters.cache_bust(None), "")
 
-        # Non-string inputs
-        self.assertEqual(replace_underscore(123456), "123456")
-        self.assertEqual(replace_underscore(True), "True")
+        # Test path without query param
+        res = extractor_filters.cache_bust("/static/css/main.css")
+        self.assertEqual(res, "/static/css/main.css?v=123456789")
+
+        # Test path with existing query param
+        res_with_q = extractor_filters.cache_bust("/static/css/main.css?theme=dark")
+        self.assertEqual(res_with_q, "/static/css/main.css?theme=dark&v=123456789")
+
+        # Clean up
+        extractor_filters._CACHE_BUST_VAL = None
+
+    @patch.dict(os.environ, {"RELEASE_VERSION": "v1.2.3_test"})
+    def test_cache_bust_release_version(self):
+        from extractor.templatetags import extractor_filters
+
+        extractor_filters._CACHE_BUST_VAL = None
+
+        # Test path without query param
+        res = extractor_filters.cache_bust("/static/js/app.js")
+        self.assertEqual(res, "/static/js/app.js?v=v1.2.3_test")
+
+        # Test path with existing query param
+        res_with_q = extractor_filters.cache_bust("/static/js/app.js?debug=true")
+        self.assertEqual(res_with_q, "/static/js/app.js?debug=true&v=v1.2.3_test")
+
+        # Clean up
+        extractor_filters._CACHE_BUST_VAL = None
 
 
 # AdminTestCase removed since DocumentChunk model has been retired.
