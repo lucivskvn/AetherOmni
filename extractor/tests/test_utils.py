@@ -638,3 +638,162 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         self.assertEqual(response, mock_ai_studio_response)
         self.assertEqual(mock_vertex_client.models.embed_content.call_count, 20)
         mock_ai_studio_client.models.embed_content.assert_called_once()
+
+
+class AuditLogTestCase(TestCase):
+    """Verifies that dual-write log_audit_event error handling functions correctly."""
+
+    @patch("extractor.models.AuditLog.objects.create")
+    @patch("extractor.surreal_db.log_audit")
+    def test_log_audit_event_happy_path(self, mock_surreal_log, mock_sqlite_create):
+        """Verifies that happy path completes successfully with no warnings."""
+        from django.contrib.auth.models import User
+
+        from extractor.models import SourceDocument
+        from extractor.utils import log_audit_event
+
+        user = User(id=42, username="audit_user")
+        doc = SourceDocument(uuid="123e4567-e89b-12d3-a456-426614174000")
+
+        # Call the helper
+        log_audit_event(
+            action="TEST_ACTION",
+            user=user,
+            document=doc,
+            details="Test details",
+            ip_address="192.168.1.100",
+            metadata={"extra": "data"},
+        )
+
+        # Assert sqlite write was attempted
+        mock_sqlite_create.assert_called_once_with(
+            user=user,
+            action="TEST_ACTION",
+            document=doc,
+            details="Test details",
+            ip_address="192.168.1.100",
+        )
+
+        # Assert SurrealDB write was attempted
+        mock_surreal_log.assert_called_once_with(
+            action="TEST_ACTION",
+            user_id="42",
+            doc_uuid="123e4567-e89b-12d3-a456-426614174000",
+            metadata={"extra": "data"},
+            ip_address="192.168.1.100",
+        )
+
+    @patch("extractor.models.AuditLog.objects.create")
+    @patch("extractor.surreal_db.log_audit")
+    def test_log_audit_event_sqlite_failure(self, mock_surreal_log, mock_sqlite_create):
+        """Verifies that failures in SQLite (Django ORM) creation do not crash log_audit_event."""
+        from django.contrib.auth.models import User
+
+        from extractor.models import SourceDocument
+        from extractor.utils import log_audit_event
+
+        mock_sqlite_create.side_effect = Exception("SQLite db error")
+
+        user = User(id=42, username="audit_user")
+        doc = SourceDocument(uuid="123e4567-e89b-12d3-a456-426614174000")
+
+        # We assert that a warning log containing the sqlite exception is produced,
+        # but the function runs to completion (does not raise).
+        with self.assertLogs("extractor.utils", level="WARNING") as cm:
+            log_audit_event(
+                action="TEST_ACTION",
+                user=user,
+                document=doc,
+                details="Test details",
+                ip_address="192.168.1.100",
+                metadata={"extra": "data"},
+            )
+
+        # Assert logger warning was invoked with correct message
+        self.assertTrue(
+            any("[AuditLog] Failed to write SQLite audit entry: SQLite db error" in log for log in cm.output)
+        )
+
+        # Assert SQLite write was tried
+        mock_sqlite_create.assert_called_once()
+        # Assert SurrealDB write still completed
+        mock_surreal_log.assert_called_once_with(
+            action="TEST_ACTION",
+            user_id="42",
+            doc_uuid="123e4567-e89b-12d3-a456-426614174000",
+            metadata={"extra": "data"},
+            ip_address="192.168.1.100",
+        )
+
+    @patch("extractor.models.AuditLog.objects.create")
+    @patch("extractor.surreal_db.log_audit")
+    def test_log_audit_event_surreal_failure(self, mock_surreal_log, mock_sqlite_create):
+        """Verifies that failures in SurrealDB logging do not crash log_audit_event."""
+        from django.contrib.auth.models import User
+
+        from extractor.models import SourceDocument
+        from extractor.utils import log_audit_event
+
+        mock_surreal_log.side_effect = Exception("SurrealDB connection failed")
+
+        user = User(id=42, username="audit_user")
+        doc = SourceDocument(uuid="123e4567-e89b-12d3-a456-426614174000")
+
+        with self.assertLogs("extractor.utils", level="WARNING") as cm:
+            log_audit_event(
+                action="TEST_ACTION",
+                user=user,
+                document=doc,
+                details="Test details",
+                ip_address="192.168.1.100",
+                metadata={"extra": "data"},
+            )
+
+        # Assert logger warning was invoked with correct message
+        self.assertTrue(
+            any(
+                "[AuditLog] Failed to write SurrealDB audit entry: SurrealDB connection failed" in log
+                for log in cm.output
+            )
+        )
+
+        # Assert SQLite write succeeded
+        mock_sqlite_create.assert_called_once()
+        # Assert SurrealDB write was tried
+        mock_surreal_log.assert_called_once()
+
+    @patch("extractor.models.AuditLog.objects.create")
+    @patch("extractor.surreal_db.log_audit")
+    def test_log_audit_event_both_failed(self, mock_surreal_log, mock_sqlite_create):
+        """Verifies that dual failures are gracefully suppressed and both logged as warnings."""
+        from django.contrib.auth.models import User
+
+        from extractor.models import SourceDocument
+        from extractor.utils import log_audit_event
+
+        mock_sqlite_create.side_effect = Exception("SQLite db error")
+        mock_surreal_log.side_effect = Exception("SurrealDB connection failed")
+
+        user = User(id=42, username="audit_user")
+        doc = SourceDocument(uuid="123e4567-e89b-12d3-a456-426614174000")
+
+        with self.assertLogs("extractor.utils", level="WARNING") as cm:
+            log_audit_event(
+                action="TEST_ACTION",
+                user=user,
+                document=doc,
+                details="Test details",
+                ip_address="192.168.1.100",
+                metadata={"extra": "data"},
+            )
+
+        self.assertEqual(len(cm.output), 2)
+        self.assertTrue(
+            any("[AuditLog] Failed to write SQLite audit entry: SQLite db error" in log for log in cm.output)
+        )
+        self.assertTrue(
+            any(
+                "[AuditLog] Failed to write SurrealDB audit entry: SurrealDB connection failed" in log
+                for log in cm.output
+            )
+        )
