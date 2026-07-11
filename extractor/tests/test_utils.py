@@ -207,6 +207,49 @@ class TemplateFiltersTestCase(TestCase):
         self.assertEqual(format_compact_tokens(None), "0")
         self.assertEqual(format_compact_tokens("invalid"), "0")
 
+    def test_normalize_language(self):
+        from extractor.templatetags.extractor_filters import normalize_language
+
+        # 1. Happy path: exact dictionary matches
+        self.assertEqual(normalize_language("ar"), "Arabic")
+        self.assertEqual(normalize_language("ara"), "Arabic")
+        self.assertEqual(normalize_language("arabic"), "Arabic")
+        self.assertEqual(normalize_language("id"), "Indonesian")
+        self.assertEqual(normalize_language("bahasa"), "Indonesian")
+        self.assertEqual(normalize_language("zh-hans"), "Chinese (Simplified)")
+        self.assertEqual(normalize_language("unknown"), "Unknown")
+
+        # 2. Whitespace padding and stripping
+        self.assertEqual(normalize_language("  ar  "), "Arabic")
+        self.assertEqual(normalize_language(" \n id \t"), "Indonesian")
+        self.assertEqual(normalize_language("\tbahasa\r\n"), "Indonesian")
+
+        # 3. Case-insensitivity (mixed cases)
+        self.assertEqual(normalize_language("ArAbIc"), "Arabic")
+        self.assertEqual(normalize_language("BaHaSa"), "Indonesian")
+        self.assertEqual(normalize_language("ZH-hant"), "Chinese (Traditional)")
+
+        # 4. Graceful fallbacks (fallback to Title Case for unmapped strings)
+        self.assertEqual(normalize_language("esperanto"), "Esperanto")
+        self.assertEqual(normalize_language("  klingon  "), "Klingon")
+        self.assertEqual(normalize_language("LATIN-1"), "Latin-1")
+
+        # 5. Falsy, empty, and None cases
+        self.assertEqual(normalize_language(""), "Unknown")
+        self.assertEqual(normalize_language(None), "Unknown")
+        self.assertEqual(normalize_language("   "), "Unknown")
+
+        # 6. Non-string types (should be stringified safely)
+        self.assertEqual(normalize_language(123), "123")
+        self.assertEqual(normalize_language(0), "Unknown")
+        self.assertEqual(normalize_language(False), "Unknown")
+
+        class CustomStrObj:
+            def __str__(self):
+                return "custom_lang"
+
+        self.assertEqual(normalize_language(CustomStrObj()), "Custom Lang")
+
 
 # AdminTestCase removed since DocumentChunk model has been retired.
 
