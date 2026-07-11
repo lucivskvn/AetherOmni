@@ -14,6 +14,7 @@ from extractor.utils import (
     get_locale_currency_details,
     process_csv_local,
     process_txt_local,
+    validate_url_scheme,
 )
 
 
@@ -457,9 +458,7 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
         client = get_vertex_client()
         self.assertIsNotNone(client)
-        mock_client_init.assert_called_once_with(
-            vertexai=True, project="my-test-project", location="us-east4"
-        )
+        mock_client_init.assert_called_once_with(vertexai=True, project="my-test-project", location="us-east4")
 
     @patch("extractor.llm_gateway.settings")
     @patch("extractor.llm_gateway.os.getenv")
@@ -475,7 +474,9 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
     @patch("extractor.llm_gateway.get_vertex_client_for_location")
     @patch("time.sleep")
-    def test_execute_generate_content_with_fallback_cascades_to_vertex(self, mock_sleep, mock_get_vertex_client_for_location):
+    def test_execute_generate_content_with_fallback_cascades_to_vertex(
+        self, mock_sleep, mock_get_vertex_client_for_location
+    ):
         from extractor.llm_gateway import execute_generate_content_with_fallback
 
         # Mock AI Studio client to raise a 429 Rate Limit error
@@ -533,6 +534,7 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         try:
             with patch("google.genai.types.Part.from_bytes") as mock_from_bytes:
                 from google.genai import types
+
                 mock_part = types.Part(inline_data=types.Blob(data=b"PDF-1.5 mock data", mime_type="application/pdf"))
                 mock_from_bytes.return_value = mock_part
 
@@ -559,7 +561,9 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
     @patch("extractor.llm_gateway.get_vertex_client_for_location")
     @patch("google.genai.Client")
     @patch("time.sleep")
-    def test_execute_embed_content_with_fallback_cascades(self, mock_sleep, mock_client_init, mock_get_vertex_client_for_location, mock_settings):
+    def test_execute_embed_content_with_fallback_cascades(
+        self, mock_sleep, mock_client_init, mock_get_vertex_client_for_location, mock_settings
+    ):
         mock_settings.GEMINI_API_KEY = "valid-api-key"
         from extractor.llm_gateway import execute_embed_content_with_fallback
 
@@ -583,3 +587,50 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         self.assertEqual(response, mock_ai_studio_response)
         self.assertEqual(mock_vertex_client.models.embed_content.call_count, 20)
         mock_ai_studio_client.models.embed_content.assert_called_once()
+
+
+class UrlSchemeValidationTestCase(TestCase):
+    """Verifies URL scheme validation logic under different environments."""
+
+    def test_url_scheme_debug_mode_https(self):
+        # Under settings.DEBUG = True, https:// should validate successfully
+        with self.settings(DEBUG=True):
+            try:
+                validate_url_scheme("https://example.com")
+            except ValueError as exc:
+                self.fail(f"validate_url_scheme raised ValueError unexpectedly: {exc}")
+
+    def test_url_scheme_debug_mode_http(self):
+        # Under settings.DEBUG = True, http:// should validate successfully
+        with self.settings(DEBUG=True):
+            try:
+                validate_url_scheme("http://example.com")
+            except ValueError as exc:
+                self.fail(f"validate_url_scheme raised ValueError unexpectedly: {exc}")
+
+    def test_url_scheme_production_mode_https(self):
+        # Under settings.DEBUG = False, https:// should validate successfully
+        with self.settings(DEBUG=False):
+            try:
+                validate_url_scheme("https://example.com")
+            except ValueError as exc:
+                self.fail(f"validate_url_scheme raised ValueError unexpectedly: {exc}")
+
+    def test_url_scheme_production_mode_http(self):
+        # Under settings.DEBUG = False, http:// is insecure and should raise ValueError
+        with self.settings(DEBUG=False):
+            with self.assertRaises(ValueError) as ctx:
+                validate_url_scheme("http://example.com")
+            self.assertEqual(str(ctx.exception), "Insecure URL scheme. Production environments require https.")
+
+    def test_url_scheme_invalid_prefix(self):
+        # Schemes other than http/https should raise ValueError in all modes
+        with self.settings(DEBUG=True):
+            with self.assertRaises(ValueError) as ctx:
+                validate_url_scheme("ftp://example.com")
+            self.assertEqual(str(ctx.exception), "Invalid URL scheme. Only http and https schemes are permitted.")
+
+        with self.settings(DEBUG=False):
+            with self.assertRaises(ValueError) as ctx:
+                validate_url_scheme("ftp://example.com")
+            self.assertEqual(str(ctx.exception), "Invalid URL scheme. Only http and https schemes are permitted.")
