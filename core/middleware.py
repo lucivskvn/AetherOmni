@@ -38,6 +38,7 @@ for prop_name in ["csrf_trusted_origins_hosts", "allowed_origins_exact", "allowe
 # for secure requests, causing 403 errors when local developers access the app over HTTP.
 _orig_process_view = CsrfViewMiddleware.process_view
 
+
 def _patched_process_view(self, request, callback, callback_args, callback_kwargs):
     referer = request.META.get("HTTP_REFERER")
     is_loopback_referer = False
@@ -62,8 +63,8 @@ def _patched_process_view(self, request, callback, callback_args, callback_kwarg
     else:
         return _orig_process_view(self, request, callback, callback_args, callback_kwargs)
 
-CsrfViewMiddleware.process_view = _patched_process_view
 
+CsrfViewMiddleware.process_view = _patched_process_view
 
 
 class DynamicCsrfTrustedOriginsMiddleware:

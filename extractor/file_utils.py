@@ -160,41 +160,44 @@ def parse_arabic_layout(html_content: str) -> str:
     Leaves English translations starting with English letters as LTR.
     """
     import re
-    pattern = re.compile(r'<(p|li|blockquote|h1|h2|h3|h4|h5|h6|span|div|td)([^>]*)>(.*?)</\1>', re.DOTALL | re.IGNORECASE)
-    
-    arabic_chars = re.compile(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]')
-    latin_chars = re.compile(r'[A-Za-z]')
+
+    pattern = re.compile(
+        r"<(p|li|blockquote|h1|h2|h3|h4|h5|h6|span|div|td)([^>]*)>(.*?)</\1>", re.DOTALL | re.IGNORECASE
+    )
+
+    arabic_chars = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
+    latin_chars = re.compile(r"[A-Za-z]")
 
     def replacer(match):
         tag_name = match.group(1)
         attrs = match.group(2)
         content = match.group(3)
-        
-        text_content = re.sub(r'<[^>]*>', '', content)
-        
+
+        text_content = re.sub(r"<[^>]*>", "", content)
+
         first_strong = None
         for char in text_content:
             if latin_chars.match(char):
-                first_strong = 'latin'
+                first_strong = "latin"
                 break
             elif arabic_chars.match(char):
-                first_strong = 'arabic'
+                first_strong = "arabic"
                 break
-                
-        if first_strong == 'arabic':
-            if 'dir=' in attrs:
+
+        if first_strong == "arabic":
+            if "dir=" in attrs:
                 attrs = re.sub(r'dir="[^"]*"', 'dir="rtl"', attrs)
                 attrs = re.sub(r"dir='[^']*'", 'dir="rtl"', attrs)
             else:
                 attrs += ' dir="rtl"'
-                
-            if 'class=' in attrs:
+
+            if "class=" in attrs:
                 attrs = re.sub(r'class="([^"]*)"', r'class="\1 arabic-text"', attrs)
                 attrs = re.sub(r"class='([^']*)'", r"class='\1 arabic-text'", attrs)
             else:
                 attrs += ' class="arabic-text"'
-                
-        return f'<{tag_name}{attrs}>{content}</{tag_name}>'
+
+        return f"<{tag_name}{attrs}>{content}</{tag_name}>"
 
     return pattern.sub(replacer, html_content)
 
