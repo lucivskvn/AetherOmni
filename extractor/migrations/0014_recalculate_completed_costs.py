@@ -17,7 +17,6 @@ def recalculate_costs(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("extractor", "0013_remove_systemsettings_source_library_uri"),
     ]

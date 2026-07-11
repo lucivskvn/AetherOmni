@@ -139,6 +139,7 @@ def init_django_admin():
                 )
                 app_url = getattr(settings, "APP_URL", "http://localhost:8000")
                 import urllib.parse
+
                 signup_url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
                 try:
                     validate_url_scheme(signup_url)
@@ -202,11 +203,12 @@ def init_django_admin():
         import re
 
         from extractor.models import SourceDocument
-        pattern = r'\n{1,4}(?:#{1,6}\s+|(?:\*{1,2}))(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n(?:[^\n]*(?:Reasoning|downstream|training|NotebookLM)[^\n]*\n?)*.*$'
+
+        pattern = r"\n{1,4}(?:#{1,6}\s+|(?:\*{1,2}))(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n(?:[^\n]*(?:Reasoning|downstream|training|NotebookLM)[^\n]*\n?)*.*$"
         cleaned_count = 0
         for doc in SourceDocument.objects.all():
             if doc.refined_markdown:
-                cleaned = re.sub(pattern, '', doc.refined_markdown, flags=re.DOTALL | re.IGNORECASE).rstrip()
+                cleaned = re.sub(pattern, "", doc.refined_markdown, flags=re.DOTALL | re.IGNORECASE).rstrip()
                 if cleaned != doc.refined_markdown.rstrip():
                     doc.refined_markdown = cleaned
                     doc.save()
@@ -217,6 +219,7 @@ def init_django_admin():
         # Automatic SystemSettings model migration to upgrade legacy selected models
         try:
             from extractor.models import SystemSettings
+
             settings_obj = SystemSettings.get_settings()
             if settings_obj.selected_model in ["google/gemini-2.5-flash-lite", "google/gemini-3.1-flash-lite"]:
                 settings_obj.selected_model = "google/gemini-3.1-flash-lite"

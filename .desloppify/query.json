@@ -1,13 +1,13 @@
 {
   "command": "scan",
-  "overall_score": 22.0,
+  "overall_score": 22.1,
   "objective_score": 88.2,
   "strict_score": 22.0,
   "verified_strict_score": 88.2,
-  "prev_overall_score": 0.0,
-  "prev_objective_score": 0.0,
-  "prev_strict_score": 0.0,
-  "prev_verified_strict_score": 0.0,
+  "prev_overall_score": 22.0,
+  "prev_objective_score": 88.2,
+  "prev_strict_score": 22.0,
+  "prev_verified_strict_score": 88.2,
   "profile": "full",
   "noise_budget": 10,
   "noise_global_budget": 0,
@@ -18,8 +18,8 @@
   },
   "hidden_total": 119,
   "diff": {
-    "new": 169,
-    "auto_resolved": 0,
+    "new": 12,
+    "auto_resolved": 12,
     "reopened": 0,
     "total_current": 169,
     "suspect_detectors": [],
@@ -32,8 +32,8 @@
     "suppressed_pct": 0.0
   },
   "stats": {
-    "total": 169,
-    "auto_resolved": 0,
+    "total": 181,
+    "auto_resolved": 12,
     "deferred": 0,
     "false_positive": 0,
     "fixed": 0,
@@ -42,7 +42,7 @@
     "wontfix": 0,
     "by_tier": {
       "2": {
-        "auto_resolved": 0,
+        "auto_resolved": 4,
         "deferred": 0,
         "false_positive": 0,
         "fixed": 0,
@@ -51,7 +51,7 @@
         "wontfix": 0
       },
       "3": {
-        "auto_resolved": 0,
+        "auto_resolved": 8,
         "deferred": 0,
         "false_positive": 0,
         "fixed": 0,
@@ -75,10 +75,7 @@
     "out_of_scope": 0,
     "global": 169
   },
-  "warnings": [
-    "169 new issues with few resolutions \u2014 likely cascading.",
-    "Coverage reduced (security): bandit is not installed \u2014 Python-specific security checks will be skipped. Repercussion: Python-specific security coverage is reduced; clean security output may miss shell injection, unsafe deserialization, and risky SQL/subprocess patterns. Fix: Install Bandit: pip install bandit"
-  ],
+  "warnings": [],
   "dimension_scores": {
     "Code quality": {
       "score": 80.4,
@@ -140,7 +137,7 @@
     },
     "Security": {
       "score": 93.9,
-      "strict": 93.9,
+      "strict": 91.7,
       "verified_strict_score": 93.9,
       "checks": 87,
       "failing": 14,
@@ -156,22 +153,9 @@
           "potential": 63,
           "pass_rate": 0.915873015873016,
           "failing": 14,
-          "weighted_failures": 5.3,
-          "coverage_status": "reduced",
-          "coverage_confidence": 0.6,
-          "coverage_summary": "bandit is not installed \u2014 Python-specific security checks will be skipped."
+          "weighted_failures": 5.3
         }
-      },
-      "coverage_status": "reduced",
-      "coverage_confidence": 0.6,
-      "coverage_impacts": [
-        {
-          "detector": "security",
-          "status": "reduced",
-          "confidence": 0.6,
-          "summary": "bandit is not installed \u2014 Python-specific security checks will be skipped."
-        }
-      ]
+      }
     },
     "File health": {
       "score": 88.3,
@@ -190,18 +174,18 @@
       }
     },
     "Test health": {
-      "score": 92.5,
-      "strict": 92.5,
-      "verified_strict_score": 92.5,
-      "checks": 332,
+      "score": 92.6,
+      "strict": 92.6,
+      "verified_strict_score": 92.6,
+      "checks": 339,
       "failing": 2,
       "tier": 4,
       "detectors": {
         "test_coverage": {
-          "potential": 332,
-          "pass_rate": 0.9247205946125101,
+          "potential": 339,
+          "pass_rate": 0.9256521813611347,
           "failing": 2,
-          "weighted_failures": 24.992762588646645
+          "weighted_failures": 25.20391051857538
         }
       }
     },
@@ -627,10 +611,10 @@
     }
   },
   "score_breakdown": {
-    "overall_score": 22.0,
+    "overall_score": 22.1,
     "mechanical_fraction": 0.25,
     "subjective_fraction": 0.75,
-    "mechanical_avg": 88.17632093933464,
+    "mechanical_avg": 88.21545988258318,
     "subjective_avg": 0.0,
     "entries": [
       {
@@ -675,15 +659,15 @@
       {
         "name": "Test health",
         "pool": "mechanical",
-        "score": 92.5,
-        "checks": 332.0,
+        "score": 92.6,
+        "checks": 339.0,
         "sample_factor": 1.0,
         "configured_weight": 1.0,
         "effective_weight": 1.0,
         "pool_share": 0.39138943248532293,
         "overall_per_point": 0.09784735812133073,
-        "overall_contribution": 9.050880626223092,
-        "overall_drag": 0.7338551859099804
+        "overall_contribution": 9.060665362035225,
+        "overall_drag": 0.724070450097848
       },
       {
         "name": "Abstraction fit",
@@ -955,23 +939,10 @@
     "reset_dimensions": []
   },
   "score_confidence": {
-    "status": "reduced",
-    "confidence": 0.6,
-    "detectors": [
-      {
-        "detector": "security",
-        "status": "reduced",
-        "confidence": 0.6,
-        "summary": "bandit is not installed \u2014 Python-specific security checks will be skipped.",
-        "impact": "Python-specific security coverage is reduced; clean security output may miss shell injection, unsafe deserialization, and risky SQL/subprocess patterns.",
-        "remediation": "Install Bandit: pip install bandit",
-        "tool": "bandit",
-        "reason": "missing_dependency"
-      }
-    ],
-    "dimensions": [
-      "Security"
-    ]
+    "status": "full",
+    "confidence": 1.0,
+    "detectors": [],
+    "dimensions": []
   },
   "potentials": {
     "python": {
@@ -986,7 +957,7 @@
       "facade": 24,
       "coupling": 0,
       "uncalled_functions": 18,
-      "test_coverage": 332,
+      "test_coverage": 339,
       "smells": 24,
       "global_mutable_config": 24,
       "security": 63,
@@ -999,33 +970,22 @@
   },
   "scan_coverage": {
     "python": {
-      "status": "reduced",
-      "confidence": 0.6,
+      "status": "full",
+      "confidence": 1.0,
       "detectors": {
         "security": {
           "detector": "security",
-          "status": "reduced",
-          "confidence": 0.6,
-          "summary": "bandit is not installed \u2014 Python-specific security checks will be skipped.",
-          "impact": "Python-specific security coverage is reduced; clean security output may miss shell injection, unsafe deserialization, and risky SQL/subprocess patterns.",
-          "remediation": "Install Bandit: pip install bandit",
-          "tool": "bandit",
-          "reason": "missing_dependency"
+          "status": "full",
+          "confidence": 1.0,
+          "summary": "Security coverage complete for enabled detectors.",
+          "impact": "",
+          "remediation": "",
+          "tool": "",
+          "reason": ""
         }
       },
-      "warnings": [
-        {
-          "detector": "security",
-          "status": "reduced",
-          "confidence": 0.6,
-          "summary": "bandit is not installed \u2014 Python-specific security checks will be skipped.",
-          "impact": "Python-specific security coverage is reduced; clean security output may miss shell injection, unsafe deserialization, and risky SQL/subprocess patterns.",
-          "remediation": "Install Bandit: pip install bandit",
-          "tool": "bandit",
-          "reason": "missing_dependency"
-        }
-      ],
-      "updated_at": "2026-07-10T06:18:49+00:00"
+      "warnings": [],
+      "updated_at": "2026-07-11T16:38:49+00:00"
     }
   },
   "zone_distribution": {
@@ -1036,8 +996,8 @@
     "test": 15
   },
   "narrative": {
-    "phase": "first_scan",
-    "headline": "\u26a0 14 security issues \u2014 review before other cleanup. First scan complete. 169 open issues across 3 dimensions.",
+    "phase": "stagnation",
+    "headline": "\u26a0 14 security issues \u2014 review before other cleanup. Score plateaued at 22.0 for 3 scans. Abstraction fit (0.0%) is where the breakthrough is.",
     "dimensions": {
       "lowest_dimensions": [
         {
@@ -1065,8 +1025,132 @@
           "impact_description": "re-review to improve"
         }
       ],
-      "biggest_gap_dimensions": [],
-      "stagnant_dimensions": []
+      "biggest_gap_dimensions": [
+        {
+          "name": "Security",
+          "lenient": 93.9,
+          "strict": 91.7,
+          "gap": 2.2,
+          "wontfix_count": 0
+        }
+      ],
+      "stagnant_dimensions": [
+        {
+          "name": "Code quality",
+          "strict": 80.4,
+          "stuck_scans": 3
+        },
+        {
+          "name": "File health",
+          "strict": 88.3,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Test health",
+          "strict": 92.6,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Abstraction fit",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "AI generated debt",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "API coherence",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Auth consistency",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Contracts",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Convention drift",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Cross-module arch",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Dep health",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Design coherence",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Error consistency",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "High elegance",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Stale migration",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Init coupling",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Logic clarity",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Low elegance",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Mid elegance",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Naming quality",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Structure nav",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Test strategy",
+          "strict": 0.0,
+          "stuck_scans": 3
+        },
+        {
+          "name": "Type safety",
+          "strict": 0.0,
+          "stuck_scans": 3
+        }
+      ]
     },
     "actions": [
       {
@@ -1261,10 +1345,10 @@
       }
     },
     "debt": {
-      "overall_gap": 0.0,
+      "overall_gap": 0.1,
       "wontfix_count": 0,
-      "worst_dimension": null,
-      "worst_gap": 0.0,
+      "worst_dimension": "Security",
+      "worst_gap": 2.2,
       "trend": "stable"
     },
     "milestone": null,
@@ -1287,11 +1371,179 @@
     },
     "reminders": [
       {
+        "type": "stagnant_nudge",
+        "message": "Code quality has been stuck at 80.4% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "File health has been stuck at 88.3% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Test health has been stuck at 92.6% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Abstraction fit has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "AI generated debt has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "API coherence has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Auth consistency has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Contracts has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Convention drift has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Cross-module arch has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Dep health has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Design coherence has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Error consistency has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "High elegance has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Stale migration has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Init coupling has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Logic clarity has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Low elegance has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Mid elegance has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Naming quality has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Structure nav has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Test strategy has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
+        "type": "stagnant_nudge",
+        "message": "Type safety has been stuck at 0.0% for 3 scans. Try tackling it from a different angle \u2014 run `desloppify next` to find the right entry point.",
+        "command": null,
+        "priority": 2,
+        "severity": "medium"
+      },
+      {
         "type": "zone_classification",
         "message": "40 of 63 files classified as non-production (4 config, 20 generated, 1 script, 15 test). Override with `desloppify zone set <file> production` if any are misclassified.",
         "command": "desloppify zone show",
         "priority": 2,
         "severity": "medium"
+      },
+      {
+        "type": "feedback_nudge",
+        "message": "Score has plateaued \u2014 if you suspect desloppify is missing patterns or not capturing something it should, file an issue at https://github.com/peteromalley/desloppify/issues describing what you expected. Gaps in detection are a common cause of stagnation.",
+        "command": null,
+        "priority": 3,
+        "severity": "low"
       },
       {
         "type": "report_scores",
@@ -1303,8 +1555,10 @@
       }
     ],
     "reminder_history": {
-      "zone_classification": 1,
-      "report_scores": 1
+      "zone_classification": 3,
+      "report_scores": 3,
+      "feedback_nudge": 2,
+      "stagnant_nudge": 23
     }
   },
   "config": {

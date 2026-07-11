@@ -48,9 +48,7 @@ def _get_dashboard_stats(request):
     if user.is_staff or user.is_superuser:
         base_qs = SourceDocument.objects.all()
     else:
-        base_qs = SourceDocument.objects.filter(
-            Q(uploaded_by=user) | Q(uploaded_by__isnull=True)
-        ).distinct()
+        base_qs = SourceDocument.objects.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True)).distinct()
 
     monthly_live = base_qs.filter(created_at__gte=first_of_month).aggregate(total=Sum("cost_usd"))["total"] or Decimal(
         "0.0"
@@ -58,6 +56,7 @@ def _get_dashboard_stats(request):
 
     # Add cost of documents that were deleted this month (persisted in MonthlySpendLog)
     from extractor.models import MonthlySpendLog
+
     monthly_logged = MonthlySpendLog.total_for_month(now.year, now.month)
     monthly_spent = monthly_live + monthly_logged
 
@@ -134,9 +133,11 @@ class DashboardView(LoginRequiredMixin, View):
         if request.user.is_staff or request.user.is_superuser:
             docs = SourceDocument.objects.order_by(db_sort)
         else:
-            docs = SourceDocument.objects.filter(
-                Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True)
-            ).distinct().order_by(db_sort)
+            docs = (
+                SourceDocument.objects.filter(Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True))
+                .distinct()
+                .order_by(db_sort)
+            )
         stats = _get_dashboard_stats(request)
 
         # Render lists with pre-calculated formatting
@@ -326,7 +327,8 @@ class UploadView(LoginRequiredMixin, View):
                         if existing_doc.uploaded_by == request.user:
                             # User already has this file in their library! No need to clone/copy it.
                             logger.info(
-                                "[Deduplication] User already has completed document with hash %s. Reusing without copy.", file_hash
+                                "[Deduplication] User already has completed document with hash %s. Reusing without copy.",
+                                file_hash,
                             )
                             return {"status": "cached", "name": orig_name}
 
@@ -417,6 +419,7 @@ class DocumentDetailView(LoginRequiredMixin, View):
                 import yaml
 
                 from extractor.tasks import _sanitise_yaml_block
+
                 try:
                     meta_raw = yaml.safe_load(doc.yaml_metadata)
                 except Exception:
@@ -608,6 +611,7 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
         # Delete all chunks JSON files in storage
         try:
             from django.core.files.storage import default_storage
+
             dirs, files = default_storage.listdir("chunks")
             for f in files:
                 default_storage.delete(f"chunks/{f}")
@@ -847,9 +851,11 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
         if request.user.is_staff or request.user.is_superuser:
             docs = SourceDocument.objects.order_by("-created_at")
         else:
-            docs = SourceDocument.objects.filter(
-                Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True)
-            ).distinct().order_by("-created_at")
+            docs = (
+                SourceDocument.objects.filter(Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True))
+                .distinct()
+                .order_by("-created_at")
+            )
         stats = _get_dashboard_stats(request)
 
         # Build status map for all documents (limited to recent 100)
@@ -921,7 +927,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
             messages.error(request, "Permission denied to retry this document.")
             return redirect("dashboard")
 
-        is_restart = (doc.status == "COMPLETED")
+        is_restart = doc.status == "COMPLETED"
 
         if not is_restart and doc.retry_count >= 3:
             if (
@@ -1222,9 +1228,7 @@ def register_view(request):
 
         email_lower = email.lower()
         if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
-            messages.error(
-                request, "Registration of administrative or system email addresses is not permitted."
-            )
+            messages.error(request, "Registration of administrative or system email addresses is not permitted.")
             return render(request, "extractor/register.html")
 
         # Validate email format

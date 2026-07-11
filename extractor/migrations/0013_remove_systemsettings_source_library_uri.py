@@ -4,7 +4,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("extractor", "0012_sourcedocument_retry_count_alter_sourcedocument_uuid"),
     ]

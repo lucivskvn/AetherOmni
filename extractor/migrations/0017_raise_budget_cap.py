@@ -23,7 +23,6 @@ def noop(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("extractor", "0016_monthlyspendlog"),
     ]
