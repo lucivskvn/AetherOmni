@@ -207,48 +207,28 @@ class TemplateFiltersTestCase(TestCase):
         self.assertEqual(format_compact_tokens(None), "0")
         self.assertEqual(format_compact_tokens("invalid"), "0")
 
-    def test_normalize_language(self):
-        from extractor.templatetags.extractor_filters import normalize_language
+    def test_replace_underscore(self):
+        from extractor.templatetags.extractor_filters import replace_underscore
 
-        # 1. Happy path: exact dictionary matches
-        self.assertEqual(normalize_language("ar"), "Arabic")
-        self.assertEqual(normalize_language("ara"), "Arabic")
-        self.assertEqual(normalize_language("arabic"), "Arabic")
-        self.assertEqual(normalize_language("id"), "Indonesian")
-        self.assertEqual(normalize_language("bahasa"), "Indonesian")
-        self.assertEqual(normalize_language("zh-hans"), "Chinese (Simplified)")
-        self.assertEqual(normalize_language("unknown"), "Unknown")
+        # Happy paths
+        self.assertEqual(replace_underscore("hello_world"), "hello world")
+        self.assertEqual(replace_underscore("multiple_words_with_underscores"), "multiple words with underscores")
 
-        # 2. Whitespace padding and stripping
-        self.assertEqual(normalize_language("  ar  "), "Arabic")
-        self.assertEqual(normalize_language(" \n id \t"), "Indonesian")
-        self.assertEqual(normalize_language("\tbahasa\r\n"), "Indonesian")
+        # Falsy and None inputs
+        self.assertEqual(replace_underscore(None), "")
+        self.assertEqual(replace_underscore(""), "")
+        self.assertEqual(replace_underscore([]), "")
 
-        # 3. Case-insensitivity (mixed cases)
-        self.assertEqual(normalize_language("ArAbIc"), "Arabic")
-        self.assertEqual(normalize_language("BaHaSa"), "Indonesian")
-        self.assertEqual(normalize_language("ZH-hant"), "Chinese (Traditional)")
+        # Strings with no underscores
+        self.assertEqual(replace_underscore("hello"), "hello")
+        self.assertEqual(replace_underscore("hello world"), "hello world")
 
-        # 4. Graceful fallbacks (fallback to Title Case for unmapped strings)
-        self.assertEqual(normalize_language("esperanto"), "Esperanto")
-        self.assertEqual(normalize_language("  klingon  "), "Klingon")
-        self.assertEqual(normalize_language("LATIN-1"), "Latin-1")
+        # Consecutive underscores
+        self.assertEqual(replace_underscore("hello__world"), "hello  world")
 
-        # 5. Falsy, empty, and None cases
-        self.assertEqual(normalize_language(""), "Unknown")
-        self.assertEqual(normalize_language(None), "Unknown")
-        self.assertEqual(normalize_language("   "), "Unknown")
-
-        # 6. Non-string types (should be stringified safely)
-        self.assertEqual(normalize_language(123), "123")
-        self.assertEqual(normalize_language(0), "Unknown")
-        self.assertEqual(normalize_language(False), "Unknown")
-
-        class CustomStrObj:
-            def __str__(self):
-                return "custom_lang"
-
-        self.assertEqual(normalize_language(CustomStrObj()), "Custom Lang")
+        # Non-string inputs
+        self.assertEqual(replace_underscore(123456), "123456")
+        self.assertEqual(replace_underscore(True), "True")
 
 
 # AdminTestCase removed since DocumentChunk model has been retired.
@@ -500,9 +480,7 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
         client = get_vertex_client()
         self.assertIsNotNone(client)
-        mock_client_init.assert_called_once_with(
-            vertexai=True, project="my-test-project", location="us-east4"
-        )
+        mock_client_init.assert_called_once_with(vertexai=True, project="my-test-project", location="us-east4")
 
     @patch("extractor.llm_gateway.settings")
     @patch("extractor.llm_gateway.os.getenv")
@@ -518,7 +496,9 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
     @patch("extractor.llm_gateway.get_vertex_client_for_location")
     @patch("time.sleep")
-    def test_execute_generate_content_with_fallback_cascades_to_vertex(self, mock_sleep, mock_get_vertex_client_for_location):
+    def test_execute_generate_content_with_fallback_cascades_to_vertex(
+        self, mock_sleep, mock_get_vertex_client_for_location
+    ):
         from extractor.llm_gateway import execute_generate_content_with_fallback
 
         # Mock AI Studio client to raise a 429 Rate Limit error
@@ -576,6 +556,7 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         try:
             with patch("google.genai.types.Part.from_bytes") as mock_from_bytes:
                 from google.genai import types
+
                 mock_part = types.Part(inline_data=types.Blob(data=b"PDF-1.5 mock data", mime_type="application/pdf"))
                 mock_from_bytes.return_value = mock_part
 
@@ -602,7 +583,9 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
     @patch("extractor.llm_gateway.get_vertex_client_for_location")
     @patch("google.genai.Client")
     @patch("time.sleep")
-    def test_execute_embed_content_with_fallback_cascades(self, mock_sleep, mock_client_init, mock_get_vertex_client_for_location, mock_settings):
+    def test_execute_embed_content_with_fallback_cascades(
+        self, mock_sleep, mock_client_init, mock_get_vertex_client_for_location, mock_settings
+    ):
         mock_settings.GEMINI_API_KEY = "valid-api-key"
         from extractor.llm_gateway import execute_embed_content_with_fallback
 
