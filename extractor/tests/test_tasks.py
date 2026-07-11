@@ -1,4 +1,5 @@
 import os
+from datetime import UTC
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -94,12 +95,10 @@ class ResilienceAndSafetyTestCase(TestCase):
     def test_reap_stale_tasks(self, mock_now):
         from datetime import datetime, timedelta
 
-        import pytz
-
         from extractor.tasks import reap_stale_tasks
 
         # Set base time to 2026-06-19 12:00:00 UTC
-        base_time = datetime(2026, 6, 19, 12, 0, 0, tzinfo=pytz.UTC)
+        base_time = datetime(2026, 6, 19, 12, 0, 0, tzinfo=UTC)
         mock_now.return_value = base_time
 
         # 1. Stuck task (> 15 minutes ago)

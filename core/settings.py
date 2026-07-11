@@ -1,4 +1,5 @@
 import logging
+import logging.config
 import os
 import sys
 from pathlib import Path
@@ -15,7 +16,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load .env file
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-logger = logging.getLogger(__name__)
 
 TESTING = "test" in sys.argv
 SURREALDB_OFFLINE = TESTING
@@ -24,6 +24,56 @@ SURREALDB_OFFLINE = TESTING
 # ── Core Security ──────────────────────────────────────────────────────────────
 
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in ("true", "1", "t")
+
+# ── Logging Configuration ─────────────────────────────────────────────────────
+LOGGING_LEVEL = "INFO" if DEBUG else "WARNING"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+            "level": LOGGING_LEVEL,
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": LOGGING_LEVEL,
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": LOGGING_LEVEL,
+            "propagate": False,
+        },
+        "urllib3": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "httpx": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "google": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
+
+logging.config.dictConfig(LOGGING)
+logger = logging.getLogger(__name__)
+
 
 _raw_secret = os.getenv("DJANGO_SECRET_KEY", "")
 if not _raw_secret:
@@ -164,11 +214,10 @@ else:
     DEFAULT_STORAGE_BACKEND = "django.core.files.storage.FileSystemStorage"
     # Gap I-7: warn operators that local storage is ephemeral on Cloud Run
     if not DEBUG:
-        print(
-            "[WARN][Storage] GS_BUCKET_NAME is not set in production. "
+        logger.warning(
+            "[Storage] GS_BUCKET_NAME is not set in production. "
             "Files will be stored on the local filesystem and will be LOST on container restart. "
-            "Configure a GCS bucket for persistent file storage.",
-            file=sys.stderr,
+            "Configure a GCS bucket for persistent file storage."
         )
 
 STORAGES = {
@@ -182,11 +231,11 @@ if GS_BUCKET_NAME:
     GS_EXPIRATION = 900  # 15-minute signed URLs
     MEDIA_URL = "/media/"
     MEDIA_ROOT = os.path.join(BASE_DIR, "media")
-    print(f"[Storage] Using Google Cloud Storage private bucket: {GS_BUCKET_NAME}")
+    logger.info(f"[Storage] Using Google Cloud Storage private bucket: {GS_BUCKET_NAME}")
 else:
     MEDIA_URL = "/media/"
     MEDIA_ROOT = os.path.join(BASE_DIR, "media")
-    print("[Storage] Cloud Storage not configured. Falling back to local file storage.")
+    logger.info("[Storage] Cloud Storage not configured. Falling back to local file storage.")
 
 
 # ── Caching (LocMemCache — KV data lives in SurrealDB) ────────────────────────
@@ -299,9 +348,9 @@ if not DEBUG:
     if not CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append("https://*.run.app")
 
-    print(f"[Security] Production OWASP enforcement active. CSRF Trusted Origins: {CSRF_TRUSTED_ORIGINS}")
+    logger.info(f"[Security] Production OWASP enforcement active. CSRF Trusted Origins: {CSRF_TRUSTED_ORIGINS}")
 else:
-    print(f"[Security] Development security active. CSRF Trusted Origins: {CSRF_TRUSTED_ORIGINS}")
+    logger.info(f"[Security] Development security active. CSRF Trusted Origins: {CSRF_TRUSTED_ORIGINS}")
 
 
 # ── Operational Settings ───────────────────────────────────────────────────────
@@ -327,51 +376,3 @@ LOGOUT_REDIRECT_URL = "login"
 # ── Primary Key Field ─────────────────────────────────────────────────────────
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-
-# ── Logging Configuration ─────────────────────────────────────────────────────
-
-LOGGING_LEVEL = "INFO" if DEBUG else "WARNING"
-
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "simple": {
-            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "simple",
-            "level": LOGGING_LEVEL,
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": LOGGING_LEVEL,
-    },
-    "loggers": {
-        "django": {
-            "handlers": ["console"],
-            "level": LOGGING_LEVEL,
-            "propagate": False,
-        },
-        "urllib3": {
-            "handlers": ["console"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        "httpx": {
-            "handlers": ["console"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        "google": {
-            "handlers": ["console"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-    },
-}
