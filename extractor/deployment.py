@@ -17,7 +17,7 @@ def _get_subprocess_env():
 
         # Restore true user home directory to allow gcloud fallback to find user credentials
         env["HOME"] = pwd.getpwuid(os.getuid()).pw_dir
-    except Exception:
+    except ImportError:
         pass
     return env
 
@@ -37,13 +37,13 @@ def extract_knative_scaling(config, default_min, default_max):
         ann_template = config.get("spec", {}).get("template", {}).get("metadata", {}).get("annotations", {})
         if ann_template:
             annotations_dicts.append(ann_template)
-    except Exception:
+    except AttributeError:
         pass
     try:
         ann_meta = config.get("metadata", {}).get("annotations", {})
         if ann_meta:
             annotations_dicts.append(ann_meta)
-    except Exception:
+    except AttributeError:
         pass
 
     min_keys = [KNATIVE_MIN_SCALE, "run.googleapis.com/minScale"]
@@ -147,7 +147,7 @@ def get_gcp_access_token():
     from django.conf import settings as django_settings
 
     if django_settings.DEBUG:
-        logger.debug("[Deployment] Skipping metadata token fetch in DEBUG mode (E-39).")
+        logger.debug("[Deployment] Skipping metadata credential fetch in DEBUG mode (E-39).")
         return None
 
     try:

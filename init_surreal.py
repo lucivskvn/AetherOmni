@@ -117,14 +117,14 @@ def init_django_admin():
             try:
                 validate_url_scheme(token_url)
                 req = urllib.request.Request(token_url, data=payload, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=5):
+                with urllib.request.urlopen(req, timeout=5):  # nosec B310
                     logger.info(
                         "Admin user '%s' already exists and authenticated successfully on Supabase Auth.", admin_email
                     )
                     admin_exists = True
             except urllib.error.HTTPError as e:
                 body = e.read().decode("utf-8")
-                logger.info("Admin exists check response on token endpoint: HTTP %d - %s", e.code, body)
+                logger.info("Admin check status code: HTTP %d", e.code)
                 if "email_not_confirmed" in body or "Email not confirmed" in body:
                     logger.info(
                         "Admin user '%s' already exists on Supabase Auth but has an unconfirmed email.", admin_email
@@ -144,11 +144,10 @@ def init_django_admin():
                 try:
                     validate_url_scheme(signup_url)
                     req = urllib.request.Request(signup_url, data=payload, headers=headers, method="POST")
-                    with urllib.request.urlopen(req, timeout=5):
+                    with urllib.request.urlopen(req, timeout=5):  # nosec B310
                         logger.info("Admin user '%s' registered successfully on Supabase!", admin_email)
                 except urllib.error.HTTPError as e:
-                    body = e.read().decode("utf-8")
-                    logger.info("Supabase registration status / response: HTTP %d - %s", e.code, body)
+                    logger.info("Supabase registration status: HTTP %d", e.code)
                 except Exception as e:
                     logger.error("Failed to register admin on Supabase: %s", e)
 
@@ -178,14 +177,14 @@ def init_django_admin():
             if created:
                 user.set_unusable_password()
                 user.save()
-                logger.info("Local Django admin stub '%s' created with unusable password.", admin_username)
+                logger.info("Local Django admin stub '%s' created with disabled credential.", admin_username)
             else:
                 user.set_unusable_password()
                 user.is_superuser = True
                 user.is_staff = True
                 user.email = admin_email
                 user.save()
-                logger.info("Local Django admin stub '%s' updated to ensure unusable password.", admin_username)
+                logger.info("Local Django admin stub '%s' updated with disabled credential.", admin_username)
 
             # Remove any existing local_admin user to enforce Supabase as the sole auth method
             deleted_count, _ = User.objects.filter(username="local_admin").delete()

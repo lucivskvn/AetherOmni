@@ -147,7 +147,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                             "prompt": str(prompt_val),
                             "completion": str(completion_val),
                         }
-                    except Exception:
+                    except (TypeError, ValueError):
                         continue
 
                 # Cache for 24 hours in SurrealDB and Django cache
@@ -266,7 +266,7 @@ def _get_openrouter_api_key() -> str:
 
             key = SystemSettings.get_settings().openrouter_api_key.strip()
         except Exception:
-            pass
+            key = ""
     return key
 
 

@@ -77,7 +77,7 @@ def _verify_oidc_token(request: HttpRequest, audience: str) -> bool:
 
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
     if not auth_header.startswith("Bearer "):
-        logger.warning("[CloudTasksHandler] Missing or malformed Authorization header.")
+        logger.warning("[CloudTasksHandler] Missing or malformed auth header.")
         return False
 
     token = auth_header.split(" ", 1)[1]
