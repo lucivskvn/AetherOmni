@@ -1041,6 +1041,42 @@ class BulkDocumentActionTestCase(TestCase):
         # Verify they are deleted from DB
         self.assertEqual(SourceDocument.objects.filter(id__in=[self.doc1.id, self.doc2.id]).count(), 0)
 
+    @patch("django.core.files.storage.default_storage.exists", return_value=False)
+    @patch("django.core.files.storage.default_storage.delete")
+    @patch("extractor.surreal_db.delete_chunks")
+    def test_bulk_delete_query_efficiency_and_deduplication(
+        self, mock_delete_chunks, mock_storage_delete, mock_storage_exists
+    ):
+        self.client.login(username=self.username, password=self.password)
+
+        # Create 10 documents with the same file hash
+        docs = []
+        for i in range(10):
+            docs.append(
+                SourceDocument.objects.create(
+                    original_filename=f"doc_same_{i}.pdf",
+                    file_hash="shared_hash_123",
+                    title=f"Doc Same {i}",
+                    status="COMPLETED",
+                    uploaded_by=self.user,
+                )
+            )
+
+        doc_ids = [d.id for d in docs]
+
+        with self.assertNumQueries(57):
+            response = self.client.post(
+                reverse("bulk_action"),
+                {
+                    "action": "delete",
+                    "selected_documents": doc_ids,
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+
+        # Verify they are all deleted from DB
+        self.assertEqual(SourceDocument.objects.filter(id__in=doc_ids).count(), 0)
+
 
 class CoreDesignHardeningTests(TestCase):
     def setUp(self):

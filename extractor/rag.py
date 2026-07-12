@@ -425,7 +425,6 @@ def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
     this function regenerates the chunks and embeddings on-the-fly and saves them to GCS.
     """
     import json
-    import uuid
 
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
@@ -461,52 +460,38 @@ def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
 
     for doc_uuid_str in missing_uuids:
         try:
-            # 2. Check GCS storage JSON
-            path = f"chunks/{doc_uuid_str}.json"
-            if default_storage.exists(path):
-                logger.info(f"[Surreal Sync] Chunks JSON found in storage for {doc_uuid_str}. Loading...")
-                with default_storage.open(path, "r") as f:
-                    payloads = json.loads(f.read())
+            doc = SourceDocument.objects.get(uuid=doc_uuid)
+        except SourceDocument.DoesNotExist:
+            return
+
+        if doc.status == "COMPLETED" and doc.refined_markdown:
+            logger.info(f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks...")
+            lang = (doc.language or "").lower()
+            chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
+            from extractor.rag import generate_surreal_embeddings
+            from extractor.tasks import chunk_document_semantically
+
+            chunks = chunk_document_semantically(doc.refined_markdown, max_chunk_size=chunk_size)
+            if chunks:
+                embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
+                payloads = [
+                    {
+                        "chunk_index": i,
+                        "content": chunk_text,
+                        "token_count": len(chunk_text.split()),
+                        "language": doc.language or "",
+                        "embedding": emb,
+                    }
+                    for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
+                ]
+                # Save to SurrealDB
                 surreal_db.recreate_chunks(doc_uuid_str, payloads)
-                logger.info(f"[Surreal Sync] Restored {len(payloads)} chunks for document {doc_uuid_str} from storage.")
-                continue
-
-            # 3. If JSON is missing but document is COMPLETED, regenerate chunks and embeddings
-            try:
-                doc = SourceDocument.objects.get(uuid=doc_uuid_str)
-            except SourceDocument.DoesNotExist:
-                continue
-
-            if doc.status == "COMPLETED" and doc.refined_markdown:
+                # Save to storage JSON
+                default_storage.save(path, ContentFile(json.dumps(payloads).encode("utf-8")))
                 logger.info(
-                    f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks..."
+                    f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."
                 )
-                lang = (doc.language or "").lower()
-                chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
-                from extractor.rag import generate_surreal_embeddings
-                from extractor.tasks import chunk_document_semantically
-
-                chunks = chunk_document_semantically(doc.refined_markdown, max_chunk_size=chunk_size)
-                if chunks:
-                    embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
-                    payloads = [
-                        {
-                            "chunk_index": i,
-                            "content": chunk_text,
-                            "token_count": len(chunk_text.split()),
-                            "language": doc.language or "",
-                            "embedding": emb,
-                        }
-                        for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
-                    ]
-                    # Save to SurrealDB
-                    surreal_db.recreate_chunks(doc_uuid_str, payloads)
-                    # Save to storage JSON
-                    default_storage.save(path, ContentFile(json.dumps(payloads).encode("utf-8")))
-                    logger.info(
-                        f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."
-                    )
-            else:
-                logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.status}, skipping sync.")
-        except Exception as exc:
-            logger.warning(f"[Surreal Sync] Failed to ensure chunks for {doc_uuid_str}: {exc}")
+        else:
+            logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.status}, skipping sync.")
+    except Exception as exc:
+        logger.warning(f"[Surreal Sync] Failed to ensure chunks for {doc_uuid}: {exc}")

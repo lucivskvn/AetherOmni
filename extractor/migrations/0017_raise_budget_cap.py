@@ -3,6 +3,7 @@ One-time data migration to raise the monthly budget cap to $50 USD.
 This unblocks processing without requiring a manual settings change.
 The cap can be re-adjusted any time via the Console Settings panel.
 """
+
 from decimal import Decimal
 
 from django.db import migrations
