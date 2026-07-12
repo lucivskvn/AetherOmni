@@ -75,8 +75,8 @@ def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-
     Results are stored in SurrealDB chunks via surreal_db.recreate_chunks.
     Reuse existing vectors from SurrealDB if they exist to avoid Gemini costs.
     """
-    from extractor.llm_gateway import execute_embed_content_with_fallback
     from extractor import surreal_db
+    from extractor.llm_gateway import execute_embed_content_with_fallback
 
     logger.info("[Embeddings] Fetching embeddings for %s chunks...", len(chunks_list))
 
@@ -92,7 +92,7 @@ def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-
                 cached_vector = surreal_db.find_chunk_embedding(cleaned_text)
             except Exception as e:
                 logger.debug("[Embeddings Cache] Failed to look up chunk embedding: %s", e)
-        
+
         if cached_vector:
             final_embeddings[idx] = cached_vector
         else:
@@ -145,7 +145,11 @@ def _fetch_user_memories_block(user: Any, query_embedding: list[float]) -> str:
         if db_count == 0:
             pg_memories = UserMemory.objects.filter(user=user)
             if pg_memories.exists():
-                logger.info("[Memories Sync] Restoring %s memories from PostgreSQL to SurrealDB for user %s...", pg_memories.count(), user.username)
+                logger.info(
+                    "[Memories Sync] Restoring %s memories from PostgreSQL to SurrealDB for user %s...",
+                    pg_memories.count(),
+                    user.username,
+                )
                 for mem in pg_memories:
                     try:
                         surreal_db.add_user_memory(str(user.id), mem.memory_text, mem.embedding)
@@ -296,6 +300,7 @@ def query_semantic_knowledge_rag(
     else:
         # For admins/superusers (allowed_uuids is None), ensure chunks are loaded for all completed documents
         from extractor.models import SourceDocument
+
         all_uuids = SourceDocument.objects.filter(status="COMPLETED").values_list("uuid", flat=True)
         for doc_uuid in all_uuids:
             ensure_document_chunks_loaded(doc_uuid)
@@ -422,8 +427,10 @@ def ensure_document_chunks_loaded(doc_uuid: Any) -> None:
     this function regenerates the chunks and embeddings on-the-fly and saves them to GCS.
     """
     import json
-    from django.core.files.storage import default_storage
+
     from django.core.files.base import ContentFile
+    from django.core.files.storage import default_storage
+
     from extractor import surreal_db
     from extractor.models import SourceDocument
 
@@ -453,8 +460,8 @@ def ensure_document_chunks_loaded(doc_uuid: Any) -> None:
             logger.info(f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks...")
             lang = (doc.language or "").lower()
             chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
-            from extractor.tasks import chunk_document_semantically
             from extractor.rag import generate_surreal_embeddings
+            from extractor.tasks import chunk_document_semantically
 
             chunks = chunk_document_semantically(doc.refined_markdown, max_chunk_size=chunk_size)
             if chunks:
@@ -473,7 +480,9 @@ def ensure_document_chunks_loaded(doc_uuid: Any) -> None:
                 surreal_db.recreate_chunks(doc_uuid_str, payloads)
                 # Save to storage JSON
                 default_storage.save(path, ContentFile(json.dumps(payloads).encode("utf-8")))
-                logger.info(f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}.")
+                logger.info(
+                    f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."
+                )
         else:
             logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.status}, skipping sync.")
     except Exception as exc:

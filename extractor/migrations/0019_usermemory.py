@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("extractor", "0018_systemsettings_openrouter_api_key"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

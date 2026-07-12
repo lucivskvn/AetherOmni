@@ -72,9 +72,7 @@ class ViewsTestCase(TestCase):
         )
 
     def test_save_settings_view_post_invalid_budget(self):
-        response = self.client.post(
-            reverse("save_settings"), {"monthly_budget_usd": "-10.00"}
-        )
+        response = self.client.post(reverse("save_settings"), {"monthly_budget_usd": "-10.00"})
         self.assertEqual(response.status_code, 302)
         # Verify it didn't change to negative
         settings_refreshed = SystemSettings.get_settings()
@@ -428,7 +426,6 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
         DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = False
 
     def test_dynamic_csrf_middleware_adds_origin(self):
-
         # Backup the current CSRF_TRUSTED_ORIGINS
         original_origins = list(settings.CSRF_TRUSTED_ORIGINS)
 
@@ -898,8 +895,6 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
 class SecurityAuthTestCase(TestCase):
     """Verifies that various authentication, registration, recovery, and settings input checks are secure."""
 
-
-
     def test_register_view_rejects_reserved_emails(self):
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
             # Register user with admin@
@@ -958,6 +953,7 @@ class SecurityAuthTestCase(TestCase):
     def test_supabase_admin_promotion_security(self, mock_urlopen):
         # Mock successful login response from Supabase for a normal user email but trying to log in as "admin"
         import json
+
         from extractor.auth import SupabaseAuthBackend
 
         # User email is not admin@<domain>
@@ -1045,15 +1041,49 @@ class BulkDocumentActionTestCase(TestCase):
         # Verify they are deleted from DB
         self.assertEqual(SourceDocument.objects.filter(id__in=[self.doc1.id, self.doc2.id]).count(), 0)
 
+    @patch("django.core.files.storage.default_storage.exists", return_value=False)
+    @patch("django.core.files.storage.default_storage.delete")
+    @patch("extractor.surreal_db.delete_chunks")
+    def test_bulk_delete_query_efficiency_and_deduplication(
+        self, mock_delete_chunks, mock_storage_delete, mock_storage_exists
+    ):
+        self.client.login(username=self.username, password=self.password)
+
+        # Create 10 documents with the same file hash
+        docs = []
+        for i in range(10):
+            docs.append(
+                SourceDocument.objects.create(
+                    original_filename=f"doc_same_{i}.pdf",
+                    file_hash="shared_hash_123",
+                    title=f"Doc Same {i}",
+                    status="COMPLETED",
+                    uploaded_by=self.user,
+                )
+            )
+
+        doc_ids = [d.id for d in docs]
+
+        with self.assertNumQueries(57):
+            response = self.client.post(
+                reverse("bulk_action"),
+                {
+                    "action": "delete",
+                    "selected_documents": doc_ids,
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+
+        # Verify they are all deleted from DB
+        self.assertEqual(SourceDocument.objects.filter(id__in=doc_ids).count(), 0)
+
 
 class CoreDesignHardeningTests(TestCase):
     def setUp(self):
         self.username = "test_user_hardening"
         self.email = "test_hardening@example.com"
         self.password = "Secr3tPass!"
-        self.user = User.objects.create_user(
-            username=self.username, email=self.email, password=self.password
-        )
+        self.user = User.objects.create_user(username=self.username, email=self.email, password=self.password)
         self.client.login(username=self.username, password=self.password)
 
     def test_openrouter_api_key_masked_property(self):
