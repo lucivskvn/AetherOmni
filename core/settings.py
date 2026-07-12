@@ -8,7 +8,7 @@ from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Ensure all libraries look up /tmp as home (Cloud Run write sandbox)
-os.environ["HOME"] = "/tmp"  # NOSONAR
+os.environ["HOME"] = "/tmp"  # nosec B108 # NOSONAR
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -82,9 +82,12 @@ if not _raw_secret:
         raise ImproperlyConfigured(
             "DJANGO_SECRET_KEY environment variable is not set. Production deployments require an explicit secret key."
         )
-    _raw_secret = "django-insecure-local-dev-key-do-not-use-in-prod"  # nosec B106
+    _raw_secret = "django-insecure-local-dev-key-do-not-use-in-prod"  # nosec B105 B106
 
 SECRET_KEY = _raw_secret
+
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 
 # ALLOWED_HOSTS configuration
 django_allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,*.run.app")

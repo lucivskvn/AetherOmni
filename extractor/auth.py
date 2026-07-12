@@ -13,6 +13,88 @@ from extractor.utils import APPLICATION_JSON
 logger = logging.getLogger(__name__)
 
 
+def _resolve_target_email(username: str, supabase_url: str) -> tuple[str, bool]:
+    """
+    Map a non-email username to a full email address.
+    Returns (target_email, is_admin_check). Returns ("", False) if no mapping exists.
+    """
+    from urllib.parse import urlparse
+    from django.conf import settings
+
+    admin_username = getattr(settings, "ADMIN_USERNAME", "admin")
+    admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
+
+    if username == admin_username:
+        if admin_username == "admin":
+            parsed = urlparse(supabase_url)
+            domain = parsed.netloc if parsed.netloc else "example.com"
+            return f"admin@{domain}", True
+        else:
+            return admin_email, True
+    return "", False
+
+
+def _sync_supabase_user(
+    request: HttpRequest | None,
+    resp_data: dict,
+    supabase_url: str,
+    username: str | None,
+    is_admin_check: bool,
+) -> User:
+    """
+    Retrieve or create a Django User from a successful Supabase auth response.
+    Promotes to superuser/staff if the email matches the Supabase admin address.
+    Stores the Supabase user_id in the session (Gap E-43).
+    """
+    import hashlib
+    from urllib.parse import urlparse
+    from django.conf import settings
+
+    user_info = resp_data.get("user", {})
+    user_email = user_info.get("email", username)
+
+    # Generate clean local Django username (prefix of email)
+    django_username = user_email.split("@")[0]
+
+    # Ensure username is unique to prevent collisions with other domains sharing the same prefix
+    existing_user = User.objects.filter(username=django_username).first()
+    if existing_user and existing_user.email != user_email:
+        email_hash = hashlib.sha256(user_email.encode("utf-8")).hexdigest()[:8]
+        django_username = f"{django_username}_{email_hash}"
+
+    # Retrieve or instantiate standard Django User account
+    user, created = User.objects.get_or_create(
+        email=user_email, defaults={"username": django_username, "is_active": True}
+    )
+
+    parsed_url = urlparse(supabase_url)
+    domain = parsed_url.netloc if parsed_url.netloc else "example.com"
+    expected_admin_email = f"admin@{domain}"
+    admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
+
+    is_promoted_admin = (
+        (is_admin_check and user_email.lower() == expected_admin_email.lower())
+        or (user_email.lower() == admin_email.lower())
+    )
+    if is_promoted_admin:
+        user.is_superuser = True
+        user.is_staff = True
+
+    if created or is_promoted_admin:
+        user.set_unusable_password()
+        user.save()
+        logger.info("[Auth] Django sync account created/updated for Supabase admin/user: %s", user_email)
+    else:
+        logger.info("[Auth] Supabase user session established: %s", user_email)
+
+    # Gap E-43: store Supabase user_id on the request session for audit log linkage
+    supabase_user_id = user_info.get("id", "")
+    if request and supabase_user_id:
+        request.session["supabase_user_id"] = supabase_user_id
+
+    return user
+
+
 class SupabaseAuthBackend(ModelBackend):
     """
     Custom server-side authentication backend that authenticates credentials against
@@ -41,17 +123,8 @@ class SupabaseAuthBackend(ModelBackend):
         target_email = (username or "").strip()
         is_admin_check = False
         if "@" not in target_email:
-            if target_email == "admin":
-                from urllib.parse import urlparse
-
-                parsed = urlparse(supabase_url)
-                domain = parsed.netloc if parsed.netloc else "example.com"
-                target_email = f"admin@{domain}"
-                is_admin_check = True
-            elif target_email == "elang":
-                target_email = "elang@fainko.co.id"
-                is_admin_check = True
-            else:
+            target_email, is_admin_check = _resolve_target_email(target_email, supabase_url)
+            if not target_email:
                 local_user = super().authenticate(request, username, password, **kwargs)
                 if local_user:
                     logger.info(f"[Auth] Local user authenticated: {username}")
@@ -77,52 +150,7 @@ class SupabaseAuthBackend(ModelBackend):
             req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
                 resp_data = json.loads(response.read().decode("utf-8"))
-
-                user_info = resp_data.get("user", {})
-                user_email = user_info.get("email", username)
-
-                # Generate clean local Django username (prefix of email)
-                django_username = user_email.split("@")[0]
-
-                # Ensure username is unique to prevent collisions with other domains sharing the same prefix
-                existing_user = User.objects.filter(username=django_username).first()
-                if existing_user and existing_user.email != user_email:
-                    import hashlib
-
-                    email_hash = hashlib.sha256(user_email.encode("utf-8")).hexdigest()[:8]
-                    django_username = f"{django_username}_{email_hash}"
-
-                # Retrieve or instantiate standard Django User account
-                user, created = User.objects.get_or_create(
-                    email=user_email, defaults={"username": django_username, "is_active": True}
-                )
-
-                from urllib.parse import urlparse
-
-                parsed_url = urlparse(supabase_url)
-                domain = parsed_url.netloc if parsed_url.netloc else "example.com"
-                expected_admin_email = f"admin@{domain}"
-
-                is_promoted_admin = (is_admin_check and user_email.lower() == expected_admin_email.lower()) or (
-                    user_email.lower() == "elang@fainko.co.id"
-                )
-                if is_promoted_admin:
-                    user.is_superuser = True
-                    user.is_staff = True
-
-                if created or is_promoted_admin:
-                    user.set_unusable_password()
-                    user.save()
-                    logger.info("[Auth] Django sync account created/updated for Supabase admin/user: %s", user_email)
-                else:
-                    logger.info("[Auth] Supabase user session established: %s", user_email)
-
-                # Gap E-43: store Supabase user_id on the request session for audit log linkage
-                supabase_user_id = user_info.get("id", "")
-                if request and supabase_user_id:
-                    request.session["supabase_user_id"] = supabase_user_id
-
-                return user
+                return _sync_supabase_user(request, resp_data, supabase_url, username, is_admin_check)
 
         except urllib.error.HTTPError as e:
             # Handle standard login credential mismatches (400 Bad Request) from Supabase GoTrue

@@ -1,6 +1,7 @@
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.contrib import messages
@@ -8,21 +9,20 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
-from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_http_methods
+
+if TYPE_CHECKING:  # nosonar
+    # Statically import ingest_sources to satisfy desloppify importer analyzer
+    import extractor.management.commands.ingest_sources  # noqa: F401
+
 from django.views import View
 
 logger = logging.getLogger(__name__)
 
 TEMPLATE_REGISTER = "extractor/register.html"
-TEMPLATE_FORGOT_PASSWORD = "extractor/forgot_password.html"
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    # Statically import ingest_sources to satisfy desloppify importer analyzer
-    import extractor.management.commands.ingest_sources  # noqa: F401
+TEMPLATE_FORGOT_PASSWORD = "extractor/forgot_password.html"  # nosec B105
 
 from extractor.models import AuditAction, AuditLog, SourceDocument, SystemSettings
 from extractor.utils import (
@@ -686,6 +686,101 @@ class ExportZipView(LoginRequiredMixin, View):
             return redirect("dashboard")
 
 
+def _handle_bulk_restart(request, document_ids):
+    from extractor import cloud_tasks
+    from extractor.models import SourceDocument
+
+    docs = SourceDocument.objects.filter(id__in=document_ids)
+    restarted_count = 0
+    for doc in docs:
+        # Access boundary check
+        if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
+            continue
+
+        if doc.status in ["FAILED", "COMPLETED"]:
+            doc.status = "PENDING"
+            doc.retry_count = 0
+            doc.error_message = ""
+            doc.save()
+            # Enqueue inside transaction.on_commit to ensure task runs after commit
+            transaction.on_commit(lambda d_id=doc.id: cloud_tasks.enqueue("process_document", {"document_id": d_id}))
+            restarted_count += 1
+    messages.success(request, f"Successfully queued {restarted_count} tasks for reprocessing.")
+
+
+def _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db):
+    from extractor.models import AuditAction
+    from extractor.utils import get_client_ip, log_audit_event
+
+    file_hash = doc.file_hash
+    orig_name = doc.original_filename
+
+    total_refs = hash_ref_counts.get(file_hash, 0)
+    shared_references = max(0, total_refs - 1)
+
+    if file_hash in hash_ref_counts:
+        hash_ref_counts[file_hash] = max(0, total_refs - 1)
+
+    with transaction.atomic():
+        log_audit_event(
+            action=AuditAction.DELETE,
+            user=request.user,
+            document=doc,
+            details=f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
+            ip_address=get_client_ip(request),
+        )
+
+        if shared_references == 0:
+            try:
+                doc.file.delete(save=False)
+            except Exception as e:
+                logger.warning("[Bulk Delete] Failed to physically delete file: %s", e)
+
+        doc.delete()
+
+    # SurrealDB chunks cleanup
+    try:
+        surreal_db.delete_chunks(str(doc.uuid))
+    except Exception as chunk_err:
+        logger.warning("[Bulk Delete] SurrealDB chunk deletion failed for %s: %s", doc.uuid, chunk_err)
+
+    # Storage JSON chunks cleanup
+    try:
+        chunks_json_path = f"chunks/{doc.uuid}.json"
+        if default_storage.exists(chunks_json_path):
+            default_storage.delete(chunks_json_path)
+    except Exception as storage_err:
+        logger.warning("[Bulk Delete] Storage chunk JSON deletion failed for %s: %s", doc.uuid, storage_err)
+
+
+def _handle_bulk_delete(request, document_ids):
+    from django.core.files.storage import default_storage
+
+    from extractor import surreal_db
+    from extractor.models import SourceDocument
+
+    if request.user.is_staff or request.user.is_superuser:
+        docs = SourceDocument.objects.filter(id__in=document_ids)
+    else:
+        docs = SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user)
+
+    docs = list(docs)
+    file_hashes = {doc.file_hash for doc in docs if doc.file_hash}
+
+    hash_ref_counts = dict(
+        SourceDocument.objects.filter(file_hash__in=file_hashes)
+        .values("file_hash")
+        .annotate(count=Count("id"))
+        .values_list("file_hash", "count")
+    )
+
+    deleted_count = 0
+    for doc in docs:
+        _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db)
+        deleted_count += 1
+    messages.success(request, f"Successfully deleted {deleted_count} documents from the repository.")
+
+
 class BulkDocumentActionView(LoginRequiredMixin, View):
     """
     Handles bulk operations (Delete or Reprocess/Restart) on selected documents.
@@ -697,102 +792,12 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
         if not document_ids:
             messages.error(request, "No documents selected.")
             return redirect("dashboard")
-
         if action == "restart":
-            # Restart bulk curation
-            from extractor import cloud_tasks
-            from extractor.models import SourceDocument
-
-            docs = SourceDocument.objects.filter(id__in=document_ids)
-            restarted_count = 0
-            for doc in docs:
-                # Access boundary check
-                if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
-                    continue
-
-                if doc.status in ["FAILED", "COMPLETED"]:
-                    doc.status = "PENDING"
-                    doc.retry_count = 0
-                    doc.error_message = ""
-                    doc.save()
-                    # Enqueue inside transaction.on_commit to ensure task runs after commit
-                    transaction.on_commit(
-                        lambda d_id=doc.id: cloud_tasks.enqueue("process_document", {"document_id": d_id})
-                    )
-                    restarted_count += 1
-            messages.success(request, f"Successfully queued {restarted_count} tasks for reprocessing.")
-
+            _handle_bulk_restart(request, document_ids)
         elif action == "delete":
-            # Bulk delete documents
-            from django.core.files.storage import default_storage
-
-            from extractor import surreal_db
-            from extractor.models import AuditAction, SourceDocument
-            from extractor.utils import get_client_ip, log_audit_event
-
-            if request.user.is_staff or request.user.is_superuser:
-                docs = SourceDocument.objects.filter(id__in=document_ids)
-            else:
-                docs = SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user)
-
-            docs = list(docs)
-            file_hashes = {doc.file_hash for doc in docs if doc.file_hash}
-
-            hash_ref_counts = dict(
-                SourceDocument.objects.filter(file_hash__in=file_hashes)
-                .values("file_hash")
-                .annotate(count=Count("id"))
-                .values_list("file_hash", "count")
-            )
-
-            deleted_count = 0
-            for doc in docs:
-                file_hash = doc.file_hash
-                orig_name = doc.original_filename
-
-                total_refs = hash_ref_counts.get(file_hash, 0)
-                shared_references = max(0, total_refs - 1)
-
-                if file_hash in hash_ref_counts:
-                    hash_ref_counts[file_hash] = max(0, total_refs - 1)
-
-                with transaction.atomic():
-                    log_audit_event(
-                        action=AuditAction.DELETE,
-                        user=request.user,
-                        document=doc,
-                        details=f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
-                        ip_address=get_client_ip(request),
-                    )
-
-                    if shared_references == 0:
-                        try:
-                            doc.file.delete(save=False)
-                        except Exception as e:
-                            logger.warning("[Bulk Delete] Failed to physically delete file: %s", e)
-
-                    doc.delete()
-
-                # SurrealDB chunks cleanup
-                try:
-                    surreal_db.delete_chunks(str(doc.uuid))
-                except Exception as chunk_err:
-                    logger.warning("[Bulk Delete] SurrealDB chunk deletion failed for %s: %s", doc.uuid, chunk_err)
-
-                # Storage JSON chunks cleanup
-                try:
-                    chunks_json_path = f"chunks/{doc.uuid}.json"
-                    if default_storage.exists(chunks_json_path):
-                        default_storage.delete(chunks_json_path)
-                except Exception as storage_err:
-                    logger.warning("[Bulk Delete] Storage chunk JSON deletion failed for %s: %s", doc.uuid, storage_err)
-
-                deleted_count += 1
-            messages.success(request, f"Successfully deleted {deleted_count} documents from the repository.")
-
+            _handle_bulk_delete(request, document_ids)
         else:
             messages.error(request, f"Invalid bulk action: {action}")
-
         return redirect("dashboard")
 
 
@@ -1046,6 +1051,33 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _resolve_worker_config(worker_config_default, web_config_default):
+    """Try to load live GCP service configs; fall back to local defaults."""
+    from extractor.deployment import get_service_config
+
+    worker_config = worker_config_default
+    gcp_active = False
+    worker_service_name = "data-extractor-worker"
+
+    try:
+        worker_real = get_service_config("data-extractor-worker")
+        if worker_real:
+            worker_config = worker_real
+            gcp_active = True
+    except Exception as e:
+        logger.warning(f"Could not load worker config from GCP (local fallback): {e}")
+        try:
+            web_real = get_service_config("data-extractor-web")
+            if web_real:
+                worker_service_name = "data-extractor-web"
+                worker_config = web_real
+                gcp_active = True
+        except Exception as e_web:
+            logger.warning(f"Could not load web config either: {e_web}")
+
+    return worker_config, gcp_active, worker_service_name
+
+
 class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
     """
     Centralized Deployment and Cost Console allowing admins/staff to:
@@ -1101,21 +1133,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         worker_service_name = "data-extractor-worker"
         gcp_active = False
 
-        try:
-            worker_real = get_service_config("data-extractor-worker")
-            if worker_real:
-                worker_config = worker_real
-                gcp_active = True
-        except Exception as e:
-            logger.warning(f"Could not load worker config from GCP (local fallback): {e}")
-            try:
-                web_real = get_service_config("data-extractor-web")
-                if web_real:
-                    worker_service_name = "data-extractor-web"
-                    worker_config = web_real
-                    gcp_active = True
-            except Exception as e_web:
-                logger.warning(f"Could not load web config either: {e_web}")
+        worker_config, gcp_active, worker_service_name = _resolve_worker_config(worker_config, web_config)
 
         try:
             web_real = get_service_config("data-extractor-web")
@@ -1215,6 +1233,59 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         return redirect("deployment_controller")
 
 
+def _validate_registration_input(email, password, confirm_password, supabase_url, supabase_key):
+    """Returns an error message string or None if input is valid."""
+    import re
+    from urllib.parse import urlparse
+
+    if not email or not password:
+        return "Email and Password are required."
+
+    if password != confirm_password:
+        return "Passwords do not match."
+
+    if not supabase_url or not supabase_key:
+        return "Supabase integration is not configured. Local registration is disabled."
+
+    parsed = urlparse(supabase_url)
+    domain = parsed.netloc if parsed.netloc else "example.com"
+    email_lower = email.lower()
+    if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
+        return "Registration of administrative or system email addresses is not permitted."
+
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return "Invalid email format."
+
+    return None
+
+
+def _register_supabase_user(supabase_url, supabase_key, email, password, app_url):
+    """Make the Supabase signup API call. Returns (success: bool, error_msg: str | None)."""
+    import json
+    import urllib.parse
+    import urllib.request
+
+    from extractor.utils import validate_url_scheme
+
+    url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
+    try:
+        validate_url_scheme(url)
+        headers = {"apikey": supabase_key, "Content-Type": "application/json"}
+        payload = json.dumps({"email": email, "password": password}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
+            return True, None
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8")
+        try:
+            err_msg = json.loads(body).get("msg") or json.loads(body).get("error_description") or body
+        except Exception:
+            err_msg = body
+        return False, f"Supabase Signup Failed: {err_msg}"
+    except Exception as e:
+        return False, f"Network error during registration: {e!s}"
+
+
 def register_view(request):
     """
     Handles new user signups via Supabase Auth.
@@ -1224,66 +1295,49 @@ def register_view(request):
         password = request.POST.get("password", "")
         confirm_password = request.POST.get("confirm_password", "")
 
-        if not email or not password:
-            messages.error(request, "Email and Password are required.")
-            return render(request, TEMPLATE_REGISTER)
-
-        if password != confirm_password:
-            messages.error(request, "Passwords do not match.")
-            return render(request, TEMPLATE_REGISTER)
-
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
 
-        if not supabase_url or not supabase_key:
-            messages.error(request, "Supabase integration is not configured. Local registration is disabled.")
+        error_msg = _validate_registration_input(email, password, confirm_password, supabase_url, supabase_key)
+        if error_msg:
+            messages.error(request, error_msg)
             return render(request, TEMPLATE_REGISTER)
-
-        # Reject reserved/system emails to prevent privilege escalation
-        from urllib.parse import urlparse
-
-        parsed = urlparse(supabase_url)
-        domain = parsed.netloc if parsed.netloc else "example.com"
-
-        email_lower = email.lower()
-        if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
-            messages.error(request, "Registration of administrative or system email addresses is not permitted.")
-            return render(request, TEMPLATE_REGISTER)
-
-        # Validate email format
-        import re
-
-        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-            messages.error(request, "Invalid email format.")
-            return render(request, TEMPLATE_REGISTER)
-
-        import json
-        import urllib.parse
-        import urllib.request
 
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
-        url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
-        from extractor.utils import validate_url_scheme
-
-        try:
-            validate_url_scheme(url)
-            headers = {"apikey": supabase_key, "Content-Type": "application/json"}
-            payload = json.dumps({"email": email, "password": password}).encode("utf-8")
-            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
-                messages.success(request, "Registration successful! Please check your email for the activation link.")
-                return redirect("login")
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8")
-            try:
-                err_msg = json.loads(body).get("msg") or json.loads(body).get("error_description") or body
-            except Exception:
-                err_msg = body
-            messages.error(request, f"Supabase Signup Failed: {err_msg}")
-        except Exception as e:
-            messages.error(request, f"Network error during registration: {e!s}")
+        success, error_msg = _register_supabase_user(supabase_url, supabase_key, email, password, app_url)
+        if success:
+            messages.success(request, "Registration successful! Please check your email for the activation link.")
+            return redirect("login")
+        else:
+            messages.error(request, error_msg)
 
     return render(request, TEMPLATE_REGISTER)
+
+
+def _send_supabase_recovery(email, supabase_url, supabase_key, app_url):
+    import json
+    import urllib.parse
+    import urllib.request
+
+    from extractor.utils import validate_url_scheme
+
+    url = f"{supabase_url.rstrip('/')}/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"
+    try:
+        validate_url_scheme(url)
+        headers = {"apikey": supabase_key, "Content-Type": "application/json"}
+        payload = json.dumps({"email": email}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
+            return True, None
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8")
+        try:
+            err_msg = json.loads(body).get("msg") or json.loads(body).get("error_description") or body
+        except Exception:
+            err_msg = body
+        return False, f"Supabase Recovery Failed: {err_msg}"
+    except Exception as e:
+        return False, f"Network error: {e!s}"
 
 
 def forgot_password_view(request):
@@ -1310,31 +1364,13 @@ def forgot_password_view(request):
             messages.error(request, "Supabase integration is not configured.")
             return render(request, TEMPLATE_FORGOT_PASSWORD)
 
-        import json
-        import urllib.parse
-        import urllib.request
-
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
-        url = f"{supabase_url.rstrip('/')}/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"
-        from extractor.utils import validate_url_scheme
-
-        try:
-            validate_url_scheme(url)
-            headers = {"apikey": supabase_key, "Content-Type": "application/json"}
-            payload = json.dumps({"email": email}).encode("utf-8")
-            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
-                messages.success(request, "Password recovery link has been sent! Please check your email inbox.")
-                return redirect("login")
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8")
-            try:
-                err_msg = json.loads(body).get("msg") or json.loads(body).get("error_description") or body
-            except Exception:
-                err_msg = body
-            messages.error(request, f"Supabase Recovery Failed: {err_msg}")
-        except Exception as e:
-            messages.error(request, f"Network error: {e!s}")
+        success, error_msg = _send_supabase_recovery(email, supabase_url, supabase_key, app_url)
+        if success:
+            messages.success(request, "Password recovery link has been sent! Please check your email inbox.")
+            return redirect("login")
+        else:
+            messages.error(request, error_msg)
 
     return render(request, TEMPLATE_FORGOT_PASSWORD)
 

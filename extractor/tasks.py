@@ -141,35 +141,35 @@ def _get_working_path(doc: SourceDocument) -> tuple[str, str | None]:
     temp_local_path = None
     try:
         working_path = doc.file.path
-        if not os.path.exists(working_path):
-            raise FileNotFoundError("Local file missing")
-    except (NotImplementedError, AttributeError, FileNotFoundError):
-        # GCS-backed storage: stream file to a local temp file.
-        suffix = os.path.splitext(doc.original_filename)[1]
-        temp_file_obj = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        temp_local_path = temp_file_obj.name
-        temp_file_obj.close()
+        if os.path.exists(working_path):
+            return working_path, None
+    except (NotImplementedError, AttributeError):
+        pass
+
+    # GCS-backed storage: stream file to a local temp file.
+    suffix = os.path.splitext(doc.original_filename)[1]
+    temp_file_obj = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    temp_local_path = temp_file_obj.name
+    temp_file_obj.close()
+    try:
+        # Gap E-19: stream in 64KB chunks to prevent Cloud Run OOM
+        doc.file.open("rb")
+        with open(temp_local_path, "wb") as out_f:
+            for chunk in iter(lambda: doc.file.read(65536), b""):
+                out_f.write(chunk)
+        doc.file.close()
+    except Exception as gcs_err:
         try:
-            # Gap E-19: stream in 64KB chunks to prevent Cloud Run OOM
-            doc.file.open("rb")
-            with open(temp_local_path, "wb") as out_f:
-                for chunk in iter(lambda: doc.file.read(65536), b""):
-                    out_f.write(chunk)
-            doc.file.close()
-        except FileNotFoundError as gcs_err:
-            # The GCS object referenced by doc.file does not exist in the bucket.
-            # Clean up the empty temp file and propagate a clear error.
-            try:
-                os.unlink(temp_local_path)
-            except OSError:
-                pass
-            raise FileNotFoundError(
-                f"Source file '{doc.file.name}' not found in GCS storage. "
-                f"The file may have been deleted or the upload did not complete. "
-                f"Original error: {gcs_err}"
-            ) from gcs_err
-        working_path = temp_local_path
-    return working_path, temp_local_path
+            os.unlink(temp_local_path)
+        except OSError:
+            pass
+        raise FileNotFoundError(
+            f"Source file '{doc.file.name}' not found in GCS storage. "
+            f"The file may have been deleted or the upload did not complete. "
+            f"Original error: {gcs_err}"
+        ) from gcs_err
+
+    return temp_local_path, temp_local_path
 
 
 def _run_stage1(working_path: str, document_id: int) -> SourceDocument:
@@ -249,67 +249,24 @@ def _sanitise_yaml_block(raw: str) -> str:
     return "\n".join(fixed_lines)
 
 
-def _parse_yaml_metadata(
-    yaml_metadata_block: str,
-    default_title: str | None,
-    default_author: str | None,
-    default_lang: str | None,
-    default_doc_type: str | None,
-) -> tuple[str | None, str | None, str | None, str | None, str | None, str | None, str | None, str | None]:
-    """Parse YAML metadata block, fallback to defaults on error."""
-    import yaml
+def _clean_val(val):
+    if val is None:
+        return None
+    s = str(val).strip()
+    if s.lower() in ("unknown", "n/a", "none", "null", "undefined", ""):
+        return None
+    return s
 
-    parsed_title = default_title
-    parsed_author = default_author
-    parsed_lang = default_lang
-    parsed_doc_type = default_doc_type
-    parsed_sig = None
-    parsed_isbn = None
-    parsed_source_link = None
-    parsed_translator = None
 
-    if not yaml_metadata_block:
-        return (
-            parsed_title,
-            parsed_author,
-            parsed_lang,
-            parsed_doc_type,
-            parsed_sig,
-            parsed_isbn,
-            parsed_source_link,
-            parsed_translator,
-        )
-
-    for attempt, block in enumerate([yaml_metadata_block, _sanitise_yaml_block(yaml_metadata_block)]):
-        try:
-            meta_raw = yaml.safe_load(block)
-            if not isinstance(meta_raw, dict):
-                raise ValueError("YAML metadata block is not a dictionary")
-            meta = {str(k).strip().lower(): v for k, v in meta_raw.items()}
-
-            def clean_val(val):
-                if val is None:
-                    return None
-                s = str(val).strip()
-                if s.lower() in ("unknown", "n/a", "none", "null", "undefined", ""):
-                    return None
-                return s
-
-            parsed_title = clean_val(meta.get("title")) or parsed_title
-            parsed_author = clean_val(meta.get("author")) or parsed_author
-            parsed_lang = clean_val(meta.get("language")) or parsed_lang
-            parsed_doc_type = clean_val(meta.get("document_type")) or parsed_doc_type
-            parsed_sig = clean_val(meta.get("semantic_signature"))
-            parsed_isbn = clean_val(meta.get("isbn"))
-            parsed_source_link = clean_val(meta.get("source_link"))
-            parsed_translator = clean_val(meta.get("translator"))
-            break
-        except Exception as yaml_err:
-            if attempt == 0:
-                logger.debug("[Worker] YAML parse failed on raw block, retrying with sanitiser: %s", yaml_err)
-            else:
-                logger.warning("[Worker] Metadata YAML parsing failed (using defaults): %s", yaml_err)
-
+def _extract_meta_dict(meta, default_title, default_author, default_lang, default_doc_type):
+    parsed_title = _clean_val(meta.get("title")) or default_title
+    parsed_author = _clean_val(meta.get("author")) or default_author
+    parsed_lang = _clean_val(meta.get("language")) or default_lang
+    parsed_doc_type = _clean_val(meta.get("document_type")) or default_doc_type
+    parsed_sig = _clean_val(meta.get("semantic_signature"))
+    parsed_isbn = _clean_val(meta.get("isbn"))
+    parsed_source_link = _clean_val(meta.get("source_link"))
+    parsed_translator = _clean_val(meta.get("translator"))
     return (
         parsed_title,
         parsed_author,
@@ -320,6 +277,38 @@ def _parse_yaml_metadata(
         parsed_source_link,
         parsed_translator,
     )
+
+
+def _parse_yaml_metadata(
+    yaml_metadata_block: str,
+    default_title: str | None,
+    default_author: str | None,
+    default_lang: str | None,
+    default_doc_type: str | None,
+) -> tuple[str | None, str | None, str | None, str | None, str | None, str | None, str | None, str | None]:
+    """Parse YAML metadata block, fallback to defaults on error."""
+    import yaml
+
+    parsed = (default_title, default_author, default_lang, default_doc_type, None, None, None, None)
+
+    if not yaml_metadata_block:
+        return parsed
+
+    for attempt, block in enumerate([yaml_metadata_block, _sanitise_yaml_block(yaml_metadata_block)]):
+        try:
+            meta_raw = yaml.safe_load(block)
+            if not isinstance(meta_raw, dict):
+                raise ValueError("YAML metadata block is not a dictionary")
+            meta = {str(k).strip().lower(): v for k, v in meta_raw.items()}
+            parsed = _extract_meta_dict(meta, default_title, default_author, default_lang, default_doc_type)
+            break
+        except Exception as yaml_err:
+            if attempt == 0:
+                logger.debug("[Worker] YAML parse failed on raw block, retrying with sanitiser: %s", yaml_err)
+            else:
+                logger.warning("[Worker] Metadata YAML parsing failed (using defaults): %s", yaml_err)
+
+    return parsed
 
 
 # Maximum characters to send to Stage 2 in a single LLM call.
@@ -365,6 +354,43 @@ def _split_markdown_into_chunks(text: str, max_chars: int = _STAGE2_CHUNK_CHARS)
         chunks.append(remaining)
 
     return chunks
+
+
+def _is_unknown_value(val) -> bool:
+    """Return True if the value is blank or an 'unknown' placeholder."""
+    return not val or str(val).strip().lower() in ("unknown", "n/a", "none", "null", "undefined", "")
+
+
+def _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig):
+    """Apply parsed YAML metadata values to a SourceDocument instance (inside atomic block)."""
+    import os
+
+    t_val = _truncate(parsed_title, _MAX_TITLE_LEN)
+    if _is_unknown_value(t_val):
+        t_val = os.path.splitext(doc_ref.original_filename)[0].replace("_", " ").replace("-", " ").strip()
+    doc_ref.title = t_val or doc_ref.original_filename
+
+    a_val = _truncate(parsed_author, _MAX_AUTHOR_LEN)
+    if _is_unknown_value(a_val):
+        a_val = "Anonymous"
+
+    # Quran translation-specific author / publisher corrections
+    low_filename = doc_ref.original_filename.lower()
+    if "sahih" in low_filename:
+        if a_val == "Anonymous" or "divinely" in a_val.lower() or "anonymous" in a_val.lower():
+            a_val = "Sahih International"
+
+    doc_ref.author = a_val
+
+    l_val = _truncate(parsed_lang, _MAX_LANGUAGE_LEN)
+    if _is_unknown_value(l_val):
+        l_val = "English"
+    doc_ref.language = l_val
+
+    if parsed_doc_type:
+        doc_ref.document_type = _truncate(parsed_doc_type, _MAX_DOCTYPE_LEN)
+    if parsed_sig:
+        doc_ref.semantic_signature = _truncate(parsed_sig, _MAX_SIG_LEN)
 
 
 def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
@@ -455,37 +481,7 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
         doc_ref.qa_dataset = qa_dataset
 
         # Ensure we have clean title, author and language values
-        def is_unknown(val):
-            return not val or str(val).strip().lower() in ("unknown", "n/a", "none", "null", "undefined", "")
-
-        t_val = _truncate(parsed_title, _MAX_TITLE_LEN)
-        if is_unknown(t_val):
-            import os
-
-            t_val = os.path.splitext(doc_ref.original_filename)[0].replace("_", " ").replace("-", " ").strip()
-        doc_ref.title = t_val or doc_ref.original_filename
-
-        a_val = _truncate(parsed_author, _MAX_AUTHOR_LEN)
-        if is_unknown(a_val):
-            a_val = "Anonymous"
-
-        # Quran translation translation-specific author / publisher corrections
-        low_filename = doc_ref.original_filename.lower()
-        if "sahih" in low_filename:
-            if a_val == "Anonymous" or "divinely" in a_val.lower() or "anonymous" in a_val.lower():
-                a_val = "Sahih International"
-
-        doc_ref.author = a_val
-
-        l_val = _truncate(parsed_lang, _MAX_LANGUAGE_LEN)
-        if is_unknown(l_val):
-            l_val = "English"
-        doc_ref.language = l_val
-
-        if parsed_doc_type:
-            doc_ref.document_type = _truncate(parsed_doc_type, _MAX_DOCTYPE_LEN)
-        if parsed_sig:
-            doc_ref.semantic_signature = _truncate(parsed_sig, _MAX_SIG_LEN)
+        _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig)
 
         doc_ref.input_tokens += stage2_input_tokens
         doc_ref.output_tokens += stage2_output_tokens
@@ -733,6 +729,54 @@ def reembed_edited_document_task(payload: dict) -> None:
         )
 
 
+def _cleanup_single_expired_doc(doc, hash_counts, surreal_db):
+    """Purge one expired document: physical file, SurrealDB chunks, storage JSON, audit log."""
+    from django.core.files.storage import default_storage
+
+    file_hash = doc.file_hash
+    doc_uuid = str(doc.uuid)
+
+    total_refs = hash_counts.get(file_hash, 0)
+    shared_references = max(0, total_refs - 1)
+
+    if shared_references == 0:
+        logger.info("[Cron] Purging file hash %s from storage.", file_hash)
+        try:
+            doc.file.delete(save=False)
+        except Exception as exc:
+            logger.warning("[Cron] Failed to delete physical file for hash %s: %s", file_hash, exc)
+    else:
+        logger.info(
+            "[Cron] Skipping physical delete for hash %s (referenced by %s records).", file_hash, shared_references
+        )
+
+    if file_hash in hash_counts:
+        hash_counts[file_hash] = max(0, hash_counts[file_hash] - 1)
+
+    # Gap B-8: cascade delete SurrealDB chunks and storage JSON backups for compliance
+    try:
+        surreal_db.delete_chunks(doc_uuid)
+    except Exception as exc:
+        logger.warning("[Cron] Failed to delete SurrealDB chunks for %s: %s", doc_uuid, exc)
+
+    try:
+        chunks_json_path = f"chunks/{doc_uuid}.json"
+        if default_storage.exists(chunks_json_path):
+            default_storage.delete(chunks_json_path)
+    except Exception as storage_err:
+        logger.warning("[Cron] Failed to delete storage chunk JSON for %s: %s", doc_uuid, storage_err)
+
+    # Gap E-30: write audit log before deletion
+    log_audit_event(
+        action=AuditAction.DELETE,
+        user=None,
+        document=doc,
+        details=f"GDPR retention cleanup: document '{doc.original_filename}' (UUID: {doc_uuid}) expired and purged.",
+    )
+
+    doc.delete()
+
+
 def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     """
     Reference-counted document garbage disposal.
@@ -762,50 +806,7 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
         hash_counts = {}
 
     for doc in expired_docs:
-        file_hash = doc.file_hash
-        doc_uuid = str(doc.uuid)
-
-        total_refs = hash_counts.get(file_hash, 0)
-        shared_references = max(0, total_refs - 1)
-
-        if shared_references == 0:
-            logger.info("[Cron] Purging file hash %s from storage.", file_hash)
-            try:
-                doc.file.delete(save=False)
-            except Exception as exc:
-                logger.warning("[Cron] Failed to delete physical file for hash %s: %s", file_hash, exc)
-        else:
-            logger.info(
-                "[Cron] Skipping physical delete for hash %s (referenced by %s records).", file_hash, shared_references
-            )
-
-        if file_hash in hash_counts:
-            hash_counts[file_hash] = max(0, hash_counts[file_hash] - 1)
-
-        # Gap B-8: cascade delete SurrealDB chunks and storage JSON backups for compliance
-        try:
-            surreal_db.delete_chunks(doc_uuid)
-        except Exception as exc:
-            logger.warning("[Cron] Failed to delete SurrealDB chunks for %s: %s", doc_uuid, exc)
-
-        try:
-            from django.core.files.storage import default_storage
-
-            chunks_json_path = f"chunks/{doc_uuid}.json"
-            if default_storage.exists(chunks_json_path):
-                default_storage.delete(chunks_json_path)
-        except Exception as storage_err:
-            logger.warning("[Cron] Failed to delete storage chunk JSON for %s: %s", doc_uuid, storage_err)
-
-        # Gap E-30: write audit log before deletion
-        log_audit_event(
-            action=AuditAction.DELETE,
-            user=None,
-            document=doc,
-            details=f"GDPR retention cleanup: document '{doc.original_filename}' (UUID: {doc_uuid}) expired and purged.",
-        )
-
-        doc.delete()
+        _cleanup_single_expired_doc(doc, hash_counts, surreal_db)
         purged_count += 1
 
     # Gap B-9: purge expired SurrealDB RAG cache entries
@@ -817,6 +818,44 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
         logger.warning("[Cron] Failed to purge expired RAG cache: %s", exc)
 
     logger.info("[Cron] Cleanup finished. Deleted %s expired records.", purged_count)
+
+
+def _reap_single_stale_doc(doc, stale_threshold) -> bool:
+    """Lock and check one stale document; mark FAILED if still stuck. Returns True if reaped."""
+    with transaction.atomic():
+        try:
+            doc_ref = SourceDocument.objects.select_for_update().get(id=doc.id)
+        except SourceDocument.DoesNotExist:
+            return False
+
+        if doc_ref.status in ["EXTRACTING", "REFINING", "EMBEDDING"] and doc_ref.updated_at <= stale_threshold:
+            doc_ref.status = "FAILED"
+            doc_ref.error_message = (
+                "Task terminated unexpectedly. "
+                "The background worker may have scaled down, been preempted, or restarted."
+            )
+            doc_ref.save()
+            logger.warning("[Reaper] Reaped stale document task %s (was %s).", doc_ref.id, doc.status)
+
+            # Gap E-31: write audit log for reaped task
+            log_audit_event(
+                action=AuditAction.EXTRACTION_FAILED,
+                user=doc_ref.uploaded_by,
+                document=doc_ref,
+                details=(
+                    f"[Reaper] Document '{doc_ref.original_filename}' was stuck in '{doc.status}' for >15 minutes "
+                    "and has been automatically marked as FAILED."
+                ),
+            )
+
+            # Gap E-31: broadcast status update so dashboard updates without hard reload
+            try:
+                broadcast_status_change(str(doc_ref.uuid), "FAILED")
+            except Exception as exc:
+                logger.debug("[Reaper] Failed to broadcast status failure: %s", exc)
+
+            return True
+    return False
 
 
 def reap_stale_tasks(_payload: dict | None = None) -> int:
@@ -832,38 +871,8 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
     reaped_count = 0
 
     for doc in stale_docs:
-        with transaction.atomic():
-            try:
-                doc_ref = SourceDocument.objects.select_for_update().get(id=doc.id)
-            except SourceDocument.DoesNotExist:
-                continue
-
-            if doc_ref.status in ["EXTRACTING", "REFINING", "EMBEDDING"] and doc_ref.updated_at <= stale_threshold:
-                doc_ref.status = "FAILED"
-                doc_ref.error_message = (
-                    "Task terminated unexpectedly. "
-                    "The background worker may have scaled down, been preempted, or restarted."
-                )
-                doc_ref.save()
-                reaped_count += 1
-                logger.warning("[Reaper] Reaped stale document task %s (was %s).", doc_ref.id, doc.status)
-
-                # Gap E-31: write audit log for reaped task
-                log_audit_event(
-                    action=AuditAction.EXTRACTION_FAILED,
-                    user=doc_ref.uploaded_by,
-                    document=doc_ref,
-                    details=(
-                        f"[Reaper] Document '{doc_ref.original_filename}' was stuck in '{doc.status}' for >15 minutes "
-                        "and has been automatically marked as FAILED."
-                    ),
-                )
-
-                # Gap E-31: broadcast status update so dashboard updates without hard reload
-                try:
-                    broadcast_status_change(str(doc_ref.uuid), "FAILED")
-                except Exception as exc:
-                    logger.debug("[Reaper] Failed to broadcast status failure: %s", exc)
+        if _reap_single_stale_doc(doc, stale_threshold):
+            reaped_count += 1
 
     if reaped_count > 0:
         logger.info("[Reaper] Successfully reaped %s stuck tasks.", reaped_count)

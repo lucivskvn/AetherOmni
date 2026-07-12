@@ -19,6 +19,8 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 MODEL_GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"
+MODEL_GEMINI_31_FLASH = "gemini-3.1-flash"
+_NOT_FOUND = "not found"
 PREFIX_GOOGLE = "google/"
 
 # Shared Constants to avoid SonarQube Duplication smell
@@ -318,6 +320,45 @@ def _call_openrouter(prompt: str, system_instruction: str | None, model_name: st
         raise GeminiProcessingError(f"OpenRouter routing error: {e!s}")
 
 
+def _try_vertex_fallback_chain(model_name, contents, config):
+    for region in VERTEX_REGION_FALLBACK_CHAIN:
+        vertex_client = get_vertex_client_for_location(region)
+        if vertex_client:
+            try:
+                logger.info(f"[Gateway] Attempting generation on Vertex AI in {region} using model {model_name}...")
+                response = execute_with_backoff(
+                    vertex_client.models.generate_content, model=model_name, contents=contents, config=config
+                )
+                input_tokens = response.usage_metadata.prompt_token_count or 0
+                output_tokens = response.usage_metadata.candidates_token_count or 0
+                cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
+                return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
+            except Exception as e:
+                logger.warning(f"[Gateway] Vertex AI generation in region {region} failed: {e}.")
+    return None
+
+
+def _try_ai_studio_fallback(model_name, contents, config):
+    api_key = getattr(settings, "GEMINI_API_KEY", "")
+    if api_key and api_key.strip().lower() in ["", "none", "your-gemini-api-key", "placeholder"]:
+        api_key = None
+
+    if api_key:
+        try:
+            logger.info(f"[Gateway] Attempting generation on AI Studio fallback using model {model_name}...")
+            client = genai.Client(api_key=api_key)
+            response = execute_with_backoff(
+                client.models.generate_content, model=model_name, contents=contents, config=config
+            )
+            input_tokens = response.usage_metadata.prompt_token_count or 0
+            output_tokens = response.usage_metadata.candidates_token_count or 0
+            cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
+            return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
+        except Exception as e:
+            logger.warning(f"[Gateway] AI Studio generation failed: {e}.")
+    return None
+
+
 def _call_direct_gemini(
     prompt: str,
     system_instruction: str | None,
@@ -339,39 +380,14 @@ def _call_direct_gemini(
     contents.append(prompt)
 
     # 1. Try Vertex AI via ADC across regional fallback chain
-    for region in VERTEX_REGION_FALLBACK_CHAIN:
-        vertex_client = get_vertex_client_for_location(region)
-        if vertex_client:
-            try:
-                logger.info(f"[Gateway] Attempting generation on Vertex AI in {region} using model {model_name}...")
-                response = execute_with_backoff(
-                    vertex_client.models.generate_content, model=model_name, contents=contents, config=config
-                )
-                input_tokens = response.usage_metadata.prompt_token_count or 0
-                output_tokens = response.usage_metadata.candidates_token_count or 0
-                cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
-                return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
-            except Exception as e:
-                logger.warning(f"[Gateway] Vertex AI generation in region {region} failed: {e}.")
+    res = _try_vertex_fallback_chain(model_name, contents, config)
+    if res:
+        return res
 
     # 2. Fallback to AI Studio key
-    api_key = getattr(settings, "GEMINI_API_KEY", "")
-    if api_key and api_key.strip().lower() in ["", "none", "your-gemini-api-key", "placeholder"]:
-        api_key = None
-
-    if api_key:
-        try:
-            logger.info(f"[Gateway] Attempting generation on AI Studio fallback using model {model_name}...")
-            client = genai.Client(api_key=api_key)
-            response = execute_with_backoff(
-                client.models.generate_content, model=model_name, contents=contents, config=config
-            )
-            input_tokens = response.usage_metadata.prompt_token_count or 0
-            output_tokens = response.usage_metadata.candidates_token_count or 0
-            cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
-            return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
-        except Exception as e:
-            logger.warning(f"[Gateway] AI Studio generation failed: {e}.")
+    res = _try_ai_studio_fallback(model_name, contents, config)
+    if res:
+        return res
 
     raise ValueError("Generation failed: both Vertex AI and AI Studio pathways are exhausted.")
 
@@ -383,8 +399,8 @@ def _call_direct_gemini(
 KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
     {
         MODEL_GEMINI_35_FLASH,
-        "gemini-3.1-flash",
-        "gemini-3.1-flash-lite",
+        MODEL_GEMINI_31_FLASH,
+        MODEL_GEMINI_FLASH_LITE,
         "gemini-3.1-pro",
         "auto",
     }
@@ -475,7 +491,7 @@ def _call_gemini_with_fallback(
             is_cascadable_error = any(
                 term in err_msg
                 for term in [
-                    "not found",
+                    _NOT_FOUND,
                     "not_found",
                     "invalid",
                     "deprecated",
@@ -873,7 +889,7 @@ def _attempt_generate_content(
         is_cascadable = any(
             term in err_msg
             for term in [
-                "not found",
+                _NOT_FOUND,
                 "not_found",
                 "invalid",
                 "deprecated",
@@ -1107,21 +1123,8 @@ def _init_refinement_client() -> Any:
     return client
 
 
-def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[Any]]:
-    """Parse Stage 2 LLM output into (refined_text, yaml_block, qa_list).
-
-    Guards against None output which can occur when all model fallbacks are
-    exhausted or when the LLM returns a safety-blocked empty response.
-    Also handles common LLM formatting variations for the YAML front-matter block.
-    """
-    if not full_output:
-        logger.warning("[Refinement Pass 2] LLM returned empty/None response. Returning empty parsed result.")
-        return "", "", []
-
+def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
     yaml_block = ""
-    refined_text = full_output.strip()
-    qa_list = []
-
     # Case 1: YAML block wrapped inside standard markdown code block fences (e.g. ```yaml ... ```)
     code_block_match = re.match(r"^```(?:yaml)?\s*\n(.*?)\n```", refined_text, re.DOTALL | re.IGNORECASE)
     if code_block_match:
@@ -1161,7 +1164,24 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
                 if yaml_match:
                     yaml_block = yaml_match.group(1).strip()
                     refined_text = refined_text[yaml_match.end() :].lstrip("\n")
+    return yaml_block, refined_text
 
+
+def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[Any]]:
+    """Parse Stage 2 LLM output into (refined_text, yaml_block, qa_list).
+
+    Guards against None output which can occur when all model fallbacks are
+    exhausted or when the LLM returns a safety-blocked empty response.
+    Also handles common LLM formatting variations for the YAML front-matter block.
+    """
+    if not full_output:
+        logger.warning("[Refinement Pass 2] LLM returned empty/None response. Returning empty parsed result.")
+        return "", "", []
+
+    refined_text = full_output.strip()
+    yaml_block, refined_text = _parse_yaml_block(refined_text)
+
+    qa_list = []
     # Find JSON Q&A block
     json_match = re.search(r"`{3,4}json\s*\n(.*?)\n`{3,4}", refined_text, re.DOTALL)
     if json_match:

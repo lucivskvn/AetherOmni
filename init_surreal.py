@@ -98,12 +98,13 @@ def init_django_admin():
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
 
+        admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "admin@example.com"))
+        admin_username = os.getenv("ADMIN_USERNAME", getattr(settings, "ADMIN_USERNAME", "admin"))
+        admin_password = os.getenv("ADMIN_PASSWORD", "AdminPass123!")  # nosec B105
+
         # If Supabase is configured, register admin on Supabase directly
         if supabase_url and supabase_key:
-            admin_email = "elang@fainko.co.id"
-            admin_username = "elang"
-
-            logger.info("Supabase is configured. Checking if 'elang' user already exists on Supabase Auth...")
+            logger.info("Supabase is configured. Checking if '%s' user already exists on Supabase Auth...", admin_username)
             import json
             import urllib.request
 
@@ -111,7 +112,7 @@ def init_django_admin():
 
             token_url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
             headers = {"apikey": supabase_key, "Content-Type": "application/json"}
-            payload = json.dumps({"email": admin_email, "password": "AdminPass123!"}).encode("utf-8")
+            payload = json.dumps({"email": admin_email, "password": admin_password}).encode("utf-8")
 
             admin_exists = False
             try:
@@ -151,19 +152,6 @@ def init_django_admin():
                 except Exception as e:
                     logger.error("Failed to register admin on Supabase: %s", e)
 
-            # Manual confirmation requested: bypass automatic PostgreSQL DB email confirmation updates
-            # from django.db import connection
-            # if connection.vendor == "postgresql":
-            #     try:
-            #         with connection.cursor() as cursor:
-            #             cursor.execute(
-            #                 "UPDATE auth.users SET email_confirmed_at = NOW() WHERE email = %s",
-            #                 [admin_email],
-            #             )
-            #         logger.info("Admin email '%s' confirmed successfully in Supabase DB.", admin_email)
-            #     except Exception as e:
-            #         logger.warning("Could not confirm admin email in Supabase DB: %s", e)
-
             # Ensure local Django superuser stub exists with unusable password
             user, created = User.objects.get_or_create(
                 username=admin_username,
@@ -192,11 +180,11 @@ def init_django_admin():
                 logger.info("Removed existing local fallback admin user 'local_admin'.")
         else:
             # Fallback to local SQLite db admin creation
-            if not User.objects.filter(username="elang").exists():
-                User.objects.create_superuser("elang", "elang@fainko.co.id", "AdminPass123!")
-                logger.info("Default local Django superuser 'elang' created successfully!")
+            if not User.objects.filter(username=admin_username).exists():
+                User.objects.create_superuser(admin_username, admin_email, admin_password)
+                logger.info("Default local Django superuser '%s' created successfully!", admin_username)
             else:
-                logger.info("Local Django superuser 'elang' already exists.")
+                logger.info("Local Django superuser '%s' already exists.", admin_username)
 
         # Clean any stray Q&A descriptions and headers from existing SourceDocuments
         import re
