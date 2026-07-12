@@ -745,13 +745,28 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     logger.info("[Cron] Starting reference-counted expired document cleanup...")
     now = timezone.now()
 
-    expired_docs = SourceDocument.objects.filter(expires_at__lte=now)
+    from django.db.models import Count
+
+    expired_docs = list(SourceDocument.objects.filter(expires_at__lte=now))
     purged_count = 0
+
+    if expired_docs:
+        expired_hashes = {doc.file_hash for doc in expired_docs if doc.file_hash}
+        hash_counts = {
+            item["file_hash"]: item["count"]
+            for item in SourceDocument.objects.filter(file_hash__in=expired_hashes)
+            .values("file_hash")
+            .annotate(count=Count("id"))
+        }
+    else:
+        hash_counts = {}
 
     for doc in expired_docs:
         file_hash = doc.file_hash
         doc_uuid = str(doc.uuid)
-        shared_references = SourceDocument.objects.filter(file_hash=file_hash).exclude(id=doc.id).count()
+
+        total_refs = hash_counts.get(file_hash, 0)
+        shared_references = max(0, total_refs - 1)
 
         if shared_references == 0:
             logger.info("[Cron] Purging file hash %s from storage.", file_hash)
@@ -763,6 +778,9 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
             logger.info(
                 "[Cron] Skipping physical delete for hash %s (referenced by %s records).", file_hash, shared_references
             )
+
+        if file_hash in hash_counts:
+            hash_counts[file_hash] = max(0, hash_counts[file_hash] - 1)
 
         # Gap B-8: cascade delete SurrealDB chunks and storage JSON backups for compliance
         try:

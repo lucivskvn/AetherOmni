@@ -295,15 +295,13 @@ def query_semantic_knowledge_rag(
     # ── 6. SurrealDB HNSW chunk search ────────────────────────────────────────
     allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
     if allowed_uuids is not None:
-        for doc_uuid in allowed_uuids:
-            ensure_document_chunks_loaded(doc_uuid)
+        ensure_document_chunks_loaded(allowed_uuids)
     else:
         # For admins/superusers (allowed_uuids is None), ensure chunks are loaded for all completed documents
         from extractor.models import SourceDocument
 
         all_uuids = SourceDocument.objects.filter(status="COMPLETED").values_list("uuid", flat=True)
-        for doc_uuid in all_uuids:
-            ensure_document_chunks_loaded(doc_uuid)
+        ensure_document_chunks_loaded(all_uuids)
 
     try:
         matching_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
@@ -419,9 +417,9 @@ def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
     return {"id": None, "title": "Unknown", "author": "Unknown", "language": "Unknown"}
 
 
-def ensure_document_chunks_loaded(doc_uuid: Any) -> None:
+def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
     """
-    Checks if chunks for doc_uuid exist in SurrealDB.
+    Checks if chunks for doc_uuids exist in SurrealDB.
     If not, attempts to download the JSON manifest from GCS/storage and load it.
     If the JSON manifest is also missing from GCS but the document is COMPLETED,
     this function regenerates the chunks and embeddings on-the-fly and saves them to GCS.
@@ -434,23 +432,33 @@ def ensure_document_chunks_loaded(doc_uuid: Any) -> None:
     from extractor import surreal_db
     from extractor.models import SourceDocument
 
+    if doc_uuids is None:
+        return
+
+    if isinstance(doc_uuids, str | uuid.UUID):
+        doc_uuid_strs = [str(doc_uuids)]
+    else:
+        try:
+            doc_uuid_strs = [str(u) for u in doc_uuids]
+        except TypeError:
+            doc_uuid_strs = [str(doc_uuids)]
+
+    doc_uuid_strs = [u for u in doc_uuid_strs if u]
+    if not doc_uuid_strs:
+        return
+
     try:
-        doc_uuid_str = str(doc_uuid)
-        # 1. Check SurrealDB count
-        if surreal_db.count_document_chunks(doc_uuid_str) > 0:
-            return
+        # 1. Check SurrealDB count in bulk
+        counts = surreal_db.count_documents_chunks(doc_uuid_strs)
+    except Exception as exc:
+        logger.warning(f"[Surreal Sync] Failed to check chunks count for list: {exc}")
+        counts = {}
 
-        # 2. Check GCS storage JSON
-        path = f"chunks/{doc_uuid_str}.json"
-        if default_storage.exists(path):
-            logger.info(f"[Surreal Sync] Chunks JSON found in storage for {doc_uuid_str}. Loading...")
-            with default_storage.open(path, "r") as f:
-                payloads = json.loads(f.read())
-            surreal_db.recreate_chunks(doc_uuid_str, payloads)
-            logger.info(f"[Surreal Sync] Restored {len(payloads)} chunks for document {doc_uuid_str} from storage.")
-            return
+    missing_uuids = [u for u in doc_uuid_strs if counts.get(u, 0) == 0]
+    if not missing_uuids:
+        return
 
-        # 3. If JSON is missing but document is COMPLETED, regenerate chunks and embeddings
+    for doc_uuid_str in missing_uuids:
         try:
             doc = SourceDocument.objects.get(uuid=doc_uuid)
         except SourceDocument.DoesNotExist:
