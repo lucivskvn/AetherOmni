@@ -245,6 +245,9 @@
 
             <div class="pane-body">
                 <textarea id="markdown-input" name="refined_markdown" class="markdown-editor" aria-labelledby="editor-title" placeholder="Write refined Markdown text here...">{{ document.refined_markdown }}</textarea>
+                <div class="editor-status-bar" style="padding: 6px 16px; background: rgba(0, 0, 0, 0.25); border-top: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); font-weight: 500; font-family: var(--font-body); pointer-events: none;" aria-live="polite">
+                    <span id="editor-char-word-count">0 characters | 0 words</span>
+                </div>
             </div>
         </div>
 

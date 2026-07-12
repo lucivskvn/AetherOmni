@@ -14,6 +14,7 @@ from extractor.utils import (
     get_locale_currency_details,
     process_csv_local,
     process_txt_local,
+    validate_url_scheme,
 )
 
 
@@ -206,6 +207,58 @@ class TemplateFiltersTestCase(TestCase):
         self.assertEqual(format_compact_tokens(350), "350")
         self.assertEqual(format_compact_tokens(None), "0")
         self.assertEqual(format_compact_tokens("invalid"), "0")
+
+    def test_normalize_language(self):
+        from extractor.templatetags.extractor_filters import normalize_language
+
+        self.assertEqual(normalize_language("ar"), "Arabic")
+        self.assertEqual(normalize_language("id"), "Indonesian")
+        self.assertEqual(normalize_language("bahasa"), "Indonesian")
+        self.assertEqual(normalize_language("english"), "English")
+        self.assertEqual(normalize_language("Unknown"), "Unknown")
+        self.assertEqual(normalize_language("xyz"), "Xyz")
+        self.assertEqual(normalize_language(""), "Unknown")
+        self.assertEqual(normalize_language(None), "Unknown")
+
+    @patch("time.time")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_cache_bust_fallback_time(self, mock_time):
+        from extractor.templatetags import extractor_filters
+
+        extractor_filters._CACHE_BUST_VAL = None
+        mock_time.return_value = 123456789
+
+        # Test empty URLs
+        self.assertEqual(extractor_filters.cache_bust(""), "")
+        self.assertEqual(extractor_filters.cache_bust(None), "")
+
+        # Test path without query param
+        res = extractor_filters.cache_bust("/static/css/main.css")
+        self.assertEqual(res, "/static/css/main.css?v=123456789")
+
+        # Test path with existing query param
+        res_with_q = extractor_filters.cache_bust("/static/css/main.css?theme=dark")
+        self.assertEqual(res_with_q, "/static/css/main.css?theme=dark&v=123456789")
+
+        # Clean up
+        extractor_filters._CACHE_BUST_VAL = None
+
+    @patch.dict(os.environ, {"RELEASE_VERSION": "v1.2.3_test"})
+    def test_cache_bust_release_version(self):
+        from extractor.templatetags import extractor_filters
+
+        extractor_filters._CACHE_BUST_VAL = None
+
+        # Test path without query param
+        res = extractor_filters.cache_bust("/static/js/app.js")
+        self.assertEqual(res, "/static/js/app.js?v=v1.2.3_test")
+
+        # Test path with existing query param
+        res_with_q = extractor_filters.cache_bust("/static/js/app.js?debug=true")
+        self.assertEqual(res_with_q, "/static/js/app.js?debug=true&v=v1.2.3_test")
+
+        # Clean up
+        extractor_filters._CACHE_BUST_VAL = None
 
 
 # AdminTestCase removed since DocumentChunk model has been retired.
@@ -586,3 +639,50 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         self.assertEqual(response, mock_ai_studio_response)
         self.assertEqual(mock_vertex_client.models.embed_content.call_count, 20)
         mock_ai_studio_client.models.embed_content.assert_called_once()
+
+
+class UrlSchemeValidationTestCase(TestCase):
+    """Verifies URL scheme validation logic under different environments."""
+
+    def test_url_scheme_debug_mode_https(self):
+        # Under settings.DEBUG = True, https:// should validate successfully
+        with self.settings(DEBUG=True):
+            try:
+                validate_url_scheme("https://example.com")
+            except ValueError as exc:
+                self.fail(f"validate_url_scheme raised ValueError unexpectedly: {exc}")
+
+    def test_url_scheme_debug_mode_http(self):
+        # Under settings.DEBUG = True, http:// should validate successfully
+        with self.settings(DEBUG=True):
+            try:
+                validate_url_scheme("http://example.com")
+            except ValueError as exc:
+                self.fail(f"validate_url_scheme raised ValueError unexpectedly: {exc}")
+
+    def test_url_scheme_production_mode_https(self):
+        # Under settings.DEBUG = False, https:// should validate successfully
+        with self.settings(DEBUG=False):
+            try:
+                validate_url_scheme("https://example.com")
+            except ValueError as exc:
+                self.fail(f"validate_url_scheme raised ValueError unexpectedly: {exc}")
+
+    def test_url_scheme_production_mode_http(self):
+        # Under settings.DEBUG = False, http:// is insecure and should raise ValueError
+        with self.settings(DEBUG=False):
+            with self.assertRaises(ValueError) as ctx:
+                validate_url_scheme("http://example.com")
+            self.assertEqual(str(ctx.exception), "Insecure URL scheme. Production environments require https.")
+
+    def test_url_scheme_invalid_prefix(self):
+        # Schemes other than http/https should raise ValueError in all modes
+        with self.settings(DEBUG=True):
+            with self.assertRaises(ValueError) as ctx:
+                validate_url_scheme("ftp://example.com")
+            self.assertEqual(str(ctx.exception), "Invalid URL scheme. Only http and https schemes are permitted.")
+
+        with self.settings(DEBUG=False):
+            with self.assertRaises(ValueError) as ctx:
+                validate_url_scheme("ftp://example.com")
+            self.assertEqual(str(ctx.exception), "Invalid URL scheme. Only http and https schemes are permitted.")

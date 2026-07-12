@@ -9,6 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteForm = document.getElementById('delete-document-form');
     const editorForm = document.getElementById('editor-form');
 
+    function updateCounts() {
+        if (!editor) return;
+        const text = editor.value || '';
+        const charCount = text.length;
+        const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+        const wordCount = words.length;
+        const counterEl = document.getElementById('editor-char-word-count');
+        if (counterEl) {
+            counterEl.textContent = `${charCount.toLocaleString()} character${charCount !== 1 ? 's' : ''} | ${wordCount.toLocaleString()} word${wordCount !== 1 ? 's' : ''}`;
+        }
+    }
+
     // ── 1. Initial render on load ─────────────────────────────────────────────
     if (editor && preview) {
         const initial = editor.value;
@@ -16,11 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
             preview.innerHTML = compileMarkdown(initial);
             applyPostRenderFeatures(preview);
         }
+        updateCounts();
 
         // Live recompile as user types
         editor.addEventListener('input', () => {
             preview.innerHTML = compileMarkdown(editor.value);
             applyPostRenderFeatures(preview);
+            updateCounts();
         });
 
         // Bi-directional proportional scroll synchronisation
@@ -121,6 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Refresh preview and state
         preview.innerHTML = compileMarkdown(editor.value);
         applyPostRenderFeatures(preview);
+        updateCounts();
         markUnsaved();
     }
 
