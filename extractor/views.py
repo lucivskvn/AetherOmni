@@ -37,7 +37,7 @@ def parse_datetime(val):
         return val
     try:
         return datetime.strptime(val, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    except Exception:
+    except (ValueError, TypeError):
         try:
             from django.utils.dateparse import parse_datetime as django_parse
 
@@ -578,7 +578,7 @@ class DocumentDetailView(LoginRequiredMixin, View):
 
                 try:
                     meta_raw = yaml.safe_load(doc.yaml_metadata)
-                except Exception:
+                except yaml.YAMLError:
                     meta_raw = yaml.safe_load(_sanitise_yaml_block(doc.yaml_metadata))
                 if isinstance(meta_raw, dict):
                     parsed_yaml = {str(k).strip().lower(): v for k, v in meta_raw.items()}
@@ -1059,7 +1059,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             budget_val = Decimal(monthly_budget_usd)
             if budget_val < 0:
                 raise ValueError("Budget cannot be negative.")
-        except Exception:
+        except (ValueError, ArithmeticError):
             messages.error(request, "Invalid budget value provided. Must be a valid positive number.")
             return redirect("dashboard")
 
@@ -1324,7 +1324,7 @@ class AuditLogListView(LoginRequiredMixin, View):
 
                 try:
                     ts_parsed = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.UTC)
-                except Exception:
+                except ValueError:
                     ts_parsed = parse_datetime(ts)
             else:
                 ts_parsed = parse_datetime(ts)
@@ -1552,7 +1552,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         target_service = "data-extractor-worker"
         try:
             get_service_config("data-extractor-worker")
-        except Exception:
+        except (OSError, ValueError, RuntimeError):
             try:
                 get_service_config("data-extractor-web")
                 target_service = "data-extractor-web"
@@ -1624,7 +1624,7 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
         body = e.read().decode("utf-8")
         try:
             err_msg = json.loads(body).get("msg") or json.loads(body).get("error_description") or body
-        except Exception:
+        except (json.JSONDecodeError, KeyError, AttributeError):
             err_msg = body
         return False, f"Supabase Signup Failed: {err_msg}"
     except Exception as e:
@@ -1678,7 +1678,7 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url):
         body = e.read().decode("utf-8")
         try:
             err_msg = json.loads(body).get("msg") or json.loads(body).get("error_description") or body
-        except Exception:
+        except (json.JSONDecodeError, KeyError, AttributeError):
             err_msg = body
         return False, f"Supabase Recovery Failed: {err_msg}"
     except Exception as e:

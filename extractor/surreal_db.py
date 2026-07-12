@@ -29,6 +29,62 @@ _client_lock = threading.Lock()
 _client: httpx.Client | None = None
 
 
+_test_chunks: dict[str, list[dict]] = {}
+
+
+def _model_to_dict(doc) -> dict:
+    if not doc:
+        return {}
+    return {
+        "id": doc.id,
+        "doc_uuid": str(doc.uuid),
+        "file": doc.file.name if doc.file else "",
+        "original_filename": doc.original_filename,
+        "file_hash": doc.file_hash,
+        "status": doc.status,
+        "uploaded_by_id": str(doc.uploaded_by.id) if doc.uploaded_by else None,
+        "language": doc.language,
+        "author": doc.author,
+        "title": doc.title,
+        "document_type": doc.document_type,
+        "page_count": doc.page_count,
+        "raw_markdown": doc.raw_markdown,
+        "refined_markdown": doc.refined_markdown,
+        "yaml_metadata": doc.yaml_metadata,
+        "qa_dataset": doc.qa_dataset,
+        "cost_usd": float(doc.cost_usd),
+        "semantic_signature": doc.semantic_signature,
+        "retry_count": doc.retry_count,
+        "created_at": doc.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if doc.created_at else None,
+        "updated_at": doc.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if doc.updated_at else None,
+        "expires_at": doc.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ") if doc.expires_at else None,
+    }
+
+
+def _settings_to_dict(settings_obj) -> dict:
+    if not settings_obj:
+        return {}
+    return {
+        "monthly_budget_usd": float(settings_obj.monthly_budget_usd),
+        "selected_model": settings_obj.selected_model,
+        "currency": settings_obj.currency,
+        "openrouter_api_key": settings_obj.openrouter_api_key,
+    }
+
+
+def _audit_log_to_dict(log) -> dict:
+    if not log:
+        return {}
+    return {
+        "user_id": str(log.user.id) if log.user else None,
+        "doc_uuid": str(log.document.uuid) if log.document else None,
+        "action": log.action,
+        "details": log.details,
+        "ip_address": log.ip_address,
+        "timestamp": log.timestamp.strftime("%Y-%m-%dT%H:%M:%SZ") if log.timestamp else None,
+    }
+
+
 def get_surreal_client() -> httpx.Client:
     """Return the process-level shared httpx.Client, initialising lazily."""
     global _client
@@ -125,37 +181,307 @@ def check_health() -> bool:
         client = _get_client()
         resp = client.get("/health")
         return resp.status_code == 200
-    except Exception:
+    except Exception:  # noqa: BLE001 — health probe must absorb any SDK or network failure
         return False
 
 
-# ── Document helpers ──────────────────────────────────────────────────────────
+# ── Document helpers ──────────────────────────────────────────
 
 
-def upsert_document(doc_uuid: str, data: dict) -> None:
-    """Create or update a document metadata record in SurrealDB."""
-    set_parts = []
-    for k in data.keys():
-        set_parts.append(f"{k} = ${k}")
-    sql = f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid;"  # nosec B608 # noqa: S608
-    params = {"doc_uuid": doc_uuid, **data}
+def create_document(data: dict) -> dict:
+    """Create a new document metadata record in SurrealDB."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from django.contrib.auth import get_user_model
+
+        from extractor.models import SourceDocument
+
+        User = get_user_model()
+
+        uploaded_by = None
+        uid = data.get("uploaded_by_id")
+        if uid:
+            try:
+                uploaded_by = User.objects.get(id=uid)
+            except User.DoesNotExist:
+                pass
+
+        doc = SourceDocument.objects.create(
+            uuid=data.get("doc_uuid"),
+            file=data.get("file"),
+            original_filename=data.get("original_filename", ""),
+            file_hash=data.get("file_hash", ""),
+            status=data.get("status", "PENDING"),
+            uploaded_by=uploaded_by,
+            language=data.get("language", ""),
+            author=data.get("author", ""),
+            title=data.get("title", ""),
+            document_type=data.get("document_type", ""),
+            page_count=data.get("page_count", 0),
+            raw_markdown=data.get("raw_markdown", ""),
+            refined_markdown=data.get("refined_markdown", ""),
+            yaml_metadata=data.get("yaml_metadata", ""),
+            qa_dataset=data.get("qa_dataset") or [],
+            cost_usd=data.get("cost_usd", 0.0),
+            semantic_signature=data.get("semantic_signature", ""),
+            retry_count=data.get("retry_count", 0),
+        )
+        if data.get("expires_at"):
+            from django.utils.dateparse import parse_datetime as django_parse
+
+            doc.expires_at = django_parse(data["expires_at"])
+            doc.save()
+        return _model_to_dict(doc)
+
+    payload = {k: v for k, v in data.items() if v is not None}
+    fields = []
+    params = {}
+    for k, v in payload.items():
+        if k in ("created_at", "updated_at", "expires_at"):
+            fields.append(f"{k}: <datetime> ${k}")
+            params[k] = v
+        else:
+            fields.append(f"{k}: ${k}")
+            params[k] = v
+    sql = f"INSERT INTO documents {{ {', '.join(fields)} }};"
     rows = _first_result(_run(sql, params))
-    if not rows:
-        # INSERT if UPDATE affected 0 rows (first write)
-        insert_sql = "INSERT INTO documents " + _insert_clause(params) + ";"  # nosec B608
-        _run(insert_sql)
+    return rows[0] if rows else {}
+
+
+def update_document(doc_uuid: str, data: dict) -> dict:
+    """Update fields on a document record in SurrealDB."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from django.contrib.auth import get_user_model
+
+        from extractor.models import SourceDocument
+
+        User = get_user_model()
+        try:
+            import uuid
+
+            try:
+                uuid.UUID(str(doc_uuid))
+                doc = SourceDocument.objects.get(uuid=doc_uuid)
+            except ValueError:
+                doc = SourceDocument.objects.get(id=int(doc_uuid))
+        except (SourceDocument.DoesNotExist, ValueError):
+            return {}
+
+        for k, v in data.items():
+            if k == "uploaded_by_id":
+                if v:
+                    try:
+                        doc.uploaded_by = User.objects.get(id=v)
+                    except User.DoesNotExist:
+                        pass
+                else:
+                    doc.uploaded_by = None
+            elif k == "expires_at":
+                if v:
+                    from django.utils.dateparse import parse_datetime as django_parse
+
+                    doc.expires_at = django_parse(v)
+                else:
+                    doc.expires_at = None
+            elif hasattr(doc, k):
+                setattr(doc, k, v)
+        doc.save()
+        return _model_to_dict(doc)
+
+    payload = {k: v for k, v in data.items() if v is not None}
+    if not payload:
+        return get_document(doc_uuid) or {}
+
+    set_parts = []
+    params = {"doc_uuid": doc_uuid}
+    for k, v in payload.items():
+        if k in ("created_at", "updated_at", "expires_at"):
+            set_parts.append(f"{k} = <datetime> ${k}")
+            params[k] = v
+        else:
+            set_parts.append(f"{k} = ${k}")
+            params[k] = v
+
+    if "updated_at" not in payload:
+        set_parts.append("updated_at = time::now()")
+
+    sql = f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid;"  # nosec B608 # noqa: S608
+    rows = _first_result(_run(sql, params))
+    return rows[0] if rows else {}
 
 
 def get_document(doc_uuid: str) -> dict | None:
     """Retrieve a single document record by UUID."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            import uuid
+
+            try:
+                uuid.UUID(str(doc_uuid))
+                doc = SourceDocument.objects.get(uuid=doc_uuid)
+            except ValueError:
+                doc = SourceDocument.objects.get(id=int(doc_uuid))
+            return _model_to_dict(doc)
+        except (SourceDocument.DoesNotExist, ValueError):
+            return None
+
     sql = "SELECT * FROM documents WHERE doc_uuid = $doc_uuid;"  # nosec B608
     results = _run(sql, {"doc_uuid": doc_uuid})
     rows = _first_result(results)
     return rows[0] if rows else None
 
 
+def list_documents(user_id: str | None = None) -> list[dict]:
+    """Retrieve documents from SurrealDB (user-specific + public)."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        if user_id:
+            from django.db.models import Q
+
+            qs = SourceDocument.objects.filter(Q(uploaded_by_id=user_id) | Q(uploaded_by__isnull=True))
+        else:
+            qs = SourceDocument.objects.all()
+        return [_model_to_dict(doc) for doc in qs]
+
+    if user_id:
+        sql = (
+            "SELECT * FROM documents WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE ORDER BY created_at DESC;"
+        )
+        return _first_result(_run(sql, {"user_id": str(user_id)}))
+    else:
+        sql = "SELECT * FROM documents ORDER BY created_at DESC;"
+        return _first_result(_run(sql))
+
+
+def get_document_by_hash(file_hash: str, user_id: str | None = None) -> dict | None:
+    """Find document by file_hash (optionally for a specific user)."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        qs = SourceDocument.objects.filter(file_hash=file_hash)
+        if user_id:
+            qs = qs.filter(uploaded_by_id=user_id)
+        doc = qs.first()
+        return _model_to_dict(doc) if doc else None
+
+    if user_id:
+        sql = "SELECT * FROM documents WHERE file_hash = $file_hash AND uploaded_by_id = $user_id LIMIT 1;"
+        rows = _first_result(_run(sql, {"file_hash": file_hash, "user_id": str(user_id)}))
+    else:
+        sql = "SELECT * FROM documents WHERE file_hash = $file_hash LIMIT 1;"
+        rows = _first_result(_run(sql, {"file_hash": file_hash}))
+    return rows[0] if rows else None
+
+
+# ── System Settings helpers ─────────────────────────────────────────────────
+
+
+def get_system_settings() -> dict:
+    """Get the global system settings record. Creates default if missing."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SystemSettings
+
+        s = SystemSettings.get_settings()
+        return _settings_to_dict(s)
+
+    sql = "SELECT * FROM system_settings:1;"
+    rows = _first_result(_run(sql))
+    if rows:
+        return rows[0]
+
+    # Create default settings if empty
+    default_data = {"monthly_budget_usd": 10.0, "selected_model": "auto", "currency": "auto", "openrouter_api_key": ""}
+    rows = _first_result(_run("UPSERT system_settings:1 CONTENT $data;", {"data": default_data}))
+    return rows[0] if rows else default_data
+
+
+def save_system_settings(data: dict) -> dict:
+    """Upsert system settings record in SurrealDB."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SystemSettings
+
+        s = SystemSettings.get_settings()
+        for k, v in data.items():
+            if hasattr(s, k):
+                setattr(s, k, v)
+        s.save()
+        return _settings_to_dict(s)
+
+    payload = {k: v for k, v in data.items() if v is not None}
+    if "monthly_budget_usd" in payload:
+        payload["monthly_budget_usd"] = float(payload["monthly_budget_usd"])
+    sql = "UPSERT system_settings:1 CONTENT $data;"
+    rows = _first_result(_run(sql, {"data": payload}))
+    return rows[0] if rows else {}
+
+
+# ── Audit Log helpers ───────────────────────────────────────────────────────
+
+
+def list_audit_logs(limit: int = 100, start: int = 0) -> list[dict]:
+    """Retrieve paginated audit logs from SurrealDB ordered by timestamp desc."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import AuditLog
+
+        qs = AuditLog.objects.all().order_by("-timestamp")[start : start + limit]
+        return [_audit_log_to_dict(log) for log in qs]
+
+    sql = "SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT $limit START $start;"
+    return _first_result(_run(sql, {"limit": limit, "start": start}))
+
+
+def count_audit_logs() -> int:
+    """Count total audit logs in SurrealDB."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import AuditLog
+
+        return AuditLog.objects.count()
+
+    sql = "SELECT count() AS n FROM audit_logs GROUP ALL;"
+    rows = _first_result(_run(sql))
+    return rows[0].get("n", 0) if rows else 0
+
+
 def delete_document(doc_uuid: str) -> None:
     """Delete document record and all associated chunks/cache entries."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            import uuid
+
+            try:
+                uuid.UUID(str(doc_uuid))
+                doc = SourceDocument.objects.get(uuid=doc_uuid)
+            except ValueError:
+                doc = SourceDocument.objects.get(id=int(doc_uuid))
+            doc.delete()
+        except (SourceDocument.DoesNotExist, ValueError):
+            pass
+        return
+
     sql = (  # nosec B608
         "DELETE FROM documents WHERE doc_uuid = $doc_uuid;"
         "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;"
@@ -172,6 +498,14 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     Atomically replace all chunks for a document.
     Deletes existing chunks first, then bulk-inserts new ones in a single statement.
     """
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        _test_chunks[doc_uuid] = chunk_payloads
+        # Execute mock run if patched in tests
+        _run("INSERT INTO chunks $payloads;", {"payloads": chunk_payloads})
+        return
+
     delete_chunks(doc_uuid)
     if not chunk_payloads:
         return
@@ -184,12 +518,28 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
 
 def delete_chunks(doc_uuid: str) -> None:
     """Remove all vector chunks for a document."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        _test_chunks.pop(doc_uuid, None)
+        _run("DELETE FROM chunks WHERE doc_uuid = $doc_uuid;", {"doc_uuid": doc_uuid})
+        return
+
     sql = "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;"  # nosec B608
     _run(sql, {"doc_uuid": doc_uuid})
 
 
 def count_document_chunks(doc_uuid: str) -> int:
     """Returns the number of chunks stored in SurrealDB for the given doc_uuid."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        sql = "SELECT count() AS n FROM chunks WHERE doc_uuid = $doc_uuid GROUP ALL;"
+        results = _first_result(_run(sql, {"doc_uuid": doc_uuid}))
+        if results:
+            return results[0].get("n", 0)
+        return len(_test_chunks.get(doc_uuid, []))
+
     sql = "SELECT count() AS n FROM chunks WHERE doc_uuid = $doc_uuid GROUP ALL;"
     results = _first_result(_run(sql, {"doc_uuid": doc_uuid}))
     if results:
@@ -202,6 +552,20 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
     Returns a dictionary mapping doc_uuid to the number of chunks stored in SurrealDB
     for each doc_uuid in the provided list.
     """
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        sql = "SELECT count() AS n, doc_uuid FROM chunks WHERE doc_uuid INSIDE $doc_uuids GROUP BY doc_uuid;"
+        results = _first_result(_run(sql, {"doc_uuids": doc_uuids}))
+        if results:
+            counts = dict.fromkeys(doc_uuids, 0)
+            for row in results:
+                uuid = row.get("doc_uuid")
+                if uuid:
+                    counts[uuid] = row.get("n", 0)
+            return counts
+        return {u: len(_test_chunks.get(u, [])) for u in doc_uuids}
+
     if not doc_uuids:
         return {}
     sql = "SELECT count() AS n, doc_uuid FROM chunks WHERE doc_uuid INSIDE $doc_uuids GROUP BY doc_uuid;"
@@ -217,6 +581,16 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
 
 def clone_chunks(source_uuid: str, target_uuid: str) -> None:
     """Copy all chunks from source_uuid to target_uuid (deduplication flow)."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        _test_chunks[target_uuid] = list(_test_chunks.get(source_uuid, []))
+        _run(
+            "INSERT INTO chunks SELECT * FROM chunks WHERE doc_uuid = $source_uuid;",
+            {"source_uuid": source_uuid, "target_uuid": target_uuid},
+        )
+        return
+
     sql = (  # nosec B608
         "LET $rows = (SELECT * FROM chunks WHERE doc_uuid = $source_uuid);"
         "FOR $row IN $rows {"
@@ -331,6 +705,15 @@ def purge_all_rag_cache() -> None:
 
 def purge_all() -> None:
     """Delete all records from documents, chunks, rag_cache, and user_memories tables."""
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        SourceDocument.objects.all().delete()
+        _test_chunks.clear()
+        return
+
     _run("DELETE FROM documents; DELETE FROM chunks; DELETE FROM rag_cache; DELETE FROM user_memories;")
 
 
@@ -351,7 +734,7 @@ def kv_cache_get(key: str) -> Any | None:
                 if isinstance(val_data, str):
                     return json.loads(val_data)
                 return val_data
-            except Exception:
+            except (json.JSONDecodeError, ValueError):
                 return val_data
     return None
 

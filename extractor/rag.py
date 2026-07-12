@@ -119,7 +119,7 @@ def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
             try:
                 response = execute_embed_content_with_fallback(model_name=model_name, contents=[chunks_list[idx]])
                 final_embeddings[idx] = response.embeddings[0].values
-            except Exception:
+            except (RuntimeError, ValueError, AttributeError):
                 final_embeddings[idx] = [0.0] * 768
 
 
@@ -326,7 +326,7 @@ def query_semantic_knowledge_rag(
     if user and user.is_authenticated and is_preference_signal(query_cleaned):
         try:
             cloud_tasks.enqueue("store_user_memory", {"user_id": str(user.id), "text": query_cleaned})
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             logger.debug("[Memory] Failed to enqueue memory task.")
 
     # ── 4. Fetch user memories from SurrealDB ─────────────────────────────────
@@ -343,7 +343,7 @@ def query_semantic_knowledge_rag(
 
     try:
         matching_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
-    except Exception:
+    except (ConnectionError, OSError, RuntimeError, TimeoutError):
         logger.exception("[RAG Search] Connection error to SurrealDB.")
         matching_chunks = []
 
@@ -356,7 +356,7 @@ def query_semantic_knowledge_rag(
     try:
         settings_obj = SystemSettings.get_settings()
         selected_model = settings_obj.selected_model
-    except Exception:
+    except (SystemSettings.DoesNotExist, AttributeError, RuntimeError):
         selected_model = "auto"
 
     # ── 8. Generate answer ────────────────────────────────────────────────────

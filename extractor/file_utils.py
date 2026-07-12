@@ -301,15 +301,42 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
     Prepends YAML frontmatter to each exported markdown file (Gap H-4).
     Enforces user boundaries if `user` is provided and is not a staff/superuser.
     """
-    from django.db.models import Q
+    from django.conf import settings
 
-    from extractor.models import SourceDocument
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from django.db.models import Q
 
-    docs = SourceDocument.objects.filter(id__in=document_ids, status="COMPLETED")
-    if user and not (user.is_staff or user.is_superuser):
-        docs = docs.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
+        from extractor.models import SourceDocument
 
-    docs_list = list(docs)
+        docs = SourceDocument.objects.filter(id__in=document_ids, status="COMPLETED")
+        if user and not (user.is_staff or user.is_superuser):
+            docs = docs.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
+        docs_list = list(docs)
+    else:
+        from django.contrib.auth import get_user_model
+
+        from extractor import surreal_db
+        from extractor.views import _wrap_surreal_doc
+
+        User = get_user_model()
+        users_map = {str(u.id): u for u in User.objects.all()}
+
+        docs_list = []
+        for doc_uuid in document_ids:
+            raw_doc = surreal_db.get_document(str(doc_uuid))
+            if not raw_doc:
+                continue
+            if raw_doc.get("status") != "COMPLETED":
+                continue
+
+            uploaded_by_id = raw_doc.get("uploaded_by_id")
+            if user and not (user.is_staff or user.is_superuser):
+                if uploaded_by_id and uploaded_by_id != str(user.id):
+                    continue
+
+            doc = _wrap_surreal_doc(raw_doc, users_map)
+            docs_list.append(doc)
+
     if not docs_list:
         raise ValueError("No completed documents selected for export bundle.")
 
@@ -423,7 +450,7 @@ def get_locale_currency_details(request: Any) -> dict[str, Any]:
     try:
         settings_obj = SystemSettings.get_settings()
         selected_currency = settings_obj.currency
-    except Exception:
+    except (SystemSettings.DoesNotExist, AttributeError, RuntimeError):
         selected_currency = "auto"
 
     if selected_currency and selected_currency != "auto":
