@@ -117,7 +117,7 @@ def init_django_admin():
             try:
                 validate_url_scheme(token_url)
                 req = urllib.request.Request(token_url, data=payload, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=5):  # nosec B310
+                with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
                     logger.info(
                         "Admin user '%s' already exists and authenticated successfully on Supabase Auth.", admin_email
                     )
@@ -144,7 +144,7 @@ def init_django_admin():
                 try:
                     validate_url_scheme(signup_url)
                     req = urllib.request.Request(signup_url, data=payload, headers=headers, method="POST")
-                    with urllib.request.urlopen(req, timeout=5):  # nosec B310
+                    with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
                         logger.info("Admin user '%s' registered successfully on Supabase!", admin_email)
                 except urllib.error.HTTPError as e:
                     logger.info("Supabase registration status: HTTP %d", e.code)

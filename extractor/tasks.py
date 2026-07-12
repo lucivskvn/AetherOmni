@@ -412,7 +412,7 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
         try:
             chunk_results = run_stage2_editorial_refinement(chunk, model_name=selected_model)
         except Exception as chunk_err:
-            logger.error(
+            logger.exception(
                 "[Worker] Stage 2 chunk %d/%d failed for Document ID %s: %s", idx, total_chunks, document_id, chunk_err
             )
             # On chunk failure, preserve the raw chunk text so content is not lost

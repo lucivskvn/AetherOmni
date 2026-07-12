@@ -8,6 +8,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
@@ -1266,7 +1267,7 @@ def register_view(request):
             headers = {"apikey": supabase_key, "Content-Type": "application/json"}
             payload = json.dumps({"email": email, "password": password}).encode("utf-8")
             req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=5):  # nosec B310
+            with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
                 messages.success(request, "Registration successful! Please check your email for the activation link.")
                 return redirect("login")
         except urllib.error.HTTPError as e:
@@ -1319,7 +1320,7 @@ def forgot_password_view(request):
             headers = {"apikey": supabase_key, "Content-Type": "application/json"}
             payload = json.dumps({"email": email}).encode("utf-8")
             req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=5):  # nosec B310
+            with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
                 messages.success(request, "Password recovery link has been sent! Please check your email inbox.")
                 return redirect("login")
         except urllib.error.HTTPError as e:
@@ -1335,6 +1336,7 @@ def forgot_password_view(request):
     return render(request, "extractor/forgot_password.html")
 
 
+@require_http_methods(["GET", "HEAD"])
 def reset_password_confirm_view(request):
     """
     Renders the password update confirmation view.

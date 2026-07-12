@@ -183,7 +183,7 @@ def get_service_config(service_name):
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
             body = he.read().decode("utf-8") if he.fp else ""
-            logger.error("GCP REST API describe HTTPError %d: %s for %s", he.code, body, service_name)
+            logger.exception("GCP REST API describe HTTPError %d: %s for %s", he.code, body, service_name)
             raise he
         except Exception as e:
             logger.exception(f"GCP REST API describe failed for {service_name}.")
@@ -280,7 +280,7 @@ def update_service_scale(service_name, min_scale, max_scale):
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
             body = he.read().decode("utf-8") if he.fp else ""
-            logger.error("GCP REST API update HTTPError %d: %s for %s", he.code, body, service_name)
+            logger.exception("GCP REST API update HTTPError %d: %s for %s", he.code, body, service_name)
             raise he
         except Exception as e:
             logger.exception(f"GCP REST API update failed for {service_name}.")
