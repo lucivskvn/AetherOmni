@@ -52,8 +52,6 @@ spec:
           value: "https://data-extractor-web-751922320980.asia-southeast1.run.app"
         - name: WORKER_URL
           value: "https://data-extractor-worker-751922320980.asia-southeast1.run.app"
-        - name: SURREAL_URL
-          value: "http://localhost:8000"
         - name: SURREAL_NS
           value: "omnirag"
         - name: SURREAL_DB
@@ -62,6 +60,26 @@ spec:
           value: "False"
         - name: GOOGLE_CLOUD_PROJECT
           value: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
+        - name: SURREAL_URL
+          valueFrom:
+            secretKeyRef:
+              name: SURREAL_URL
+              key: "latest"
+        - name: ADMIN_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: ADMIN_EMAIL
+              key: "latest"
+        - name: ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: ADMIN_USERNAME
+              key: "latest"
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ADMIN_PASSWORD
+              key: "latest"
         - name: DJANGO_SECRET_KEY
           valueFrom:
             secretKeyRef:
