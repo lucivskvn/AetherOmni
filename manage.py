@@ -5,8 +5,8 @@ import os
 import sys
 
 # Ensure all libraries look up /tmp as home (Cloud Run write sandbox)
-os.environ["HOME"] = "/tmp"  # NOSONAR
-os.environ["MEM0_DIR"] = "/tmp/.mem0"  # NOSONAR
+os.environ["HOME"] = "/tmp"  # nosec B108 # NOSONAR
+os.environ["MEM0_DIR"] = "/tmp/.mem0"  # nosec B108 # NOSONAR
 
 from dotenv import load_dotenv
 

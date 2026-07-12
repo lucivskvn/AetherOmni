@@ -153,6 +153,32 @@ def clean_html_content(raw_html: str) -> str:
     return bleach.clean(raw_html, tags=allowed_tags, attributes=allowed_attrs, strip=True)
 
 
+def _detect_first_strong(text_content, latin_chars, arabic_chars):
+    for char in text_content:
+        if latin_chars.match(char):
+            return "latin"
+        if arabic_chars.match(char):
+            return "arabic"
+    return None
+
+
+def _apply_arabic_attributes(attrs):
+    import re
+
+    if "dir=" in attrs:
+        attrs = re.sub(r'dir="[^"]*"', 'dir="rtl"', attrs)
+        attrs = re.sub(r"dir='[^']*'", 'dir="rtl"', attrs)
+    else:
+        attrs += ' dir="rtl"'
+
+    if "class=" in attrs:
+        attrs = re.sub(r'class="([^"]*)"', r'class="\1 arabic-text"', attrs)
+        attrs = re.sub(r"class='([^']*)'", r"class='\1 arabic-text'", attrs)
+    else:
+        attrs += ' class="arabic-text"'
+    return attrs
+
+
 def parse_arabic_layout(html_content: str) -> str:
     """
     Parses HTML content, detects block tags whose first strong alphabetical
@@ -174,28 +200,10 @@ def parse_arabic_layout(html_content: str) -> str:
         content = match.group(3)
 
         text_content = re.sub(r"<[^>]*>", "", content)
-
-        first_strong = None
-        for char in text_content:
-            if latin_chars.match(char):
-                first_strong = "latin"
-                break
-            elif arabic_chars.match(char):
-                first_strong = "arabic"
-                break
+        first_strong = _detect_first_strong(text_content, latin_chars, arabic_chars)
 
         if first_strong == "arabic":
-            if "dir=" in attrs:
-                attrs = re.sub(r'dir="[^"]*"', 'dir="rtl"', attrs)
-                attrs = re.sub(r"dir='[^']*'", 'dir="rtl"', attrs)
-            else:
-                attrs += ' dir="rtl"'
-
-            if "class=" in attrs:
-                attrs = re.sub(r'class="([^"]*)"', r'class="\1 arabic-text"', attrs)
-                attrs = re.sub(r"class='([^']*)'", r"class='\1 arabic-text'", attrs)
-            else:
-                attrs += ' class="arabic-text"'
+            attrs = _apply_arabic_attributes(attrs)
 
         return f"<{tag_name}{attrs}>{content}</{tag_name}>"
 
@@ -359,6 +367,50 @@ def _resolve_currency_and_symbol(accept_language: str) -> tuple[str, str]:
     return "USD", "$"
 
 
+def _fetch_live_rates_with_fallback():
+    rates = None
+    try:
+        with urllib.request.urlopen("https://open.er-api.com/v6/latest/USD", timeout=5) as response:  # nosec B310 nosemgrep
+            data = json.loads(response.read().decode())
+            if data.get("result") == "success":
+                rates = data.get("rates", {})
+                try:
+                    from extractor import surreal_db
+
+                    surreal_db.kv_cache_set("usd_exchange_rates", rates, ttl_seconds=86400)
+                except Exception as exc:
+                    logger.debug("[Exchange Rates] Failed to cache rates: %s", exc)
+    except Exception as exc:
+        logger.warning("[Exchange Rates] Error fetching live rates: %s — using fallback.", exc)
+        rates = _FALLBACK_RATES.copy()
+        try:
+            from extractor import surreal_db
+
+            surreal_db.kv_cache_set("usd_exchange_rates", rates, ttl_seconds=3600)
+        except Exception as exc:
+            logger.debug("[Exchange Rates] Failed to cache fallback rates: %s", exc)
+    return rates
+
+
+def _get_exchange_rates():
+    rates = None
+    try:
+        from extractor import surreal_db
+
+        rates = surreal_db.kv_cache_get("usd_exchange_rates")
+    except Exception as exc:
+        logger.debug("[Exchange Rates] Failed to read cached rates: %s", exc)
+
+    if not rates:
+        from django.core.cache import cache
+
+        rates = cache.get("usd_exchange_rates")
+
+    if not rates:
+        rates = _fetch_live_rates_with_fallback()
+    return rates
+
+
 def get_locale_currency_details(request: Any) -> dict[str, Any]:
     """
     Resolves target currency, local currency name, and current exchange rate from USD
@@ -382,45 +434,7 @@ def get_locale_currency_details(request: Any) -> dict[str, Any]:
         accept_language = request.META.get("HTTP_ACCEPT_LANGUAGE", "").lower() if request else ""
         currency, symbol = _resolve_currency_and_symbol(accept_language)
 
-    # Try SurrealDB KV cache first, fallback to Django cache (useful for testing)
-    rates = None
-    try:
-        from extractor import surreal_db
-
-        rates = surreal_db.kv_cache_get("usd_exchange_rates")
-    except Exception as exc:
-        logger.debug("[Exchange Rates] Failed to read cached rates: %s", exc)
-
-    if not rates:
-        from django.core.cache import cache
-
-        rates = cache.get("usd_exchange_rates")
-
-    if not rates:
-        try:
-            with urllib.request.urlopen("https://open.er-api.com/v6/latest/USD", timeout=5) as response:  # nosec B310 nosemgrep
-                data = json.loads(response.read().decode())
-                if data.get("result") == "success":
-                    rates = data.get("rates", {})
-                    # Cache for 24 hours in SurrealDB KV
-                    try:
-                        from extractor import surreal_db
-
-                        surreal_db.kv_cache_set("usd_exchange_rates", rates, ttl_seconds=86400)
-                    except Exception as exc:
-                        logger.debug("[Exchange Rates] Failed to cache rates: %s", exc)
-        except Exception as exc:
-            logger.warning("[Exchange Rates] Error fetching live rates: %s — using fallback.", exc)
-            # Gap E-38: use static fallback so page loads don't block for 5 seconds
-            rates = _FALLBACK_RATES.copy()
-            # Cache fallback for 1 hour to prevent retry storms
-            try:
-                from extractor import surreal_db
-
-                surreal_db.kv_cache_set("usd_exchange_rates", rates, ttl_seconds=3600)
-            except Exception as exc:
-                logger.debug("[Exchange Rates] Failed to cache fallback rates: %s", exc)
-
+    rates = _get_exchange_rates()
     rate = rates.get(currency, 1.0) if rates else 1.0
     return {"currency_code": currency, "symbol": symbol, "rate": rate}
 

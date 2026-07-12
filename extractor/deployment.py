@@ -22,6 +22,17 @@ def _get_subprocess_env():
     return env
 
 
+def _get_ann_value(annotations_dicts, keys):
+    for ann in annotations_dicts:
+        for key in keys:
+            if key in ann:
+                try:
+                    return int(ann[key])
+                except (ValueError, TypeError):
+                    pass
+    return None
+
+
 def extract_knative_scaling(config, default_min, default_max):
     """
     Safely extracts min and max scaling values from Knative configuration.
@@ -49,37 +60,27 @@ def extract_knative_scaling(config, default_min, default_max):
     min_keys = [KNATIVE_MIN_SCALE, "run.googleapis.com/minScale"]
     max_keys = ["autoscaling.knative.dev/maxScale", "run.googleapis.com/maxScale"]
 
-    min_val = None
-    for ann in annotations_dicts:
-        for key in min_keys:
-            if key in ann:
-                try:
-                    min_val = int(ann[key])
-                    break
-                except (ValueError, TypeError):
-                    pass
-        if min_val is not None:
-            break
+    min_val = _get_ann_value(annotations_dicts, min_keys)
+    max_val = _get_ann_value(annotations_dicts, max_keys)
 
-    if min_val is None:
-        min_val = default_min
+    return (
+        default_min if min_val is None else min_val,
+        default_max if max_val is None else max_val,
+    )
 
-    max_val = None
-    for ann in annotations_dicts:
-        for key in max_keys:
-            if key in ann:
-                try:
-                    max_val = int(ann[key])
-                    break
-                except (ValueError, TypeError):
-                    pass
-        if max_val is not None:
-            break
 
-    if max_val is None:
-        max_val = default_max
+def _query_metadata_server(path):
+    import urllib.request
 
-    return min_val, max_val
+    try:
+        req = urllib.request.Request(
+            f"http://metadata.google.internal/computeMetadata/v1/{path}",
+            headers={"Metadata-Flavor": "Google"},
+        )
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310
+            return response.read().decode("utf-8").strip()
+    except Exception:
+        return None
 
 
 def get_gcp_project_details():
@@ -97,38 +98,16 @@ def get_gcp_project_details():
 
     if not django_settings.DEBUG:
         if not project_id:
-            try:
-                req = urllib.request.Request(  # nosemgrep
-                    "http://metadata.google.internal/computeMetadata/v1/project/project-id",
-                    headers={"Metadata-Flavor": "Google"},
-                )
-                with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 nosemgrep
-                    project_id = response.read().decode("utf-8").strip()
-            except Exception:
+            project_id = _query_metadata_server("project/project-id")
+            if not project_id:
                 logger.debug("[Deployment] Metadata server unreachable (not on GCP)")
 
         if not os.getenv("GCP_REGION"):
-            try:
-                req = urllib.request.Request(  # nosemgrep
-                    "http://metadata.google.internal/computeMetadata/v1/instance/region",
-                    headers={"Metadata-Flavor": "Google"},
-                )
-                with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 nosemgrep
-                    region_full = response.read().decode("utf-8").strip()
-                    region = region_full.split("/")[-1]
-            except Exception:  # nosec B110
-                pass
+            region_full = _query_metadata_server("instance/region")
+            if region_full:
+                region = region_full.split("/")[-1]
 
-        project_number = None
-        try:
-            req = urllib.request.Request(  # nosemgrep
-                "http://metadata.google.internal/computeMetadata/v1/project/numeric-project-id",
-                headers={"Metadata-Flavor": "Google"},
-            )
-            with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 nosemgrep
-                project_number = response.read().decode("utf-8").strip()
-        except Exception as exc:
-            logger.debug("[Deployment] Metadata project number unreachable: %s", exc)
+        project_number = _query_metadata_server("project/numeric-project-id")
 
     return {
         "project_id": project_id or None,
@@ -211,23 +190,9 @@ def get_service_config(service_name):
             raise e
 
 
-def update_service_scale(service_name, min_scale, max_scale):
-    """
-    Updates the scaling settings of a Cloud Run service (min and max scale).
-    Uses GCP REST PUT API in production or falls back to local gcloud updates.
-    """
-    details = get_gcp_project_details()
-    project_id = details["project_id"]
-    project_namespace = details.get("project_number") or project_id
-    region = details["region"]
-
-    # 1. Fetch current service config first (required for Knative PUT updates)
-    service_json = get_service_config(service_name)
-
-    # Clean read-only status and metadata fields GCP rejects on PUT
+def _clean_read_only_metadata(service_json):
     if "metadata" in service_json:
         metadata = service_json["metadata"]
-        # Remove metadata values that are server-managed
         metadata.pop("generation", None)
         metadata.pop("resourceVersion", None)
         metadata.pop("selfLink", None)
@@ -244,16 +209,37 @@ def update_service_scale(service_name, min_scale, max_scale):
     if "status" in service_json:
         service_json.pop("status")
 
-    # Inject annotations in spec template
+
+def _ensure_annotations_spec(service_json):
     try:
-        annotations = service_json["spec"]["template"]["metadata"]["annotations"]
+        return service_json["spec"]["template"]["metadata"]["annotations"]
     except KeyError:
         if "template" not in service_json["spec"]:
             service_json["spec"]["template"] = {}
         if "metadata" not in service_json["spec"]["template"]:
             service_json["spec"]["template"]["metadata"] = {}
         service_json["spec"]["template"]["metadata"]["annotations"] = {}
-        annotations = service_json["spec"]["template"]["metadata"]["annotations"]
+        return service_json["spec"]["template"]["metadata"]["annotations"]
+
+
+def update_service_scale(service_name, min_scale, max_scale):
+    """
+    Updates the scaling settings of a Cloud Run service (min and max scale).
+    Uses GCP REST PUT API in production or falls back to local gcloud updates.
+    """
+    details = get_gcp_project_details()
+    project_id = details["project_id"]
+    project_namespace = details.get("project_number") or project_id
+    region = details["region"]
+
+    # 1. Fetch current service config first (required for Knative PUT updates)
+    service_json = get_service_config(service_name)
+
+    # Clean read-only status and metadata fields GCP rejects on PUT
+    _clean_read_only_metadata(service_json)
+
+    # Inject annotations in spec template
+    annotations = _ensure_annotations_spec(service_json)
 
     annotations[KNATIVE_MIN_SCALE] = str(min_scale)
     annotations["autoscaling.knative.dev/maxScale"] = str(max_scale)
@@ -311,6 +297,62 @@ def update_service_scale(service_name, min_scale, max_scale):
             raise e
 
 
+def _parse_http_request_payload(entry):
+    http_req = entry.get("httpRequest")
+    if http_req and isinstance(http_req, dict):
+        method = http_req.get("requestMethod", "GET")
+        url = http_req.get("requestUrl", "")
+        status = http_req.get("status", "")
+        latency = http_req.get("latency", "")
+        from urllib.parse import urlparse
+
+        try:
+            parsed = urlparse(url)
+            path = parsed.path
+            if parsed.query:
+                path += f"?{parsed.query}"
+        except Exception:
+            path = url
+        return f"HTTP {method} {path} - Status: {status} - Latency: {latency}"
+    return None
+
+
+def _parse_text_payload(entry):
+    return (
+        entry.get("textPayload")
+        or entry.get("jsonPayload", {}).get("message")
+        or entry.get("protoPayload", {}).get("resourceName", "")
+        or ""
+    )
+
+
+def _fallback_local_run_logs(service_name, region, project_id, limit):
+    try:
+        cmd = [
+            "gcloud",
+            "run",
+            "services",
+            "logs",
+            "read",
+            service_name,
+            "--region",
+            region,
+            "--project",
+            project_id,
+            "--limit",
+            str(limit),
+        ]
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=_get_subprocess_env(), timeout=30)  # nosec B603
+        lines = output.decode("utf-8").split("\n")
+        logs_parsed = []
+        for line in lines:
+            if line.strip():
+                logs_parsed.append({"timestamp": "", "message": line, "severity": "INFO"})
+        return logs_parsed
+    except Exception as ex:
+        return [{"timestamp": "", "message": f"Local log retrieval failed: {ex!s}", "severity": "ERROR"}]
+
+
 def _get_service_logs_gcp(service_name, project_id, limit, token):
     url = "https://logging.googleapis.com/v2/entries:list"
     body = {
@@ -334,28 +376,7 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
             for entry in entries:
                 timestamp = entry.get("timestamp", "")
                 severity = entry.get("severity", "INFO")
-                http_req = entry.get("httpRequest")
-                if http_req and isinstance(http_req, dict):
-                    method = http_req.get("requestMethod", "GET")
-                    url = http_req.get("requestUrl", "")
-                    status = http_req.get("status", "")
-                    latency = http_req.get("latency", "")
-                    from urllib.parse import urlparse
-
-                    try:
-                        parsed = urlparse(url)
-                        path = parsed.path
-                        if parsed.query:
-                            path += f"?{parsed.query}"
-                    except Exception:
-                        path = url
-                    payload = f"HTTP {method} {path} - Status: {status} - Latency: {latency}"
-                else:
-                    payload = (
-                        entry.get("textPayload")
-                        or entry.get("jsonPayload", {}).get("message")
-                        or entry.get("protoPayload", {}).get("resourceName", "")
-                    )
+                payload = _parse_http_request_payload(entry) or _parse_text_payload(entry)
                 if payload:
                     logs_parsed.append({"timestamp": timestamp, "message": payload, "severity": severity})
             return logs_parsed
@@ -390,53 +411,13 @@ def _get_service_logs_local(service_name, project_id, region, limit):
         for entry in entries:
             timestamp = entry.get("timestamp", "")
             severity = entry.get("severity", "INFO")
-            http_req = entry.get("httpRequest")
-            if http_req and isinstance(http_req, dict):
-                method = http_req.get("requestMethod", "GET")
-                url = http_req.get("requestUrl", "")
-                status = http_req.get("status", "")
-                latency = http_req.get("latency", "")
-                from urllib.parse import urlparse
-
-                try:
-                    parsed = urlparse(url)
-                    path = parsed.path
-                    if parsed.query:
-                        path += f"?{parsed.query}"
-                except Exception:
-                    path = url
-                payload = f"HTTP {method} {path} - Status: {status} - Latency: {latency}"
-            else:
-                payload = entry.get("textPayload") or entry.get("jsonPayload", {}).get("message") or ""
+            payload = _parse_http_request_payload(entry) or _parse_text_payload(entry)
             if payload:
                 logs_parsed.append({"timestamp": timestamp, "message": payload, "severity": severity})
         return logs_parsed
 
     except Exception:
-        try:
-            cmd = [
-                "gcloud",
-                "run",
-                "services",
-                "logs",
-                "read",
-                service_name,
-                "--region",
-                region,
-                "--project",
-                project_id,
-                "--limit",
-                str(limit),
-            ]
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=_get_subprocess_env(), timeout=30)  # nosec B603
-            lines = output.decode("utf-8").split("\n")
-            logs_parsed = []
-            for line in lines:
-                if line.strip():
-                    logs_parsed.append({"timestamp": "", "message": line, "severity": "INFO"})
-            return logs_parsed
-        except Exception as ex:
-            return [{"timestamp": "", "message": f"Local log retrieval failed: {ex!s}", "severity": "ERROR"}]
+        return _fallback_local_run_logs(service_name, region, project_id, limit)
 
 
 def get_service_logs(service_name, limit=50):

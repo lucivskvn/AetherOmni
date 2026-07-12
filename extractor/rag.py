@@ -69,18 +69,27 @@ def _chunk_long_paragraph(paragraph: str, max_chunk_size: int, chunks: list[str]
     return sub_chunk, sub_size
 
 
-def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-embedding-004") -> list[list[float]]:
-    """
-    Fetch 768-dimension text embeddings from Google Vertex AI / AI Studio for a list of text chunks.
-    Replaces the old generate_pgvector_embeddings function.
-    Results are stored in SurrealDB chunks via surreal_db.recreate_chunks.
-    Reuse existing vectors from SurrealDB if they exist to avoid Gemini costs.
-    """
-    from extractor import surreal_db
+def _fetch_missing_embeddings(
+    missing_indices: list[int],
+    missing_texts: list[str],
+    model_name: str,
+) -> dict[int, list[float]]:
+    """Batch-fetch embeddings for texts not found in the SurrealDB cache."""
     from extractor.llm_gateway import execute_embed_content_with_fallback
 
-    logger.info("[Embeddings] Fetching embeddings for %s chunks...", len(chunks_list))
+    logger.info("[Embeddings] Fetching %s new embeddings from API...", len(missing_texts))
+    batch_size = 20
+    generated_embeddings = []
+    for i in range(0, len(missing_texts), batch_size):
+        batch = missing_texts[i : i + batch_size]
+        response = execute_embed_content_with_fallback(model_name=model_name, contents=batch)
+        for embedding_obj in response.embeddings:
+            generated_embeddings.append(embedding_obj.values)
 
+    return {idx: emb for idx, emb in zip(missing_indices, generated_embeddings)}
+
+
+def _lookup_cached_embeddings(chunks_list, surreal_db):
     final_embeddings = [None] * len(chunks_list)
     missing_indices = []
     missing_texts = []
@@ -99,20 +108,11 @@ def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-
         else:
             missing_indices.append(idx)
             missing_texts.append(text)
+    return final_embeddings, missing_indices, missing_texts
 
-    if missing_texts:
-        logger.info("[Embeddings] Fetching %s new embeddings from API...", len(missing_texts))
-        batch_size = 20
-        generated_embeddings = []
-        for i in range(0, len(missing_texts), batch_size):
-            batch = missing_texts[i : i + batch_size]
-            response = execute_embed_content_with_fallback(model_name=model_name, contents=batch)
-            for embedding_obj in response.embeddings:
-                generated_embeddings.append(embedding_obj.values)
 
-        for idx, emb in zip(missing_indices, generated_embeddings):
-            if idx < len(final_embeddings):
-                final_embeddings[idx] = emb
+def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
+    from extractor.llm_gateway import execute_embed_content_with_fallback
 
     for idx, emb in enumerate(final_embeddings):
         if emb is None:
@@ -122,11 +122,48 @@ def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-
             except Exception:
                 final_embeddings[idx] = [0.0] * 768
 
+
+def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-embedding-004") -> list[list[float]]:
+    """
+    Fetch 768-dimension text embeddings from Google Vertex AI / AI Studio for a list of text chunks.
+    Replaces the old generate_pgvector_embeddings function.
+    Results are stored in SurrealDB chunks via surreal_db.recreate_chunks.
+    Reuse existing vectors from SurrealDB if they exist to avoid Gemini costs.
+    """
+    from extractor import surreal_db
+
+    logger.info("[Embeddings] Fetching embeddings for %s chunks...", len(chunks_list))
+
+    final_embeddings, missing_indices, missing_texts = _lookup_cached_embeddings(chunks_list, surreal_db)
+
+    if missing_texts:
+        fetched = _fetch_missing_embeddings(missing_indices, missing_texts, model_name)
+        for idx, emb in fetched.items():
+            if idx < len(final_embeddings):
+                final_embeddings[idx] = emb
+
+    _fill_missing_fallbacks(final_embeddings, chunks_list, model_name)
+
     return final_embeddings
 
 
 # Keep old name as alias for backward compatibility with any remaining call sites
 generate_pgvector_embeddings = generate_surreal_embeddings
+
+
+def _sync_postgres_memories_to_surreal(user, surreal_db, UserMemory):
+    pg_memories = UserMemory.objects.filter(user=user)
+    if pg_memories.exists():
+        logger.info(
+            "[Memories Sync] Restoring %s memories from PostgreSQL to SurrealDB for user %s...",
+            pg_memories.count(),
+            user.username,
+        )
+        for mem in pg_memories:
+            try:
+                surreal_db.add_user_memory(str(user.id), mem.memory_text, mem.embedding)
+            except Exception as add_err:
+                logger.warning("[Memories Sync] Failed to sync memory to SurrealDB: %s", add_err)
 
 
 def _fetch_user_memories_block(user: Any, query_embedding: list[float]) -> str:
@@ -144,18 +181,7 @@ def _fetch_user_memories_block(user: Any, query_embedding: list[float]) -> str:
             db_count = 0
 
         if db_count == 0:
-            pg_memories = UserMemory.objects.filter(user=user)
-            if pg_memories.exists():
-                logger.info(
-                    "[Memories Sync] Restoring %s memories from PostgreSQL to SurrealDB for user %s...",
-                    pg_memories.count(),
-                    user.username,
-                )
-                for mem in pg_memories:
-                    try:
-                        surreal_db.add_user_memory(str(user.id), mem.memory_text, mem.embedding)
-                    except Exception as add_err:
-                        logger.warning("[Memories Sync] Failed to sync memory to SurrealDB: %s", add_err)
+            _sync_postgres_memories_to_surreal(user, surreal_db, UserMemory)
 
         memories = surreal_db.search_user_memories(str(user.id), query_embedding, limit=5)
         if memories:
@@ -233,6 +259,32 @@ def _save_caches(
         logger.debug("[Semantic Cache] Failed to KV-cache result: %s", exc)
 
 
+def _lookup_kv_cache(cache_key, user, document_ids, surreal_db):
+    try:
+        cached_result = surreal_db.kv_cache_get(cache_key)
+        if cached_result:
+            # Enforce access control and filter boundaries on cached KV result (Gap F-8)
+            allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
+            cached_sources = [s.get("uuid") for s in cached_result.get("sources", [])]
+            if allowed_uuids is None or all(s in allowed_uuids for s in cached_sources):
+                logger.info("[Cache Hit] KV cache hit for key '%s' ($0.00 LLM cost)", cache_key)
+                return cached_result
+    except Exception as exc:
+        logger.warning("[Cache] KV cache lookup failed: %s", exc)
+    return None
+
+
+def _ensure_chunks_loaded_for_user(user, allowed_uuids):
+    if allowed_uuids is not None:
+        ensure_document_chunks_loaded(allowed_uuids)
+    else:
+        # For admins/superusers (allowed_uuids is None), ensure chunks are loaded for all completed documents
+        from extractor.models import SourceDocument
+
+        all_uuids = SourceDocument.objects.filter(status="COMPLETED").values_list("uuid", flat=True)
+        ensure_document_chunks_loaded(all_uuids)
+
+
 def query_semantic_knowledge_rag(
     query: str,
     document_ids: list[int] | None = None,
@@ -262,17 +314,9 @@ def query_semantic_knowledge_rag(
     cache_key = f"rag_search_cache:{user_part}:{query_hash}"
 
     # ── 1. Exact-match KV cache lookup (SurrealDB) ────────────────────────────
-    try:
-        cached_result = surreal_db.kv_cache_get(cache_key)
-        if cached_result:
-            # Enforce access control and filter boundaries on cached KV result (Gap F-8)
-            allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
-            cached_sources = [s.get("uuid") for s in cached_result.get("sources", [])]
-            if allowed_uuids is None or all(s in allowed_uuids for s in cached_sources):
-                logger.info("[Cache Hit] KV cache hit for key '%s' ($0.00 LLM cost)", cache_key)
-                return cached_result
-    except Exception as exc:
-        logger.warning("[Cache] KV cache lookup failed: %s", exc)
+    cached_result = _lookup_kv_cache(cache_key, user, document_ids, surreal_db)
+    if cached_result:
+        return cached_result
 
     # ── 2. Fetch query embedding ───────────────────────────────────────────────
     query_emb_resp = execute_embed_content_with_fallback(model_name="text-embedding-004", contents=[query_cleaned])
@@ -295,14 +339,7 @@ def query_semantic_knowledge_rag(
 
     # ── 6. SurrealDB HNSW chunk search ────────────────────────────────────────
     allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
-    if allowed_uuids is not None:
-        ensure_document_chunks_loaded(allowed_uuids)
-    else:
-        # For admins/superusers (allowed_uuids is None), ensure chunks are loaded for all completed documents
-        from extractor.models import SourceDocument
-
-        all_uuids = SourceDocument.objects.filter(status="COMPLETED").values_list("uuid", flat=True)
-        ensure_document_chunks_loaded(all_uuids)
+    _ensure_chunks_loaded_for_user(user, allowed_uuids)
 
     try:
         matching_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
@@ -418,6 +455,40 @@ def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
     return {"id": None, "title": "Unknown", "author": "Unknown", "language": "Unknown"}
 
 
+def _regenerate_chunks_for_doc(doc, doc_uuid_str, surreal_db, default_storage, json, ContentFile) -> None:
+    """Regenerate and save chunks+embeddings for a single COMPLETED document that is missing them."""
+    if doc.status == "COMPLETED" and doc.refined_markdown:
+        logger.info(f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks...")
+        lang = (doc.language or "").lower()
+        chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
+        from extractor.rag import generate_surreal_embeddings
+        from extractor.tasks import chunk_document_semantically
+
+        chunks = chunk_document_semantically(doc.refined_markdown, max_chunk_size=chunk_size)
+        if chunks:
+            embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
+            payloads = [
+                {
+                    "chunk_index": i,
+                    "content": chunk_text,
+                    "token_count": len(chunk_text.split()),
+                    "language": doc.language or "",
+                    "embedding": emb,
+                }
+                for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
+            ]
+            # Save to SurrealDB
+            surreal_db.recreate_chunks(doc_uuid_str, payloads)
+            # Save to storage JSON
+            chunks_json_path = f"chunks/{doc_uuid_str}.json"
+            default_storage.save(chunks_json_path, ContentFile(json.dumps(payloads).encode("utf-8")))
+            logger.info(
+                f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."
+            )
+    else:
+        logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.status}, skipping sync.")
+
+
 def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
     """
     Checks if chunks for doc_uuids exist in SurrealDB.
@@ -466,36 +537,6 @@ def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
             continue
 
         try:
-            if doc.status == "COMPLETED" and doc.refined_markdown:
-                logger.info(
-                    f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks..."
-                )
-                lang = (doc.language or "").lower()
-                chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
-                from extractor.rag import generate_surreal_embeddings
-                from extractor.tasks import chunk_document_semantically
-
-                chunks = chunk_document_semantically(doc.refined_markdown, max_chunk_size=chunk_size)
-                if chunks:
-                    embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
-                    payloads = [
-                        {
-                            "chunk_index": i,
-                            "content": chunk_text,
-                            "token_count": len(chunk_text.split()),
-                            "language": doc.language or "",
-                            "embedding": emb,
-                        }
-                        for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
-                    ]
-                    # Save to SurrealDB
-                    surreal_db.recreate_chunks(doc_uuid_str, payloads)
-                    # Save to storage JSON
-                    default_storage.save(path, ContentFile(json.dumps(payloads).encode("utf-8")))
-                    logger.info(
-                        f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."
-                    )
-            else:
-                logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.status}, skipping sync.")
+            _regenerate_chunks_for_doc(doc, doc_uuid_str, surreal_db, default_storage, json, ContentFile)
         except Exception as exc:
             logger.warning(f"[Surreal Sync] Failed to ensure chunks for {doc_uuid_str}: {exc}")

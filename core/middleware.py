@@ -67,6 +67,17 @@ def _patched_process_view(self, request, callback, callback_args, callback_kwarg
 CsrfViewMiddleware.process_view = _patched_process_view
 
 
+def _parse_db_origins(db_origins):
+    if not db_origins:
+        return ()
+    parsed = []
+    for origin in db_origins.split(","):
+        clean_origin = origin.strip()
+        if clean_origin:
+            parsed.append(clean_origin)
+    return tuple(parsed)
+
+
 class DynamicCsrfTrustedOriginsMiddleware:
     """
     Dynamically registers the request's origin and referer in CSRF_TRUSTED_ORIGINS
@@ -137,13 +148,7 @@ class DynamicCsrfTrustedOriginsMiddleware:
 
                 settings_obj = SystemSettings.get_settings()
                 db_origins = settings_obj.csrf_trusted_origins
-                parsed = []
-                if db_origins:
-                    for origin in db_origins.split(","):
-                        clean_origin = origin.strip()
-                        if clean_origin:
-                            parsed.append(clean_origin)
-                DynamicCsrfTrustedOriginsMiddleware._cached_db_origins = tuple(parsed)
+                DynamicCsrfTrustedOriginsMiddleware._cached_db_origins = _parse_db_origins(db_origins)
                 DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = True
                 DynamicCsrfTrustedOriginsMiddleware._last_query_time = now
             except Exception as e:
@@ -160,13 +165,15 @@ class DynamicCsrfTrustedOriginsMiddleware:
             if host_origin not in settings.CSRF_TRUSTED_ORIGINS:
                 settings.CSRF_TRUSTED_ORIGINS.append(host_origin)
 
+    def _trust_origin_if_safe(self, origin):
+        if origin and (settings.DEBUG or self._is_loopback(origin)):
+            if origin not in settings.CSRF_TRUSTED_ORIGINS:
+                settings.CSRF_TRUSTED_ORIGINS.append(origin)
+
     def _trust_header_origins_if_safe(self, request):
         # Origin header
         origin = request.META.get("HTTP_ORIGIN")
-        if origin:
-            if settings.DEBUG or self._is_loopback(origin):
-                if origin not in settings.CSRF_TRUSTED_ORIGINS:
-                    settings.CSRF_TRUSTED_ORIGINS.append(origin)
+        self._trust_origin_if_safe(origin)
 
         # Referer header
         referer = request.META.get("HTTP_REFERER")
@@ -175,9 +182,7 @@ class DynamicCsrfTrustedOriginsMiddleware:
                 parsed = urllib.parse.urlparse(referer)
                 if parsed.scheme and parsed.netloc:
                     ref_origin = f"{parsed.scheme}://{parsed.netloc}"
-                    if settings.DEBUG or self._is_loopback(ref_origin):
-                        if ref_origin not in settings.CSRF_TRUSTED_ORIGINS:
-                            settings.CSRF_TRUSTED_ORIGINS.append(ref_origin)
+                    self._trust_origin_if_safe(ref_origin)
             except Exception as e:
                 logger.debug("[Middleware] Could not parse referer header for CSRF trust: %s", e)
 

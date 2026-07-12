@@ -222,11 +222,13 @@ class CleanupExpiredDocumentsTestCase(TestCase):
     @patch("extractor.surreal_db.purge_expired_rag_cache")
     @patch("django.core.files.storage.default_storage.delete")
     @patch("django.core.files.storage.default_storage.exists")
-    def test_cleanup_expired_documents(self, mock_exists, mock_delete, mock_purge_cache, mock_delete_chunks):
+    @patch("django.core.files.storage.default_storage.save")
+    def test_cleanup_expired_documents(self, mock_save, mock_exists, mock_delete, mock_purge_cache, mock_delete_chunks):
         from django.utils import timezone
 
         from extractor.tasks import cleanup_expired_documents_task
 
+        mock_save.side_effect = lambda name, content, max_length=None: name
         now = timezone.now()
         mock_exists.return_value = False
 
