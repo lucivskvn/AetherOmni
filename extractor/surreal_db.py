@@ -206,7 +206,7 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
         return {}
     sql = "SELECT count() AS n, doc_uuid FROM chunks WHERE doc_uuid INSIDE $doc_uuids GROUP BY doc_uuid;"
     results = _first_result(_run(sql, {"doc_uuids": doc_uuids}))
-    counts = {uuid: 0 for uuid in doc_uuids}
+    counts = dict.fromkeys(doc_uuids, 0)
     if results:
         for row in results:
             uuid = row.get("doc_uuid")

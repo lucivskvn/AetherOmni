@@ -382,7 +382,7 @@ def _call_direct_gemini(
 # prevent 404 errors from stale or mis-typed configurations.
 KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
     {
-        "gemini-3.5-flash",
+        MODEL_GEMINI_35_FLASH,
         "gemini-3.1-flash",
         "gemini-3.1-flash-lite",
         "gemini-3.1-pro",
@@ -1041,7 +1041,7 @@ def _run_ocr_with_upload(client: Any, file_path: str, model_name: str, ocr_promp
                 logger.warning("[OCR Stage 1] Failed to delete remote file %s: %s", file_ref.name, cleanup_err)
 
 
-def run_stage1_multimodal_ocr(file_path: str, model_name: str = "gemini-3.5-flash") -> dict[str, Any]:
+def run_stage1_multimodal_ocr(file_path: str, model_name: str = MODEL_GEMINI_35_FLASH) -> dict[str, Any]:
     """
     Pass 1 Multimodal OCR. Uploads the target PDF/Image using Gemini Files API
     to handle heavy payloads (up to 170+ pages) without timeouts or memory crashes,
@@ -1144,7 +1144,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
         else:
             # Case 3: YAML block starting directly with key-value pairs at beginning and ending with ---
             direct_match = re.search(
-                r"^(?P<yaml>[\w_]+\s*:.*?)\n\s*-{3,}\s*(?:\n|$)",
+                r"^(?P<yaml>\w+\s*:.*?)\n\s*-{3,}\s*(?:\n|$)",
                 refined_text,
                 re.DOTALL | re.MULTILINE,
             )
@@ -1172,7 +1172,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
 
         pre_json = refined_text[: json_match.start()].rstrip()
         pre_json = re.sub(
-            r"\n{1,4}(?:#{1,6}\s+|(?:\*{1,2}))(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n(?:[^\n]*(?:Reasoning|downstream|training|NotebookLM)[^\n]*\n?)*.*$",
+            r"\n{1,4}(?:#{1,6}\s+|\*{1,2})(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n.*$",
             "",
             pre_json,
             flags=re.DOTALL | re.IGNORECASE,
@@ -1185,7 +1185,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
     return refined_text, yaml_block.strip(), qa_list
 
 
-def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = "gemini-3.5-flash") -> dict[str, Any]:
+def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = MODEL_GEMINI_35_FLASH) -> dict[str, Any]:
     """
     Pass 2 Reasoning Curation Engine. Removes headers, footers, page numbering,
     re-joins sentences, structures metadata YAML Front-matter block, and

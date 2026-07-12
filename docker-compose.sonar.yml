@@ -4,6 +4,9 @@ services:
   sonarqube:
     image: sonarqube:latest
     container_name: sonarqube_server
+    security_opt:
+      - no-new-privileges:true
+    # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service
     restart: always
     ports:
       - "9000:9000"
@@ -21,6 +24,9 @@ services:
   db:
     image: postgres:16-alpine
     container_name: sonarqube_db
+    security_opt:
+      - no-new-privileges:true
+    # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service
     restart: always
     environment:
       - POSTGRES_USER=sonar

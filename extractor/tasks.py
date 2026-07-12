@@ -229,7 +229,7 @@ def _sanitise_yaml_block(raw: str) -> str:
 
     fixed_lines = []
     # Matches: optional leading whitespace, key, colon+space, then the value
-    line_re = re.compile(r"^(\s*[\w_]+\s*:\s)(.+)$")
+    line_re = re.compile(r"^(\s*\w+\s*:\s)(.+)$")
     for line in raw.splitlines():
         m = line_re.match(line)
         if m:
