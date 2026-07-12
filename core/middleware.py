@@ -50,7 +50,7 @@ def _patched_process_view(self, request, callback, callback_args, callback_kwarg
                 host = host.strip("[]").lower()
                 if host in ("localhost", "127.0.0.1", "::1"):
                     is_loopback_referer = True
-        except Exception:
+        except ValueError:
             pass
 
     if is_loopback_referer:
@@ -77,7 +77,7 @@ class DynamicCsrfTrustedOriginsMiddleware:
     _base_origins = None
     _db_origins_loaded: bool = False
     _last_query_time: float = 0.0
-    _cached_db_origins: list[str] = []
+    _cached_db_origins: tuple[str, ...] = ()
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -143,7 +143,7 @@ class DynamicCsrfTrustedOriginsMiddleware:
                         clean_origin = origin.strip()
                         if clean_origin:
                             parsed.append(clean_origin)
-                DynamicCsrfTrustedOriginsMiddleware._cached_db_origins = parsed
+                DynamicCsrfTrustedOriginsMiddleware._cached_db_origins = tuple(parsed)
                 DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = True
                 DynamicCsrfTrustedOriginsMiddleware._last_query_time = now
             except Exception as e:

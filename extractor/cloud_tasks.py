@@ -122,12 +122,16 @@ def get_gcp_service_account() -> str | None:
     """Fetch the service account email from the local GCP Metadata Server."""
     import urllib.request
 
+    from extractor.utils import validate_url_scheme
+
+    url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
     try:
+        validate_url_scheme(url)
         req = urllib.request.Request(
-            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
+            url,
             headers={"Metadata-Flavor": "Google"},
         )
-        with urllib.request.urlopen(req, timeout=1) as response:
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310
             return response.read().decode("utf-8").strip()
     except Exception:
         return None
