@@ -726,16 +726,31 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
             from extractor.models import AuditAction, SourceDocument
             from extractor.utils import get_client_ip, log_audit_event
 
-            docs = SourceDocument.objects.filter(id__in=document_ids)
+            if request.user.is_staff or request.user.is_superuser:
+                docs = SourceDocument.objects.filter(id__in=document_ids)
+            else:
+                docs = SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user)
+
+            docs = list(docs)
+            file_hashes = {doc.file_hash for doc in docs if doc.file_hash}
+
+            hash_ref_counts = dict(
+                SourceDocument.objects.filter(file_hash__in=file_hashes)
+                .values("file_hash")
+                .annotate(count=Count("id"))
+                .values_list("file_hash", "count")
+            )
+
             deleted_count = 0
             for doc in docs:
-                # Access boundary check
-                if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
-                    continue
-
                 file_hash = doc.file_hash
                 orig_name = doc.original_filename
-                shared_references = SourceDocument.objects.filter(file_hash=file_hash).exclude(id=doc.id).count()
+
+                total_refs = hash_ref_counts.get(file_hash, 0)
+                shared_references = max(0, total_refs - 1)
+
+                if file_hash in hash_ref_counts:
+                    hash_ref_counts[file_hash] = max(0, total_refs - 1)
 
                 with transaction.atomic():
                     log_audit_event(
