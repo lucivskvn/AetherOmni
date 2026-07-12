@@ -19,6 +19,7 @@ def _resolve_target_email(username: str, supabase_url: str) -> tuple[str, bool]:
     Returns (target_email, is_admin_check). Returns ("", False) if no mapping exists.
     """
     from urllib.parse import urlparse
+
     from django.conf import settings
 
     admin_username = getattr(settings, "ADMIN_USERNAME", "admin")
@@ -48,6 +49,7 @@ def _sync_supabase_user(
     """
     import hashlib
     from urllib.parse import urlparse
+
     from django.conf import settings
 
     user_info = resp_data.get("user", {})
@@ -72,9 +74,8 @@ def _sync_supabase_user(
     expected_admin_email = f"admin@{domain}"
     admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
 
-    is_promoted_admin = (
-        (is_admin_check and user_email.lower() == expected_admin_email.lower())
-        or (user_email.lower() == admin_email.lower())
+    is_promoted_admin = (is_admin_check and user_email.lower() == expected_admin_email.lower()) or (
+        user_email.lower() == admin_email.lower()
     )
     if is_promoted_admin:
         user.is_superuser = True
