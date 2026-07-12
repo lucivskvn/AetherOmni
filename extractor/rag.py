@@ -417,54 +417,104 @@ def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_blo
     )
 
 
-def _get_allowed_doc_uuids(user: Any, document_ids: list[int] | None) -> list[str] | None:
+def _get_allowed_doc_uuids(user: Any, document_ids: list[str] | list[int] | None) -> list[str] | None:
     """
     Returns a list of UUID strings the user is allowed to access.
     Returns None if the user is staff/superuser (no filter).
     Gap F-8: enforces tenant isolation on semantic cache hits and chunk searches.
     """
-    from extractor.models import SourceDocument
+    from django.conf import settings
 
-    qs = SourceDocument.objects.all()
-    if not user or not user.is_authenticated:
-        # Unauthenticated users can only see public documents
-        qs = qs.filter(uploaded_by__isnull=True)
-    elif not (user.is_staff or user.is_superuser):
+    if getattr(settings, "SURREALDB_OFFLINE", False):
         from django.db.models import Q
 
-        qs = qs.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
+        from extractor.models import SourceDocument
+
+        if not user or not user.is_authenticated:
+            qs = SourceDocument.objects.filter(uploaded_by__isnull=True)
+        elif not (user.is_staff or user.is_superuser):
+            qs = SourceDocument.objects.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
+        else:
+            qs = SourceDocument.objects.all()
+
+        if document_ids:
+            uuids = []
+            ids_int = []
+            import uuid
+
+            for x in document_ids:
+                x_str = str(x).strip()
+                if x_str:
+                    try:
+                        uuid.UUID(x_str)
+                        uuids.append(x_str)
+                    except ValueError:
+                        if x_str.isdigit():
+                            ids_int.append(int(x_str))
+            q_filter = Q()
+            if uuids:
+                q_filter |= Q(uuid__in=uuids)
+            if ids_int:
+                q_filter |= Q(id__in=ids_int)
+            qs = qs.filter(q_filter)
+        return [str(d.uuid) for d in qs]
+
+    from extractor import surreal_db
+
+    where_clauses = []
+    params = {}
+    if not user or not user.is_authenticated:
+        where_clauses.append("uploaded_by_id = NONE")
+    elif not (user.is_staff or user.is_superuser):
+        where_clauses.append("uploaded_by_id = $user_id OR uploaded_by_id = NONE")
+        params["user_id"] = str(user.id)
+
     if document_ids:
-        qs = qs.filter(id__in=document_ids)
+        # Convert all to string UUIDs
+        str_ids = [str(i) for i in document_ids if i]
+        if str_ids:
+            where_clauses.append("doc_uuid INSIDE $document_ids")
+            params["document_ids"] = str_ids
+
+    sql = "SELECT doc_uuid FROM documents"
+    if where_clauses:
+        sql += " WHERE " + " AND ".join(where_clauses)
 
     if user and (user.is_staff or user.is_superuser) and not document_ids:
         return None  # no filter for admins
 
-    return [str(doc.uuid) for doc in qs.only("uuid")]
+    rows = surreal_db._first_result(surreal_db._run(sql, params))
+    return [r["doc_uuid"] for r in rows]
 
 
 def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
-    """Look up document ID/title/author/language from SQLite by UUID."""
-    from extractor.models import SourceDocument
+    """Look up document ID/title/author/language from SurrealDB by UUID."""
+    from extractor import surreal_db
 
     try:
-        doc = SourceDocument.objects.filter(uuid=doc_uuid).values("id", "title", "author", "language").first()
+        doc = surreal_db.get_document(doc_uuid)
         if doc:
-            return doc
+            return {
+                "id": doc.get("id") if doc.get("id") is not None else doc.get("doc_uuid"),
+                "title": doc.get("title", "Unknown"),
+                "author": doc.get("author", "Unknown"),
+                "language": doc.get("language", "Unknown"),
+            }
     except Exception as exc:
         logger.debug("[Metadata] Failed to read metadata: %s", exc)
     return {"id": None, "title": "Unknown", "author": "Unknown", "language": "Unknown"}
 
 
-def _regenerate_chunks_for_doc(doc, doc_uuid_str, surreal_db, default_storage, json, ContentFile) -> None:
+def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db, default_storage, json, ContentFile) -> None:
     """Regenerate and save chunks+embeddings for a single COMPLETED document that is missing them."""
-    if doc.status == "COMPLETED" and doc.refined_markdown:
+    if doc.get("status") == "COMPLETED" and doc.get("refined_markdown"):
         logger.info(f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks...")
-        lang = (doc.language or "").lower()
+        lang = (doc.get("language") or "").lower()
         chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
         from extractor.rag import generate_surreal_embeddings
         from extractor.tasks import chunk_document_semantically
 
-        chunks = chunk_document_semantically(doc.refined_markdown, max_chunk_size=chunk_size)
+        chunks = chunk_document_semantically(doc.get("refined_markdown"), max_chunk_size=chunk_size)
         if chunks:
             embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
             payloads = [
@@ -472,7 +522,7 @@ def _regenerate_chunks_for_doc(doc, doc_uuid_str, surreal_db, default_storage, j
                     "chunk_index": i,
                     "content": chunk_text,
                     "token_count": len(chunk_text.split()),
-                    "language": doc.language or "",
+                    "language": doc.get("language") or "",
                     "embedding": emb,
                 }
                 for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
@@ -486,7 +536,7 @@ def _regenerate_chunks_for_doc(doc, doc_uuid_str, surreal_db, default_storage, j
                 f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."
             )
     else:
-        logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.status}, skipping sync.")
+        logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.get('status')}, skipping sync.")
 
 
 def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
@@ -502,7 +552,6 @@ def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
     from django.core.files.storage import default_storage
 
     from extractor import surreal_db
-    from extractor.models import SourceDocument
 
     if doc_uuids is None:
         return
@@ -532,8 +581,11 @@ def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
 
     for doc_uuid_str in missing_uuids:
         try:
-            doc = SourceDocument.objects.get(uuid=doc_uuid_str)
-        except SourceDocument.DoesNotExist:
+            doc = surreal_db.get_document(doc_uuid_str)
+            if not doc:
+                continue
+        except (OSError, ValueError, RuntimeError) as doc_err:
+            logger.debug("[Surreal Sync] Skipping %s: %s", doc_uuid_str, doc_err)
             continue
 
         try:

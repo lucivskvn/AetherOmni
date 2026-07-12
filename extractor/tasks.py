@@ -12,15 +12,17 @@ import logging
 import os
 import tempfile
 import traceback
-from datetime import timedelta
+from datetime import UTC, timedelta
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
+from extractor import surreal_db
 from extractor.models import AuditAction, SourceDocument
 from extractor.utils import (
     broadcast_status_change,
@@ -33,6 +35,15 @@ from extractor.utils import (
     run_stage1_multimodal_ocr,
     run_stage2_editorial_refinement,
 )
+
+
+def format_datetime(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(UTC)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 # Maximum field lengths — prevents Cloud Run OOM and DB varchar crashes (Gap E-17)
 _MAX_TITLE_LEN = 255
@@ -49,122 +60,147 @@ def _truncate(value: str | None, max_len: int) -> str:
     return value[:max_len]
 
 
-def _fail_document(document_id: int, error_message: str, details: str, log_audit: bool = True) -> None:
+def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: bool = True) -> None:
     """
     Handles pipeline failures atomically: sets status=FAILED, saves error log,
     optionally writes AuditLog, and broadcasts the status change over Supabase Realtime.
     """
-    with transaction.atomic():
-        try:
-            doc_ref = SourceDocument.objects.select_for_update().get(id=document_id)
-        except SourceDocument.DoesNotExist:
-            logger.error("[Worker] Cannot fail document %s — does not exist.", document_id)
-            return
+    doc = surreal_db.get_document(doc_uuid)
+    if not doc:
+        logger.error("[Worker] Cannot fail document %s — does not exist.", doc_uuid)
+        return
 
-        doc_ref.status = "FAILED"
-        doc_ref.error_message = error_message
-        doc_ref.save()
+    surreal_db.update_document(doc_uuid, {"status": "FAILED", "error_message": error_message})
 
-        if log_audit:
-            log_audit_event(
-                action=AuditAction.EXTRACTION_FAILED,
-                user=doc_ref.uploaded_by,
-                document=doc_ref,
-                details=details,
-            )
+    if log_audit:
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        uploaded_by_id = doc.get("uploaded_by_id")
+        user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+        log_audit_event(
+            action=AuditAction.EXTRACTION_FAILED,
+            user=user,
+            document=doc,
+            details=details,
+        )
 
     # Broadcast failure outside transaction (Gap D-7)
     try:
-        broadcast_status_change(str(doc_ref.uuid), "FAILED")
+        broadcast_status_change(doc_uuid, "FAILED")
     except Exception as exc:
         logger.debug("[Worker] Failed to broadcast status failure: %s", exc)
 
 
-def _handle_stage_failure(document_id: int, stage_name: str, exception: Exception) -> None:
+def _handle_stage_failure(doc_uuid: str, stage_name: str, exception: Exception) -> None:
     """Centralised failure handler — logs traceback and delegates to _fail_document."""
     err_msg = traceback.format_exc()
-    logger.exception("[Worker] Exception in %s: %s", stage_name, err_msg)
+    logger.error(
+        "[Worker] %s failed for document %s:\n%s",
+        stage_name,
+        doc_uuid,
+        err_msg,
+    )
     _fail_document(
-        document_id,
-        error_message=f"{stage_name} Failure:\n{err_msg}",
-        details=f"{stage_name} failed: {exception!s}",
+        doc_uuid,
+        error_message=f"{stage_name} Error:\n{err_msg}",
+        details=f"{stage_name} process failed: {exception!s}",
     )
 
 
-def _prepare_document_for_processing(document_id: int) -> SourceDocument | None:
+def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     """
     Lock document row and transition status to EXTRACTING.
     Returns None if document is already finalised, doesn't exist, or budget is exceeded.
     """
-    with transaction.atomic():
-        try:
-            doc = SourceDocument.objects.select_for_update().get(id=document_id)
-            if doc.status in ["COMPLETED", "FAILED"]:
-                logger.info("[Worker] Document %s already finalised. Skipping.", document_id)
-                return None
-        except SourceDocument.DoesNotExist:
-            logger.error("[Worker] Document %s does not exist.", document_id)
-            return None
+    doc = surreal_db.get_document(doc_uuid)
+    if not doc:
+        logger.error("[Worker] Document %s does not exist.", doc_uuid)
+        return None
+    if doc.get("status") in ["COMPLETED", "FAILED"]:
+        logger.info("[Worker] Document %s already finalised. Skipping.", doc_uuid)
+        return None
 
     try:
         check_budget_and_api_limit()
     except Exception as budget_err:
         _fail_document(
-            document_id,
+            doc_uuid,
             error_message=f"Budget Capped Halt: {budget_err!s}",
             details=f"Pipeline halted before start due to budget breach: {budget_err!s}",
         )
         return None
 
-    with transaction.atomic():
-        doc = SourceDocument.objects.select_for_update().get(id=document_id)
-        doc.status = "EXTRACTING"
-        doc.save()
+    doc = surreal_db.update_document(doc_uuid, {"status": "EXTRACTING"})
 
-        log_audit_event(
-            action=AuditAction.EXTRACTION_START,
-            user=doc.uploaded_by,
-            document=doc,
-            details=f"Background curation pipeline started for '{doc.original_filename}' (ID: {doc.id}).",
-        )
+    from django.contrib.auth import get_user_model
 
-    broadcast_status_change(str(doc.uuid), "EXTRACTING")
+    User = get_user_model()
+    uploaded_by_id = doc.get("uploaded_by_id")
+    user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+
+    log_audit_event(
+        action=AuditAction.EXTRACTION_START,
+        user=user,
+        document=doc,
+        details=f"Background curation pipeline started for '{doc.get('original_filename')}' (UUID: {doc_uuid}).",
+    )
+
+    broadcast_status_change(doc_uuid, "EXTRACTING")
     return doc
 
 
-def _get_working_path(doc: SourceDocument) -> tuple[str, str | None]:
+def _get_working_path(doc: dict) -> tuple[str, str | None]:
     """
     Get a local file path for processing.
     For GCS-backed files, streams content in chunks to /tmp to avoid RAM spikes (Gap E-19).
     Returns (working_path, temp_path_or_None).
     """
     temp_local_path = None
+    if isinstance(doc, dict):
+        file_rel_path = doc.get("file", "")
+        orig_filename = doc.get("original_filename", "")
+    else:
+        file_rel_path = getattr(doc, "file", "")
+        if hasattr(file_rel_path, "name"):
+            file_rel_path = file_rel_path.name
+        elif file_rel_path and not isinstance(file_rel_path, str):
+            file_rel_path = str(file_rel_path)
+        orig_filename = getattr(doc, "original_filename", "")
     try:
-        working_path = doc.file.path
+        working_path = default_storage.path(file_rel_path)
         if os.path.exists(working_path):
             return working_path, None
     except (NotImplementedError, AttributeError):
         pass
 
     # GCS-backed storage: stream file to a local temp file.
-    suffix = os.path.splitext(doc.original_filename)[1]
+    suffix = os.path.splitext(orig_filename)[1]
     temp_file_obj = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     temp_local_path = temp_file_obj.name
     temp_file_obj.close()
     try:
         # Gap E-19: stream in 64KB chunks to prevent Cloud Run OOM
-        doc.file.open("rb")
-        with open(temp_local_path, "wb") as out_f:
-            for chunk in iter(lambda: doc.file.read(65536), b""):
-                out_f.write(chunk)
-        doc.file.close()
+        if isinstance(doc, dict):
+            with default_storage.open(file_rel_path, "rb") as in_f:
+                with open(temp_local_path, "wb") as out_f:
+                    for chunk in iter(lambda: in_f.read(65536), b""):
+                        out_f.write(chunk)
+        else:
+            doc.file.open("rb")
+            try:
+                with open(temp_local_path, "wb") as out_f:
+                    for chunk in iter(lambda: doc.file.read(65536), b""):
+                        out_f.write(chunk)
+            finally:
+                doc.file.close()
     except Exception as gcs_err:
         try:
             os.unlink(temp_local_path)
         except OSError:
             pass
         raise FileNotFoundError(
-            f"Source file '{doc.file.name}' not found in GCS storage. "
+            f"Source file '{file_rel_path}' not found in GCS storage. "
             f"The file may have been deleted or the upload did not complete. "
             f"Original error: {gcs_err}"
         ) from gcs_err
@@ -393,7 +429,7 @@ def _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, pars
         doc_ref.semantic_signature = _truncate(parsed_sig, _MAX_SIG_LEN)
 
 
-def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
+def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     """Stage 2: Editorial reasoning refinement.
 
     For very large documents (e.g. the full Quran, large textbooks), the raw
@@ -404,14 +440,14 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
       - Refined text sections are joined with a section divider.
     Token counts and cost are summed across all chunks.
     """
-    doc = SourceDocument.objects.get(id=document_id)
-    logger.info("[Worker] Launching Stage 2 Refinement for Document ID: %s", doc.id)
+    doc = surreal_db.get_document(doc_uuid)
+    if not doc:
+        raise ValueError(f"Document {doc_uuid} not found")
+    logger.info("[Worker] Launching Stage 2 Refinement for Document UUID: %s", doc_uuid)
 
     try:
-        from extractor.models import SystemSettings
-
-        settings_obj = SystemSettings.get_settings()
-        selected_model = settings_obj.selected_model
+        settings_obj = surreal_db.get_system_settings()
+        selected_model = settings_obj.get("selected_model", "auto")
     except Exception:
         selected_model = "auto"
 
@@ -420,8 +456,8 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
 
     if total_chunks > 1:
         logger.info(
-            "[Worker] Document ID %s is large (%d chars). Splitting Stage 2 into %d chunks.",
-            document_id,
+            "[Worker] Document UUID %s is large (%d chars). Splitting Stage 2 into %d chunks.",
+            doc_uuid,
             len(raw_markdown),
             total_chunks,
         )
@@ -434,12 +470,12 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
     stage2_output_tokens = 0
 
     for idx, chunk in enumerate(chunks, 1):
-        logger.info("[Worker] Stage 2 chunk %d/%d for Document ID %s", idx, total_chunks, document_id)
+        logger.info("[Worker] Stage 2 chunk %d/%d for Document UUID %s", idx, total_chunks, doc_uuid)
         try:
             chunk_results = run_stage2_editorial_refinement(chunk, model_name=selected_model)
         except Exception as chunk_err:
             logger.exception(
-                "[Worker] Stage 2 chunk %d/%d failed for Document ID %s: %s", idx, total_chunks, document_id, chunk_err
+                "[Worker] Stage 2 chunk %d/%d failed for Document UUID %s: %s", idx, total_chunks, doc_uuid, chunk_err
             )
             # On chunk failure, preserve the raw chunk text so content is not lost
             refined_parts.append(chunk)
@@ -472,39 +508,53 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
         _parsed_isbn,
         _parsed_source_link,
         _parsed_translator,
-    ) = _parse_yaml_metadata(yaml_metadata_block, doc.title, doc.author, doc.language, doc.document_type)
+    ) = _parse_yaml_metadata(
+        yaml_metadata_block,
+        doc.get("title", ""),
+        doc.get("author", ""),
+        doc.get("language", ""),
+        doc.get("document_type", ""),
+    )
 
-    with transaction.atomic():
-        doc_ref = SourceDocument.objects.select_for_update().get(id=document_id)
-        doc_ref.refined_markdown = refined_markdown
-        doc_ref.yaml_metadata = yaml_metadata_block
-        doc_ref.qa_dataset = qa_dataset
+    doc_ref = surreal_db.get_document(doc_uuid)
+    _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig)
 
-        # Ensure we have clean title, author and language values
-        _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig)
+    input_tokens = doc_ref.get("input_tokens", 0) + stage2_input_tokens
+    output_tokens = doc_ref.get("output_tokens", 0) + stage2_output_tokens
+    cost_usd = float(doc_ref.get("cost_usd", 0.0)) + stage2_cost
 
-        doc_ref.input_tokens += stage2_input_tokens
-        doc_ref.output_tokens += stage2_output_tokens
-        doc_ref.cost_usd += Decimal(str(stage2_cost))
-        doc_ref.status = "EMBEDDING"
-        doc_ref.save()
+    updated = surreal_db.update_document(
+        doc_uuid,
+        {
+            "refined_markdown": refined_markdown,
+            "yaml_metadata": yaml_metadata_block,
+            "qa_dataset": qa_dataset,
+            "title": doc_ref.get("title"),
+            "author": doc_ref.get("author"),
+            "language": doc_ref.get("language"),
+            "document_type": doc_ref.get("document_type"),
+            "semantic_signature": doc_ref.get("semantic_signature"),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": cost_usd,
+            "status": "EMBEDDING",
+        },
+    )
 
-    broadcast_status_change(str(doc_ref.uuid), "EMBEDDING")
-    return doc_ref
+    broadcast_status_change(doc_uuid, "EMBEDDING")
+    return updated
 
 
-def _run_stage3(text_for_chunks: str, document_id: int) -> SourceDocument:
+def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
     """
     Stage 3: Semantic chunking and SurrealDB HNSW vector embedding.
-    Replaces pgvector DocumentChunk.recreate_chunks with surreal_db.recreate_chunks.
     """
-    from extractor import surreal_db
+    doc = surreal_db.get_document(doc_uuid)
+    if not doc:
+        raise ValueError(f"Document {doc_uuid} not found")
+    logger.info("[Worker] Segmenting markdown for Document UUID: %s", doc_uuid)
 
-    doc = SourceDocument.objects.get(id=document_id)
-    logger.info("[Worker] Segmenting markdown for Document ID: %s", doc.id)
-
-    # Arabic diacritics require smaller chunk sizes for accurate similarity matching (Gap H-3)
-    lang = (doc.language or "").lower()
+    lang = (doc.get("language") or "").lower()
     chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
     chunks = chunk_document_semantically(text_for_chunks, max_chunk_size=chunk_size)
 
@@ -518,58 +568,69 @@ def _run_stage3(text_for_chunks: str, document_id: int) -> SourceDocument:
                 "chunk_index": i,
                 "content": chunk_text,
                 "token_count": len(chunk_text.split()),
-                "language": doc.language or "",
+                "language": doc.get("language") or "",
                 "embedding": emb,
             }
             for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
         ]
 
         # Gap B-8: delete old SurrealDB chunks first, then insert new ones atomically
-        surreal_db.recreate_chunks(str(doc.uuid), chunk_payloads)
+        surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
 
         # Save chunk payloads permanently to storage (GCS/Local) for stateless sync
         try:
             import json
 
             from django.core.files.base import ContentFile
-            from django.core.files.storage import default_storage
 
-            chunks_json_path = f"chunks/{doc.uuid}.json"
+            chunks_json_path = f"chunks/{doc_uuid}.json"
             if default_storage.exists(chunks_json_path):
                 default_storage.delete(chunks_json_path)
             default_storage.save(chunks_json_path, ContentFile(json.dumps(chunk_payloads).encode("utf-8")))
-            logger.info("[Worker] Chunks and embeddings uploaded to persistent storage for doc: %s", doc.uuid)
+            logger.info("[Worker] Chunks and embeddings uploaded to persistent storage for doc: %s", doc_uuid)
         except Exception as exc:
             logger.warning("[Worker] Failed to save chunks to persistent storage: %s", exc)
 
-        with transaction.atomic():
-            doc_ref = SourceDocument.objects.select_for_update().get(id=document_id)
-            doc_ref.page_count = len(chunks)
-            doc_ref.status = "COMPLETED"
-            doc_ref.expires_at = timezone.now() + timedelta(days=retention_days)
-            doc_ref.save()
+        expires_at = timezone.now() + timedelta(days=retention_days)
+        updated = surreal_db.update_document(
+            doc_uuid,
+            {
+                "page_count": len(chunks),
+                "status": "COMPLETED",
+                "expires_at": format_datetime(expires_at),
+            },
+        )
     else:
-        # No chunks — mark completed with empty vector store
-        surreal_db.delete_chunks(str(doc.uuid))
+        surreal_db.delete_chunks(doc_uuid)
 
-        with transaction.atomic():
-            doc_ref = SourceDocument.objects.select_for_update().get(id=document_id)
-            doc_ref.page_count = 0
-            doc_ref.status = "COMPLETED"
-            doc_ref.expires_at = timezone.now() + timedelta(days=retention_days)
-            doc_ref.save()
+        expires_at = timezone.now() + timedelta(days=retention_days)
+        updated = surreal_db.update_document(
+            doc_uuid,
+            {
+                "page_count": 0,
+                "status": "COMPLETED",
+                "expires_at": format_datetime(expires_at),
+            },
+        )
 
-    broadcast_status_change(str(doc_ref.uuid), "COMPLETED")
-    return doc_ref
+    broadcast_status_change(doc_uuid, "COMPLETED")
+    return updated
 
 
-def _run_pipeline_stages(initial_doc: SourceDocument, working_path: str, document_id: int) -> bool:
-    logger.info("[Worker] Running pipeline stages for document: %s", initial_doc.original_filename)
+def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) -> bool:
+    from extractor.surreal_db import _model_to_dict
+
+    if not isinstance(initial_doc, dict):
+        initial_doc = _model_to_dict(initial_doc)
+
+    logger.info("[Worker] Running pipeline stages for document: %s", initial_doc.get("original_filename"))
     # Stage 1
     try:
-        doc = _run_stage1(working_path, document_id)
+        doc = _run_stage1(working_path, doc_uuid)
+        if not isinstance(doc, dict):
+            doc = _model_to_dict(doc)
     except Exception as exc:
-        _handle_stage_failure(document_id, "Stage 1", exc)
+        _handle_stage_failure(doc_uuid, "Stage 1", exc)
         return False
 
     # Mid-pipeline budget circuit breaker
@@ -578,7 +639,7 @@ def _run_pipeline_stages(initial_doc: SourceDocument, working_path: str, documen
     except Exception as budget_err:
         logger.warning("[Worker] Mid-pipeline budget limit breached: %s", budget_err)
         _fail_document(
-            document_id,
+            doc_uuid,
             error_message=f"Mid-Pipeline Budget Capped Halt: {budget_err!s}",
             details=f"Mid-pipeline budget breach: {budget_err!s}",
         )
@@ -586,54 +647,64 @@ def _run_pipeline_stages(initial_doc: SourceDocument, working_path: str, documen
 
     # Stage 2
     try:
-        doc = _run_stage2(doc.raw_markdown, document_id)
+        doc = _run_stage2(doc.get("raw_markdown", ""), doc_uuid)
+        if not isinstance(doc, dict):
+            doc = _model_to_dict(doc)
     except Exception as exc:
-        _handle_stage_failure(document_id, "Stage 2", exc)
+        _handle_stage_failure(doc_uuid, "Stage 2", exc)
         return False
 
     # Stage 3
     try:
-        text_for_chunks = doc.refined_markdown or doc.raw_markdown
-        doc = _run_stage3(text_for_chunks, document_id)
-        doc.refresh_from_db()
+        text_for_chunks = doc.get("refined_markdown") or doc.get("raw_markdown", "")
+        doc = _run_stage3(text_for_chunks, doc_uuid)
+        if not isinstance(doc, dict):
+            doc = _model_to_dict(doc)
 
-        logger.info("[Worker] Pipeline completed successfully for ID %s!", document_id)
+        logger.info("[Worker] Pipeline completed successfully for UUID %s!", doc_uuid)
+
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        uploaded_by_id = doc.get("uploaded_by_id")
+        user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+
         log_audit_event(
             action=AuditAction.EXTRACTION_COMPLETED,
-            user=doc.uploaded_by,
+            user=user,
             document=doc,
             details=(
-                f"Curation pipeline completed. Pages: {doc.page_count}. "
-                f"Cost: ${doc.cost_usd:.6f} USD. "
-                f"Tokens in: {doc.input_tokens}, out: {doc.output_tokens}."
+                f"Curation pipeline completed. Pages: {doc.get('page_count')}. "
+                f"Cost: ${doc.get('cost_usd'):.6f} USD. "
+                f"Tokens in: {doc.get('input_tokens')}, out: {doc.get('output_tokens')}."
             ),
         )
         return True
     except Exception as exc:
-        _handle_stage_failure(document_id, "Stage 3", exc)
+        _handle_stage_failure(doc_uuid, "Stage 3", exc)
         return False
 
 
 def process_document_task(payload: dict) -> None:
     """
     Main pipeline handler: OCR → Refinement → Embedding.
-    Receives a Cloud Tasks payload dict with document_id.
+    Receives a Cloud Tasks payload dict with document_uuid or document_id.
     """
-    document_id = payload.get("document_id")
-    if not document_id:
-        logger.error("[Worker] process_document_task called with missing document_id")
+    doc_uuid = payload.get("document_uuid") or payload.get("document_id")
+    if not doc_uuid:
+        logger.error("[Worker] process_document_task called with missing document_uuid")
         return
 
-    logger.info("[Worker] Starting processing pipeline for Document ID: %s", document_id)
+    logger.info("[Worker] Starting processing pipeline for Document UUID: %s", doc_uuid)
     try:
-        doc = _prepare_document_for_processing(document_id)
+        doc = _prepare_document_for_processing(doc_uuid)
         if not doc:
             return
 
         temp_local_path = None
         try:
             working_path, temp_local_path = _get_working_path(doc)
-            _run_pipeline_stages(doc, working_path, document_id)
+            _run_pipeline_stages(doc, working_path, doc_uuid)
         finally:
             if temp_local_path and os.path.exists(temp_local_path):
                 try:
@@ -646,7 +717,7 @@ def process_document_task(payload: dict) -> None:
         logger.exception("[Worker] Uncaught outer exception: %s", err_msg)
         try:
             _fail_document(
-                document_id,
+                doc_uuid,
                 error_message=f"Pipeline Crashed:\n{err_msg}",
                 details=f"Uncaught outer pipeline crash: {exc!s}",
             )
@@ -659,34 +730,29 @@ def reembed_edited_document_task(payload: dict) -> None:
     Lightweight task to re-chunk and re-embed a document after manual user edits.
     Gap B-8: explicitly purges old SurrealDB chunks before inserting new ones.
     """
-    document_id = payload.get("document_id")
-    if not document_id:
-        logger.error("[Worker] reembed_edited_document_task called with missing document_id")
+    doc_uuid = payload.get("document_uuid") or payload.get("document_id")
+    if not doc_uuid:
+        logger.error("[Worker] reembed_edited_document_task called with missing document_uuid")
         return
 
-    from extractor import surreal_db
+    logger.info("[Worker] Re-embedding Document UUID: %s", doc_uuid)
 
-    logger.info("[Worker] Re-embedding Document ID: %s", document_id)
+    doc = surreal_db.get_document(doc_uuid)
+    if not doc:
+        logger.error("[Worker] Document %s does not exist.", doc_uuid)
+        return
 
-    with transaction.atomic():
-        try:
-            doc = SourceDocument.objects.select_for_update().get(id=document_id)
-            doc.status = "EMBEDDING"
-            doc.save()
-        except SourceDocument.DoesNotExist:
-            logger.error("[Worker] Document %s does not exist.", document_id)
-            return
-
-    broadcast_status_change(str(doc.uuid), "EMBEDDING")
+    surreal_db.update_document(doc_uuid, {"status": "EMBEDDING"})
+    broadcast_status_change(doc_uuid, "EMBEDDING")
 
     try:
-        text_for_chunks = doc.refined_markdown or doc.raw_markdown
-        lang = (doc.language or "").lower()
+        text_for_chunks = doc.get("refined_markdown") or doc.get("raw_markdown") or ""
+        lang = (doc.get("language") or "").lower()
         chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
         chunks = chunk_document_semantically(text_for_chunks, max_chunk_size=chunk_size)
 
         # Gap B-8: always purge old SurrealDB chunks on re-embed
-        surreal_db.delete_chunks(str(doc.uuid))
+        surreal_db.delete_chunks(doc_uuid)
 
         if chunks:
             check_budget_and_api_limit()
@@ -696,53 +762,65 @@ def reembed_edited_document_task(payload: dict) -> None:
                     "chunk_index": i,
                     "content": ct,
                     "token_count": len(ct.split()),
-                    "language": doc.language or "",
+                    "language": doc.get("language") or "",
                     "embedding": emb,
                 }
                 for i, (ct, emb) in enumerate(zip(chunks, embeddings))
             ]
-            surreal_db.recreate_chunks(str(doc.uuid), chunk_payloads)
+            surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
 
-            with transaction.atomic():
-                doc = SourceDocument.objects.select_for_update().get(id=document_id)
-                doc.page_count = len(chunks)
-                doc.status = "COMPLETED"
-                doc.save()
+            surreal_db.update_document(doc_uuid, {"page_count": len(chunks), "status": "COMPLETED"})
         else:
-            with transaction.atomic():
-                doc = SourceDocument.objects.select_for_update().get(id=document_id)
-                doc.page_count = 0
-                doc.status = "COMPLETED"
-                doc.save()
+            surreal_db.update_document(doc_uuid, {"page_count": 0, "status": "COMPLETED"})
 
-        logger.info("[Worker] Re-embedding successful for Document ID: %s!", doc.id)
-        broadcast_status_change(str(doc.uuid), "COMPLETED")
+        logger.info("[Worker] Re-embedding successful for Document UUID: %s!", doc_uuid)
+        broadcast_status_change(doc_uuid, "COMPLETED")
 
     except Exception as exc:
         err_msg = traceback.format_exc()
         logger.exception("[Worker] Exception in re-embedding: %s", err_msg)
         _fail_document(
-            document_id,
+            doc_uuid,
             error_message=f"Re-embedding Failure:\n{err_msg}",
             details=f"Re-embedding failed: {exc!s}",
             log_audit=False,
         )
 
 
-def _cleanup_single_expired_doc(doc, hash_counts, surreal_db):
+def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
     """Purge one expired document: physical file, SurrealDB chunks, storage JSON, audit log."""
-    from django.core.files.storage import default_storage
-
-    file_hash = doc.file_hash
-    doc_uuid = str(doc.uuid)
+    file_hash = doc.get("file_hash")
+    doc_uuid = doc.get("doc_uuid")
+    file_rel_path = doc.get("file", "")
 
     total_refs = hash_counts.get(file_hash, 0)
     shared_references = max(0, total_refs - 1)
 
+    from django.conf import settings
+
+    doc_obj = None
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            import uuid
+
+            try:
+                uuid.UUID(str(doc_uuid))
+                doc_obj = SourceDocument.objects.get(uuid=doc_uuid)
+            except ValueError:
+                doc_obj = SourceDocument.objects.get(id=int(doc_uuid))
+        except (ValueError, SourceDocument.DoesNotExist) as lookup_err:
+            logger.debug("[Cron] Could not resolve doc_uuid %s: %s", doc_uuid, lookup_err)
+
     if shared_references == 0:
         logger.info("[Cron] Purging file hash %s from storage.", file_hash)
         try:
-            doc.file.delete(save=False)
+            if doc_obj:
+                doc_obj.file.delete(save=False)
+            else:
+                if default_storage.exists(file_rel_path):
+                    default_storage.delete(file_rel_path)
         except Exception as exc:
             logger.warning("[Cron] Failed to delete physical file for hash %s: %s", file_hash, exc)
     else:
@@ -771,10 +849,10 @@ def _cleanup_single_expired_doc(doc, hash_counts, surreal_db):
         action=AuditAction.DELETE,
         user=None,
         document=doc,
-        details=f"GDPR retention cleanup: document '{doc.original_filename}' (UUID: {doc_uuid}) expired and purged.",
+        details=f"GDPR retention cleanup: document '{doc.get('original_filename')}' (UUID: {doc_uuid}) expired and purged.",
     )
 
-    doc.delete()
+    surreal_db.delete_document(doc_uuid)
 
 
 def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
@@ -788,23 +866,38 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
     logger.info("[Cron] Starting reference-counted expired document cleanup...")
     now = timezone.now()
+    now_str = format_datetime(now)
 
-    from django.db.models import Count
+    from django.conf import settings
 
-    expired_docs = list(SourceDocument.objects.filter(expires_at__lte=now))
-    purged_count = 0
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
 
-    if expired_docs:
-        expired_hashes = {doc.file_hash for doc in expired_docs if doc.file_hash}
-        hash_counts = {
-            item["file_hash"]: item["count"]
-            for item in SourceDocument.objects.filter(file_hash__in=expired_hashes)
-            .values("file_hash")
-            .annotate(count=Count("id"))
-        }
+        expired_qs = SourceDocument.objects.filter(expires_at__lte=now)
+        expired_docs = [surreal_db._model_to_dict(d) for d in expired_qs]
+        if expired_docs:
+            expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
+            hash_counts = {}
+            for file_hash in expired_hashes:
+                hash_counts[file_hash] = SourceDocument.objects.filter(file_hash=file_hash).count()
+        else:
+            hash_counts = {}
     else:
-        hash_counts = {}
+        expired_sql = "SELECT * FROM documents WHERE expires_at <= <datetime> $now;"
+        expired_docs = surreal_db._first_result(surreal_db._run(expired_sql, {"now": now_str}))
+        purged_count = 0
 
+        if expired_docs:
+            expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
+            hash_counts = {}
+            for file_hash in expired_hashes:
+                count_sql = "SELECT count() AS n FROM documents WHERE file_hash = $file_hash GROUP ALL;"
+                res = surreal_db._first_result(surreal_db._run(count_sql, {"file_hash": file_hash}))
+                hash_counts[file_hash] = res[0].get("n", 0) if res else 0
+        else:
+            hash_counts = {}
+
+    purged_count = 0
     for doc in expired_docs:
         _cleanup_single_expired_doc(doc, hash_counts, surreal_db)
         purged_count += 1
@@ -820,42 +913,46 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     logger.info("[Cron] Cleanup finished. Deleted %s expired records.", purged_count)
 
 
-def _reap_single_stale_doc(doc, stale_threshold) -> bool:
+def _reap_single_stale_doc(doc: dict, stale_threshold_str: str) -> bool:
     """Lock and check one stale document; mark FAILED if still stuck. Returns True if reaped."""
-    with transaction.atomic():
-        try:
-            doc_ref = SourceDocument.objects.select_for_update().get(id=doc.id)
-        except SourceDocument.DoesNotExist:
-            return False
+    doc_uuid = doc.get("doc_uuid")
 
-        if doc_ref.status in ["EXTRACTING", "REFINING", "EMBEDDING"] and doc_ref.updated_at <= stale_threshold:
-            doc_ref.status = "FAILED"
-            doc_ref.error_message = (
+    surreal_db.update_document(
+        doc_uuid,
+        {
+            "status": "FAILED",
+            "error_message": (
                 "Task terminated unexpectedly. "
                 "The background worker may have scaled down, been preempted, or restarted."
-            )
-            doc_ref.save()
-            logger.warning("[Reaper] Reaped stale document task %s (was %s).", doc_ref.id, doc.status)
+            ),
+        },
+    )
+    logger.warning("[Reaper] Reaped stale document task %s (was %s).", doc_uuid, doc.get("status"))
 
-            # Gap E-31: write audit log for reaped task
-            log_audit_event(
-                action=AuditAction.EXTRACTION_FAILED,
-                user=doc_ref.uploaded_by,
-                document=doc_ref,
-                details=(
-                    f"[Reaper] Document '{doc_ref.original_filename}' was stuck in '{doc.status}' for >15 minutes "
-                    "and has been automatically marked as FAILED."
-                ),
-            )
+    from django.contrib.auth import get_user_model
 
-            # Gap E-31: broadcast status update so dashboard updates without hard reload
-            try:
-                broadcast_status_change(str(doc_ref.uuid), "FAILED")
-            except Exception as exc:
-                logger.debug("[Reaper] Failed to broadcast status failure: %s", exc)
+    User = get_user_model()
+    uploaded_by_id = doc.get("uploaded_by_id")
+    user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
-            return True
-    return False
+    # Gap E-31: write audit log for reaped task
+    log_audit_event(
+        action=AuditAction.EXTRACTION_FAILED,
+        user=user,
+        document=doc,
+        details=(
+            f"[Reaper] Document '{doc.get('original_filename')}' was stuck in '{doc.get('status')}' for >15 minutes "
+            "and has been automatically marked as FAILED."
+        ),
+    )
+
+    # Gap E-31: broadcast status update so dashboard updates without hard reload
+    try:
+        broadcast_status_change(doc_uuid, "FAILED")
+    except Exception as exc:
+        logger.debug("[Reaper] Failed to broadcast status failure: %s", exc)
+
+    return True
 
 
 def reap_stale_tasks(_payload: dict | None = None) -> int:
@@ -865,13 +962,28 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
     """
     logger.info("[Reaper] Scanning for stale active tasks...")
     stale_threshold = timezone.now() - timezone.timedelta(minutes=15)
-    stale_docs = SourceDocument.objects.filter(
-        status__in=["EXTRACTING", "REFINING", "EMBEDDING"], updated_at__lte=stale_threshold
-    )
+    stale_threshold_str = format_datetime(stale_threshold)
+
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        stale_qs = SourceDocument.objects.filter(
+            status__in=["EXTRACTING", "REFINING", "EMBEDDING"], updated_at__lte=stale_threshold
+        )
+        stale_docs = [surreal_db._model_to_dict(d) for d in stale_qs]
+    else:
+        stale_sql = "SELECT * FROM documents WHERE status INSIDE $states AND updated_at <= <datetime> $threshold;"
+        stale_docs = surreal_db._first_result(
+            surreal_db._run(
+                stale_sql, {"states": ["EXTRACTING", "REFINING", "EMBEDDING"], "threshold": stale_threshold_str}
+            )
+        )
     reaped_count = 0
 
     for doc in stale_docs:
-        if _reap_single_stale_doc(doc, stale_threshold):
+        if _reap_single_stale_doc(doc, stale_threshold_str):
             reaped_count += 1
 
     if reaped_count > 0:
@@ -883,7 +995,7 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
 def store_user_memory_task(payload: dict) -> None:
     """
     Cloud Tasks receiver: Distill a user preference statement, generate its embedding,
-    persist it to PostgreSQL (Supabase), and index it in SurrealDB.
+    and index it in SurrealDB.
     """
     user_id = payload.get("user_id")
     raw_text = payload.get("text", "").strip()
@@ -898,7 +1010,6 @@ def store_user_memory_task(payload: dict) -> None:
         _resolve_model_name,
         execute_generate_content_with_fallback,
     )
-    from extractor.models import UserMemory
     from extractor.rag import generate_surreal_embeddings
 
     try:
@@ -938,13 +1049,7 @@ def store_user_memory_task(payload: dict) -> None:
         return
 
     try:
-        UserMemory.objects.create(user=user, memory_text=distilled, embedding=vector)
-        logger.info("[Memory Task] Persistent memory created for user %s: '%s'", user.username, distilled)
-    except Exception as db_err:
-        logger.exception("[Memory Task] Failed to write memory to PostgreSQL: %s", db_err)
-
-    try:
         surreal_db.add_user_memory(str(user.id), distilled, vector)
-        logger.info("[Memory Task] Memory indexed in SurrealDB for user %s.", user.username)
+        logger.info("[Memory Task] Memory indexed in SurrealDB for user %s: '%s'", user.username, distilled)
     except Exception as s_err:
         logger.warning("[Memory Task] Failed to index memory in SurrealDB: %s", s_err)
