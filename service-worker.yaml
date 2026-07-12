@@ -11,13 +11,9 @@ spec:
       annotations:
         run.googleapis.com/launch-stage: BETA
     spec:
-      securityContext:
-        runAsNonRoot: true
       serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
       containers:
       - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
-        securityContext:
-          allowPrivilegeEscalation: false
         name: web
         ports:
         - containerPort: 8080
@@ -110,8 +106,6 @@ spec:
             cpu: 1000m
             memory: 1024Mi
       - image: surrealdb/surrealdb:latest
-        securityContext:
-          allowPrivilegeEscalation: false
         name: surrealdb
         args:
         - start
