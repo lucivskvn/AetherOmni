@@ -167,12 +167,9 @@ def broadcast_status_change(doc_uuid: str, status: str) -> None:
 
 
 __all__ = [
-    # file_utils re-exports
     "APPLICATION_JSON",
-    # llm_gateway re-exports
     "GEMINI_API_KEY_ERROR",
     "KNATIVE_MAX_SCALE",
-    # Knative constants
     "KNATIVE_MIN_SCALE",
     "MODEL_GEMINI_FLASH_LITE",
     "PREFIX_GOOGLE",
@@ -196,14 +193,12 @@ __all__ = [
     "get_client_ip",
     "get_google_oidc_token",
     "get_locale_currency_details",
-    # helpers defined in this module
     "log_audit_event",
-    "validate_url_scheme",
-    # rag re-exports
     "process_csv_local",
     "process_txt_local",
     "query_semantic_knowledge_rag",
     "render_markdown_to_html",
     "run_stage1_multimodal_ocr",
     "run_stage2_editorial_refinement",
+    "validate_url_scheme",
 ]

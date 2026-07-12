@@ -221,3 +221,27 @@ __marimo__/
 scratch/
 Sources/
 data/samples/
+
+# User-uploaded runtime media (served by Google Cloud Storage in production)
+# These are runtime files, not source code — never commit them
+media/
+
+# Django collectstatic output (auto-generated — run `manage.py collectstatic` to rebuild)
+static_root/
+
+# AI code-quality tool state (machine-generated, not source code)
+.desloppify/
+.Jules/
+
+# CI/CD generated artifacts
+sbom.json
+coverage.xml
+
+# Ad-hoc scratch / test files at repo root
+/temp*.txt
+/test*.txt
+
+# Deployment key files (never commit credentials)
+*.json.bak
+service-account*.json
+credentials*.json

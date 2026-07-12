@@ -443,9 +443,9 @@ def _run_stage2(raw_markdown: str, document_id: int) -> SourceDocument:
         parsed_lang,
         parsed_doc_type,
         parsed_sig,
-        parsed_isbn,
-        parsed_source_link,
-        parsed_translator,
+        _parsed_isbn,
+        _parsed_source_link,
+        _parsed_translator,
     ) = _parse_yaml_metadata(yaml_metadata_block, doc.title, doc.author, doc.language, doc.document_type)
 
     with transaction.atomic():

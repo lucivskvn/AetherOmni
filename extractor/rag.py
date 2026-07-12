@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import uuid
 from typing import Any
 
 from extractor.llm_gateway import generate_llm_content_unified
@@ -460,38 +461,41 @@ def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
 
     for doc_uuid_str in missing_uuids:
         try:
-            doc = SourceDocument.objects.get(uuid=doc_uuid)
+            doc = SourceDocument.objects.get(uuid=doc_uuid_str)
         except SourceDocument.DoesNotExist:
-            return
+            continue
 
-        if doc.status == "COMPLETED" and doc.refined_markdown:
-            logger.info(f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks...")
-            lang = (doc.language or "").lower()
-            chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
-            from extractor.rag import generate_surreal_embeddings
-            from extractor.tasks import chunk_document_semantically
-
-            chunks = chunk_document_semantically(doc.refined_markdown, max_chunk_size=chunk_size)
-            if chunks:
-                embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
-                payloads = [
-                    {
-                        "chunk_index": i,
-                        "content": chunk_text,
-                        "token_count": len(chunk_text.split()),
-                        "language": doc.language or "",
-                        "embedding": emb,
-                    }
-                    for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
-                ]
-                # Save to SurrealDB
-                surreal_db.recreate_chunks(doc_uuid_str, payloads)
-                # Save to storage JSON
-                default_storage.save(path, ContentFile(json.dumps(payloads).encode("utf-8")))
+        try:
+            if doc.status == "COMPLETED" and doc.refined_markdown:
                 logger.info(
-                    f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."
+                    f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks..."
                 )
-        else:
-            logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.status}, skipping sync.")
-    except Exception as exc:
-        logger.warning(f"[Surreal Sync] Failed to ensure chunks for {doc_uuid}: {exc}")
+                lang = (doc.language or "").lower()
+                chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
+                from extractor.rag import generate_surreal_embeddings
+                from extractor.tasks import chunk_document_semantically
+
+                chunks = chunk_document_semantically(doc.refined_markdown, max_chunk_size=chunk_size)
+                if chunks:
+                    embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
+                    payloads = [
+                        {
+                            "chunk_index": i,
+                            "content": chunk_text,
+                            "token_count": len(chunk_text.split()),
+                            "language": doc.language or "",
+                            "embedding": emb,
+                        }
+                        for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
+                    ]
+                    # Save to SurrealDB
+                    surreal_db.recreate_chunks(doc_uuid_str, payloads)
+                    # Save to storage JSON
+                    default_storage.save(path, ContentFile(json.dumps(payloads).encode("utf-8")))
+                    logger.info(
+                        f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."
+                    )
+            else:
+                logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.status}, skipping sync.")
+        except Exception as exc:
+            logger.warning(f"[Surreal Sync] Failed to ensure chunks for {doc_uuid_str}: {exc}")

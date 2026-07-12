@@ -77,7 +77,7 @@ DATABASE_URL=sqlite:///db.sqlite3 .venv/bin/python3 -m coverage run --source='.'
 
 ## ☁️ Deployment
 
-For detailed production deployment instructions on Google Cloud Run, PostgreSQL, and Cloud Storage, please refer to the [Google Cloud Run Deployment Guide](gcp_deployment_guide.md).
+For detailed production deployment instructions on Google Cloud Run, PostgreSQL, and Cloud Storage, please refer to the [Google Cloud Run Deployment Guide](https://github.com/lucivskvn/AetherOmni/wiki/GCP-Cloud-Run-Deployment-Guide).
 
 ---
 
