@@ -612,7 +612,7 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
         try:
             from django.core.files.storage import default_storage
 
-            dirs, files = default_storage.listdir("chunks")
+            _dirs, files = default_storage.listdir("chunks")
             for f in files:
                 default_storage.delete(f"chunks/{f}")
             logger.info("[Purge All] Cleaned all chunk JSON files from GCS storage.")

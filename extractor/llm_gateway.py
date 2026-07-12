@@ -411,7 +411,7 @@ def _resolve_model_name(model_name: str | None) -> str:
     # OpenRouter models contain '/' — those are intentionally non-Gemini, skip.
     if "/" not in model_name and model_name not in KNOWN_GEMINI_MODELS:
         logger.warning(
-            "[Gateway] Unknown Gemini model '%s' in configuration. " "Falling back to default model '%s'.",
+            "[Gateway] Unknown Gemini model '%s' in configuration. Falling back to default model '%s'.",
             model_name,
             MODEL_GEMINI_35_FLASH,
         )
