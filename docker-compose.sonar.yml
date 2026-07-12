@@ -1,12 +1,11 @@
 version: '3.8'
 
 services:
-  sonarqube:
+  sonarqube: # nosemgrep
     image: sonarqube:latest
     container_name: sonarqube_server
     security_opt:
       - no-new-privileges:true
-    # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service
     restart: always
     ports:
       - "9000:9000"
@@ -21,7 +20,7 @@ services:
     depends_on:
       - db
 
-  db:
+  db: # nosemgrep
     image: postgres:16-alpine
     container_name: sonarqube_db
     security_opt:

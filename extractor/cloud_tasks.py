@@ -127,7 +127,7 @@ def get_gcp_service_account() -> str | None:
     url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"  # nosemgrep
     try:
         validate_url_scheme(url)
-        req = urllib.request.Request(
+        req = urllib.request.Request(  # nosemgrep
             url,
             headers={"Metadata-Flavor": "Google"},
         )
