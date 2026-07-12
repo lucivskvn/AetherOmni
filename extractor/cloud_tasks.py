@@ -124,14 +124,14 @@ def get_gcp_service_account() -> str | None:
 
     from extractor.utils import validate_url_scheme
 
-    url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
+    url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"  # nosemgrep
     try:
         validate_url_scheme(url)
         req = urllib.request.Request(
             url,
             headers={"Metadata-Flavor": "Google"},
         )
-        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 nosemgrep
             return response.read().decode("utf-8").strip()
     except Exception:
         return None

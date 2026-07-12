@@ -13,9 +13,13 @@ spec:
       annotations:
         run.googleapis.com/launch-stage: BETA
     spec:
+      securityContext:
+        runAsNonRoot: true
       serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
       containers:
       - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+        securityContext:
+          allowPrivilegeEscalation: false
         name: web
         ports:
         - containerPort: 8080
