@@ -1,4 +1,4 @@
-django==6.0.6
+django==6.0.7
 django-storages[google]==1.14.6
 google-genai==2.8.0
 google-cloud-tasks==2.16.0

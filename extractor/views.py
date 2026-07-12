@@ -48,9 +48,7 @@ def _get_dashboard_stats(request):
     if user.is_staff or user.is_superuser:
         base_qs = SourceDocument.objects.all()
     else:
-        base_qs = SourceDocument.objects.filter(
-            Q(uploaded_by=user) | Q(uploaded_by__isnull=True)
-        ).distinct()
+        base_qs = SourceDocument.objects.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True)).distinct()
 
     monthly_live = base_qs.filter(created_at__gte=first_of_month).aggregate(total=Sum("cost_usd"))["total"] or Decimal(
         "0.0"
@@ -58,6 +56,7 @@ def _get_dashboard_stats(request):
 
     # Add cost of documents that were deleted this month (persisted in MonthlySpendLog)
     from extractor.models import MonthlySpendLog
+
     monthly_logged = MonthlySpendLog.total_for_month(now.year, now.month)
     monthly_spent = monthly_live + monthly_logged
 
@@ -134,9 +133,11 @@ class DashboardView(LoginRequiredMixin, View):
         if request.user.is_staff or request.user.is_superuser:
             docs = SourceDocument.objects.order_by(db_sort)
         else:
-            docs = SourceDocument.objects.filter(
-                Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True)
-            ).distinct().order_by(db_sort)
+            docs = (
+                SourceDocument.objects.filter(Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True))
+                .distinct()
+                .order_by(db_sort)
+            )
         stats = _get_dashboard_stats(request)
 
         # Render lists with pre-calculated formatting
@@ -326,7 +327,8 @@ class UploadView(LoginRequiredMixin, View):
                         if existing_doc.uploaded_by == request.user:
                             # User already has this file in their library! No need to clone/copy it.
                             logger.info(
-                                "[Deduplication] User already has completed document with hash %s. Reusing without copy.", file_hash
+                                "[Deduplication] User already has completed document with hash %s. Reusing without copy.",
+                                file_hash,
                             )
                             return {"status": "cached", "name": orig_name}
 
@@ -415,7 +417,9 @@ class DocumentDetailView(LoginRequiredMixin, View):
         if doc.yaml_metadata:
             try:
                 import yaml
+
                 from extractor.tasks import _sanitise_yaml_block
+
                 try:
                     meta_raw = yaml.safe_load(doc.yaml_metadata)
                 except Exception:
@@ -543,8 +547,9 @@ class DocumentDeleteView(LoginRequiredMixin, View):
                 )
 
         # Gap B-8: purge SurrealDB chunks outside atomic block (surreal_db has its own atomicity)
-        from extractor import surreal_db
         from django.core.files.storage import default_storage
+
+        from extractor import surreal_db
 
         try:
             surreal_db.delete_chunks(str(doc.uuid))
@@ -606,6 +611,7 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
         # Delete all chunks JSON files in storage
         try:
             from django.core.files.storage import default_storage
+
             dirs, files = default_storage.listdir("chunks")
             for f in files:
                 default_storage.delete(f"chunks/{f}")
@@ -715,20 +721,36 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
         elif action == "delete":
             # Bulk delete documents
             from django.core.files.storage import default_storage
-            from extractor.models import SourceDocument, AuditAction
-            from extractor.utils import get_client_ip, log_audit_event
-            from extractor import surreal_db
 
-            docs = SourceDocument.objects.filter(id__in=document_ids)
+            from extractor import surreal_db
+            from extractor.models import AuditAction, SourceDocument
+            from extractor.utils import get_client_ip, log_audit_event
+
+            if request.user.is_staff or request.user.is_superuser:
+                docs = SourceDocument.objects.filter(id__in=document_ids)
+            else:
+                docs = SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user)
+
+            docs = list(docs)
+            file_hashes = {doc.file_hash for doc in docs if doc.file_hash}
+
+            hash_ref_counts = dict(
+                SourceDocument.objects.filter(file_hash__in=file_hashes)
+                .values("file_hash")
+                .annotate(count=Count("id"))
+                .values_list("file_hash", "count")
+            )
+
             deleted_count = 0
             for doc in docs:
-                # Access boundary check
-                if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
-                    continue
-
                 file_hash = doc.file_hash
                 orig_name = doc.original_filename
-                shared_references = SourceDocument.objects.filter(file_hash=file_hash).exclude(id=doc.id).count()
+
+                total_refs = hash_ref_counts.get(file_hash, 0)
+                shared_references = max(0, total_refs - 1)
+
+                if file_hash in hash_ref_counts:
+                    hash_ref_counts[file_hash] = max(0, total_refs - 1)
 
                 with transaction.atomic():
                     log_audit_event(
@@ -844,9 +866,11 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
         if request.user.is_staff or request.user.is_superuser:
             docs = SourceDocument.objects.order_by("-created_at")
         else:
-            docs = SourceDocument.objects.filter(
-                Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True)
-            ).distinct().order_by("-created_at")
+            docs = (
+                SourceDocument.objects.filter(Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True))
+                .distinct()
+                .order_by("-created_at")
+            )
         stats = _get_dashboard_stats(request)
 
         # Build status map for all documents (limited to recent 100)
@@ -918,7 +942,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
             messages.error(request, "Permission denied to retry this document.")
             return redirect("dashboard")
 
-        is_restart = (doc.status == "COMPLETED")
+        is_restart = doc.status == "COMPLETED"
 
         if not is_restart and doc.retry_count >= 3:
             if (
@@ -1219,9 +1243,7 @@ def register_view(request):
 
         email_lower = email.lower()
         if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
-            messages.error(
-                request, "Registration of administrative or system email addresses is not permitted."
-            )
+            messages.error(request, "Registration of administrative or system email addresses is not permitted.")
             return render(request, "extractor/register.html")
 
         # Validate email format
@@ -1232,8 +1254,8 @@ def register_view(request):
             return render(request, "extractor/register.html")
 
         import json
-        import urllib.request
         import urllib.parse
+        import urllib.request
 
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
         url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
@@ -1285,8 +1307,8 @@ def forgot_password_view(request):
             return render(request, "extractor/forgot_password.html")
 
         import json
-        import urllib.request
         import urllib.parse
+        import urllib.request
 
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
         url = f"{supabase_url.rstrip('/')}/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"

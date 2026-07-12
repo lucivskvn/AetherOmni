@@ -84,7 +84,7 @@ class SurrealDBClientTestCase(TestCase):
                         "chunk_index": 0,
                     }
                 ]
-            }
+            },
         ]
         mock_client.post.return_value = mock_resp
         mock_get_client.return_value = mock_client
@@ -103,10 +103,7 @@ class SurrealDBClientTestCase(TestCase):
 
         # Mock GET response
         mock_resp_get = MagicMock()
-        mock_resp_get.json.return_value = [
-            {"result": None},
-            {"result": [{"val": {"answer": "cached response"}}]}
-        ]
+        mock_resp_get.json.return_value = [{"result": None}, {"result": [{"val": {"answer": "cached response"}}]}]
         mock_client.post.return_value = mock_resp_get
 
         val = surreal_db.kv_cache_get("my-key")

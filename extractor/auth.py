@@ -103,7 +103,9 @@ class SupabaseAuthBackend(ModelBackend):
                 domain = parsed_url.netloc if parsed_url.netloc else "example.com"
                 expected_admin_email = f"admin@{domain}"
 
-                is_promoted_admin = (is_admin_check and user_email.lower() == expected_admin_email.lower()) or (user_email.lower() == "elang@fainko.co.id")
+                is_promoted_admin = (is_admin_check and user_email.lower() == expected_admin_email.lower()) or (
+                    user_email.lower() == "elang@fainko.co.id"
+                )
                 if is_promoted_admin:
                     user.is_superuser = True
                     user.is_staff = True
