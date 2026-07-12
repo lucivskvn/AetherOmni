@@ -15,6 +15,9 @@ from django.views import View
 
 logger = logging.getLogger(__name__)
 
+TEMPLATE_REGISTER = "extractor/register.html"
+TEMPLATE_FORGOT_PASSWORD = "extractor/forgot_password.html"
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -1223,18 +1226,18 @@ def register_view(request):
 
         if not email or not password:
             messages.error(request, "Email and Password are required.")
-            return render(request, "extractor/register.html")
+            return render(request, TEMPLATE_REGISTER)
 
         if password != confirm_password:
             messages.error(request, "Passwords do not match.")
-            return render(request, "extractor/register.html")
+            return render(request, TEMPLATE_REGISTER)
 
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
 
         if not supabase_url or not supabase_key:
             messages.error(request, "Supabase integration is not configured. Local registration is disabled.")
-            return render(request, "extractor/register.html")
+            return render(request, TEMPLATE_REGISTER)
 
         # Reject reserved/system emails to prevent privilege escalation
         from urllib.parse import urlparse
@@ -1245,14 +1248,14 @@ def register_view(request):
         email_lower = email.lower()
         if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
             messages.error(request, "Registration of administrative or system email addresses is not permitted.")
-            return render(request, "extractor/register.html")
+            return render(request, TEMPLATE_REGISTER)
 
         # Validate email format
         import re
 
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
             messages.error(request, "Invalid email format.")
-            return render(request, "extractor/register.html")
+            return render(request, TEMPLATE_REGISTER)
 
         import json
         import urllib.parse
@@ -1280,7 +1283,7 @@ def register_view(request):
         except Exception as e:
             messages.error(request, f"Network error during registration: {e!s}")
 
-    return render(request, "extractor/register.html")
+    return render(request, TEMPLATE_REGISTER)
 
 
 def forgot_password_view(request):
@@ -1291,21 +1294,21 @@ def forgot_password_view(request):
         email = request.POST.get("email", "").strip()
         if not email:
             messages.error(request, "Email is required.")
-            return render(request, "extractor/forgot_password.html")
+            return render(request, TEMPLATE_FORGOT_PASSWORD)
 
         # Validate email format
         import re
 
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
             messages.error(request, "Invalid email format.")
-            return render(request, "extractor/forgot_password.html")
+            return render(request, TEMPLATE_FORGOT_PASSWORD)
 
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
 
         if not supabase_url or not supabase_key:
             messages.error(request, "Supabase integration is not configured.")
-            return render(request, "extractor/forgot_password.html")
+            return render(request, TEMPLATE_FORGOT_PASSWORD)
 
         import json
         import urllib.parse
@@ -1333,7 +1336,7 @@ def forgot_password_view(request):
         except Exception as e:
             messages.error(request, f"Network error: {e!s}")
 
-    return render(request, "extractor/forgot_password.html")
+    return render(request, TEMPLATE_FORGOT_PASSWORD)
 
 
 @require_http_methods(["GET", "HEAD"])

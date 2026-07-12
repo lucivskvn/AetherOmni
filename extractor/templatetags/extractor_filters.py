@@ -38,6 +38,8 @@ def replace_underscore(value):
     return str(value).replace("_", " ")
 
 
+_PERSIAN_FARSI = "Persian (Farsi)"
+
 # ── ISO 639-1/2 and common LLM-returned language string → full English name ──
 _LANG_MAP: dict[str, str] = {
     # Arabic & Middle-Eastern
@@ -47,11 +49,11 @@ _LANG_MAP: dict[str, str] = {
     "he": "Hebrew",
     "heb": "Hebrew",
     "hebrew": "Hebrew",
-    "fa": "Persian (Farsi)",
-    "per": "Persian (Farsi)",
-    "fas": "Persian (Farsi)",
-    "farsi": "Persian (Farsi)",
-    "persian": "Persian (Farsi)",
+    "fa": _PERSIAN_FARSI,
+    "per": _PERSIAN_FARSI,
+    "fas": _PERSIAN_FARSI,
+    "farsi": _PERSIAN_FARSI,
+    "persian": _PERSIAN_FARSI,
     "ur": "Urdu",
     "urd": "Urdu",
     "urdu": "Urdu",

@@ -26,6 +26,9 @@ services:
   surrealdb:
     image: surrealdb/surrealdb:latest
     container_name: data_extractor_surrealdb
+    security_opt:
+      - no-new-privileges:true
+    # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service
     user: root
     restart: always
     ports:
