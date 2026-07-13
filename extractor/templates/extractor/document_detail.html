@@ -23,12 +23,12 @@
         {% endif %}
     </div>
     <div class="detail-header-actions" style="display: flex; gap: 12px; align-items: center;">
-        <button type="button" class="btn btn-secondary btn-retry-doc" data-doc-id="{{ document.uuid }}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; border-radius: 8px; font-weight: 600; font-size: 0.85rem; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; transition: all 0.2s;">
+        <button type="button" class="btn btn-secondary btn-retry-doc" data-doc-id="{{ document.uuid }}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; border-radius: 8px; font-weight: 600; font-size: 0.85rem; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; transition: all 0.2s;" aria-label="Restart Curation for {{ document.title }}">
             <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> Restart Curation
         </button>
         <form id="delete-document-form" action="{% url 'delete_document' document.uuid %}" method="post">
             {% csrf_token %}
-            <button type="submit" class="btn btn-danger">
+            <button type="submit" class="btn btn-danger" aria-label="Delete {{ document.title }}">
                 <i data-lucide="trash-2"></i> Delete Document
             </button>
         </form>
@@ -213,7 +213,7 @@
                     <span class="unsaved-badge" id="unsaved-badge" style="display: none; font-size: 11px; color: #f43f5e; font-weight: 700; align-items: center; gap: 4px; margin-right: 8px;">
                         <span class="unsaved-dot" style="width: 6px; height: 6px; background-color: #f43f5e; border-radius: 50%; display: inline-block; animation: pulse 1s infinite;"></span> Unsaved Changes
                     </span>
-                    <button type="submit" class="btn btn-primary btn-save-curation">
+                    <button type="submit" class="btn btn-primary btn-save-curation" title="Save Curation (Ctrl+S)" aria-label="Save Curation (Ctrl+S)">
                         <i data-lucide="save" style="width:14px; height:14px;"></i> Save Curation
                     </button>
                 </div>
@@ -222,24 +222,24 @@
             <!-- Toolbar bar section -->
             <div class="editor-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-glass);">
                 <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-                    <button type="button" class="tb-btn" data-action="bold" title="Bold (Ctrl+B)" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="bold" style="width:15px; height:15px;"></i></button>
-                    <button type="button" class="tb-btn" data-action="italic" title="Italic (Ctrl+I)" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="italic" style="width:15px; height:15px;"></i></button>
-                    <button type="button" class="tb-btn" data-action="heading" title="Heading" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="heading" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="bold" title="Bold (Ctrl+B)" aria-label="Bold (Ctrl+B)" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="bold" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="italic" title="Italic (Ctrl+I)" aria-label="Italic (Ctrl+I)" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="italic" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="heading" title="Heading" aria-label="Heading" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="heading" style="width:15px; height:15px;"></i></button>
                     <span style="width:1px; height:16px; background:var(--border-glass); margin:0 4px;"></span>
-                    <button type="button" class="tb-btn" data-action="quote" title="Blockquote" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="quote" style="width:15px; height:15px;"></i></button>
-                    <button type="button" class="tb-btn" data-action="code" title="Code Block" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="code" style="width:15px; height:15px;"></i></button>
-                    <button type="button" class="tb-btn" data-action="link" title="Insert Link" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="link" style="width:15px; height:15px;"></i></button>
-                    <button type="button" class="tb-btn" data-action="table" title="Insert Table" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="table" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="quote" title="Blockquote" aria-label="Blockquote" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="quote" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="code" title="Code Block" aria-label="Code Block" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="code" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="link" title="Insert Link" aria-label="Insert Link" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="link" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="table" title="Insert Table" aria-label="Insert Table" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="table" style="width:15px; height:15px;"></i></button>
                     <span style="width:1px; height:16px; background:var(--border-glass); margin:0 4px;"></span>
-                    <button type="button" class="tb-btn" data-action="bullet" title="Bullet List" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="list" style="width:15px; height:15px;"></i></button>
-                    <button type="button" class="tb-btn" data-action="number" title="Numbered List" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="list-ordered" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="bullet" title="Bullet List" aria-label="Bullet List" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="list" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" data-action="number" title="Numbered List" aria-label="Numbered List" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="list-ordered" style="width:15px; height:15px;"></i></button>
                 </div>
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 0; user-select: none;">
                         <input type="checkbox" id="sync-scroll-toggle" checked style="cursor: pointer; width: 14px; height: 14px; margin: 0;">
                         <span>Sync Scroll</span>
                     </label>
-                    <button type="button" class="tb-btn" id="btn-fullscreen-toggle" title="Toggle Fullscreen Curation" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="maximize-2" style="width:15px; height:15px;"></i></button>
+                    <button type="button" class="tb-btn" id="btn-fullscreen-toggle" title="Toggle Fullscreen Curation" aria-label="Toggle Fullscreen Curation" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="maximize-2" style="width:15px; height:15px;"></i></button>
                 </div>
             </div>
 
