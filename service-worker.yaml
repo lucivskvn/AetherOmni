@@ -105,24 +105,6 @@ spec:
           limits:
             cpu: 1000m
             memory: 1024Mi
-      - image: surrealdb/surrealdb:latest
-        name: surrealdb
-        args:
-        - start
-        - --no-banner
-        - --log
-        - warn
-        - --user
-        - root
-        - --pass
-        - rootpass
-        - --bind
-        - 0.0.0.0:8000
-        - mem://
-        resources:
-          limits:
-            cpu: 1000m
-            memory: 1024Mi
   traffic:
   - latestRevision: true
     percent: 100
