@@ -1149,3 +1149,34 @@ class CoreDesignHardeningTests(TestCase):
         response = self.client.get(reverse("rag_search") + "?q=filtered-query&document_ids=5,12")
         self.assertEqual(response.status_code, 200)
         mock_rag.assert_called_once_with("filtered-query", document_ids=[5, 12], top_k=5, user=self.user)
+
+
+class DatetimeUtilityTestCase(TestCase):
+    """Verifies robustness of parse_datetime utility function to prevent regressions."""
+
+    def test_parse_datetime_iso_string(self):
+        from datetime import datetime
+
+        from django.utils import timezone
+
+        from extractor.views import parse_datetime
+
+        val = "2026-07-13T10:00:00Z"
+        parsed = parse_datetime(val)
+        self.assertIsInstance(parsed, datetime)
+        self.assertEqual(parsed.year, 2026)
+        self.assertEqual(parsed.month, 7)
+        self.assertEqual(parsed.day, 13)
+        self.assertEqual(parsed.hour, 10)
+        self.assertEqual(parsed.tzinfo, timezone.UTC)
+
+    def test_parse_datetime_fallback_on_invalid(self):
+        from datetime import datetime
+
+        from extractor.views import parse_datetime
+
+        parsed = parse_datetime("invalid-date-format-string")
+        self.assertIsInstance(parsed, datetime)
+
+        parsed_none = parse_datetime(None)
+        self.assertIsInstance(parsed_none, datetime)
