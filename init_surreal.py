@@ -232,10 +232,12 @@ def main():
         logger.info("SURREALDB_OFFLINE is True. Skipping initialization.")
         return
 
-    client = httpx.Client(
+    from extractor.surreal_db import SurrealWebSocketClient
+
+    client = SurrealWebSocketClient(
         base_url=SURREAL_URL,
-        auth=(SURREAL_USER, SURREAL_PASS),
-        timeout=15.0,
+        user=SURREAL_USER,
+        token_pass=SURREAL_PASS,
     )
 
     if wait_for_surreal(client):

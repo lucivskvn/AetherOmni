@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 from django.conf import settings
+from websockets.sync.client import connect
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 # A single httpx.Client is shared across all threads (safe per httpx docs).
 # It maintains an internal connection pool, reusing TCP sockets on Keep-Alive.
 _client_lock = threading.Lock()
-_client: httpx.Client | None = None
+_client: Any | None = None
 
 
 _test_chunks: dict[str, list[dict]] = {}
@@ -85,8 +86,98 @@ def _audit_log_to_dict(log) -> dict:
     }
 
 
-def get_surreal_client() -> httpx.Client:
-    """Return the process-level shared httpx.Client, initialising lazily."""
+class SurrealWebSocketClient:
+    """Wrapper that emulates httpx.Client interface but communicates over WebSocket JSON-RPC."""
+
+    def __init__(self, base_url: str, user: str, token_pass: str):
+        self.base_url = base_url
+        self.user = user
+        self.token_pass = token_pass
+
+        # Translate HTTP URL to WebSocket RPC URL
+        ws_url = base_url.replace("http://", "ws://").replace("https://", "wss://")
+        if not ws_url.endswith("/rpc"):
+            ws_url = ws_url.rstrip("/") + "/rpc"
+        self.ws_url = ws_url
+
+    def get(self, path: str, **kwargs) -> Any:
+        if path == "/health":
+            try:
+                with connect(self.ws_url, timeout=3.0):
+                    class HealthResponse:
+                        status_code = 200
+                    return HealthResponse()
+            except Exception as e:
+                logger.warning("[SurrealDB] WebSocket health check failed: %s", e)
+                class FailedResponse:
+                    status_code = 500
+                return FailedResponse()
+        raise NotImplementedError("Only /health is supported for GET.")
+
+    def post(self, path: str, content: bytes, headers: dict | None = None, **kwargs) -> Any:
+        if path != "/sql":
+            raise NotImplementedError("Only /sql is supported for POST.")
+
+        sql_body = content.decode("utf-8")
+        ns = headers.get("NS", "omnirag") if headers else "omnirag"
+        db = headers.get("DB", "extractor") if headers else "extractor"
+
+        try:
+            with connect(self.ws_url, timeout=30.0) as websocket:
+                # 1. Signin
+                signin_payload = {
+                    "id": "signin",
+                    "method": "signin",
+                    "params": [
+                        {
+                            "user": self.user,
+                            "pass": self.token_pass
+                        }
+                    ]
+                }
+                websocket.send(json.dumps(signin_payload))
+                resp1 = json.loads(websocket.recv())
+                if "error" in resp1:
+                    raise RuntimeError(f"SurrealDB Signin Error: {resp1['error']}")
+
+                # 2. Use NS and DB
+                use_payload = {
+                    "id": "use",
+                    "method": "use",
+                    "params": [ns, db]
+                }
+                websocket.send(json.dumps(use_payload))
+                resp2 = json.loads(websocket.recv())
+                if "error" in resp2:
+                    raise RuntimeError(f"SurrealDB Use Error: {resp2['error']}")
+
+                # 3. Execute SQL Query
+                query_payload = {
+                    "id": "query",
+                    "method": "query",
+                    "params": [sql_body, {}]
+                }
+                websocket.send(json.dumps(query_payload))
+                resp3 = json.loads(websocket.recv())
+                if "error" in resp3:
+                    raise RuntimeError(f"SurrealDB Query Error: {resp3['error']}")
+
+                ws_result = resp3.get("result", [])
+
+                class QueryResponse:
+                    def raise_for_status(self):
+                        pass
+                    def json(self):
+                        return ws_result
+                return QueryResponse()
+
+        except Exception as exc:
+            logger.exception("[SurrealDB] WebSocket query failure: %s", exc)
+            raise
+
+
+def get_surreal_client() -> Any:
+    """Return the process-level shared SurrealWebSocketClient, initialising lazily."""
     global _client
     if _client is None:
         with _client_lock:
@@ -94,17 +185,16 @@ def get_surreal_client() -> httpx.Client:
                 surreal_url = getattr(settings, "SURREAL_URL", os.getenv("SURREAL_URL", "http://localhost:8001"))
                 surreal_user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
                 surreal_pass = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", "root"))
-                _client = httpx.Client(
+                _client = SurrealWebSocketClient(
                     base_url=surreal_url,
-                    auth=(surreal_user, surreal_pass),
-                    timeout=30.0,
-                    limits=httpx.Limits(max_connections=50, max_keepalive_connections=25),
+                    user=surreal_user,
+                    token_pass=surreal_pass,
                 )
-                logger.info("[SurrealDB] Connection pool initialised: %s", surreal_url)
+                logger.info("[SurrealDB] WebSocket Connection pool initialised: %s", surreal_url)
     return _client
 
 
-def _get_client() -> httpx.Client:
+def _get_client() -> Any:
     return get_surreal_client()
 
 
@@ -874,20 +964,3 @@ def clear_user_memories(user_id: str) -> None:
     _run(sql, {"user_id": user_id})
 
 
-# ── Internal SQL construction helpers ─────────────────────────────────────────
-
-
-def _set_clause(data: dict) -> str:
-    """Build a SurrealQL SET clause from a dict. Example: 'a = 1, b = \"x\"'"""
-    parts = []
-    for k, v in data.items():
-        parts.append(f"{k} = {json.dumps(v)}")
-    return ", ".join(parts)
-
-
-def _insert_clause(data: dict) -> str:
-    """Build a SurrealQL INSERT object literal from a dict."""
-    parts = []
-    for k, v in data.items():
-        parts.append(f"{k}: {json.dumps(v)}")
-    return "{ " + ", ".join(parts) + " }"

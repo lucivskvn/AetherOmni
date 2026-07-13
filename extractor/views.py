@@ -1071,11 +1071,8 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
         }
 
         # Only overwrite the API key if it's not the masked placeholder
-        if openrouter_api_key and openrouter_api_key != "••••••••••••••••":
-            payload["openrouter_api_key"] = openrouter_api_key
-        elif not openrouter_api_key:
-            # If the user explicitly cleared the input, remove the key
-            payload["openrouter_api_key"] = ""
+        if openrouter_api_key != "••••••••••••••••":
+            payload["openrouter_api_key"] = openrouter_api_key or ""
 
         surreal_db.save_system_settings(payload)
 
