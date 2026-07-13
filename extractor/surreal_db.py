@@ -181,7 +181,7 @@ def check_health() -> bool:
         client = _get_client()
         resp = client.get("/health")
         return resp.status_code == 200
-    except Exception:  # noqa: BLE001 — health probe must absorb any SDK or network failure
+    except Exception:  # — health probe must absorb any SDK or network failure
         return False
 
 
