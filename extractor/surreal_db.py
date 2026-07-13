@@ -104,13 +104,17 @@ class SurrealWebSocketClient:
         if path == "/health":
             try:
                 with connect(self.ws_url, timeout=3.0):
+
                     class HealthResponse:
                         status_code = 200
+
                     return HealthResponse()
             except Exception as e:
                 logger.warning("[SurrealDB] WebSocket health check failed: %s", e)
+
                 class FailedResponse:
                     status_code = 500
+
                 return FailedResponse()
         raise NotImplementedError("Only /health is supported for GET.")
 
@@ -128,12 +132,7 @@ class SurrealWebSocketClient:
                 signin_payload = {
                     "id": "signin",
                     "method": "signin",
-                    "params": [
-                        {
-                            "user": self.user,
-                            "pass": self.token_pass
-                        }
-                    ]
+                    "params": [{"user": self.user, "pass": self.token_pass}],
                 }
                 websocket.send(json.dumps(signin_payload))
                 resp1 = json.loads(websocket.recv())
@@ -141,22 +140,14 @@ class SurrealWebSocketClient:
                     raise RuntimeError(f"SurrealDB Signin Error: {resp1['error']}")
 
                 # 2. Use NS and DB
-                use_payload = {
-                    "id": "use",
-                    "method": "use",
-                    "params": [ns, db]
-                }
+                use_payload = {"id": "use", "method": "use", "params": [ns, db]}
                 websocket.send(json.dumps(use_payload))
                 resp2 = json.loads(websocket.recv())
                 if "error" in resp2:
                     raise RuntimeError(f"SurrealDB Use Error: {resp2['error']}")
 
                 # 3. Execute SQL Query
-                query_payload = {
-                    "id": "query",
-                    "method": "query",
-                    "params": [sql_body, {}]
-                }
+                query_payload = {"id": "query", "method": "query", "params": [sql_body, {}]}
                 websocket.send(json.dumps(query_payload))
                 resp3 = json.loads(websocket.recv())
                 if "error" in resp3:
@@ -165,10 +156,15 @@ class SurrealWebSocketClient:
                 ws_result = resp3.get("result", [])
 
                 class QueryResponse:
+                    status_code = 200
+                    text = ""
+
                     def raise_for_status(self):
                         pass
+
                     def json(self):
                         return ws_result
+
                 return QueryResponse()
 
         except Exception as exc:
@@ -962,5 +958,3 @@ def clear_user_memories(user_id: str) -> None:
     """Clear all memories for a user in SurrealDB."""
     sql = "DELETE FROM user_memories WHERE user_id = $user_id;"
     _run(sql, {"user_id": user_id})
-
-
