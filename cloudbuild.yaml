@@ -33,7 +33,18 @@ steps:
     id: 'push-sha'
     waitFor: ['build']
 
-  # 4. Deploy the web service
+  # 4. Prepare YAML configurations
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service.yaml
+        sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service-worker.yaml
+    id: 'prepare-yaml'
+    waitFor: ['build']
+
+  # 5. Deploy the web service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -43,9 +54,9 @@ steps:
       - 'service.yaml'
       - '--region=asia-southeast1'
     id: 'deploy-web'
-    waitFor: ['push-latest']
+    waitFor: ['push-sha', 'prepare-yaml']
 
-  # 5. Deploy the worker service
+  # 6. Deploy the worker service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -55,7 +66,7 @@ steps:
       - 'service-worker.yaml'
       - '--region=asia-southeast1'
     id: 'deploy-worker'
-    waitFor: ['push-latest']
+    waitFor: ['push-sha', 'prepare-yaml']
 
 substitutions:
   _IMAGE: 'asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app'
