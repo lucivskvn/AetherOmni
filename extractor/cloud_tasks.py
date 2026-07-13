@@ -49,27 +49,6 @@ def _get_tasks_client():
     return _tasks_client
 
 
-# ── OIDC token helper ─────────────────────────────────────────────────────────
-
-
-def _get_oidc_token(audience: str) -> str | None:
-    """
-    Fetch an OIDC token from the GCP metadata server for the given audience.
-    Returns None immediately in DEBUG mode to avoid blocking local devs (Gap E-39).
-    """
-    if settings.DEBUG:
-        return None
-    try:
-        import google.auth.transport.requests
-        import google.oauth2.id_token
-
-        request = google.auth.transport.requests.Request()
-        return google.oauth2.id_token.fetch_id_token(request, audience)
-    except Exception as exc:
-        logger.warning("[CloudTasks] Could not fetch OIDC auth: %s", exc)
-        return None
-
-
 # ── Core dispatcher ───────────────────────────────────────────────────────────
 
 
