@@ -95,7 +95,7 @@
     {% if messages %}
     <div class="alert-container">
         {% for message in messages %}
-        <div class="alert-card {% if message.tags == 'success' %}alert-success{% else %}alert-error{% endif %}" id="msg-{{ forloop.counter }}">
+        <div class="alert-card {% if message.tags == 'success' %}alert-success{% else %}alert-error{% endif %}" id="msg-{{ forloop.counter }}" role="alert">
             <i data-lucide="{% if message.tags == 'success' %}check-circle{% else %}alert-triangle{% endif %}"></i>
             <span>{{ message }}</span>
             <button type="button" class="alert-close-btn" aria-label="Dismiss message" data-dismiss="msg-{{ forloop.counter }}">
@@ -120,7 +120,7 @@
         <div class="dialog-header" style="flex-direction: column; align-items: flex-start; gap: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text-main);">System Configuration Settings</h3>
-                <button id="settings-close-btn" class="close-btn" style="background: none; border: none; cursor: pointer; color: var(--text-muted);">
+                <button id="settings-close-btn" class="close-btn" style="background: none; border: none; cursor: pointer; color: var(--text-muted);" aria-label="Close Settings">
                     <i data-lucide="x"></i>
                 </button>
             </div>

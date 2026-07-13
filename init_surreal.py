@@ -104,7 +104,9 @@ def init_django_admin():
 
         # If Supabase is configured, register admin on Supabase directly
         if supabase_url and supabase_key:
-            logger.info("Supabase is configured. Checking if '%s' user already exists on Supabase Auth...", admin_username)
+            logger.info(
+                "Supabase is configured. Checking if '%s' user already exists on Supabase Auth...", admin_username
+            )
             import json
             import urllib.request
 
