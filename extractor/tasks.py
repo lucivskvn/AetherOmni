@@ -1136,10 +1136,10 @@ def store_user_memory_task(payload: dict) -> None:
 
     try:
         response, _ = execute_generate_content_with_fallback(client, model, contents=[distill_prompt])
-        distilled = response.text.strip().strip("\"'")
+        distilled = response.text.strip().strip("\"'").rstrip(".")
     except Exception as exc:
         logger.warning("[Memory Task] Gemini preference distillation failed: %s. Using raw query.", exc)
-        distilled = raw_text
+        distilled = raw_text.rstrip(".")
 
     if not distilled or distilled.upper() == "NONE":
         logger.info("[Memory Task] Query did not contain a storable preference. Skipped.")
