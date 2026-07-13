@@ -36,7 +36,7 @@ def parse_datetime(val):
     if isinstance(val, datetime):
         return val
     try:
-        return datetime.strptime(val, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return datetime.strptime(val, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.UTC)
     except (ValueError, TypeError):
         try:
             from django.utils.dateparse import parse_datetime as django_parse
@@ -44,7 +44,7 @@ def parse_datetime(val):
             parsed = django_parse(val)
             if parsed:
                 if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=timezone.utc)
+                    parsed = parsed.replace(tzinfo=timezone.UTC)
                 return parsed
         except (ValueError, TypeError, AttributeError):
             pass
