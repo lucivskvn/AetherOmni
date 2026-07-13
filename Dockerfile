@@ -57,6 +57,6 @@ RUN python manage.py collectstatic --noinput || true
 EXPOSE 8080
 
 # Run database initialisation and standard production server Gunicorn
-CMD ["sh", "-c", "python manage.py migrate && python init_surreal.py && if [ \"$DJANGO_DEBUG\" = \"True\" ]; then gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 core.wsgi:application; else gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 --log-level warning core.wsgi:application; fi"]
+CMD ["sh", "-c", "python manage.py migrate && (python init_surreal.py &) && if [ \"$DJANGO_DEBUG\" = \"True\" ]; then gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 core.wsgi:application; else gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 --log-level warning core.wsgi:application; fi"]
 
 
