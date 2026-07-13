@@ -75,6 +75,7 @@ def check_budget_and_api_limit() -> None:
     (including documents already deleted, via MonthlySpendLog) and raises an
     exception if the budget limit is exceeded.
     """
+    from django.conf import settings
     from django.db import models
 
     from extractor.models import MonthlySpendLog, SourceDocument, SystemSettings
@@ -83,16 +84,26 @@ def check_budget_and_api_limit() -> None:
     first_of_month = datetime(now.year, now.month, 1, tzinfo=UTC)
 
     # Live documents created this month
-    live_spent = SourceDocument.objects.filter(created_at__gte=first_of_month).aggregate(total=models.Sum("cost_usd"))[
-        "total"
-    ] or Decimal("0.0")
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        live_spent = SourceDocument.objects.filter(created_at__gte=first_of_month).aggregate(
+            total=models.Sum("cost_usd")
+        )["total"] or Decimal("0.0")
+        settings_obj = SystemSettings.get_settings()
+        monthly_cap = Decimal(str(settings_obj.monthly_budget_usd))
+    else:
+        from extractor import surreal_db
+        from extractor.tasks import format_datetime
+
+        sql = "SELECT math::sum(cost_usd) AS total FROM documents WHERE created_at >= <datetime> $first_of_month GROUP ALL;"
+        res = surreal_db._first_result(surreal_db._run(sql, {"first_of_month": format_datetime(first_of_month)}))
+        live_spent = Decimal(str(res[0].get("total", 0.0))) if res else Decimal("0.0")
+        settings_data = surreal_db.get_system_settings()
+        monthly_cap = Decimal(str(settings_data.get("monthly_budget_usd", 10.00)))
 
     # Deleted documents (flushed to log before removal)
     logged_spent = MonthlySpendLog.total_for_month(now.year, now.month)
     total_spent = live_spent + logged_spent
 
-    settings_obj = SystemSettings.get_settings()
-    monthly_cap = Decimal(str(settings_obj.monthly_budget_usd))
     if total_spent >= monthly_cap:
         raise BudgetExceededException(
             f"Monthly budget limit of ${monthly_cap:.2f} USD has been reached. Current usage: ${total_spent:.4f} USD."

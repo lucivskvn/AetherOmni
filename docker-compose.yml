@@ -32,6 +32,9 @@ services:
     restart: always
     ports:
       - "8001:8000"
+    environment:
+      - SURREAL_HTTP_MAX_SQL_BODY_SIZE=104857600
+      - SURREAL_HTTP_MAX_API_BODY_SIZE=104857600
     command:
       - start
       - --log=info

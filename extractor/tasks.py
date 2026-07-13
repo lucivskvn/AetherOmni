@@ -14,6 +14,7 @@ import tempfile
 import traceback
 from datetime import UTC, timedelta
 from decimal import Decimal
+from typing import Any
 
 from django.conf import settings
 from django.core.files.storage import default_storage
@@ -23,7 +24,7 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 from extractor import surreal_db
-from extractor.models import AuditAction, SourceDocument
+from extractor.models import AuditAction
 from extractor.utils import (
     broadcast_status_change,
     check_budget_and_api_limit,
@@ -208,25 +209,48 @@ def _get_working_path(doc: dict) -> tuple[str, str | None]:
     return temp_local_path, temp_local_path
 
 
-def _run_stage1(working_path: str, document_id: int) -> SourceDocument:
+def _run_stage1(working_path: str, document_id: str | int) -> Any:
     """Stage 1: OCR / local parsing."""
-    doc = SourceDocument.objects.get(id=document_id)
-    lower_name = doc.original_filename.lower()
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            import uuid
+
+            try:
+                uuid.UUID(str(document_id))
+                doc = SourceDocument.objects.get(uuid=document_id)
+            except ValueError:
+                doc = SourceDocument.objects.get(id=int(document_id))
+        except (SourceDocument.DoesNotExist, ValueError) as err:
+            logger.error("[Worker] Document ID/UUID %s not found in SQLite: %s", document_id, err)
+            raise
+        lower_name = doc.original_filename.lower()
+        doc_id_display = doc.id
+    else:
+        doc = surreal_db.get_document(str(document_id))
+        if not doc:
+            raise ValueError(f"Document {document_id} not found in SurrealDB")
+        lower_name = doc.get("original_filename", "").lower()
+        doc_id_display = doc.get("doc_uuid")
+
     raw_markdown = ""
     stage1_cost = Decimal("0.0")
     stage1_input_tokens = 0
     stage1_output_tokens = 0
 
     if lower_name.endswith(".csv"):
-        logger.info("[Worker] Routing CSV to local parser for Document ID: %s", doc.id)
+        logger.info("[Worker] Routing CSV to local parser for Document ID: %s", doc_id_display)
         raw_markdown = process_csv_local(working_path)
         doc_type_detected = "CSV"
     elif lower_name.endswith(".txt"):
-        logger.info("[Worker] Routing TXT to local parser for Document ID: %s", doc.id)
+        logger.info("[Worker] Routing TXT to local parser for Document ID: %s", doc_id_display)
         raw_markdown = process_txt_local(working_path)
         doc_type_detected = "TXT"
     else:
-        logger.info("[Worker] Routing to Gemini Multimodal OCR for Document ID: %s", doc.id)
+        logger.info("[Worker] Routing to Gemini Multimodal OCR for Document ID: %s", doc_id_display)
         doc_type_detected = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
         ocr_results = run_stage1_multimodal_ocr(working_path, model_name=settings.GEMINI_MODEL)
         raw_markdown = ocr_results["raw_markdown"]
@@ -234,18 +258,45 @@ def _run_stage1(working_path: str, document_id: int) -> SourceDocument:
         stage1_input_tokens = ocr_results["input_tokens"]
         stage1_output_tokens = ocr_results["output_tokens"]
 
-    with transaction.atomic():
-        doc_ref = SourceDocument.objects.select_for_update().get(id=document_id)
-        doc_ref.document_type = doc_type_detected
-        doc_ref.raw_markdown = raw_markdown
-        doc_ref.input_tokens += stage1_input_tokens
-        doc_ref.output_tokens += stage1_output_tokens
-        doc_ref.cost_usd += Decimal(str(stage1_cost))
-        doc_ref.status = "REFINING"
-        doc_ref.save()
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        with transaction.atomic():
+            from extractor.models import SourceDocument
 
-    broadcast_status_change(str(doc_ref.uuid), "REFINING")
-    return doc_ref
+            try:
+                import uuid
+
+                try:
+                    uuid.UUID(str(document_id))
+                    doc_ref = SourceDocument.objects.select_for_update().get(uuid=document_id)
+                except ValueError:
+                    doc_ref = SourceDocument.objects.select_for_update().get(id=int(document_id))
+            except (SourceDocument.DoesNotExist, ValueError):
+                doc_ref = doc
+            doc_ref.document_type = doc_type_detected
+            doc_ref.raw_markdown = raw_markdown
+            doc_ref.input_tokens += stage1_input_tokens
+            doc_ref.output_tokens += stage1_output_tokens
+            doc_ref.cost_usd += Decimal(str(stage1_cost))
+            doc_ref.status = "REFINING"
+            doc_ref.save()
+        broadcast_status_change(str(doc_ref.uuid), "REFINING")
+        return doc_ref
+    else:
+        current_input = doc.get("input_tokens") or 0
+        current_output = doc.get("output_tokens") or 0
+        current_cost = doc.get("cost_usd") or 0.0
+
+        updated_data = {
+            "document_type": doc_type_detected,
+            "raw_markdown": raw_markdown,
+            "input_tokens": current_input + stage1_input_tokens,
+            "output_tokens": current_output + stage1_output_tokens,
+            "cost_usd": float(current_cost) + float(stage1_cost),
+            "status": "REFINING",
+        }
+        doc_ref = surreal_db.update_document(str(document_id), updated_data)
+        broadcast_status_change(str(document_id), "REFINING")
+        return doc_ref
 
 
 def _sanitise_yaml_block(raw: str) -> str:

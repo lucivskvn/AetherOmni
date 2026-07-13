@@ -6,20 +6,35 @@
 -- ============================================================
 
 -- ── 1. documents ─────────────────────────────────────────────
--- Mirrors SourceDocument (SQLite) for fast KV look-ups from
--- worker tasks without hitting Django ORM.
 DEFINE TABLE documents SCHEMAFULL;
 
-DEFINE FIELD doc_uuid        ON documents TYPE string;
-DEFINE FIELD status          ON documents TYPE string;          -- PENDING | EXTRACTING | REFINING | EMBEDDING | COMPLETED | FAILED
-DEFINE FIELD filename        ON documents TYPE string;
-DEFINE FIELD language        ON documents TYPE string DEFAULT "";
-DEFINE FIELD page_count      ON documents TYPE int    DEFAULT 0;
-DEFINE FIELD expires_at      ON documents TYPE option<datetime>;
-DEFINE FIELD created_at      ON documents TYPE datetime DEFAULT time::now();
-DEFINE FIELD updated_at      ON documents TYPE datetime DEFAULT time::now();
+DEFINE FIELD doc_uuid          ON documents TYPE string;
+DEFINE FIELD uploaded_by_id    ON documents TYPE option<string>;
+DEFINE FIELD file              ON documents TYPE string;
+DEFINE FIELD original_filename ON documents TYPE string;
+DEFINE FIELD file_hash         ON documents TYPE string;
+DEFINE FIELD status            ON documents TYPE string;          -- PENDING | EXTRACTING | REFINING | EMBEDDING | COMPLETED | FAILED
+DEFINE FIELD error_message     ON documents TYPE string DEFAULT "";
+DEFINE FIELD language          ON documents TYPE string DEFAULT "Unknown";
+DEFINE FIELD author            ON documents TYPE string DEFAULT "Unknown";
+DEFINE FIELD title             ON documents TYPE string DEFAULT "Untitled";
+DEFINE FIELD document_type     ON documents TYPE string DEFAULT "PDF";
+DEFINE FIELD page_count        ON documents TYPE int    DEFAULT 0;
+DEFINE FIELD raw_markdown      ON documents TYPE string DEFAULT "";
+DEFINE FIELD refined_markdown  ON documents TYPE string DEFAULT "";
+DEFINE FIELD yaml_metadata     ON documents TYPE string DEFAULT "";
+DEFINE FIELD qa_dataset        ON documents TYPE array  DEFAULT [];
+DEFINE FIELD input_tokens      ON documents TYPE int    DEFAULT 0;
+DEFINE FIELD output_tokens     ON documents TYPE int    DEFAULT 0;
+DEFINE FIELD cost_usd          ON documents TYPE float  DEFAULT 0.0;
+DEFINE FIELD semantic_signature ON documents TYPE string DEFAULT "";
+DEFINE FIELD retry_count       ON documents TYPE int    DEFAULT 0;
+DEFINE FIELD expires_at        ON documents TYPE option<datetime>;
+DEFINE FIELD created_at        ON documents TYPE datetime DEFAULT time::now();
+DEFINE FIELD updated_at        ON documents TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX idx_documents_uuid ON documents FIELDS doc_uuid UNIQUE;
+DEFINE INDEX idx_documents_hash ON documents FIELDS file_hash;
 
 
 -- ── 2. chunks ─────────────────────────────────────────────────
@@ -97,3 +112,11 @@ DEFINE FIELD created_at      ON user_memories TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX idx_mem_user    ON user_memories FIELDS user_id;
 DEFINE INDEX idx_mem_hnsw    ON user_memories FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
+
+
+-- ── 7. system_settings ───────────────────────────────────────
+DEFINE TABLE system_settings SCHEMAFULL;
+DEFINE FIELD monthly_budget_usd ON system_settings TYPE float DEFAULT 10.00;
+DEFINE FIELD selected_model     ON system_settings TYPE string DEFAULT "auto";
+DEFINE FIELD currency           ON system_settings TYPE string DEFAULT "auto";
+DEFINE FIELD openrouter_api_key ON system_settings TYPE string DEFAULT "";

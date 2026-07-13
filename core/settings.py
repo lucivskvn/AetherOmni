@@ -151,7 +151,7 @@ ASGI_APPLICATION = "core.asgi.application"
 
 # ── Database Configuration ─────────────────────────────────────────────────────
 # All document/vector/KV data lives in SurrealDB.
-# Django users, sessions, and settings live in SQLite locally, or PostgreSQL in production.
+# Django users and sessions live in SQLite locally.
 
 DATABASES = {
     "default": {
@@ -159,25 +159,6 @@ DATABASES = {
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
-
-if not DEBUG and os.getenv("DATABASE_URL") and "test" not in sys.argv:
-    from urllib.parse import urlparse
-
-    parsed = urlparse(os.getenv("DATABASE_URL"))
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": parsed.path.lstrip("/"),
-            "USER": parsed.username,
-            "PASSWORD": parsed.password,
-            "HOST": parsed.hostname,
-            "PORT": parsed.port or 5432,
-            "OPTIONS": {
-                "sslmode": "require",
-                "connect_timeout": 10,
-            },
-        }
-    }
 
 AUTHENTICATION_BACKENDS = [
     "extractor.auth.SupabaseAuthBackend",
