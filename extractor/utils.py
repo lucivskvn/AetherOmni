@@ -73,9 +73,9 @@ def log_audit_event(
     # Leg 1: Django ORM → SQLite
     try:
         AuditLog.objects.create(
-            user=user,
+            user=user if hasattr(user, "pk") else None,
             action=action,
-            document=document,
+            document=document if hasattr(document, "pk") else None,
             details=details,
             ip_address=ip_address,
         )
@@ -86,8 +86,15 @@ def log_audit_event(
     try:
         from extractor import surreal_db
 
-        user_id = str(user.id) if user else "system"
-        doc_uuid = str(document.uuid) if document and hasattr(document, "uuid") else None
+        user_id = str(user.id) if user and hasattr(user, "id") else (str(user) if user else "system")
+
+        doc_uuid = None
+        if document:
+            if hasattr(document, "uuid"):
+                doc_uuid = str(document.uuid)
+            elif isinstance(document, dict):
+                doc_uuid = document.get("doc_uuid")
+
         surreal_db.log_audit(
             action=action,
             user_id=user_id,

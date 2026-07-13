@@ -279,9 +279,18 @@ def _ensure_chunks_loaded_for_user(user, allowed_uuids):
         ensure_document_chunks_loaded(allowed_uuids)
     else:
         # For admins/superusers (allowed_uuids is None), ensure chunks are loaded for all completed documents
-        from extractor.models import SourceDocument
+        from django.conf import settings
 
-        all_uuids = SourceDocument.objects.filter(status="COMPLETED").values_list("uuid", flat=True)
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor.models import SourceDocument
+
+            all_uuids = SourceDocument.objects.filter(status="COMPLETED").values_list("uuid", flat=True)
+        else:
+            from extractor import surreal_db
+
+            sql = "SELECT doc_uuid FROM documents WHERE status = 'COMPLETED';"
+            rows = surreal_db._first_result(surreal_db._run(sql))
+            all_uuids = [r["doc_uuid"] for r in rows if "doc_uuid" in r]
         ensure_document_chunks_loaded(all_uuids)
 
 
