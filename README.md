@@ -46,7 +46,7 @@ We use a 6-gate unified pre-check QA runner to prevent bugs or security leaks fr
 1. **Ruff Linter**: Enforces clean Python syntax and coding rules.
 2. **Ruff Formatter**: Assures code layout and indent consistency.
 3. **Django Integrity**: Verifies database schemas, migrations, and settings validations.
-4. **Django Unit Tests**: Executes 102 comprehensive unit tests with coverage generation.
+4. **Django Unit Tests**: Executes 158 comprehensive unit tests with coverage generation.
 5. **Bandit SAST**: Scans code for security vulnerabilities.
 6. **Pip-Audit SCA**: Queries the PyPI database to block any insecure or outdated dependencies.
 
@@ -59,8 +59,8 @@ Run the local code health checks:
 ```bash
 .venv/bin/python3 -m desloppify scan --skip-slow
 ```
-* Current Objective/Mechanical Score: **88.2%**
-* Current Security Rating: **93.9%**
+* Current Objective/Mechanical Score: **99.9%**
+* Current Strict Code Health Score: **100.0/100**
 
 ### SonarQube
 Run the pre-production Sonar scan:
@@ -77,7 +77,7 @@ DATABASE_URL=sqlite:///db.sqlite3 .venv/bin/python3 -m coverage run --source='.'
 
 ## ☁️ Deployment
 
-For detailed production deployment instructions on Google Cloud Run, PostgreSQL, and Cloud Storage, please refer to the [Google Cloud Run Deployment Guide](https://github.com/lucivskvn/AetherOmni/wiki/GCP-Cloud-Run-Deployment-Guide).
+For detailed production deployment instructions on Google Cloud Run, SurrealDB, Supabase, and Cloud Storage, please refer to the [Google Cloud Run Deployment Guide](gcp_deployment_guide.md).
 
 ---
 
