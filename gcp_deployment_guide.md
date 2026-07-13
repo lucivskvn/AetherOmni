@@ -7,15 +7,13 @@ This guide describes how to provision, configure, build, and deploy the **Aether
 ## 1. Production Architecture Overview
 
 The production system consists of:
-1. **Cloud Run Service (`web`)**: Handles user HTTP traffic, serves pages, static files, and houses SQLite databases. Also acts as the webhook target for asynchronous task executions.
-2. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Instead of a persistent VM or always-on worker service, tasks are dispatched to Cloud Tasks and executed via secure, OIDC-authorized HTTP POST requests targeting the `/internal/tasks/<task_name>/` endpoint on the `web` container.
-3. **SurrealDB (REST/WebSockets)**: Standard SurrealDB instance deployed on GCE or Cloud Run (with persistent disk or network storage), exposing port 8000. Houses:
-   - `chunks`: Stores document text chunks and their 768-dimension `text-embedding-004` vectors with an HNSW index.
-   - `rag_cache`: Semantic cache for grounded answers.
-   - `kv_cache`: Fast key-value exact-match cache.
-   - `user_memories`: Long-term user preferences vectors.
-4. **Cloud Storage (GCS) or Supabase Storage**: Private storage for holding document uploads.
-5. **Secret Manager**: Securely stores environment credentials (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_REALTIME_URL`, `SUPABASE_REALTIME_KEY`).
+1. **Cloud Run Service (`data-extractor-web`)**: Handles user HTTP traffic, serves dashboard/login pages, and houses ephemeral SQLite databases for Django's user sessions.
+2. **Cloud Run Service (`data-extractor-worker`)**: Dedicated worker instance that processes heavy background OCR and RAG ingestion.
+3. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
+4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (at `wss://surrealdb.fainko.cloud/rpc`). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
+5. **Cloud Storage (GCS)**: Stores raw, uploaded PDF assets securely.
+6. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely on a self-hosted instance (at `https://supabase.fainko.cloud`).
+7. **Secret Manager**: Securely stores environment credentials (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`).
 
 ---
 
@@ -117,7 +115,7 @@ echo -n "YOUR_GEMINI_API_KEY" | gcloud secrets versions add GEMINI_API_KEY --dat
 
 # 3. SurrealDB Credentials
 gcloud secrets create SURREAL_URL --replication-policy="automatic"
-echo -n "http://YOUR_SURREALDB_HOST:8000" | gcloud secrets versions add SURREAL_URL --data-file=-
+echo -n "wss://surrealdb.fainko.cloud/rpc" | gcloud secrets versions add SURREAL_URL --data-file=-
 
 gcloud secrets create SURREAL_USER --replication-policy="automatic"
 echo -n "admin" | gcloud secrets versions add SURREAL_USER --data-file=-
@@ -125,7 +123,7 @@ echo -n "admin" | gcloud secrets versions add SURREAL_USER --data-file=-
 gcloud secrets create SURREAL_PASS --replication-policy="automatic"
 echo -n "YOUR_SURREALDB_PASSWORD" | gcloud secrets versions add SURREAL_PASS --data-file=-
 
-# 4. Administrative Credentials (for automatic dashboard and Supabase/local setup)
+# 4. Administrative Credentials (for automatic dashboard and local auth stub creation)
 gcloud secrets create ADMIN_EMAIL --replication-policy="automatic"
 echo -n "admin@example.com" | gcloud secrets versions add ADMIN_EMAIL --data-file=-
 
@@ -134,11 +132,18 @@ echo -n "admin" | gcloud secrets versions add ADMIN_USERNAME --data-file=-
 
 gcloud secrets create ADMIN_PASSWORD --replication-policy="automatic"
 echo -n "AdminPass123!" | gcloud secrets versions add ADMIN_PASSWORD --data-file=-
+
+# 5. Supabase Auth Configuration (for user authentication)
+gcloud secrets create SUPABASE_URL --replication-policy="automatic"
+echo -n "https://supabase.fainko.cloud" | gcloud secrets versions add SUPABASE_URL --data-file=-
+
+gcloud secrets create SUPABASE_PUBLIC_KEY --replication-policy="automatic"
+echo -n "YOUR_SUPABASE_PUBLIC_KEY" | gcloud secrets versions add SUPABASE_PUBLIC_KEY --data-file=-
 ```
 
 ### B. Grant Secret Access to the Service Account
 ```bash
-for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL ADMIN_USERNAME ADMIN_PASSWORD; do
+for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL ADMIN_USERNAME ADMIN_PASSWORD SUPABASE_URL SUPABASE_PUBLIC_KEY; do
   gcloud secrets add-iam-policy-binding ${secret} \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/secretmanager.secretAccessor"
@@ -219,16 +224,34 @@ DEFINE INDEX idx_audit_time ON audit_logs FIELDS timestamp;
 
 ## 7. Deploying to Cloud Run
 
-We deploy the single `web` service. Django runs SQLite locally on the instance disk (with optional volume mounts or persistent configurations for zero-loss scaling).
+We deploy both the `web` service and the `worker` service. Deployments are managed declaratively using Knative service specifications in `service.yaml` and `service-worker.yaml` (which reference Secret Manager for credentials).
 
-### Deploy Web Service
+### Deploy Services Declaratively (Recommended)
+Cloud Build handles compiling the image, tagging it with the current `$BUILD_ID`, replacing the image references in the Knative YAMLs, and applying them:
 ```bash
+# Run the pipeline to build and deploy web + worker services
+gcloud builds submit --config cloudbuild.yaml
+```
+
+### Deploying Services Manually
+If you want to deploy manually using the CLI:
+```bash
+# Deploy Web Service
 gcloud run deploy data-extractor-web \
   --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/web-app:latest \
   --region=${REGION} \
   --service-account=${SERVICE_ACCOUNT} \
-  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=*.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME}" \
-  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest" \
+  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=*,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://data-extractor-web-751922320980.asia-southeast1.run.app,WORKER_URL=https://data-extractor-worker-751922320980.asia-southeast1.run.app,SURREAL_NS=omnirag,SURREAL_DB=extractor,SURREALDB_OFFLINE=False" \
+  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
+  --allow-unauthenticated
+
+# Deploy Worker Service
+gcloud run deploy data-extractor-worker \
+  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/web-app:latest \
+  --region=${REGION} \
+  --service-account=${SERVICE_ACCOUNT} \
+  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=*,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://data-extractor-worker-751922320980.asia-southeast1.run.app,SURREAL_NS=omnirag,SURREAL_DB=extractor,SURREALDB_OFFLINE=False" \
+  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
   --allow-unauthenticated
 ```
 
@@ -236,15 +259,8 @@ gcloud run deploy data-extractor-web \
 
 ## 8. Continuous Updates & Redeployment
 
-Whenever you update your code:
+Whenever you update your code, run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
 
-1. **Re-build & Push Image**:
-   ```bash
-   gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/web-app:latest
-   ```
-2. **Update Service**:
-   ```bash
-   gcloud run services update data-extractor-web \
-     --region=${REGION} \
-     --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/web-app:latest
-   ```
+```bash
+gcloud builds submit --config cloudbuild.yaml
+```
