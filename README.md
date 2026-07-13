@@ -13,7 +13,7 @@ AetherOmni is a secure, high-performance web application and background worker a
 
 * **Grounded RAG Pipeline**: Combines document chunking, text-embedding-004 vector embeddings, SurrealDB KV caching, and **Google Gemini 3.5 Flash** models for accurate, context-bound Q&A.
 * **Modern LLM Stack**: Migrated to Gemini 3.x generation, using **Gemini 3.5 Flash** as the primary workhorse and **Gemini 3.1 Flash-Lite** for budget-optimized tasks.
-* **Mem0 Hybrid Memory**: Maintains long-term user style and formatting preferences with an LLM token-saving write gate and strict multi-tenant context isolation.
+* **SurrealDB Vector Memory**: Maintains long-term user style and formatting preferences directly within SurrealDB (replacing Mem0) with a token-saving write gate and strict multi-tenant isolation.
 * **Batched Database Insertion**: Optimized SurrealDB ingestion with batched payloads to prevent HTTP 413 errors on large documents.
 * **Double-Tier Caching**: Uses exact-match SurrealDB KV caching and cosine-distance vector semantic caching (`RAGQueryCache`) to bypass LLM generation costs for repeated queries.
 * **Dual Container Architecture**: Designed for deployment on **Google Cloud Run** as a web handler (`aetheromni-web`) and a steady task queue listener (`aetheromni-worker`).

@@ -152,6 +152,9 @@ def get_service_config(service_name):
     project_namespace = details.get("project_number") or project_id
     region = details["region"]
 
+    if not project_id:
+        raise ValueError("GCP Project ID is not configured.")
+
     token = get_gcp_access_token()
     if token:
         # GCP REST API (Knative v1)
@@ -428,6 +431,9 @@ def get_service_logs(service_name, limit=50):
     details = get_gcp_project_details()
     project_id = details["project_id"]
     region = details["region"]
+
+    if not project_id:
+        return [{"timestamp": "", "message": "GCP Project ID not configured.", "severity": "WARNING"}]
 
     token = get_gcp_access_token()
     if token:

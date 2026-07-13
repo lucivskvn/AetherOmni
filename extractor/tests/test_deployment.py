@@ -74,9 +74,11 @@ class DeploymentFunctionsTestCase(TestCase):
         token = get_gcp_access_token()
         self.assertIsNone(token)
 
+    @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
     @patch("urllib.request.urlopen")
-    def test_get_service_config_api(self, mock_urlopen, mock_get_token):
+    def test_get_service_config_api(self, mock_urlopen, mock_get_token, mock_get_details):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}
         mock_get_token.return_value = "mock-token"
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"kind": "Service", "metadata": {"name": "test-service"}}'
@@ -86,9 +88,11 @@ class DeploymentFunctionsTestCase(TestCase):
         config = get_service_config("test-service")
         self.assertEqual(config["metadata"]["name"], "test-service")
 
+    @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
     @patch("subprocess.check_output")
-    def test_get_service_config_gcloud(self, mock_check_output, mock_get_token):
+    def test_get_service_config_gcloud(self, mock_check_output, mock_get_token, mock_get_details):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}
         mock_get_token.return_value = None
         mock_check_output.return_value = b'{"kind": "Service", "metadata": {"name": "test-service-local"}}'
 
@@ -99,10 +103,12 @@ class DeploymentFunctionsTestCase(TestCase):
         self.assertIn("gcloud", cmd)
         self.assertIn("describe", cmd)
 
+    @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
     @patch("extractor.deployment.get_service_config")
     @patch("urllib.request.urlopen")
-    def test_update_service_scale_api(self, mock_urlopen, mock_get_config, mock_get_token):
+    def test_update_service_scale_api(self, mock_urlopen, mock_get_config, mock_get_token, mock_get_details):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}
         mock_get_token.return_value = "mock-token"
         mock_get_config.return_value = {
             "metadata": {"name": "worker", "uid": "123", "resourceVersion": "abc"},
@@ -132,10 +138,12 @@ class DeploymentFunctionsTestCase(TestCase):
             config_sent["spec"]["template"]["metadata"]["annotations"]["autoscaling.knative.dev/maxScale"], "5"
         )
 
+    @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
     @patch("extractor.deployment.get_service_config")
     @patch("subprocess.check_output")
-    def test_update_service_scale_gcloud(self, mock_check_output, mock_get_config, mock_get_token):
+    def test_update_service_scale_gcloud(self, mock_check_output, mock_get_config, mock_get_token, mock_get_details):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}
         mock_get_token.return_value = None
         mock_get_config.return_value = {
             "metadata": {"name": "worker"},
@@ -152,9 +160,11 @@ class DeploymentFunctionsTestCase(TestCase):
         self.assertIn("--max-instances", cmd)
         self.assertIn("3", cmd)
 
+    @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
     @patch("urllib.request.urlopen")
-    def test_get_service_logs_api(self, mock_urlopen, mock_get_token):
+    def test_get_service_logs_api(self, mock_urlopen, mock_get_token, mock_get_details):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}
         mock_get_token.return_value = "mock-token"
         mock_resp = MagicMock()
         mock_resp.read.return_value = (
@@ -167,9 +177,11 @@ class DeploymentFunctionsTestCase(TestCase):
         self.assertEqual(len(logs), 1)
         self.assertEqual(logs[0]["message"], "Hello Log")
 
+    @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
     @patch("subprocess.check_output")
-    def test_get_service_logs_gcloud(self, mock_check_output, mock_get_token):
+    def test_get_service_logs_gcloud(self, mock_check_output, mock_get_token, mock_get_details):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}
         mock_get_token.return_value = None
         mock_check_output.side_effect = [b'[{"timestamp": "2026", "textPayload": "Local Log", "severity": "INFO"}]']
 
