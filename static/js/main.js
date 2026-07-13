@@ -186,10 +186,32 @@ function initializeDragAndDrop() {
                 return;
             }
         }
+
+        // Show immediate loading state inside dropZone & prevent double submissions
+        dropZone.innerHTML = `
+            <i data-lucide="loader" class="spinner" style="width: 36px; height: 36px; color: var(--primary);"></i>
+            <div class="upload-title">Ingesting ${files.length} File${files.length > 1 ? 's' : ''}...</div>
+            <div class="upload-subtitle" style="animation: pulse 1.5s infinite ease-in-out;">Uploading to security scan and curation workspace. Please wait.</div>
+        `;
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            try { lucide.createIcons(); } catch (_) {}
+        }
+        dropZone.style.pointerEvents = 'none';
+        dropZone.style.borderColor = 'var(--primary)';
+        dropZone.style.background = 'rgba(99, 102, 241, 0.04)';
+
         uploadForm.submit();
     }
 
     dropZone.addEventListener('click', () => fileInput.click());
+
+    // Keyboard accessibility for interactive div container
+    dropZone.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.click();
+        }
+    });
 
     fileInput.addEventListener('change', () => {
         if (fileInput.files.length > 0) {
