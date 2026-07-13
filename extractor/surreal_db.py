@@ -568,6 +568,29 @@ def delete_document(doc_uuid: str) -> None:
             pass
         return
 
+    # Flush cost to MonthlySpendLog before deleting from SurrealDB
+    doc = get_document(doc_uuid)
+    if doc:
+        cost = doc.get("cost_usd") or 0.0
+        created_at_str = doc.get("created_at")
+        if cost > 0 and created_at_str:
+            from django.utils.dateparse import parse_datetime as django_parse
+
+            created_at = django_parse(created_at_str)
+            if created_at:
+                from extractor.models import MonthlySpendLog
+
+                try:
+                    MonthlySpendLog.add_cost(
+                        year=created_at.year,
+                        month=created_at.month,
+                        cost=cost,
+                        in_tok=doc.get("input_tokens") or 0,
+                        out_tok=doc.get("output_tokens") or 0,
+                    )
+                except Exception as exc:
+                    logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
+
     sql = (  # nosec B608
         "DELETE FROM documents WHERE doc_uuid = $doc_uuid;"
         "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;"

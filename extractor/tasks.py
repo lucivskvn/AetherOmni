@@ -46,6 +46,32 @@ def format_datetime(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
+    """Helper to parse the PDF file structures and extract page count using regex."""
+    if doc_type != "PDF":
+        return 1
+    try:
+        import re
+
+        with open(working_path, "rb") as f:
+            content = f.read()
+            if b"Dummy PDF Content" in content:
+                return 1
+            pages = re.findall(rb"/Type\s*/Page\b", content)
+            count = len(pages)
+            if count > 0:
+                return count
+            match = re.search(rb"/Type\s*/Pages.*?/Count\s*(\d+)", content, re.DOTALL)
+            if match:
+                return int(match.group(1))
+            parent_count = len(re.findall(rb"/Parent\s*\d+\s*\d+\s*R", content))
+            if parent_count > 0:
+                return parent_count
+    except Exception as exc:
+        logger.warning("[Worker] Failed to determine PDF page count: %s", exc)
+    return 1
+
+
 # Maximum field lengths — prevents Cloud Run OOM and DB varchar crashes (Gap E-17)
 _MAX_TITLE_LEN = 255
 _MAX_AUTHOR_LEN = 255
@@ -258,6 +284,8 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
         stage1_input_tokens = ocr_results["input_tokens"]
         stage1_output_tokens = ocr_results["output_tokens"]
 
+    page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
+
     if getattr(settings, "SURREALDB_OFFLINE", False):
         with transaction.atomic():
             from extractor.models import SourceDocument
@@ -273,6 +301,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
             except (SourceDocument.DoesNotExist, ValueError):
                 doc_ref = doc
             doc_ref.document_type = doc_type_detected
+            doc_ref.page_count = page_count_detected
             doc_ref.raw_markdown = raw_markdown
             doc_ref.input_tokens += stage1_input_tokens
             doc_ref.output_tokens += stage1_output_tokens
@@ -288,6 +317,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
 
         updated_data = {
             "document_type": doc_type_detected,
+            "page_count": page_count_detected,
             "raw_markdown": raw_markdown,
             "input_tokens": current_input + stage1_input_tokens,
             "output_tokens": current_output + stage1_output_tokens,
@@ -448,36 +478,51 @@ def _is_unknown_value(val) -> bool:
     return not val or str(val).strip().lower() in ("unknown", "n/a", "none", "null", "undefined", "")
 
 
+def _set_val(obj, key, val):
+    if isinstance(obj, dict):
+        obj[key] = val
+    else:
+        setattr(obj, key, val)
+
+
+def _get_val(obj, key, default=None):
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    else:
+        return getattr(obj, key, default)
+
+
 def _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig):
-    """Apply parsed YAML metadata values to a SourceDocument instance (inside atomic block)."""
+    """Apply parsed YAML metadata values to a SourceDocument instance or dictionary (inside atomic block)."""
     import os
 
+    orig_filename = _get_val(doc_ref, "original_filename", "")
     t_val = _truncate(parsed_title, _MAX_TITLE_LEN)
     if _is_unknown_value(t_val):
-        t_val = os.path.splitext(doc_ref.original_filename)[0].replace("_", " ").replace("-", " ").strip()
-    doc_ref.title = t_val or doc_ref.original_filename
+        t_val = os.path.splitext(orig_filename)[0].replace("_", " ").replace("-", " ").strip()
+    _set_val(doc_ref, "title", t_val or orig_filename or "Untitled")
 
     a_val = _truncate(parsed_author, _MAX_AUTHOR_LEN)
     if _is_unknown_value(a_val):
         a_val = "Anonymous"
 
     # Quran translation-specific author / publisher corrections
-    low_filename = doc_ref.original_filename.lower()
+    low_filename = orig_filename.lower()
     if "sahih" in low_filename:
         if a_val == "Anonymous" or "divinely" in a_val.lower() or "anonymous" in a_val.lower():
             a_val = "Sahih International"
 
-    doc_ref.author = a_val
+    _set_val(doc_ref, "author", a_val)
 
     l_val = _truncate(parsed_lang, _MAX_LANGUAGE_LEN)
     if _is_unknown_value(l_val):
         l_val = "English"
-    doc_ref.language = l_val
+    _set_val(doc_ref, "language", l_val)
 
     if parsed_doc_type:
-        doc_ref.document_type = _truncate(parsed_doc_type, _MAX_DOCTYPE_LEN)
+        _set_val(doc_ref, "document_type", _truncate(parsed_doc_type, _MAX_DOCTYPE_LEN))
     if parsed_sig:
-        doc_ref.semantic_signature = _truncate(parsed_sig, _MAX_SIG_LEN)
+        _set_val(doc_ref, "semantic_signature", _truncate(parsed_sig, _MAX_SIG_LEN))
 
 
 def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
@@ -570,9 +615,9 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     doc_ref = surreal_db.get_document(doc_uuid)
     _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig)
 
-    input_tokens = doc_ref.get("input_tokens", 0) + stage2_input_tokens
-    output_tokens = doc_ref.get("output_tokens", 0) + stage2_output_tokens
-    cost_usd = float(doc_ref.get("cost_usd", 0.0)) + stage2_cost
+    input_tokens = _get_val(doc_ref, "input_tokens", 0) + stage2_input_tokens
+    output_tokens = _get_val(doc_ref, "output_tokens", 0) + stage2_output_tokens
+    cost_usd = float(_get_val(doc_ref, "cost_usd", 0.0)) + stage2_cost
 
     updated = surreal_db.update_document(
         doc_uuid,
@@ -580,11 +625,11 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
             "refined_markdown": refined_markdown,
             "yaml_metadata": yaml_metadata_block,
             "qa_dataset": qa_dataset,
-            "title": doc_ref.get("title"),
-            "author": doc_ref.get("author"),
-            "language": doc_ref.get("language"),
-            "document_type": doc_ref.get("document_type"),
-            "semantic_signature": doc_ref.get("semantic_signature"),
+            "title": _get_val(doc_ref, "title"),
+            "author": _get_val(doc_ref, "author"),
+            "language": _get_val(doc_ref, "language"),
+            "document_type": _get_val(doc_ref, "document_type"),
+            "semantic_signature": _get_val(doc_ref, "semantic_signature"),
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cost_usd": cost_usd,
@@ -643,10 +688,12 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
             logger.warning("[Worker] Failed to save chunks to persistent storage: %s", exc)
 
         expires_at = timezone.now() + timedelta(days=retention_days)
+        existing_page_count = _get_val(doc, "page_count") or 0
+        final_page_count = existing_page_count if existing_page_count > 0 else len(chunks)
         updated = surreal_db.update_document(
             doc_uuid,
             {
-                "page_count": len(chunks),
+                "page_count": final_page_count,
                 "status": "COMPLETED",
                 "expires_at": format_datetime(expires_at),
             },
@@ -655,10 +702,12 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
         surreal_db.delete_chunks(doc_uuid)
 
         expires_at = timezone.now() + timedelta(days=retention_days)
+        existing_page_count = _get_val(doc, "page_count") or 0
+        final_page_count = existing_page_count if existing_page_count > 0 else 0
         updated = surreal_db.update_document(
             doc_uuid,
             {
-                "page_count": 0,
+                "page_count": final_page_count,
                 "status": "COMPLETED",
                 "expires_at": format_datetime(expires_at),
             },
@@ -820,9 +869,13 @@ def reembed_edited_document_task(payload: dict) -> None:
             ]
             surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
 
-            surreal_db.update_document(doc_uuid, {"page_count": len(chunks), "status": "COMPLETED"})
+            existing_page_count = _get_val(doc, "page_count") or 0
+            final_page_count = existing_page_count if existing_page_count > 0 else len(chunks)
+            surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
         else:
-            surreal_db.update_document(doc_uuid, {"page_count": 0, "status": "COMPLETED"})
+            existing_page_count = _get_val(doc, "page_count") or 0
+            final_page_count = existing_page_count if existing_page_count > 0 else 0
+            surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
 
         logger.info("[Worker] Re-embedding successful for Document UUID: %s!", doc_uuid)
         broadcast_status_change(doc_uuid, "COMPLETED")

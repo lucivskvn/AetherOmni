@@ -82,10 +82,10 @@ def _wrap_surreal_doc(d, users_map):
     doc_obj.language = d.get("language")
     doc_obj.document_type = d.get("document_type")
     doc_obj.status = d.get("status")
-    doc_obj.cost_usd = Decimal(str(d.get("cost_usd", 0.0)))
-    doc_obj.page_count = d.get("page_count", 0)
-    doc_obj.input_tokens = d.get("input_tokens", 0)
-    doc_obj.output_tokens = d.get("output_tokens", 0)
+    doc_obj.cost_usd = Decimal(str(d.get("cost_usd") if d.get("cost_usd") is not None else 0.0))
+    doc_obj.page_count = d.get("page_count") if d.get("page_count") is not None else 0
+    doc_obj.input_tokens = d.get("input_tokens") if d.get("input_tokens") is not None else 0
+    doc_obj.output_tokens = d.get("output_tokens") if d.get("output_tokens") is not None else 0
     doc_obj.raw_markdown = d.get("raw_markdown")
     doc_obj.refined_markdown = d.get("refined_markdown")
     doc_obj.yaml_metadata = d.get("yaml_metadata")
@@ -1338,14 +1338,23 @@ class AuditLogListView(LoginRequiredMixin, View):
             else:
                 doc_obj = None
 
+            metadata_val = rl.get("metadata")
+            import json
+
+            try:
+                meta_dict = json.loads(metadata_val) if isinstance(metadata_val, str) else (metadata_val or {})
+            except Exception:
+                meta_dict = {}
+            details_val = meta_dict.get("details") or ""
+
             # Filter in-memory if user/search queries are provided
             if is_staff_or_superuser and user_query:
                 if user_query.lower() not in u.username.lower():
                     continue
             if search_query:
                 sq = search_query.lower()
-                details_match = sq in rl.get("details", "").lower()
-                ip_match = sq in rl.get("ip_address", "").lower()
+                details_match = sq in details_val.lower()
+                ip_match = sq in (rl.get("ip_address") or "").lower()
                 doc_match = doc_obj and (
                     sq in (doc_obj.original_filename or "").lower() or sq in (doc_obj.title or "").lower()
                 )
@@ -1358,7 +1367,7 @@ class AuditLogListView(LoginRequiredMixin, View):
                     action=rl.get("action"),
                     user=u,
                     document=doc_obj,
-                    details=rl.get("details"),
+                    details=details_val,
                     ip_address=rl.get("ip_address"),
                 )
             )
