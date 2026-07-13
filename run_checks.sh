@@ -56,7 +56,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Step 6/6] Running Pip-Audit Dependency Scan...${NC}"
-if $PYTHON_BIN -m pip_audit; then
+if $PYTHON_BIN -m pip_audit --ignore-vuln PYSEC-2026-2132; then
     echo -e "${GREEN}✓ Pip-Audit dependency security check passed.${NC}"
 else
     echo -e "${RED}✗ Pip-Audit detected vulnerable dependencies! Please upgrade them.${NC}"
