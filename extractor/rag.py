@@ -516,6 +516,26 @@ def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
 
 def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db, default_storage, json, ContentFile) -> None:
     """Regenerate and save chunks+embeddings for a single COMPLETED document that is missing them."""
+    chunks_json_path = f"chunks/{doc_uuid_str}.json"
+
+    # 1. Try to load from storage first to save API/Gemini costs
+    try:
+        if default_storage.exists(chunks_json_path):
+            with default_storage.open(chunks_json_path, "r") as f:
+                content_bytes = f.read()
+                # Handle bytes vs string read based on storage engine
+                content_str = content_bytes.decode("utf-8") if isinstance(content_bytes, bytes) else content_bytes
+                payloads = json.loads(content_str)
+            if payloads:
+                surreal_db.recreate_chunks(doc_uuid_str, payloads)
+                logger.info(
+                    f"[Surreal Sync] Restored {len(payloads)} chunks from storage to SurrealDB for {doc_uuid_str}."
+                )
+                return
+    except Exception as read_err:
+        logger.warning(f"[Surreal Sync] Failed to read chunks JSON from storage for {doc_uuid_str}: {read_err}")
+
+    # 2. Fall back to regeneration if JSON was missing or corrupted
     if doc.get("status") == "COMPLETED" and doc.get("refined_markdown"):
         logger.info(f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks...")
         lang = (doc.get("language") or "").lower()
@@ -539,7 +559,6 @@ def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db, default
             # Save to SurrealDB
             surreal_db.recreate_chunks(doc_uuid_str, payloads)
             # Save to storage JSON
-            chunks_json_path = f"chunks/{doc_uuid_str}.json"
             default_storage.save(chunks_json_path, ContentFile(json.dumps(payloads).encode("utf-8")))
             logger.info(
                 f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to storage and SurrealDB for {doc_uuid_str}."

@@ -56,13 +56,24 @@ def _sync_supabase_user(
     user_email = user_info.get("email", username)
 
     # Generate clean local Django username (prefix of email)
-    django_username = user_email.split("@")[0]
+    base_username = user_email.split("@")[0]
+    django_username = base_username
 
     # Ensure username is unique to prevent collisions with other domains sharing the same prefix
-    existing_user = User.objects.filter(username=django_username).first()
-    if existing_user and existing_user.email != user_email:
-        email_hash = hashlib.sha256(user_email.encode("utf-8")).hexdigest()[:8]
-        django_username = f"{django_username}_{email_hash}"
+    suffix = ""
+    attempt = 0
+    while True:
+        candidate = f"{base_username}{suffix}"[:150]
+        conflicting_user = User.objects.filter(username=candidate).first()
+        if not conflicting_user or conflicting_user.email == user_email:
+            django_username = candidate
+            break
+        if attempt == 0:
+            email_hash = hashlib.sha256(user_email.encode("utf-8")).hexdigest()[:8]
+            suffix = f"_{email_hash}"
+        else:
+            suffix = f"_{attempt}"
+        attempt += 1
 
     # Retrieve or instantiate standard Django User account
     user, created = User.objects.get_or_create(

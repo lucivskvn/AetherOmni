@@ -327,6 +327,38 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         self.assertNotEqual(user2.username, "scholar.test")
         self.assertTrue(user2.username.startswith("scholar.test_"))
 
+    @patch("urllib.request.urlopen")
+    def test_supabase_email_prefix_collision_multiple(self, mock_urlopen):
+        """Verify that multiple colliding email prefixes/usernames are handled sequentially via the loop."""
+        import hashlib
+        import json
+
+        from django.contrib.auth.models import User
+
+        from extractor.auth import SupabaseAuthBackend
+
+        # pre-create user with conflicting hash suffix
+        email_hash = hashlib.sha256(b"scholar.test@different-domain.com").hexdigest()[:8]
+        User.objects.create_user(username=f"scholar.test_{email_hash}", email="st_hash@other.com")
+
+        mock_response_data = {
+            "user": {"id": "supabase-uuid-collision-multi", "email": "scholar.test@different-domain.com"},
+            "access_token": "mock-jwt-token-collision-multi",
+        }
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(mock_response_data).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        backend = SupabaseAuthBackend()
+        with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
+            user = backend.authenticate(None, username="scholar.test@different-domain.com", password="somepassword")
+
+        self.assertIsNotNone(user)
+        self.assertEqual(user.email, "scholar.test@different-domain.com")
+        # Since scholar.test_{hash} was taken by st_hash@other.com, it should loop to attempt=1 suffix: scholar.test_1
+        self.assertEqual(user.username, "scholar.test_1")
+
     def test_standard_user_isolation_on_document_views(self):
         """Verify that standard (non-staff) users are denied access to other users' documents or system documents they didn't upload."""
         # Create another user and their document
