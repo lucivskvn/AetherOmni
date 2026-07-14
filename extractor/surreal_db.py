@@ -19,7 +19,7 @@ from typing import Any
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
-from surrealdb import Surreal
+from surrealdb import AsyncSurreal
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
     ns, db_name = _get_surreal_ns_db()
 
     try:
-        async with Surreal(url) as db:
+        async with AsyncSurreal(url) as db:
             await db.signin(auth)
             await db.use(ns, db_name)
             result = await db.query(sql, params)
@@ -152,7 +152,7 @@ def _first_result(results: list[dict]) -> list[Any]:
 async def _async_check_health() -> bool:
     url = _get_surreal_url()
     try:
-        async with Surreal(url) as db:
+        async with AsyncSurreal(url) as db:
             pass
         return True
     except Exception as e:
