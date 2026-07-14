@@ -33,8 +33,8 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-MODEL_GEMINI_FLASH_LITE = "gemini-flash-lite"
-MODEL_GEMINI_FLASH = "gemini-flash"
+MODEL_GEMINI_FLASH_LITE = "gemini-1.5-flash-lite"
+MODEL_GEMINI_FLASH = "gemini-1.5-flash"
 _NOT_FOUND = "not found"
 PREFIX_GOOGLE = "google/"
 
@@ -56,7 +56,7 @@ except ImportError:
 
 GEMINI_API_KEY_ERROR = "GEMINI_API_KEY is not configured."
 VAL_ERROR_UNAVAILABLE = "GEMINI_API_KEY is not configured and Vertex AI is unavailable."
-MODEL_GEMINI_FLASH = "gemini-flash"
+MODEL_GEMINI_FLASH = "gemini-1.5-flash"
 MIME_PDF = "application/pdf"
 MIME_OCTET_STREAM = "application/octet-stream"
 
@@ -218,12 +218,12 @@ def resolve_realtime_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
             p = pricing_map[model_name]
             return p["prompt"], p["completion"]
 
-        # 2. Match without provider prefix (e.g. "google/gemini-flash" -> "gemini-flash")
+        # 2. Match without provider prefix (e.g. "google/gemini-1.5-flash" -> "gemini-1.5-flash")
         for m_id, pricing in pricing_map.items():
             if m_id == model_name or m_id.split("/")[-1] == model_name:
                 return pricing["prompt"], pricing["completion"]
 
-        # 3. Soft match (e.g. "gemini-flash" in "google/gemini-flash-lite")
+        # 3. Soft match (e.g. "gemini-1.5-flash" in "google/gemini-1.5-flash-lite")
         for m_id, pricing in pricing_map.items():
             if model_name in m_id or m_id in model_name:
                 return pricing["prompt"], pricing["completion"]
@@ -468,14 +468,14 @@ def _determine_api_routing(model_name: str, is_vision: bool, openrouter_api_key:
 
     if model_name == "auto":
         if is_vision:
-            # gemini-flash: 1M context window, best multimodal balance
-            final_model = MODEL_GEMINI_FLASH  # = gemini-flash
+            # gemini-1.5-flash: 1M context window, best multimodal balance
+            final_model = MODEL_GEMINI_FLASH  # = gemini-1.5-flash
         else:
             if openrouter_api_key:
                 final_model = "meta-llama/llama-3-8b-instruct:free"
                 use_openrouter = True
             else:
-                # gemini-flash: 1M context, $0.30/$2.50 per 1M — best cost/context balance
+                # gemini-1.5-flash: 1M context, $0.30/$2.50 per 1M — best cost/context balance
                 final_model = MODEL_GEMINI_FLASH
     else:
         # Check if the requested model is an OpenRouter model (has '/' but is not google/)
@@ -499,8 +499,8 @@ def _call_gemini_with_fallback(
     # Compile fallback chain starting with the chosen model, followed by progressive defaults
     fallback_list = []
     # Fallback priority:
-    # 1. Chosen model  2. gemini-flash (1M ctx, $0.30/$2.50 — best balance)
-    # 3. gemini-flash-lite (budget fallback)
+    # 1. Chosen model  2. gemini-1.5-flash (1M ctx, $0.30/$2.50 — best balance)
+    # 3. gemini-1.5-flash-lite (budget fallback)
     for candidate in [gemini_model, MODEL_GEMINI_FLASH, MODEL_GEMINI_FLASH_LITE]:
         if candidate not in fallback_list:
             fallback_list.append(candidate)
@@ -957,7 +957,7 @@ def execute_generate_content_with_fallback(
         model_name = MODEL_GEMINI_FLASH
 
     fallback_list = []
-    # Fallback priority: chosen model -> gemini-flash -> gemini-flash-lite
+    # Fallback priority: chosen model -> gemini-1.5-flash -> gemini-1.5-flash-lite
     for candidate in [model_name, MODEL_GEMINI_FLASH, MODEL_GEMINI_FLASH_LITE]:
         if candidate not in fallback_list:
             fallback_list.append(candidate)
