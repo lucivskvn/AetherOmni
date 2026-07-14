@@ -18,7 +18,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 
 TESTING = "test" in sys.argv
-SURREALDB_OFFLINE = TESTING
+SURREALDB_OFFLINE = TESTING or os.getenv("SURREALDB_OFFLINE", "False").lower() in ("true", "1", "t")
 
 
 # ── Core Security ──────────────────────────────────────────────────────────────
