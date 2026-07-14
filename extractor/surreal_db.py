@@ -136,7 +136,7 @@ def _run(sql: str, params: dict | None = None) -> list[dict]:
         import nest_asyncio
 
         nest_asyncio.apply()
-        return asyncio.run(_async_run(sql, params))
+        return loop.run_until_complete(_async_run(sql, params))
     else:
         return async_to_sync(_async_run)(sql, params)
 
@@ -175,7 +175,7 @@ def check_health() -> bool:
         import nest_asyncio
 
         nest_asyncio.apply()
-        return asyncio.run(_async_check_health())
+        return loop.run_until_complete(_async_check_health())
     else:
         return async_to_sync(_async_check_health)()
 
