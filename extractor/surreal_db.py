@@ -10,24 +10,22 @@ plain Python dicts/lists — no ORM coupling.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-import threading
 from datetime import UTC
 from typing import Any
 
-import httpx
+from asgiref.sync import async_to_sync
 from django.conf import settings
-from websockets.sync.client import connect
+from surrealdb import Surreal
 
 logger = logging.getLogger(__name__)
 
 # ── Singleton connection pool ──────────────────────────────────────────────────
 # A single httpx.Client is shared across all threads (safe per httpx docs).
 # It maintains an internal connection pool, reusing TCP sockets on Keep-Alive.
-_client_lock = threading.Lock()
-_client: Any | None = None
 
 
 _test_chunks: dict[str, list[dict]] = {}
@@ -86,192 +84,100 @@ def _audit_log_to_dict(log) -> dict:
     }
 
 
-class SurrealWebSocketClient:
-    """Wrapper that emulates httpx.Client interface but communicates over WebSocket JSON-RPC."""
-
-    def __init__(self, base_url: str, user: str, token_pass: str):
-        self.base_url = base_url
-        self.user = user
-        self.token_pass = token_pass
-
-        # Translate HTTP URL to WebSocket RPC URL
-        ws_url = base_url.replace("http://", "ws://").replace("https://", "wss://")
-        if not ws_url.endswith("/rpc"):
-            ws_url = ws_url.rstrip("/") + "/rpc"
-        self.ws_url = ws_url
-
-    def get(self, path: str, **kwargs) -> Any:
-        if path == "/health":
-            try:
-                with connect(self.ws_url, timeout=3.0):
-
-                    class HealthResponse:
-                        status_code = 200
-
-                    return HealthResponse()
-            except Exception as e:
-                logger.warning("[SurrealDB] WebSocket health check failed: %s", e)
-
-                class FailedResponse:
-                    status_code = 500
-
-                return FailedResponse()
-        raise NotImplementedError("Only /health is supported for GET.")
-
-    def post(self, path: str, content: bytes, headers: dict | None = None, **kwargs) -> Any:
-        if path != "/sql":
-            raise NotImplementedError("Only /sql is supported for POST.")
-
-        sql_body = content.decode("utf-8")
-        ns = headers.get("NS", "omnirag") if headers else "omnirag"
-        db = headers.get("DB", "extractor") if headers else "extractor"
-
-        try:
-            with connect(self.ws_url, timeout=30.0) as websocket:
-                # 1. Signin
-                signin_payload = {
-                    "id": "signin",
-                    "method": "signin",
-                    "params": [{"user": self.user, "pass": self.token_pass}],
-                }
-                websocket.send(json.dumps(signin_payload))
-                resp1 = json.loads(websocket.recv())
-                if "error" in resp1:
-                    raise RuntimeError(f"SurrealDB Signin Error: {resp1['error']}")
-
-                # 2. Use NS and DB
-                use_payload = {"id": "use", "method": "use", "params": [ns, db]}
-                websocket.send(json.dumps(use_payload))
-                resp2 = json.loads(websocket.recv())
-                if "error" in resp2:
-                    raise RuntimeError(f"SurrealDB Use Error: {resp2['error']}")
-
-                # 3. Execute SQL Query
-                query_payload = {"id": "query", "method": "query", "params": [sql_body, {}]}
-                websocket.send(json.dumps(query_payload))
-                resp3 = json.loads(websocket.recv())
-                if "error" in resp3:
-                    raise RuntimeError(f"SurrealDB Query Error: {resp3['error']}")
-
-                ws_result = resp3.get("result", [])
-
-                class QueryResponse:
-                    status_code = 200
-                    text = ""
-
-                    def raise_for_status(self):
-                        pass
-
-                    def json(self):
-                        return ws_result
-
-                return QueryResponse()
-
-        except Exception as exc:
-            logger.exception("[SurrealDB] WebSocket query failure: %s", exc)
-            raise
+def _get_surreal_url() -> str:
+    url = getattr(settings, "SURREAL_URL", os.getenv("SURREAL_URL", "http://localhost:8001"))
+    url = url.replace("http://", "ws://").replace("https://", "wss://")
+    if not url.endswith("/rpc"):
+        url = url.rstrip("/") + "/rpc"
+    return url
 
 
-def get_surreal_client() -> Any:
-    """Return the process-level shared SurrealWebSocketClient, initialising lazily."""
-    global _client
-    if _client is None:
-        with _client_lock:
-            if _client is None:  # double-checked locking
-                surreal_url = getattr(settings, "SURREAL_URL", os.getenv("SURREAL_URL", "http://localhost:8001"))
-                surreal_user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
-                surreal_pass = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", "root"))
-                _client = SurrealWebSocketClient(
-                    base_url=surreal_url,
-                    user=surreal_user,
-                    token_pass=surreal_pass,
-                )
-                logger.info("[SurrealDB] WebSocket Connection pool initialised: %s", surreal_url)
-    return _client
+def _get_surreal_auth() -> dict:
+    user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
+    password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", "root"))
+    return {"username": user, "password": password}
 
 
-def _get_client() -> Any:
-    return get_surreal_client()
-
-
-def _headers() -> dict[str, str]:
-    """Return required SurrealDB namespace/database scope headers."""
+def _get_surreal_ns_db() -> tuple[str, str]:
     ns = getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "omnirag"))
     db = getattr(settings, "SURREAL_DB", os.getenv("SURREAL_DB", "extractor"))
-    return {
-        "NS": ns,
-        "DB": db,
-        "surreal-ns": ns,
-        "surreal-db": db,
-        "Accept": "application/json",
-        "Content-Type": "text/plain",
-    }
+    return ns, db
+
+
+async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
+    url = _get_surreal_url()
+    auth = _get_surreal_auth()
+    ns, db_name = _get_surreal_ns_db()
+
+    try:
+        async with Surreal(url) as db:
+            await db.signin(auth)
+            await db.use(ns, db_name)
+            result = await db.query(sql, params)
+            return result
+    except Exception as exc:
+        logger.exception("[SurrealDB] SDK query failure for SQL: %s", sql[:120])
+        raise RuntimeError(f"SurrealDB error: {exc}")
 
 
 def _run(sql: str, params: dict | None = None) -> list[dict]:
-    """
-    Execute one or more SurrealQL statements and return the parsed result array.
-    Raises RuntimeError on HTTP or SurrealDB-level errors.
-    """
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return [{"status": "OK", "result": []}]
-    client = _get_client()
-
-    let_sqls = []
-    num_params = 0
-    if params:
-        for k, v in params.items():
-            let_sqls.append(f"LET ${k} = {json.dumps(v)};")
-        num_params = len(params)
-        body = "\n".join(let_sqls) + "\n" + sql
-    else:
-        body = sql
 
     try:
-        resp = client.post("/sql", content=body.encode(), headers=_headers())
-        resp.raise_for_status()
-        results = resp.json()
-        # SurrealDB wraps each statement in {status, result} — unwrap errors
-        for stmt in results:
-            if stmt.get("status") == "ERR":
-                raise RuntimeError(f"SurrealDB error: {stmt.get('detail', stmt)}")
-        # Slice out the LET statements' results so that the caller gets exactly the query statements' results
-        return results[num_params:]
-    except httpx.HTTPStatusError as exc:
-        logger.exception("[SurrealDB] HTTP %s for SQL: %s", exc.response.status_code, sql[:120])
-        raise
-    except httpx.RequestError:
-        logger.exception("[SurrealDB] Connection error.")
-        raise
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Inside async context
+        import nest_asyncio
+
+        nest_asyncio.apply()
+        return asyncio.run(_async_run(sql, params))
+    else:
+        return async_to_sync(_async_run)(sql, params)
 
 
 def _first_result(results: list[dict]) -> list[Any]:
-    """Extract the first statement's result list."""
-    if results:
+    if results and isinstance(results, list):
         return results[0].get("result", [])
+    elif results and isinstance(results, dict):
+        return results.get("result", [])
     return []
 
 
-# ── Health check ───────────────────────────────────────────────────────────────
+async def _async_check_health() -> bool:
+    url = _get_surreal_url()
+    try:
+        async with Surreal(url) as db:
+            pass
+        return True
+    except Exception as e:
+        logger.warning("[SurrealDB] WebSocket health check failed: %s", e)
+        return False
 
 
 def check_health() -> bool:
-    """Return True if SurrealDB /health endpoint returns HTTP 200, else False."""
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return False
+
     try:
-        client = _get_client()
-        resp = client.get("/health")
-        return resp.status_code == 200
-    except Exception:  # — health probe must absorb any SDK or network failure
-        return False
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
 
+    if loop and loop.is_running():
+        import nest_asyncio
 
-# ── Document helpers ──────────────────────────────────────────
+        nest_asyncio.apply()
+        return asyncio.run(_async_check_health())
+    else:
+        return async_to_sync(_async_check_health)()
 
 
 def create_document(data: dict) -> dict:
