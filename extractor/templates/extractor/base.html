@@ -256,6 +256,75 @@
                     updateThemeUI(newTheme);
                 });
             }
+
+            // Settings Modal Control
+            const settingsModal = document.getElementById('settings-modal');
+            const settingsTrigger = document.getElementById('settings-trigger-btn');
+            const settingsClose = document.getElementById('settings-close-btn');
+
+            if (settingsModal && settingsTrigger) {
+                settingsTrigger.addEventListener('click', function() {
+                    settingsModal.showModal();
+                });
+            }
+            if (settingsModal && settingsClose) {
+                settingsClose.addEventListener('click', function() {
+                    settingsModal.close();
+                });
+            }
+
+            // Global click handler to catch the dashboard settings trigger
+            document.addEventListener('click', function(e) {
+                if (e.target && e.target.id === 'error-settings-trigger') {
+                    e.preventDefault();
+                    if (settingsModal) {
+                        settingsModal.showModal();
+                    }
+                }
+            });
+
+            // Danger Zone Reset Flow
+            const resetTrigger = document.getElementById('reset-trigger-btn');
+            const resetCancel = document.getElementById('reset-cancel-btn');
+            const initialState = document.getElementById('reset-initial-state');
+            const confirmState = document.getElementById('reset-confirm-state');
+            const confirmInput = document.getElementById('reset_confirm_input');
+            const finalResetBtn = document.getElementById('final-reset-btn');
+
+            if (confirmState) {
+                confirmState.style.display = 'none';
+            }
+
+            if (resetTrigger && initialState && confirmState) {
+                resetTrigger.addEventListener('click', function() {
+                    initialState.style.display = 'none';
+                    confirmState.style.display = 'block';
+                    if (confirmInput) {
+                        confirmInput.value = '';
+                        confirmInput.focus();
+                    }
+                    if (finalResetBtn) {
+                        finalResetBtn.disabled = true;
+                    }
+                });
+            }
+
+            if (resetCancel && initialState && confirmState) {
+                resetCancel.addEventListener('click', function() {
+                    initialState.style.display = 'block';
+                    confirmState.style.display = 'none';
+                });
+            }
+
+            if (confirmInput && finalResetBtn) {
+                confirmInput.addEventListener('input', function() {
+                    if (confirmInput.value.trim() === 'RESET') {
+                        finalResetBtn.disabled = false;
+                    } else {
+                        finalResetBtn.disabled = true;
+                    }
+                });
+            }
         });
     </script>
 </body>

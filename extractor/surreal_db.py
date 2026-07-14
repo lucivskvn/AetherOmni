@@ -86,9 +86,9 @@ def _audit_log_to_dict(log) -> dict:
 
 def _get_surreal_url() -> str:
     url = getattr(settings, "SURREAL_URL", os.getenv("SURREAL_URL", "http://localhost:8001"))
-    url = url.replace("http://", "ws://").replace("https://", "wss://")
-    if not url.endswith("/rpc"):
-        url = url.rstrip("/") + "/rpc"
+    if url.startswith("ws://") or url.startswith("wss://"):
+        if not url.endswith("/rpc"):
+            url = url.rstrip("/") + "/rpc"
     return url
 
 
