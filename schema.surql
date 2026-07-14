@@ -1,7 +1,7 @@
 -- ============================================================
 -- AetherOmni — SurrealDB Schema v2.0
 -- Apply with:  surreal import --conn http://localhost:8001 \
---              --user root --pass root --ns omnirag --db extractor \
+--              --user root --pass root --ns aetheromni --db extractor \
 --              schema.surql
 -- ============================================================
 

@@ -227,7 +227,7 @@ else:
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "omnirag-locmem",
+        "LOCATION": "aetheromni-locmem",
     }
 }
 
@@ -235,7 +235,7 @@ CACHES = {
 # ── SurrealDB Configuration ────────────────────────────────────────────────────
 
 SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
-SURREAL_NS = os.getenv("SURREAL_NS", "omnirag")
+SURREAL_NS = os.getenv("SURREAL_NS", "aetheromni")
 SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "root")
@@ -243,7 +243,7 @@ SURREAL_PASS = os.getenv("SURREAL_PASS", "root")
 
 # ── Google Cloud Tasks Configuration ──────────────────────────────────────────
 
-CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "omnirag-tasks"
+CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "aetheromni-tasks"
 # APP_URL is the fully-qualified URL of this Cloud Run service (used for task callbacks)
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")
 # WORKER_URL is the fully-qualified URL of the data-extractor-worker service

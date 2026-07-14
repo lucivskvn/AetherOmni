@@ -40,7 +40,7 @@ services:
       - --log=info
       - --user=root
       - --pass=root
-      - surrealkv://data/omnirag.db
+      - surrealkv://data/aetheromni.db
     volumes:
       - surreal_data:/data
     healthcheck:
