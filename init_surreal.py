@@ -210,11 +210,11 @@ def init_django_admin():
             from extractor.models import SystemSettings
 
             settings_obj = SystemSettings.get_settings()
-            if settings_obj.selected_model in ["google/gemini-flash-lite", "google/gemini-3.1-flash-lite"]:
+            if settings_obj.selected_model in ["google/gemini-1.5-flash-lite", "google/gemini-3.1-flash-lite"]:
                 settings_obj.selected_model = "google/gemini-3.1-flash-lite"
                 settings_obj.save()
                 logger.info("System settings migrated: updated legacy model to 'google/gemini-3.1-flash-lite'")
-            elif settings_obj.selected_model in ["google/gemini-flash", "google/gemini-3.1-flash"]:
+            elif settings_obj.selected_model in ["google/gemini-1.5-flash", "google/gemini-3.1-flash"]:
                 settings_obj.selected_model = "google/gemini-3.5-flash"
                 settings_obj.save()
                 logger.info("System settings migrated: updated legacy model to 'google/gemini-3.5-flash'")
