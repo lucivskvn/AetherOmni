@@ -1618,7 +1618,11 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
     url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
     try:
         validate_url_scheme(url)
-        headers = {"apikey": supabase_key, "Content-Type": "application/json"}
+        headers = {
+            "apikey": supabase_key,
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
         payload = json.dumps({"email": email, "password": password}).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
@@ -1672,7 +1676,11 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url):
     url = f"{supabase_url.rstrip('/')}/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"
     try:
         validate_url_scheme(url)
-        headers = {"apikey": supabase_key, "Content-Type": "application/json"}
+        headers = {
+            "apikey": supabase_key,
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
         payload = json.dumps({"email": email}).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep

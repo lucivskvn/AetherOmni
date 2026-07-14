@@ -152,7 +152,11 @@ class SupabaseAuthBackend(ModelBackend):
             return None
 
         url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
-        headers = {"apikey": supabase_key, "Content-Type": APPLICATION_JSON}
+        headers = {
+            "apikey": supabase_key,
+            "Content-Type": APPLICATION_JSON,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
         payload = json.dumps({"email": target_email, "password": password}).encode("utf-8")
 
         try:
