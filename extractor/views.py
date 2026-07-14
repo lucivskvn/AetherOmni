@@ -1040,8 +1040,6 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             "google/gemini-3.5-flash",
             "google/gemini-3.1-flash-lite",
             "google/gemini-3.1-flash",
-            "google/gemini-1.5-flash-lite",
-            "google/gemini-1.5-flash",
             "meta-llama/llama-3-8b-instruct:free",
             "google/gemma-2-9b-it:free",
             "qwen/qwen-2-7b-instruct:free",

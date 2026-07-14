@@ -429,7 +429,7 @@ def _parse_yaml_metadata(
 
 
 # Maximum characters to send to Stage 2 in a single LLM call.
-# gemini-1.5-flash has a 1M token window (~4 chars/token) = ~4M chars safe.
+# gemini-3.5-flash has a 1M token window (~4 chars/token) = ~4M chars safe.
 # We use a conservative 600K chars per chunk to stay well within limits and
 # leave room for the system prompt + output.
 _STAGE2_CHUNK_CHARS = 600_000
@@ -1132,7 +1132,7 @@ def store_user_memory_task(payload: dict) -> None:
     )
 
     client = _init_refinement_client()
-    model = _resolve_model_name("google/gemini-1.5-flash-lite")
+    model = _resolve_model_name("google/gemini-3.1-flash-lite")
 
     try:
         response, _ = execute_generate_content_with_fallback(client, model, contents=[distill_prompt])
