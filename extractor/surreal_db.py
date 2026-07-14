@@ -99,7 +99,7 @@ def _get_surreal_auth() -> dict:
 
 
 def _get_surreal_ns_db() -> tuple[str, str]:
-    ns = getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "omnirag"))
+    ns = getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "aetheromni"))
     db = getattr(settings, "SURREAL_DB", os.getenv("SURREAL_DB", "extractor"))
     return ns, db
 

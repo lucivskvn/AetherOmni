@@ -39,7 +39,7 @@ spec:
         - name: APP_URL
           value: "https://data-extractor-worker-751922320980.asia-southeast1.run.app"
         - name: SURREAL_NS
-          value: "omnirag"
+          value: "aetheromni"
         - name: SURREAL_DB
           value: "extractor"
         - name: SURREALDB_OFFLINE
