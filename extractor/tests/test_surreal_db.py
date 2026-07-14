@@ -22,60 +22,57 @@ class SurrealDBClientTestCase(TestCase):
 
         settings.SURREALDB_OFFLINE = self.original_offline
 
-    @patch("extractor.surreal_db.get_surreal_client")
-    def test_check_health_online(self, mock_get_client):
-        mock_client = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_client.get.return_value = mock_resp
-        mock_get_client.return_value = mock_client
+    @patch("extractor.surreal_db.Surreal")
+    def test_check_health_online(self, mock_surreal):
+        mock_db = MagicMock()
+        mock_db.__aenter__.return_value = mock_db
+        mock_surreal.return_value = mock_db
+        from unittest.mock import AsyncMock
+
+        mock_db.signin = AsyncMock()
+        mock_db.use = AsyncMock()
+        mock_db.query = AsyncMock(
+            side_effect=mock_db.query.side_effect if hasattr(mock_db.query, "side_effect") else None,
+            return_value=mock_db.query.return_value,
+        )
 
         self.assertTrue(surreal_db.check_health())
-        mock_client.get.assert_called_once()
-        mock_client.get.assert_called_with("/health")
-        self.assertEqual(mock_resp.status_code, 200)
 
-    @patch("extractor.surreal_db.get_surreal_client")
-    def test_check_health_offline(self, mock_get_client):
-        mock_client = MagicMock()
-        mock_client.get.side_effect = Exception("Connection refused")
-        mock_get_client.return_value = mock_client
+    @patch("extractor.surreal_db.Surreal")
+    def test_check_health_offline(self, mock_surreal):
+        mock_surreal.side_effect = Exception("Connection refused")
 
         self.assertFalse(surreal_db.check_health())
-        mock_client.get.assert_called_once_with("/health")
 
-    @patch("extractor.surreal_db.get_surreal_client")
-    def test_recreate_chunks(self, mock_get_client):
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
+    @patch("extractor.surreal_db.Surreal")
+    def test_recreate_chunks(self, mock_surreal):
+        mock_db = MagicMock()
+        mock_db.__aenter__.return_value = mock_db
+        mock_surreal.return_value = mock_db
+        from unittest.mock import AsyncMock
+
+        mock_db.signin = AsyncMock()
+        mock_db.use = AsyncMock()
+        mock_db.query = AsyncMock(
+            side_effect=mock_db.query.side_effect if hasattr(mock_db.query, "side_effect") else None,
+            return_value=mock_db.query.return_value,
+        )
 
         doc_uuid = "00000000-0000-0000-0000-000000000000"
         chunks = [{"chunk_index": 0, "content": "Text", "embedding": [0.1] * 768}]
 
         surreal_db.recreate_chunks(doc_uuid, chunks)
 
-        # Should delete existing chunks first, then insert new ones
-        self.assertEqual(mock_client.post.call_count, 2)
-        mock_client.post.assert_any_call(
-            "/sql",
-            content=b'LET $doc_uuid = "00000000-0000-0000-0000-000000000000";\nDELETE FROM chunks WHERE doc_uuid = $doc_uuid;',
-            headers={
-                "Accept": "application/json",
-                "NS": "omnirag",
-                "DB": "extractor",
-                "surreal-ns": "omnirag",
-                "surreal-db": "extractor",
-                "Content-Type": "text/plain",
-            },
+        self.assertEqual(mock_db.query.call_count, 2)
+        mock_db.query.assert_any_call(
+            "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;", {"doc_uuid": "00000000-0000-0000-0000-000000000000"}
         )
 
-    @patch("extractor.surreal_db.get_surreal_client")
-    def test_search_chunks_hnsw(self, mock_get_client):
-        mock_client = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = [
-            {"result": None},
-            {"result": None},
+    @patch("extractor.surreal_db.Surreal")
+    def test_search_chunks_hnsw(self, mock_surreal):
+        mock_db = MagicMock()
+        mock_db.__aenter__.return_value = mock_db
+        mock_db.query.return_value = [
             {
                 "result": [
                     {
@@ -86,33 +83,43 @@ class SurrealDBClientTestCase(TestCase):
                 ]
             },
         ]
-        mock_client.post.return_value = mock_resp
-        mock_get_client.return_value = mock_client
+        mock_surreal.return_value = mock_db
+        from unittest.mock import AsyncMock
+
+        mock_db.signin = AsyncMock()
+        mock_db.use = AsyncMock()
+        mock_db.query = AsyncMock(
+            side_effect=mock_db.query.side_effect if hasattr(mock_db.query, "side_effect") else None,
+            return_value=mock_db.query.return_value,
+        )
 
         results = surreal_db.search_chunks_hnsw([0.1] * 768, limit=1)
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["content"], "Found text content")
         self.assertEqual(results[0]["chunk_index"], 0)
         self.assertEqual(results[0]["doc_uuid"], "00000000-0000-0000-0000-000000000000")
-        mock_client.post.assert_called_once()
+        mock_db.query.assert_called_once()
 
-    @patch("extractor.surreal_db.get_surreal_client")
-    def test_kv_cache_set_and_get(self, mock_get_client):
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
+    @patch("extractor.surreal_db.Surreal")
+    def test_kv_cache_set_and_get(self, mock_surreal):
+        mock_db = MagicMock()
+        mock_db.__aenter__.return_value = mock_db
+        mock_db.query.return_value = [{"result": [{"val": {"answer": "cached response"}}]}]
+        mock_surreal.return_value = mock_db
+        from unittest.mock import AsyncMock
 
-        # Mock GET response
-        mock_resp_get = MagicMock()
-        mock_resp_get.json.return_value = [{"result": None}, {"result": [{"val": {"answer": "cached response"}}]}]
-        mock_client.post.return_value = mock_resp_get
+        mock_db.signin = AsyncMock()
+        mock_db.use = AsyncMock()
+        mock_db.query = AsyncMock(
+            side_effect=mock_db.query.side_effect if hasattr(mock_db.query, "side_effect") else None,
+            return_value=mock_db.query.return_value,
+        )
 
         val = surreal_db.kv_cache_get("my-key")
         self.assertEqual(val, {"answer": "cached response"})
-        mock_client.post.assert_called()
-        self.assertEqual(mock_client.post.call_count, 1)
+        mock_db.query.assert_called()
+        self.assertEqual(mock_db.query.call_count, 1)
 
-        # Test set cache
         surreal_db.kv_cache_set("my-key2", {"val": "data"})
-        # Should post query to SurrealDB
-        mock_client.post.assert_called()
-        self.assertEqual(mock_client.post.call_count, 2)
+        mock_db.query.assert_called()
+        self.assertEqual(mock_db.query.call_count, 2)
