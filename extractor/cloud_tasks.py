@@ -79,7 +79,10 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
     logger.info("[CloudTasks/local] Spawning thread for task '%s'", task_name)
 
     if not _LOCAL_TASK_REGISTRY:
-        from extractor.task_handlers import TASK_REGISTRY
+        from extractor.task_handlers import TASK_REGISTRY, _register
+
+        if not TASK_REGISTRY:
+            _register()
 
         _LOCAL_TASK_REGISTRY.update(TASK_REGISTRY)
 
