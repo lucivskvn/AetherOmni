@@ -76,7 +76,7 @@ def apply_schema(client: httpx.Client) -> None:
     errors = 0
     for idx, stmt in enumerate(results):
         if stmt.get("status") == "ERR":
-            logger.error("Statement %d failed: %s", idx, stmt.get("detail"))
+            logger.error("Statement %d failed: %s - %s", idx, stmt.get("detail"), stmt.get("result"))
             errors += 1
 
     if errors == 0:
