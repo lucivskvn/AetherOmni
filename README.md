@@ -57,10 +57,10 @@ We use a 6-gate unified pre-check QA runner to prevent bugs or security leaks fr
 ### Desloppify
 Run the local code health checks:
 ```bash
-.venv/bin/python3 -m desloppify scan --skip-slow
+uvx desloppify scan --skip-slow
 ```
-* Current Objective/Mechanical Score: **99.9%**
-* Current Strict Code Health Score: **100.0/100**
+* Current Objective/Mechanical Score: **87.5/100**
+* Current Strict Code Health Score: **96.9/100**
 
 ### SonarQube
 Run the pre-production Sonar scan:
