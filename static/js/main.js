@@ -35,6 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 10. Auto-convert UTC timestamps to user/browser local timezone
     initializeLocalTimezones();
+
+    // 11. Password visibility toggles for enhanced accessibility and UX
+    initializePasswordToggles();
 });
 
 /**
@@ -67,6 +70,48 @@ function initializeAlerts() {
         if (card) {
             dismissCard(card);
         }
+    });
+}
+
+
+/**
+ * Dynamically attach accessibility-first password visibility toggles to password fields.
+ */
+function initializePasswordToggles() {
+    const SVGS = {
+        show: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`,
+        hide: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`
+    };
+    document.querySelectorAll('input[type="password"]').forEach((input, index) => {
+        if (input.dataset.hasToggle) return;
+        input.dataset.hasToggle = "true";
+        const inputId = input.id || `pwd-in-${index}`;
+        input.id = inputId;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'password-toggle-wrapper';
+        wrapper.style.display = window.getComputedStyle(input).display === 'block' ? 'block' : 'inline-block';
+        input.parentNode.insertBefore(wrapper, input).appendChild(input);
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'password-toggle-btn';
+        btn.setAttribute('aria-label', 'Show password');
+        btn.setAttribute('aria-controls', inputId);
+        btn.setAttribute('aria-expanded', 'false');
+        btn.title = 'Show password';
+        btn.innerHTML = SVGS.show;
+        wrapper.appendChild(btn);
+
+        btn.addEventListener('click', () => {
+            const isPwd = input.type === 'password';
+            input.type = isPwd ? 'text' : 'password';
+            btn.setAttribute('aria-expanded', String(isPwd));
+            const label = isPwd ? 'Hide password' : 'Show password';
+            btn.setAttribute('aria-label', label);
+            btn.title = label;
+            btn.innerHTML = isPwd ? SVGS.hide : SVGS.show;
+        });
     });
 }
 
