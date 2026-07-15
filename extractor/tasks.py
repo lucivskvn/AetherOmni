@@ -673,20 +673,6 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
         # Gap B-8: delete old SurrealDB chunks first, then insert new ones atomically
         surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
 
-        # Save chunk payloads permanently to storage (GCS/Local) for stateless sync
-        try:
-            import json
-
-            from django.core.files.base import ContentFile
-
-            chunks_json_path = f"chunks/{doc_uuid}.json"
-            if default_storage.exists(chunks_json_path):
-                default_storage.delete(chunks_json_path)
-            default_storage.save(chunks_json_path, ContentFile(json.dumps(chunk_payloads).encode("utf-8")))
-            logger.info("[Worker] Chunks and embeddings uploaded to persistent storage for doc: %s", doc_uuid)
-        except Exception as exc:
-            logger.warning("[Worker] Failed to save chunks to persistent storage: %s", exc)
-
         expires_at = timezone.now() + timedelta(days=retention_days)
         existing_page_count = _get_val(doc, "page_count") or 0
         final_page_count = existing_page_count if existing_page_count > 0 else len(chunks)
@@ -935,18 +921,11 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
     if file_hash in hash_counts:
         hash_counts[file_hash] = max(0, hash_counts[file_hash] - 1)
 
-    # Gap B-8: cascade delete SurrealDB chunks and storage JSON backups for compliance
+    # Gap B-8: cascade delete SurrealDB chunks for compliance
     try:
         surreal_db.delete_chunks(doc_uuid)
     except Exception as exc:
         logger.warning("[Cron] Failed to delete SurrealDB chunks for %s: %s", doc_uuid, exc)
-
-    try:
-        chunks_json_path = f"chunks/{doc_uuid}.json"
-        if default_storage.exists(chunks_json_path):
-            default_storage.delete(chunks_json_path)
-    except Exception as storage_err:
-        logger.warning("[Cron] Failed to delete storage chunk JSON for %s: %s", doc_uuid, storage_err)
 
     # Gap E-30: write audit log before deletion
     log_audit_event(

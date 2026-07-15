@@ -744,13 +744,6 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         # Purge SurrealDB chunks and backup JSON
         from django.core.files.storage import default_storage
 
-        try:
-            chunks_json_path = f"chunks/{doc_uuid}.json"
-            if default_storage.exists(chunks_json_path):
-                default_storage.delete(chunks_json_path)
-        except Exception as storage_err:
-            logger.warning("[Delete] Storage chunk JSON deletion failed for %s: %s", doc_uuid, storage_err)
-
         messages.success(request, f"Document '{orig_name}' deleted successfully.")
         return redirect("dashboard")
 
@@ -941,13 +934,6 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
             logger.warning("[Bulk Delete] Failed to physically delete file: %s", e)
 
     surreal_db.delete_document(doc_uuid)
-
-    try:
-        chunks_json_path = f"chunks/{doc_uuid}.json"
-        if default_storage.exists(chunks_json_path):
-            default_storage.delete(chunks_json_path)
-    except Exception as storage_err:
-        logger.warning("[Bulk Delete] Storage chunk JSON deletion failed for %s: %s", doc_uuid, storage_err)
 
 
 def _handle_bulk_delete(request, document_ids):
