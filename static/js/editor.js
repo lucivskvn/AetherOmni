@@ -160,18 +160,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── 4. Fullscreen Curation workspace Toggle ───────────────────────────────
     const fullscreenToggle = document.getElementById('btn-fullscreen-toggle');
     const workspaceGrid = document.getElementById('curation-workspace-grid');
+
+    function toggleFullscreen(forceState) {
+        if (!workspaceGrid || !fullscreenToggle) return;
+        const isCurrentlyFullscreen = workspaceGrid.classList.contains('fullscreen');
+        const nextState = forceState !== undefined ? forceState : !isCurrentlyFullscreen;
+
+        if (nextState) {
+            workspaceGrid.classList.add('fullscreen');
+            fullscreenToggle.title = "Exit Fullscreen Curation";
+            fullscreenToggle.innerHTML = '<i data-lucide="minimize-2" style="width:15px; height:15px;"></i>';
+        } else {
+            workspaceGrid.classList.remove('fullscreen');
+            fullscreenToggle.title = "Toggle Fullscreen Curation";
+            fullscreenToggle.innerHTML = '<i data-lucide="maximize-2" style="width:15px; height:15px;"></i>';
+        }
+
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            try { lucide.createIcons(); } catch (_) {}
+        }
+    }
+
     if (fullscreenToggle && workspaceGrid) {
         fullscreenToggle.addEventListener('click', () => {
-            workspaceGrid.classList.toggle('fullscreen');
-            if (workspaceGrid.classList.contains('fullscreen')) {
-                fullscreenToggle.title = "Exit Fullscreen Curation";
-                fullscreenToggle.innerHTML = '<i data-lucide="minimize-2" style="width:15px; height:15px;"></i>';
-            } else {
-                fullscreenToggle.title = "Toggle Fullscreen Curation";
-                fullscreenToggle.innerHTML = '<i data-lucide="maximize-2" style="width:15px; height:15px;"></i>';
-            }
-            if (typeof lucide !== 'undefined' && lucide.createIcons) {
-                try { lucide.createIcons(); } catch (_) {}
+            toggleFullscreen();
+        });
+
+        // Global Escape key handler to exit fullscreen curation mode
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && workspaceGrid.classList.contains('fullscreen')) {
+                toggleFullscreen(false);
             }
         });
     }
