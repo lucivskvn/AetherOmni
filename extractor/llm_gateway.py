@@ -1244,17 +1244,18 @@ def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = MODEL_G
     client = _init_refinement_client()
 
     refinement_prompt = """
-    You are an Islamic Digital Preservation Librarian and Archival Scholar.
+    You are a Digital Preservation Librarian and Archival Scholar.
     Review the following raw transcribed Markdown text. Perform the following actions:
     
     1. Strip all redundant headers, footers, page margins, and page numbers from the output text.
     2. Fix sentences or words that were awkwardly split across page margins or lines (e.g. joining split words, restoring hyphenations).
     3. Organize the layout with neat, clean hierarchy headings (#, ##, ###). Ensure list formatting, bold markers, and italic annotations are consistent.
-    4. At the very top of your response, output a structured YAML Front-matter block wrapped in `---` lines. The YAML block MUST contain the following keys:
-       - `title`: The document title in English. If the original is Arabic/non-Latin, provide an English transliteration or translation (e.g. "Sifat Salat Al-Nabi" not "صفة صلاة النبي"). NEVER output "Unknown" — derive the best English title from the content or filename.
-       - `author`: The author or publisher name in English. Transliterate Arabic names using common English spellings (e.g. "Ibn Baz", "Al-Albani", "Ibn Taymiyyah"). NEVER output "Unknown" — if unsure, write "Anonymous" or the publisher name.
-       - `language`: Primary language of the source text (e.g. "Arabic", "English", "Indonesian").
-       - `document_type`: Type of document (e.g. "Islamic Treatise", "Academic Paper", "Book", "Fatwa", "Lecture Notes").
+    4. You MUST preserve the author's original meaning, intent, and writing style. Do NOT summarize, rewrite, or alter the original points or text body. You are only converting the knowledge format.
+    5. At the very top of your response, output a structured YAML Front-matter block wrapped in `---` lines. The YAML block MUST contain the following keys:
+       - `title`: The document title in English. If the original is non-Latin, provide an English transliteration or translation. NEVER output "Unknown" — derive the best English title from the content or filename.
+       - `author`: The author or publisher name in English. Transliterate non-Latin names using common English spellings. NEVER output "Unknown" — if unsure, write "Anonymous" or the publisher name.
+       - `language`: Primary language of the source text (e.g. "Arabic", "English", "Indonesian", etc.).
+       - `document_type`: Type of document (e.g. "Treatise", "Academic Paper", "Book", "Lecture Notes").
        - `subject`: A concise English summary subject or theme (MUST be in English).
        - `semantic_signature`: A 64-character hex-like unique signature based on major concepts in the text.
        - `isbn`: International Standard Book Number (ISBN) if present in the text. If not found, write "".
@@ -1266,7 +1267,7 @@ def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = MODEL_G
        - `doi`: Digital Object Identifier if present. Write "" if not found.
        CRITICAL: Every YAML value MUST be a properly quoted string. Use double quotes around ALL values.
        CRITICAL: NEVER leave title, author, language, document_type, or subject fields as "Unknown" or empty — always make a best-effort inference from the document content. For isbn, source_link, translator, publisher, publication_year, license_type, and doi, use empty strings or "Unknown" as specified if truly not mentioned.
-    5. At the very bottom of your response, build an interactive Q&A training dataset based on the knowledge in this text.
+    6. At the very bottom of your response, build an interactive Q&A training dataset based on the knowledge in this text.
        This dataset is for Supervised Fine-Tuning (SFT) or Archival Research.
        It must contain between 3 to 10 question-answer pairs of high complexity.
        IMPORTANT: The questions and answers in this training dataset MUST be written in English by default, regardless of the primary language of the input text.
