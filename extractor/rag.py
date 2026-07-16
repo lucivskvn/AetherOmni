@@ -401,12 +401,25 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
         doc_uuid_str = chunk.get("doc_uuid", "")
         # Look up SQLite doc for title/author/language (UUID is the join key)
         doc_meta = _get_doc_metadata(doc_uuid_str)
-        doc_info = (
-            f"Source: {doc_meta['title']} "
-            f"(Lang: {doc_meta['language']}, Author: {doc_meta['author']}, "
-            f"Publisher: {doc_meta.get('publisher', 'Unknown')}, Year: {doc_meta.get('publication_year', '')}, "
-            f"License: {doc_meta.get('license_type', 'Unknown')}, DOI: {doc_meta.get('doi', '')})"
-        )
+
+        info_parts = [
+            f"Source: {doc_meta.get('title', 'Unknown')}",
+            f"Lang: {doc_meta.get('language', 'Unknown')}",
+            f"Author: {doc_meta.get('author', 'Unknown')}",
+        ]
+
+        if doc_meta.get("publisher") and doc_meta["publisher"] not in ("Unknown", ""):
+            info_parts.append(f"Publisher: {doc_meta['publisher']}")
+        if doc_meta.get("publication_year") and doc_meta["publication_year"] != "":
+            info_parts.append(f"Year: {doc_meta['publication_year']}")
+        if doc_meta.get("license_type") and doc_meta["license_type"] not in ("Unknown", ""):
+            info_parts.append(f"License: {doc_meta['license_type']}")
+        if doc_meta.get("doi") and doc_meta["doi"] != "":
+            info_parts.append(f"DOI: {doc_meta['doi']}")
+
+        doc_info = " (" + ", ".join(info_parts[1:]) + ")"
+        doc_info = info_parts[0] + doc_info
+
         context_blocks.append(f"--- BLOCK {idx + 1} [{doc_info}] ---\n{chunk.get('content', '')}")
         sources.append(
             {
