@@ -560,12 +560,20 @@ def _update_doc_metadata(
 
     if parsed_pub and not _is_unknown_value(parsed_pub):
         _set_val(doc_ref, "publisher", _truncate(parsed_pub, 255))
+
     if parsed_year and not _is_unknown_value(parsed_year):
-        _set_val(doc_ref, "publication_year", _truncate(parsed_year, 4))
+        import re
+
+        year_match = re.search(r"\d{4}", str(parsed_year))
+        if year_match:
+            _set_val(doc_ref, "publication_year", year_match.group(0))
+
     if parsed_lic and not _is_unknown_value(parsed_lic):
         _set_val(doc_ref, "license_type", _truncate(parsed_lic, 100))
+
     if parsed_doi and not _is_unknown_value(parsed_doi):
-        _set_val(doc_ref, "doi", _truncate(parsed_doi, 255))
+        clean_doi = str(parsed_doi).replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+        _set_val(doc_ref, "doi", _truncate(clean_doi, 255))
 
 
 def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
