@@ -253,7 +253,10 @@
             
             <form id="rag-search-form" class="search-form" action="#" onsubmit="return false;">
                 <label for="rag-query" class="visually-hidden">Search document contents</label>
-                <input type="search" id="rag-query" class="search-input" placeholder="Ask questions on the books..." enterkeyhint="search">
+                <div class="search-input-container">
+                    <input type="search" id="rag-query" class="search-input" placeholder="Ask questions on the books..." enterkeyhint="search">
+                    <kbd class="search-shortcut-hint">/</kbd>
+                </div>
                 <button type="submit" id="rag-btn" class="btn btn-primary" aria-label="Submit search">
                     <i data-lucide="search"></i>
                 </button>
