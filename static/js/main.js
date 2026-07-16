@@ -38,6 +38,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 11. Password visibility toggles for enhanced accessibility and UX
     initializePasswordToggles();
+
+    // 12. Global search keyboard shortcuts for advanced curation UX
+    initializeSearchShortcuts();
 });
 
 /**
@@ -69,6 +72,38 @@ function initializeAlerts() {
         const card = document.getElementById(targetId);
         if (card) {
             dismissCard(card);
+        }
+    });
+}
+
+/**
+ * Enables advanced keyboard shortcut focus control for Semantic Spotlight Search query.
+ * Shortcuts: '/' or 'Ctrl+K' / 'Cmd+K' (or 'Meta+K') triggers focus.
+ * 'Escape' key within the input blurs it.
+ */
+function initializeSearchShortcuts() {
+    const ragQuery = document.getElementById('rag-query');
+    if (!ragQuery) return;
+
+    document.addEventListener('keydown', (e) => {
+        // Prevent stealing focus when user is typing in another input element
+        const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+        if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select' || document.activeElement.isContentEditable) {
+            return;
+        }
+
+        // Trigger on '/' or Ctrl+K / Cmd+K
+        if (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+            e.preventDefault();
+            ragQuery.focus();
+            ragQuery.select();
+        }
+    });
+
+    // Blur search input when 'Escape' is pressed
+    ragQuery.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            ragQuery.blur();
         }
     });
 }
