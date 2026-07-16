@@ -427,10 +427,11 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
 
 def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_block: str, selected_model: str) -> Any:
     system_instruction = f"""
-    You are an Islamic Digital Preservation Librarian and Archival Scholar designed to serve the Ummah.
+    You are a Digital Preservation Librarian and Archival Scholar.
     Your task is to answer the query accurately, grounding your answers ONLY in the validated source context block below.
     
     When answering, you MUST provide explicit inline academic citations (e.g., [Author, Year]) and explicitly acknowledge the legal provenance and source of the preserved literature.
+    You MUST preserve the author's original meaning and intent. Do NOT summarize away nuance or change the original points.
 
     If the context block doesn't contain sufficient knowledge to answer, explain humbly that the context is insufficient, and do not make up external claims.
     Keep your tone highly respectful, academic, and professional.
