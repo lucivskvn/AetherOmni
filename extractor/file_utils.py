@@ -366,9 +366,9 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
     }
 
     master_content = [
-        "# Master NotebookLM Comprehensive Source Book\n",
+        "# Master Digital Archival Source Book\n",
         "This master document contains all aggregated booklet knowledge in a single high-density layout. "
-        "It uses strict structural indicators to help NotebookLM easily parse each separate source content boundaries.\n\n",
+        "It uses strict structural indicators to help archival systems easily parse each separate source content boundaries.\n\n",
     ]
 
     seen_lang_paths: set[str] = set()
@@ -378,7 +378,7 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
         for idx, doc in enumerate(docs_list):
             _process_zip_doc(idx, doc, seen_lang_paths, seen_author_paths, manifest, master_content, zip_file)
 
-        zip_file.writestr("master_notebooklm_source.md", "\n".join(master_content))
+        zip_file.writestr("master_archival_source.md", "\n".join(master_content))
         zip_file.writestr("manifest.json", json.dumps(manifest, indent=2))
 
     zip_buffer.seek(0)

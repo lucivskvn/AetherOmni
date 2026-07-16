@@ -849,7 +849,7 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
 class ExportZipView(LoginRequiredMixin, View):
     """
     Curates and builds dynamic ZIP bundle directories sorted by Language and Author,
-    bundling metadata manifests and a single 'master_notebooklm_source.md' document.
+    bundling metadata manifests and a single 'master_archival_source.md' document.
     """
 
     def post(self, request):
@@ -862,7 +862,7 @@ class ExportZipView(LoginRequiredMixin, View):
             zip_data = generate_curated_zip_bundle(document_ids, user=request.user)
             response = HttpResponse(zip_data, content_type="application/zip")
             response["Content-Disposition"] = (
-                f'attachment; filename="curated_notebooklm_export_{timezone.now().strftime("%Y%m%d%H%M")}.zip"'
+                f'attachment; filename="curated_literature_archive_{timezone.now().strftime("%Y%m%d%H%M")}.zip"'
             )
             return response
         except Exception as e:
