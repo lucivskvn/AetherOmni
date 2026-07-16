@@ -92,4 +92,4 @@ class FileUtilsTestCase(TestCase):
         self.assertTrue(any("Language/english" in name for name in namelist))
         self.assertTrue(any("Author/shakespeare" in name for name in namelist))
         self.assertIn("manifest.json", namelist)
-        self.assertIn("master_notebooklm_source.md", namelist)
+        self.assertIn("master_archival_source.md", namelist)

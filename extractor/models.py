@@ -49,12 +49,18 @@ class SourceDocument(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
     error_message = models.TextField(blank=True, default="")
 
-    # Curated taxonomy fields for NotebookLM exports
+    # Curated taxonomy fields for Digital Preservation exports
     language = models.CharField(max_length=50, blank=True, default="Unknown")
     author = models.CharField(max_length=255, blank=True, default="Unknown")
     title = models.CharField(max_length=255, blank=True, default="Untitled")
     document_type = models.CharField(max_length=50, blank=True, default="PDF")
     page_count = models.IntegerField(default=0)
+
+    # Legal and Provenance Tracking
+    publisher = models.CharField(max_length=255, blank=True, default="Unknown")
+    publication_year = models.CharField(max_length=4, blank=True, default="")
+    license_type = models.CharField(max_length=100, blank=True, default="Unknown")
+    doi = models.CharField(max_length=255, blank=True, default="")
 
     # Processing outputs
     raw_markdown = models.TextField(blank=True)  # Stage 1 OCR output

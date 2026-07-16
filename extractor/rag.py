@@ -401,7 +401,12 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
         doc_uuid_str = chunk.get("doc_uuid", "")
         # Look up SQLite doc for title/author/language (UUID is the join key)
         doc_meta = _get_doc_metadata(doc_uuid_str)
-        doc_info = f"Source: {doc_meta['title']} (Lang: {doc_meta['language']}, Author: {doc_meta['author']})"
+        doc_info = (
+            f"Source: {doc_meta['title']} "
+            f"(Lang: {doc_meta['language']}, Author: {doc_meta['author']}, "
+            f"Publisher: {doc_meta.get('publisher', 'Unknown')}, Year: {doc_meta.get('publication_year', '')}, "
+            f"License: {doc_meta.get('license_type', 'Unknown')}, DOI: {doc_meta.get('doi', '')})"
+        )
         context_blocks.append(f"--- BLOCK {idx + 1} [{doc_info}] ---\n{chunk.get('content', '')}")
         sources.append(
             {
@@ -410,6 +415,10 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
                 "title": doc_meta["title"],
                 "author": doc_meta["author"],
                 "language": doc_meta["language"],
+                "publisher": doc_meta.get("publisher", "Unknown"),
+                "publication_year": doc_meta.get("publication_year", ""),
+                "license_type": doc_meta.get("license_type", "Unknown"),
+                "doi": doc_meta.get("doi", ""),
                 "chunk_index": chunk.get("chunk_index", 0),
             }
         )
@@ -418,9 +427,11 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
 
 def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_block: str, selected_model: str) -> Any:
     system_instruction = f"""
-    You are an advanced, objective Q&A knowledge engine designed to serve the Ummah.
+    You are an Islamic Digital Preservation Librarian and Archival Scholar designed to serve the Ummah.
     Your task is to answer the query accurately, grounding your answers ONLY in the validated source context block below.
     
+    When answering, you MUST provide explicit inline academic citations (e.g., [Author, Year]) and explicitly acknowledge the legal provenance and source of the preserved literature.
+
     If the context block doesn't contain sufficient knowledge to answer, explain humbly that the context is insufficient, and do not make up external claims.
     Keep your tone highly respectful, academic, and professional.
     {user_memories_block}
@@ -523,10 +534,23 @@ def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
                 "title": doc.get("title", "Unknown"),
                 "author": doc.get("author", "Unknown"),
                 "language": doc.get("language", "Unknown"),
+                "publisher": doc.get("publisher", "Unknown"),
+                "publication_year": doc.get("publication_year", ""),
+                "license_type": doc.get("license_type", "Unknown"),
+                "doi": doc.get("doi", ""),
             }
     except Exception as exc:
         logger.debug("[Metadata] Failed to read metadata: %s", exc)
-    return {"id": None, "title": "Unknown", "author": "Unknown", "language": "Unknown"}
+    return {
+        "id": None,
+        "title": "Unknown",
+        "author": "Unknown",
+        "language": "Unknown",
+        "publisher": "Unknown",
+        "publication_year": "",
+        "license_type": "Unknown",
+        "doi": "",
+    }
 
 
 def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db) -> None:

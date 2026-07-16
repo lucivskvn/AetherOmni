@@ -1,0 +1,3 @@
+The user's comment about Islamic Literature Study means we should tailor the persona more towards an Islamic scholar or archivist for Islamic literature.
+The `_generate_rag_answer` in `rag.py` currently says "You are an advanced, objective Q&A knowledge engine designed to serve the Ummah."
+I'll update it to be an "Islamic Digital Preservation Librarian and Archival Scholar".

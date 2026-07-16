@@ -1244,7 +1244,7 @@ def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = MODEL_G
     client = _init_refinement_client()
 
     refinement_prompt = """
-    You are a professional editorial curator and data refinement engine for NotebookLM.
+    You are an Islamic Digital Preservation Librarian and Archival Scholar.
     Review the following raw transcribed Markdown text. Perform the following actions:
     
     1. Strip all redundant headers, footers, page margins, and page numbers from the output text.
@@ -1260,10 +1260,14 @@ def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = MODEL_G
        - `isbn`: International Standard Book Number (ISBN) if present in the text. If not found, write "".
        - `source_link`: The source URL, QR code reference link, or publisher website link if found in the text. If not found, write "".
        - `translator`: Translator or editor name in English if the booklet is translated. If not found, write "".
+       - `publisher`: The publisher of the document, if available. Write "Unknown" if not found.
+       - `publication_year`: The year of publication (4 digits). Write "" if not found.
+       - `license_type`: The license or copyright status (e.g., "Public Domain", "Copyrighted", "CC-BY"). Write "Unknown" if not explicitly stated.
+       - `doi`: Digital Object Identifier if present. Write "" if not found.
        CRITICAL: Every YAML value MUST be a properly quoted string. Use double quotes around ALL values.
-       CRITICAL: NEVER leave title, author, language, document_type, or subject fields as "Unknown" or empty — always make a best-effort inference from the document content. For isbn, source_link, and translator, write "" if they are truly not mentioned.
+       CRITICAL: NEVER leave title, author, language, document_type, or subject fields as "Unknown" or empty — always make a best-effort inference from the document content. For isbn, source_link, translator, publisher, publication_year, license_type, and doi, use empty strings or "Unknown" as specified if truly not mentioned.
     5. At the very bottom of your response, build an interactive Q&A training dataset based on the knowledge in this text.
-       This dataset is for Supervised Fine-Tuning (SFT) or NotebookLM.
+       This dataset is for Supervised Fine-Tuning (SFT) or Archival Research.
        It must contain between 3 to 10 question-answer pairs of high complexity.
        IMPORTANT: The questions and answers in this training dataset MUST be written in English by default, regardless of the primary language of the input text.
        Format this dataset in an explicit fenced code block labeled ````json ... ```` containing a JSON list of objects:
