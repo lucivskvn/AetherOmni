@@ -127,6 +127,42 @@
             <div class="meta-box-value">{{ document.document_type }}</div>
         </div>
     </div>
+    {% if document.publisher and document.publisher != 'Unknown' %}
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="book"></i></div>
+        <div>
+            <div class="meta-box-label">Publisher</div>
+            <div class="meta-box-value">{{ document.publisher }}</div>
+        </div>
+    </div>
+    {% endif %}
+    {% if document.publication_year %}
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="calendar"></i></div>
+        <div>
+            <div class="meta-box-label">Year</div>
+            <div class="meta-box-value">{{ document.publication_year }}</div>
+        </div>
+    </div>
+    {% endif %}
+    {% if document.license_type and document.license_type != 'Unknown' %}
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="copyright"></i></div>
+        <div>
+            <div class="meta-box-label">License</div>
+            <div class="meta-box-value">{{ document.license_type }}</div>
+        </div>
+    </div>
+    {% endif %}
+    {% if document.doi %}
+    <div class="glass-card meta-box">
+        <div class="meta-box-icon"><i data-lucide="link"></i></div>
+        <div>
+            <div class="meta-box-label">DOI</div>
+            <div class="meta-box-value"><a href="https://doi.org/{{ document.doi }}" target="_blank" style="color: var(--accent-light);">{{ document.doi }}</a></div>
+        </div>
+    </div>
+    {% endif %}
     <div class="glass-card meta-box">
         <div class="meta-box-icon"><i data-lucide="dollar-sign"></i></div>
         <div>
