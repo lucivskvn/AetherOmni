@@ -203,7 +203,7 @@
     {% csrf_token %}
     <div class="editor-grid" id="curation-workspace-grid">
         <!-- Editor Input Panel -->
-        <div class="glass-card pane">
+        <div class="glass-card pane" role="region" aria-labelledby="editor-title">
             <div class="pane-header" style="padding: 10px 16px;">
                 <div class="pane-title" id="editor-title"><i data-lucide="edit-3"></i> Refined Markdown Editor</div>
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -252,7 +252,7 @@
         </div>
 
         <!-- Rendered Preview Panel -->
-        <div class="glass-card pane">
+        <div class="glass-card pane" role="region" aria-labelledby="preview-title">
             <div class="pane-header">
                 <div class="pane-title" id="preview-title"><i data-lucide="eye"></i> Live HTML Preview</div>
                 <span class="pane-title-subtext">Updates in real-time</span>
