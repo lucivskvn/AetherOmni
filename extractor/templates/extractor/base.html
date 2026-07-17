@@ -77,7 +77,7 @@
                 {% endif %}
 
                 {% if user.is_superuser or user.is_staff %}
-                <button type="button" id="settings-trigger-btn" class="nav-link">
+                <button type="button" id="settings-trigger-btn" class="nav-link" aria-haspopup="dialog" aria-controls="settings-modal">
                     <i data-lucide="settings"></i> Settings
                 </button>
                 {% endif %}
@@ -116,15 +116,15 @@
 
     <!-- Settings Dialog Modal -->
     {% if user.is_superuser or user.is_staff %}
-    <dialog id="settings-modal" class="settings-dialog">
+    <dialog id="settings-modal" class="settings-dialog" aria-labelledby="settings-modal-title" aria-describedby="settings-modal-desc">
         <div class="dialog-header" style="flex-direction: column; align-items: flex-start; gap: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text-main);">System Configuration Settings</h3>
+                <h3 id="settings-modal-title" style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text-main);">System Configuration Settings</h3>
                 <button id="settings-close-btn" class="close-btn" style="background: none; border: none; cursor: pointer; color: var(--text-muted);" aria-label="Close Settings">
                     <i data-lucide="x"></i>
                 </button>
             </div>
-            <p style="margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.4;">Configure monthly budgets, default Gemini models, and trusted CORS/CSRF proxy hosts.</p>
+            <p id="settings-modal-desc" style="margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.4;">Configure monthly budgets, default Gemini models, and trusted CORS/CSRF proxy hosts.</p>
         </div>
         
         <!-- Settings Form -->
