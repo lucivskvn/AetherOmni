@@ -153,12 +153,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const isCurrentlyFullscreen = workspaceGrid.classList.contains('fullscreen');
         const nextState = forceState !== undefined ? forceState : !isCurrentlyFullscreen;
 
+        const SVGS = {
+            maximize: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-maximize-2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`,
+            minimize: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minimize-2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="10" y1="14" x2="3" y2="21"/></svg>`
+        };
+
         if (nextState) {
             workspaceGrid.classList.add('fullscreen');
             fullscreenToggle.title = "Exit Fullscreen Curation";
             fullscreenToggle.setAttribute('aria-label', "Exit Fullscreen Curation");
             fullscreenToggle.setAttribute('aria-pressed', 'true');
-            fullscreenToggle.innerHTML = '<i data-lucide="minimize-2" style="width:15px; height:15px;"></i>';
+            fullscreenToggle.innerHTML = SVGS.minimize;
             if (editor) {
                 editor.focus();
             }
@@ -167,11 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fullscreenToggle.title = "Toggle Fullscreen Curation";
             fullscreenToggle.setAttribute('aria-label', "Toggle Fullscreen Curation");
             fullscreenToggle.setAttribute('aria-pressed', 'false');
-            fullscreenToggle.innerHTML = '<i data-lucide="maximize-2" style="width:15px; height:15px;"></i>';
-        }
-
-        if (typeof lucide !== 'undefined' && lucide.createIcons) {
-            try { lucide.createIcons(); } catch (_) {}
+            fullscreenToggle.innerHTML = SVGS.maximize;
         }
     }
 
@@ -334,15 +335,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 navigator.clipboard.writeText(jsonText)
                     .then(() => {
                         const origText = copySftBtn.innerHTML;
-                        copySftBtn.innerHTML = '<i data-lucide="check" style="width:14px; height:14px;"></i> Copied!';
-                        if (typeof lucide !== 'undefined' && lucide.createIcons) {
-                            try { lucide.createIcons(); } catch (_) {}
-                        }
+                        const checkSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="margin-right: 4px;"><polyline points="20 6 9 17 4 12"/></svg>`;
+                        copySftBtn.innerHTML = checkSvg + 'Copied!';
                         setTimeout(() => {
                             copySftBtn.innerHTML = origText;
-                            if (typeof lucide !== 'undefined' && lucide.createIcons) {
-                                try { lucide.createIcons(); } catch (_) {}
-                            }
                         }, 2000);
                     })
                     .catch(err => {
