@@ -139,27 +139,14 @@ document.addEventListener('DOMContentLoaded', () => {
         markUnsaved();
     }
 
-    // ── 3. Keyboard Shortcuts (Ctrl+B, Ctrl+I, Ctrl+S) ───────────────────────
-    if (editor) {
-        editor.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
-                e.preventDefault();
-                insertFormatting('bold');
-            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
-                e.preventDefault();
-                insertFormatting('italic');
-            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                e.preventDefault();
-                if (editorForm) {
-                    editorForm.submit();
-                }
-            }
-        });
-    }
-
     // ── 4. Fullscreen Curation workspace Toggle ───────────────────────────────
     const fullscreenToggle = document.getElementById('btn-fullscreen-toggle');
     const workspaceGrid = document.getElementById('curation-workspace-grid');
+
+    // Initialize ARIA state for the toggle button
+    if (fullscreenToggle) {
+        fullscreenToggle.setAttribute('aria-pressed', 'false');
+    }
 
     function toggleFullscreen(forceState) {
         if (!workspaceGrid || !fullscreenToggle) return;
@@ -169,10 +156,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (nextState) {
             workspaceGrid.classList.add('fullscreen');
             fullscreenToggle.title = "Exit Fullscreen Curation";
+            fullscreenToggle.setAttribute('aria-label', "Exit Fullscreen Curation");
+            fullscreenToggle.setAttribute('aria-pressed', 'true');
             fullscreenToggle.innerHTML = '<i data-lucide="minimize-2" style="width:15px; height:15px;"></i>';
+            if (editor) {
+                editor.focus();
+            }
         } else {
             workspaceGrid.classList.remove('fullscreen');
             fullscreenToggle.title = "Toggle Fullscreen Curation";
+            fullscreenToggle.setAttribute('aria-label', "Toggle Fullscreen Curation");
+            fullscreenToggle.setAttribute('aria-pressed', 'false');
             fullscreenToggle.innerHTML = '<i data-lucide="maximize-2" style="width:15px; height:15px;"></i>';
         }
 
@@ -190,6 +184,27 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && workspaceGrid.classList.contains('fullscreen')) {
                 toggleFullscreen(false);
+            }
+        });
+    }
+
+    // ── 3. Keyboard Shortcuts (Ctrl+B, Ctrl+I, Ctrl+S, Ctrl+Shift+F) ─────────
+    if (editor) {
+        editor.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+                e.preventDefault();
+                insertFormatting('bold');
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+                e.preventDefault();
+                insertFormatting('italic');
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                if (editorForm) {
+                    editorForm.submit();
+                }
+            } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                toggleFullscreen();
             }
         });
     }
