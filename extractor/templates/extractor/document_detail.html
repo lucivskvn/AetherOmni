@@ -85,7 +85,7 @@
     <div class="glass-card meta-box">
         <div class="meta-box-icon"><i data-lucide="globe"></i></div>
         <div>
-            <div class="meta-box-label">Language</div>
+            <label class="meta-box-label" for="doc-language-input">Language</label>
             <div class="meta-box-value" id="detail-lang">
                 {% if document.status == 'FAILED' %}
                     <span class="text-danger">Failed</span>
@@ -94,7 +94,7 @@
                 {% elif document.status != 'COMPLETED' and document.language == 'Unknown' %}
                     <span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>
                 {% elif document.status == 'COMPLETED' or document.refined_markdown %}
-                    <input type="text" name="language" value="{{ document.language }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: #fff; width: 100%; max-width: 180px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
+                    <input type="text" id="doc-language-input" name="language" value="{{ document.language }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: #fff; width: 100%; max-width: 180px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
                 {% else %}
                     {{ document.language|normalize_language }}
                 {% endif %}
@@ -104,7 +104,7 @@
     <div class="glass-card meta-box">
         <div class="meta-box-icon"><i data-lucide="user"></i></div>
         <div>
-            <div class="meta-box-label">Author / Publisher</div>
+            <label class="meta-box-label" for="doc-author-input">Author / Publisher</label>
             <div class="meta-box-value" id="detail-author">
                 {% if document.status == 'FAILED' %}
                     <span class="text-danger">Failed</span>
@@ -113,7 +113,7 @@
                 {% elif document.status != 'COMPLETED' and document.author == 'Unknown' %}
                     <span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>
                 {% elif document.status == 'COMPLETED' or document.refined_markdown %}
-                    <input type="text" name="author" value="{{ document.author }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: #fff; width: 100%; max-width: 280px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
+                    <input type="text" id="doc-author-input" name="author" value="{{ document.author }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: #fff; width: 100%; max-width: 280px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
                 {% else %}
                     {{ document.author }}
                 {% endif %}
