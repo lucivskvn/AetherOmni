@@ -384,6 +384,12 @@ def _extract_meta_dict(meta, default_title, default_author, default_lang, defaul
     parsed_isbn = _clean_val(meta.get("isbn"))
     parsed_source_link = _clean_val(meta.get("source_link"))
     parsed_translator = _clean_val(meta.get("translator"))
+
+    parsed_pub = _clean_val(meta.get("publisher"))
+    parsed_year = _clean_val(meta.get("publication_year"))
+    parsed_lic = _clean_val(meta.get("license_type"))
+    parsed_doi = _clean_val(meta.get("doi"))
+
     return (
         parsed_title,
         parsed_author,
@@ -393,6 +399,10 @@ def _extract_meta_dict(meta, default_title, default_author, default_lang, defaul
         parsed_isbn,
         parsed_source_link,
         parsed_translator,
+        parsed_pub,
+        parsed_year,
+        parsed_lic,
+        parsed_doi,
     )
 
 
@@ -402,11 +412,24 @@ def _parse_yaml_metadata(
     default_author: str | None,
     default_lang: str | None,
     default_doc_type: str | None,
-) -> tuple[str | None, str | None, str | None, str | None, str | None, str | None, str | None, str | None]:
+) -> tuple:
     """Parse YAML metadata block, fallback to defaults on error."""
     import yaml
 
-    parsed = (default_title, default_author, default_lang, default_doc_type, None, None, None, None)
+    parsed = (
+        default_title,
+        default_author,
+        default_lang,
+        default_doc_type,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
 
     if not yaml_metadata_block:
         return parsed
@@ -492,7 +515,18 @@ def _get_val(obj, key, default=None):
         return getattr(obj, key, default)
 
 
-def _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig):
+def _update_doc_metadata(
+    doc_ref,
+    parsed_title,
+    parsed_author,
+    parsed_lang,
+    parsed_doc_type,
+    parsed_sig,
+    parsed_pub=None,
+    parsed_year=None,
+    parsed_lic=None,
+    parsed_doi=None,
+):
     """Apply parsed YAML metadata values to a SourceDocument instance or dictionary (inside atomic block)."""
     import os
 
@@ -523,6 +557,23 @@ def _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, pars
         _set_val(doc_ref, "document_type", _truncate(parsed_doc_type, _MAX_DOCTYPE_LEN))
     if parsed_sig:
         _set_val(doc_ref, "semantic_signature", _truncate(parsed_sig, _MAX_SIG_LEN))
+
+    if parsed_pub and not _is_unknown_value(parsed_pub):
+        _set_val(doc_ref, "publisher", _truncate(parsed_pub, 255))
+
+    if parsed_year and not _is_unknown_value(parsed_year):
+        import re
+
+        year_match = re.search(r"\d{4}", str(parsed_year))
+        if year_match:
+            _set_val(doc_ref, "publication_year", year_match.group(0))
+
+    if parsed_lic and not _is_unknown_value(parsed_lic):
+        _set_val(doc_ref, "license_type", _truncate(parsed_lic, 100))
+
+    if parsed_doi and not _is_unknown_value(parsed_doi):
+        clean_doi = str(parsed_doi).replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+        _set_val(doc_ref, "doi", _truncate(clean_doi, 255))
 
 
 def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
@@ -604,6 +655,10 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
         _parsed_isbn,
         _parsed_source_link,
         _parsed_translator,
+        parsed_pub,
+        parsed_year,
+        parsed_lic,
+        parsed_doi,
     ) = _parse_yaml_metadata(
         yaml_metadata_block,
         doc.get("title", ""),
@@ -613,7 +668,18 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     )
 
     doc_ref = surreal_db.get_document(doc_uuid)
-    _update_doc_metadata(doc_ref, parsed_title, parsed_author, parsed_lang, parsed_doc_type, parsed_sig)
+    _update_doc_metadata(
+        doc_ref,
+        parsed_title,
+        parsed_author,
+        parsed_lang,
+        parsed_doc_type,
+        parsed_sig,
+        parsed_pub,
+        parsed_year,
+        parsed_lic,
+        parsed_doi,
+    )
 
     input_tokens = _get_val(doc_ref, "input_tokens", 0) + stage2_input_tokens
     output_tokens = _get_val(doc_ref, "output_tokens", 0) + stage2_output_tokens
@@ -630,6 +696,10 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
             "language": _get_val(doc_ref, "language"),
             "document_type": _get_val(doc_ref, "document_type"),
             "semantic_signature": _get_val(doc_ref, "semantic_signature"),
+            "publisher": _get_val(doc_ref, "publisher"),
+            "publication_year": _get_val(doc_ref, "publication_year"),
+            "license_type": _get_val(doc_ref, "license_type"),
+            "doi": _get_val(doc_ref, "doi"),
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cost_usd": cost_usd,

@@ -228,6 +228,20 @@ class DashboardView(LoginRequiredMixin, View):
         stats = _get_dashboard_stats(request)
         docs = stats["docs"]
 
+        search_query = request.GET.get("q", "").strip().lower()
+        if search_query:
+            docs = [
+                d
+                for d in docs
+                if search_query in (d.title or "").lower()
+                or search_query in (d.author or "").lower()
+                or search_query in (d.language or "").lower()
+                or search_query in (d.document_type or "").lower()
+                or search_query in (getattr(d, "publisher", "") or "").lower()
+                or search_query in (getattr(d, "publication_year", "") or "").lower()
+                or search_query in (getattr(d, "doi", "") or "").lower()
+            ]
+
         # Sort documents in python
         reverse = db_sort.startswith("-")
         key_name = db_sort.lstrip("-")
@@ -849,10 +863,22 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
 class ExportZipView(LoginRequiredMixin, View):
     """
     Curates and builds dynamic ZIP bundle directories sorted by Language and Author,
-    bundling metadata manifests and a single 'master_notebooklm_source.md' document.
+    bundling metadata manifests and a single 'master_archival_source.md' document.
     """
 
     def post(self, request):
+        from django.core.cache import cache
+
+        user_key = f"export_ratelimit_{request.user.id}"
+        ip_key = f"export_ratelimit_{get_client_ip(request)}"
+
+        if cache.get(user_key) or cache.get(ip_key):
+            messages.error(request, "Export rate limit exceeded. Please wait 60 seconds before trying again.")
+            return redirect("dashboard")
+
+        cache.set(user_key, True, 60)
+        cache.set(ip_key, True, 60)
+
         document_ids = request.POST.getlist("selected_documents")
         if not document_ids:
             messages.error(request, "No documents selected for export.")
@@ -862,7 +888,7 @@ class ExportZipView(LoginRequiredMixin, View):
             zip_data = generate_curated_zip_bundle(document_ids, user=request.user)
             response = HttpResponse(zip_data, content_type="application/zip")
             response["Content-Disposition"] = (
-                f'attachment; filename="curated_notebooklm_export_{timezone.now().strftime("%Y%m%d%H%M")}.zip"'
+                f'attachment; filename="curated_literature_archive_{timezone.now().strftime("%Y%m%d%H%M")}.zip"'
             )
             return response
         except Exception as e:
@@ -1247,6 +1273,9 @@ class AuditLogListView(LoginRequiredMixin, View):
                     | Q(ip_address__icontains=search_query)
                     | Q(document__original_filename__icontains=search_query)
                     | Q(document__title__icontains=search_query)
+                    | Q(document__publisher__icontains=search_query)
+                    | Q(document__publication_year__icontains=search_query)
+                    | Q(document__doi__icontains=search_query)
                 )
 
             logs = list(logs_qs.distinct().order_by("-created_at")[:200])
@@ -1339,7 +1368,11 @@ class AuditLogListView(LoginRequiredMixin, View):
                 details_match = sq in details_val.lower()
                 ip_match = sq in (rl.get("ip_address") or "").lower()
                 doc_match = doc_obj and (
-                    sq in (doc_obj.original_filename or "").lower() or sq in (doc_obj.title or "").lower()
+                    sq in (doc_obj.original_filename or "").lower()
+                    or sq in (doc_obj.title or "").lower()
+                    or sq in (doc_obj.publisher or "").lower()
+                    or sq in (doc_obj.publication_year or "").lower()
+                    or sq in (doc_obj.doi or "").lower()
                 )
                 if not (details_match or ip_match or doc_match):
                     continue

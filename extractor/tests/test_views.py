@@ -130,6 +130,9 @@ class ViewsTestCase(TestCase):
 
     @patch("extractor.views.generate_curated_zip_bundle")
     def test_export_zip_view_success(self, mock_zip):
+        from django.core.cache import cache
+
+        cache.clear()
         mock_zip.return_value = b"fake-zip-data"
         response = self.client.post(reverse("export_zip"), {"selected_documents": [self.doc.pk]})
         self.assertEqual(response.status_code, 200)
