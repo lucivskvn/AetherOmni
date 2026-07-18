@@ -150,6 +150,48 @@ function initializePasswordToggles() {
     });
 }
 
+/**
+ * Create and render an accessible, animated client-side alert card.
+ */
+function showClientSideAlert(message, type = 'error') {
+    let container = document.querySelector('.alert-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'alert-container';
+        document.body.appendChild(container);
+    }
+    const cardId = 'client-alert-' + Date.now();
+    const card = document.createElement('div');
+    card.className = `alert-card alert-${type}`;
+    card.id = cardId;
+    card.setAttribute('role', 'alert');
+
+    const iconName = type === 'success' ? 'check-circle' : 'alert-triangle';
+    card.innerHTML = `
+        <i data-lucide="${iconName}"></i>
+        <span>${message}</span>
+        <button type="button" class="alert-close-btn" aria-label="Dismiss message" data-dismiss="${cardId}">
+            <i data-lucide="x"></i>
+        </button>
+    `;
+    container.appendChild(card);
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+    }
+
+    let dismissTimeout = setTimeout(() => {
+        dismissCard(card);
+    }, 5000);
+
+    card.addEventListener('mouseenter', () => clearTimeout(dismissTimeout));
+    card.addEventListener('mouseleave', () => {
+        dismissTimeout = setTimeout(() => {
+            dismissCard(card);
+        }, 5000);
+    });
+}
+window.showClientSideAlert = showClientSideAlert;
+
 function dismissCard(card) {
     if (!card || card.classList.contains('fade-out')) return;
     card.classList.add('fade-out');
@@ -258,10 +300,17 @@ function initializeDragAndDrop() {
 
     function validateFilesAndSubmit(files) {
         const MAX_SIZE = 31457280; // 30MB
+        const ALLOWED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.csv', '.txt'];
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
+            const ext = '.' + file.name.split('.').pop().toLowerCase();
+            if (!ALLOWED_EXTENSIONS.includes(ext)) {
+                showClientSideAlert(`File "${file.name}" is not supported. Supported formats: PDF, PNG, JPG, JPEG, CSV, TXT.`);
+                fileInput.value = '';
+                return;
+            }
             if (file.size > MAX_SIZE) {
-                alert(`File "${file.name}" exceeds the maximum size limit of 30MB.`);
+                showClientSideAlert(`File "${file.name}" exceeds the maximum size limit of 30MB.`);
                 fileInput.value = '';
                 return;
             }
@@ -480,7 +529,7 @@ function initializeRAGSearch() {
                 ragBtn.disabled = false;
                 
                 if (data.error) {
-                    alert(data.error);
+                    showClientSideAlert(data.error);
                     return;
                 }
 
@@ -502,7 +551,7 @@ function initializeRAGSearch() {
             .catch(err => {
                 ragLoader.style.display = 'none';
                 ragBtn.disabled = false;
-                alert('An error occurred during vector search.');
+                showClientSideAlert('An error occurred during vector search.');
                 console.error(err);
             });
     }
@@ -952,7 +1001,7 @@ function initializeRetryActions() {
                 // Instantly reload to transition to PENDING/processing state
                 window.location.reload();
             } else {
-                alert(data.message || 'Failed to re-enqueue booklet.');
+                showClientSideAlert(data.message || 'Failed to re-enqueue booklet.');
                 if (icon) {
                     icon.classList.remove('spinner');
                 }
@@ -961,7 +1010,7 @@ function initializeRetryActions() {
         })
         .catch(err => {
             console.error('Error re-enqueuing:', err);
-            alert('An error occurred while retrying the curation pipeline.');
+            showClientSideAlert('An error occurred while retrying the curation pipeline.');
             if (icon) {
                 icon.classList.remove('spinner');
             }

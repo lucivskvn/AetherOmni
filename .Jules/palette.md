@@ -17,3 +17,12 @@
 **Action:**
 1. Implement a centralized wrapper function (e.g. `toggleFullscreen(forceState)`) to unify state changes, button title updates, and icon re-rendering.
 2. Bind keydown listeners at the document level but restrict execution to conditions where the workspace's state matches `fullscreen`, preventing interference with non-fullscreen forms and inputs.
+
+## 2026-07-18 - Seamless Dynamic Client-Side Toast Notification Pattern
+**Learning:**
+1. Spawning dynamic, non-disruptive toast alerts is vastly superior to browser-native blocking `alert()` popups. Aligning dynamic client-side alerts with existing Django backend `messages` classes creates a seamless, highly integrated UX and preserves design system visual language.
+2. Re-invoking `lucide.createIcons()` on dynamically generated elements guarantees standard SVG icons render properly, but we must verify that its presence is defensively checked (`typeof lucide !== 'undefined' && lucide.createIcons`) to prevent script crash side effects on disconnected pages.
+
+**Action:**
+1. Expose a global `window.showClientSideAlert(message, type)` function that mirrors Django's server-rendered alerts by dynamically building container `alert-card` DOM nodes.
+2. Check for the existence of `showClientSideAlert` before calling it from sub-scripts to maintain graceful fallback support when scripts load asynchronously.
