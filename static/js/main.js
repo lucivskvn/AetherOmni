@@ -169,11 +169,12 @@ function showClientSideAlert(message, type = 'error') {
     const iconName = type === 'success' ? 'check-circle' : 'alert-triangle';
     card.innerHTML = `
         <i data-lucide="${iconName}"></i>
-        <span>${message}</span>
+        <span class="alert-msg-span"></span>
         <button type="button" class="alert-close-btn" aria-label="Dismiss message" data-dismiss="${cardId}">
             <i data-lucide="x"></i>
         </button>
     `;
+    card.querySelector('.alert-msg-span').textContent = message;
     container.appendChild(card);
     if (typeof lucide !== 'undefined' && lucide.createIcons) {
         lucide.createIcons();
@@ -301,26 +302,35 @@ function initializeDragAndDrop() {
     function validateFilesAndSubmit(files) {
         const MAX_SIZE = 31457280; // 30MB
         const ALLOWED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.csv', '.txt'];
+        const dt = new DataTransfer();
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const ext = '.' + file.name.split('.').pop().toLowerCase();
             if (!ALLOWED_EXTENSIONS.includes(ext)) {
-                showClientSideAlert(`File "${file.name}" is not supported. Supported formats: PDF, PNG, JPG, JPEG, CSV, TXT.`);
-                fileInput.value = '';
-                return;
+                showClientSideAlert(`Skipped "${file.name}": Unsupported format. (Use PDF, PNG, JPG, JPEG, CSV, TXT)`);
+                continue;
             }
             if (file.size > MAX_SIZE) {
-                showClientSideAlert(`File "${file.name}" exceeds the maximum size limit of 30MB.`);
-                fileInput.value = '';
-                return;
+                showClientSideAlert(`Skipped "${file.name}": Exceeds maximum size limit of 30MB.`);
+                continue;
             }
+            dt.items.add(file);
         }
+
+        if (dt.files.length === 0) {
+            fileInput.value = '';
+            return;
+        }
+
+        fileInput.files = dt.files;
+        const validFiles = fileInput.files;
 
         // Show immediate loading state inside dropZone & prevent double submissions
         const loaderSvg = `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader spinner" style="color: var(--primary);"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
         dropZone.innerHTML = `
             ${loaderSvg}
-            <div class="upload-title">Ingesting ${files.length} File${files.length > 1 ? 's' : ''}...</div>
+            <div class="upload-title">Ingesting ${validFiles.length} File${validFiles.length > 1 ? 's' : ''}...</div>
             <div class="upload-subtitle" style="animation: pulse 1.5s infinite ease-in-out;">Uploading to security scan and curation workspace. Please wait.</div>
         `;
         dropZone.style.pointerEvents = 'none';
