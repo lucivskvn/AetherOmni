@@ -268,14 +268,12 @@ function initializeDragAndDrop() {
         }
 
         // Show immediate loading state inside dropZone & prevent double submissions
+        const loaderSvg = `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader spinner" style="color: var(--primary);"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
         dropZone.innerHTML = `
-            <i data-lucide="loader" class="spinner" style="width: 36px; height: 36px; color: var(--primary);"></i>
+            ${loaderSvg}
             <div class="upload-title">Ingesting ${files.length} File${files.length > 1 ? 's' : ''}...</div>
             <div class="upload-subtitle" style="animation: pulse 1.5s infinite ease-in-out;">Uploading to security scan and curation workspace. Please wait.</div>
         `;
-        if (typeof lucide !== 'undefined' && lucide.createIcons) {
-            try { lucide.createIcons(); } catch (_) {}
-        }
         dropZone.style.pointerEvents = 'none';
         dropZone.style.borderColor = 'var(--primary)';
         dropZone.style.background = 'rgba(99, 102, 241, 0.04)';

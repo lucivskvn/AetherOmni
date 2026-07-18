@@ -139,7 +139,57 @@ document.addEventListener('DOMContentLoaded', () => {
         markUnsaved();
     }
 
-    // ── 3. Keyboard Shortcuts (Ctrl+B, Ctrl+I, Ctrl+S) ───────────────────────
+    // ── 4. Fullscreen Curation workspace Toggle ───────────────────────────────
+    const fullscreenToggle = document.getElementById('btn-fullscreen-toggle');
+    const workspaceGrid = document.getElementById('curation-workspace-grid');
+
+    // Initialize ARIA state for the toggle button
+    if (fullscreenToggle) {
+        fullscreenToggle.setAttribute('aria-pressed', 'false');
+    }
+
+    function toggleFullscreen(forceState) {
+        if (!workspaceGrid || !fullscreenToggle) return;
+        const isCurrentlyFullscreen = workspaceGrid.classList.contains('fullscreen');
+        const nextState = forceState !== undefined ? forceState : !isCurrentlyFullscreen;
+
+        const SVGS = {
+            maximize: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-maximize-2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`,
+            minimize: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minimize-2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="10" y1="14" x2="3" y2="21"/></svg>`
+        };
+
+        if (nextState) {
+            workspaceGrid.classList.add('fullscreen');
+            fullscreenToggle.title = "Exit Fullscreen Curation";
+            fullscreenToggle.setAttribute('aria-label', "Exit Fullscreen Curation");
+            fullscreenToggle.setAttribute('aria-pressed', 'true');
+            fullscreenToggle.innerHTML = SVGS.minimize;
+            if (editor) {
+                editor.focus();
+            }
+        } else {
+            workspaceGrid.classList.remove('fullscreen');
+            fullscreenToggle.title = "Toggle Fullscreen Curation";
+            fullscreenToggle.setAttribute('aria-label', "Toggle Fullscreen Curation");
+            fullscreenToggle.setAttribute('aria-pressed', 'false');
+            fullscreenToggle.innerHTML = SVGS.maximize;
+        }
+    }
+
+    if (fullscreenToggle && workspaceGrid) {
+        fullscreenToggle.addEventListener('click', () => {
+            toggleFullscreen();
+        });
+
+        // Global Escape key handler to exit fullscreen curation mode
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && workspaceGrid.classList.contains('fullscreen')) {
+                toggleFullscreen(false);
+            }
+        });
+    }
+
+    // ── 3. Keyboard Shortcuts (Ctrl+B, Ctrl+I, Ctrl+S, Ctrl+Shift+F) ─────────
     if (editor) {
         editor.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
@@ -153,25 +203,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (editorForm) {
                     editorForm.submit();
                 }
-            }
-        });
-    }
-
-    // ── 4. Fullscreen Curation workspace Toggle ───────────────────────────────
-    const fullscreenToggle = document.getElementById('btn-fullscreen-toggle');
-    const workspaceGrid = document.getElementById('curation-workspace-grid');
-    if (fullscreenToggle && workspaceGrid) {
-        fullscreenToggle.addEventListener('click', () => {
-            workspaceGrid.classList.toggle('fullscreen');
-            if (workspaceGrid.classList.contains('fullscreen')) {
-                fullscreenToggle.title = "Exit Fullscreen Curation";
-                fullscreenToggle.innerHTML = '<i data-lucide="minimize-2" style="width:15px; height:15px;"></i>';
-            } else {
-                fullscreenToggle.title = "Toggle Fullscreen Curation";
-                fullscreenToggle.innerHTML = '<i data-lucide="maximize-2" style="width:15px; height:15px;"></i>';
-            }
-            if (typeof lucide !== 'undefined' && lucide.createIcons) {
-                try { lucide.createIcons(); } catch (_) {}
+            } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                toggleFullscreen();
             }
         });
     }
@@ -301,15 +335,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 navigator.clipboard.writeText(jsonText)
                     .then(() => {
                         const origText = copySftBtn.innerHTML;
-                        copySftBtn.innerHTML = '<i data-lucide="check" style="width:14px; height:14px;"></i> Copied!';
-                        if (typeof lucide !== 'undefined' && lucide.createIcons) {
-                            try { lucide.createIcons(); } catch (_) {}
-                        }
+                        const checkSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="margin-right: 4px;"><polyline points="20 6 9 17 4 12"/></svg>`;
+                        copySftBtn.innerHTML = checkSvg + 'Copied!';
                         setTimeout(() => {
                             copySftBtn.innerHTML = origText;
-                            if (typeof lucide !== 'undefined' && lucide.createIcons) {
-                                try { lucide.createIcons(); } catch (_) {}
-                            }
                         }, 2000);
                     })
                     .catch(err => {
