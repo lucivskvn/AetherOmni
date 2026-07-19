@@ -123,6 +123,30 @@ class SystemSettings(models.Model):
 
     @classmethod
     def get_settings(cls):
+        from django.conf import settings
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor import surreal_db
+            from decimal import Decimal
+            try:
+                raw = surreal_db.get_system_settings()
+                class SurrealSettings:
+                    def __init__(self, raw_data):
+                        self.monthly_budget_usd = Decimal(str(raw_data.get("monthly_budget_usd", 10.0)))
+                        self.selected_model = raw_data.get("selected_model", "auto")
+                        self.currency = raw_data.get("currency", "auto")
+                        self.csrf_trusted_origins = raw_data.get("csrf_trusted_origins", "")
+                        self.openrouter_api_key = raw_data.get("openrouter_api_key", "")
+
+                    @property
+                    def openrouter_api_key_masked(self) -> str:
+                        return "••••••••••••••••" if self.openrouter_api_key else ""
+
+                    def __str__(self):
+                        return f"SystemSettings(Budget=${self.monthly_budget_usd}, Model={self.selected_model})"
+                return SurrealSettings(raw)
+            except Exception as e:
+                logger.warning("[SystemSettings] Failed to fetch settings from SurrealDB: %s", e)
+
         obj, _ = cls.objects.get_or_create(id=1)
         return obj
 
@@ -197,7 +221,35 @@ class MonthlySpendLog(models.Model):
     @classmethod
     def add_cost(cls, year: int, month: int, cost: "Decimal", in_tok: int = 0, out_tok: int = 0):
         """Thread-safe upsert: add cost to the specified year/month bucket."""
+        from django.conf import settings
         from decimal import Decimal as D
+
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor import surreal_db
+            import json
+            key = f"monthly_spend_log:{year}:{month}"
+            try:
+                existing = surreal_db.kv_cache_get(key)
+                if existing:
+                    try:
+                        data = json.loads(existing)
+                    except Exception:
+                        data = {}
+                else:
+                    data = {}
+                accumulated_cost = D(str(data.get("accumulated_cost_usd", 0.0))) + D(str(cost))
+                accumulated_in = int(data.get("accumulated_input_tokens", 0)) + in_tok
+                accumulated_out = int(data.get("accumulated_output_tokens", 0)) + out_tok
+
+                new_data = {
+                    "accumulated_cost_usd": float(accumulated_cost),
+                    "accumulated_input_tokens": accumulated_in,
+                    "accumulated_output_tokens": accumulated_out,
+                }
+                surreal_db.kv_cache_set(key, json.dumps(new_data))
+                return
+            except Exception as exc:
+                logger.warning("[SurrealDB] Failed to add cost to KV cache monthly log: %s", exc)
 
         try:
             from django.db import IntegrityError
@@ -219,7 +271,21 @@ class MonthlySpendLog(models.Model):
     @classmethod
     def total_for_month(cls, year: int, month: int) -> "Decimal":
         """Return the total spend for the given calendar month."""
+        from django.conf import settings
         from decimal import Decimal as D
+
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor import surreal_db
+            import json
+            key = f"monthly_spend_log:{year}:{month}"
+            try:
+                existing = surreal_db.kv_cache_get(key)
+                if existing:
+                    data = json.loads(existing)
+                    return D(str(data.get("accumulated_cost_usd", 0.0)))
+            except Exception as exc:
+                logger.warning("[SurrealDB] Failed to read cost from KV cache monthly log: %s", exc)
+            return D("0.0")
 
         try:
             row = cls.objects.filter(year=year, month=month).first()

@@ -195,7 +195,8 @@ def _fetch_user_memories_block(user: Any, query_embedding: list[float]) -> str:
             logger.debug("[Memories Sync] SurrealDB memory count check failed: %s", count_err)
             db_count = 0
 
-        if db_count == 0:
+        from django.conf import settings
+        if db_count == 0 and getattr(settings, "SURREALDB_OFFLINE", False):
             _sync_postgres_memories_to_surreal(user, surreal_db, UserMemory)
 
         memories = surreal_db.search_user_memories(str(user.id), query_embedding, limit=5)
