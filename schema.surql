@@ -20,6 +20,10 @@ DEFINE FIELD IF NOT EXISTS author            ON documents TYPE string DEFAULT "U
 DEFINE FIELD IF NOT EXISTS title             ON documents TYPE string DEFAULT "Untitled";
 DEFINE FIELD IF NOT EXISTS document_type     ON documents TYPE string DEFAULT "PDF";
 DEFINE FIELD IF NOT EXISTS page_count        ON documents TYPE int    DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS publisher         ON documents TYPE option<string> DEFAULT "Unknown";
+DEFINE FIELD IF NOT EXISTS publication_year  ON documents TYPE option<string> DEFAULT "";
+DEFINE FIELD IF NOT EXISTS license_type      ON documents TYPE option<string> DEFAULT "Unknown";
+DEFINE FIELD IF NOT EXISTS doi               ON documents TYPE option<string> DEFAULT "";
 DEFINE FIELD IF NOT EXISTS raw_markdown      ON documents TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS refined_markdown  ON documents TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS yaml_metadata     ON documents TYPE string DEFAULT "";

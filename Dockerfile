@@ -52,7 +52,7 @@ RUN chown django-user:django-group /app
 USER django-user
 
 # Collect static files on container boot
-RUN python manage.py collectstatic --noinput || true
+RUN DJANGO_SECRET_KEY=dummy-key-for-collectstatic python manage.py collectstatic --noinput
 
 EXPOSE 8080
 
