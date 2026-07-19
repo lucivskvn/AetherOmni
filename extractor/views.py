@@ -12,6 +12,8 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
+from django.utils.decorators import method_decorator
 
 if TYPE_CHECKING:  # nosonar
     # Statically import ingest_sources to satisfy desloppify importer analyzer
@@ -204,6 +206,7 @@ def _get_dashboard_stats(request):
     }
 
 
+@method_decorator(never_cache, name="dispatch")
 class DashboardView(LoginRequiredMixin, View):
     """
     Renders the unified glassmorphic administrative control dashboard.
@@ -559,6 +562,7 @@ class UploadView(LoginRequiredMixin, View):
         return redirect("dashboard")
 
 
+@method_decorator(never_cache, name="dispatch")
 class DocumentDetailView(LoginRequiredMixin, View):
     """
     Renders details for a single document, incorporating a dual-screen Markdown Split-Editor
@@ -1105,6 +1109,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
         return redirect("dashboard")
 
 
+@method_decorator(never_cache, name="dispatch")
 class DocumentStatusAPIView(LoginRequiredMixin, View):
     """
     Fast, lightweight JSON API view returning the status of all active/recent documents,
@@ -1461,6 +1466,7 @@ def _resolve_worker_config(worker_config_default, web_config_default):
     return worker_config, gcp_active, worker_service_name
 
 
+@method_decorator(never_cache, name="dispatch")
 class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
     """
     Centralized Deployment and Cost Console allowing admins/staff to:

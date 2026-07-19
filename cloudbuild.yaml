@@ -88,8 +88,10 @@ steps:
       - '-c'
       - |
         source /workspace/build_env.sh
+        export DOCKER_BUILDKIT=1
         docker build \
           --cache-from "$_IMAGE:latest" \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
           --build-arg RELEASE_VERSION="$${RELEASE_VERSION}" \
           -t "$_IMAGE:latest" \
           -t "$_IMAGE:$${SEMVER}" \
