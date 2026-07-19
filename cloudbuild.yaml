@@ -1,5 +1,54 @@
 steps:
-  # 1. Pull the previous image to use as cache source for Docker layer caching
+  # 0. Compute the canonical version from git metadata
+  #    VERSION file holds MAJOR.MINOR; PATCH is auto-incremented from commit count.
+  #    Result: SEMVER = "1.2.107"  |  RELEASE_VERSION = "v1.2.107+abc1234"
+  #    Both are written to /workspace/build_env.sh and sourced by later steps.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+
+        # Read MAJOR.MINOR from the VERSION file (only human-bumped part)
+        MAJOR_MINOR=$(cat VERSION | tr -d '[:space:]' | grep -oP '^\d+\.\d+' || echo "0.1")
+
+        # PATCH = total commit count in history (auto-increments every merged commit)
+        # git is available in this image when Cloud Build clones from GitHub trigger.
+        # For manual `gcloud builds submit` (tarball source), git rev-list may fail;
+        # we fall back to the SHORT_SHA substitution prefix as a deterministic patch.
+        PATCH=$(git rev-list --count HEAD 2>/dev/null || echo "")
+        if [ -z "$PATCH" ] || ! echo "$PATCH" | grep -qE '^[0-9]+$'; then
+          # Fallback: derive numeric patch from first 4 hex chars of SHORT_SHA
+          PATCH=$(printf '%d' "0x${SHORT_SHA:0:4}" 2>/dev/null || echo "0")
+        fi
+
+        SEMVER="${MAJOR_MINOR}.${PATCH}"
+
+        # SHORT_SHA is populated by Cloud Build GitHub trigger; fallback to BUILD_ID prefix
+        SHA="${SHORT_SHA:-${BUILD_ID:0:7}}"
+
+        RELEASE_VERSION="v${SEMVER}+${SHA}"
+
+        echo "=== AetherOmni Version Computation ==="
+        echo "  MAJOR.MINOR    : ${MAJOR_MINOR}"
+        echo "  PATCH (commits): ${PATCH}"
+        echo "  SEMVER         : ${SEMVER}"
+        echo "  SHA            : ${SHA}"
+        echo "  RELEASE_VERSION: ${RELEASE_VERSION}"
+        echo "======================================"
+
+        # Write to shared workspace file so all subsequent steps can source it
+        cat > /workspace/build_env.sh << EOF
+        export SEMVER="${SEMVER}"
+        export RELEASE_VERSION="${RELEASE_VERSION}"
+        export SHA="${SHA}"
+        EOF
+
+        echo "Build environment written to /workspace/build_env.sh"
+    id: 'compute-version'
+
+  # 1. Pull the previous image for Docker layer caching
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
@@ -7,50 +56,80 @@ steps:
       - |
         docker pull $_IMAGE:latest || exit 0
     id: 'pull'
+    waitFor: ['compute-version']
 
-  # 2. Build the new container image, using the previous image to cache layers
+  # 2. Build the container image with the semantic version as a build arg
   - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
     args:
-      - 'build'
-      - '--cache-from'
-      - '$_IMAGE:latest'
-      - '-t'
-      - '$_IMAGE:latest'
-      - '-t'
-      - '$_IMAGE:$BUILD_ID'
-      - '.'
+      - '-c'
+      - |
+        source /workspace/build_env.sh
+        docker build \
+          --cache-from "$_IMAGE:latest" \
+          --build-arg RELEASE_VERSION="${RELEASE_VERSION}" \
+          -t "$_IMAGE:latest" \
+          -t "$_IMAGE:${SEMVER}" \
+          -t "$_IMAGE:$BUILD_ID" \
+          .
     id: 'build'
     waitFor: ['pull']
 
-  # 3. Push the images to Artifact Registry
+  # 3. Push all image tags to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '$_IMAGE:latest']
-    id: 'push-latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        source /workspace/build_env.sh
+        docker push "$_IMAGE:latest"
+        docker push "$_IMAGE:${SEMVER}"
+        docker push "$_IMAGE:$BUILD_ID"
+    id: 'push'
     waitFor: ['build']
 
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '$_IMAGE:$BUILD_ID']
-    id: 'push-sha'
-    waitFor: ['build']
-
-  # 4. Prepare YAML configurations — inject dynamic RELEASE_VERSION from build timestamp
+  # 4. Prepare service YAMLs — inject dynamic image tag + RELEASE_VERSION
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # Stamp the docker image tag
+        source /workspace/build_env.sh
+        set -e
+
+        # Pin image to the specific build ID (immutable, traceable)
         sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service.yaml
         sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service-worker.yaml
-        # Inject a live RELEASE_VERSION = <date>-<short-sha> so the UI always shows the correct build
-        RELEASE_STAMP="$(date -u +%Y%m%d-%H%M%S)-${BUILD_ID:0:8}"
-        sed -i "s|value: \"[0-9]\{8\}-[0-9]\{6\}\"|value: \"$RELEASE_STAMP\"|g" service.yaml
-        sed -i "s|value: \"[0-9]\{8\}-[0-9]\{6\}\"|value: \"$RELEASE_STAMP\"|g" service-worker.yaml
-        echo "RELEASE_VERSION set to: $RELEASE_STAMP"
-    id: 'prepare-yaml'
-    waitFor: ['build']
 
-  # 5. Deploy the web service
+        # Inject the semantic RELEASE_VERSION — matches any quoted value
+        sed -i "s|value: \"[^\"]*\"\(.*# RELEASE_VERSION\)|value: \"${RELEASE_VERSION}\"\1|g" service.yaml service-worker.yaml
+        # Also match the standard YAML pattern (no comment marker)
+        python3 - << 'PYEOF'
+        import re, sys
+
+        release_ver = "$RELEASE_VERSION"
+        for fname in ("service.yaml", "service-worker.yaml"):
+            with open(fname, "r") as f:
+                text = f.read()
+            # Replace RELEASE_VERSION value — robust to any prior value format
+            text = re.sub(
+                r'(- name: RELEASE_VERSION\s+value:\s+")[^"]*(")',
+                lambda m: m.group(1) + release_ver + m.group(2),
+                text,
+                flags=re.MULTILINE,
+            )
+            with open(fname, "w") as f:
+                f.write(text)
+            print(f"[OK] {fname}: RELEASE_VERSION → {release_ver}")
+        PYEOF
+
+        echo ""
+        echo "=== Version injected into service YAMLs ==="
+        grep "RELEASE_VERSION" service.yaml service-worker.yaml
+    id: 'prepare-yaml'
+    waitFor: ['push']
+
+  # 5. Deploy web service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -60,9 +139,9 @@ steps:
       - 'service.yaml'
       - '--region=asia-southeast1'
     id: 'deploy-web'
-    waitFor: ['push-sha', 'prepare-yaml']
+    waitFor: ['prepare-yaml']
 
-  # 6. Deploy the worker service
+  # 6. Deploy worker service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -72,7 +151,39 @@ steps:
       - 'service-worker.yaml'
       - '--region=asia-southeast1'
     id: 'deploy-worker'
-    waitFor: ['push-sha', 'prepare-yaml']
+    waitFor: ['prepare-yaml']
+
+  # 7. Post-deploy: write the deployed version back to the repo (README badges, service YAMLs)
+  #    This step runs ONLY after both services are deployed successfully.
+  #    It commits "docs: set version vX.Y.Z [skip ci]" back to the branch.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        source /workspace/build_env.sh
+        set -e
+
+        echo "=== Post-deploy documentation sync ==="
+
+        # Configure git identity for the commit
+        git config user.name  "cloud-build[bot]"
+        git config user.email "cloud-build[bot]@aetheromni.fainko.cloud"
+
+        # Run the doc updater to patch README badges + service YAMLs
+        python3 scripts/update_docs.py --ci
+
+        # Check if anything changed
+        if git diff --quiet; then
+          echo "No documentation changes to commit."
+        else
+          git add README.md gcp_deployment_guide.md service.yaml service-worker.yaml .test_count 2>/dev/null || true
+          git commit -m "docs: set version ${RELEASE_VERSION} after successful Cloud Build [skip ci]"
+          git push origin $_BRANCH_NAME 2>/dev/null || git push origin HEAD:current || echo "Push skipped (detached HEAD or no write access)"
+        fi
+    id: 'sync-docs'
+    waitFor: ['deploy-web', 'deploy-worker']
 
 substitutions:
   _IMAGE: 'asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app'
+  _BRANCH_NAME: 'current'
