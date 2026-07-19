@@ -342,10 +342,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         }, 2000);
                     })
                     .catch(err => {
-                        alert('Failed to copy SFT JSON: ' + err);
+                        if (typeof window.showClientSideAlert === 'function') {
+                            window.showClientSideAlert('Failed to copy SFT JSON: ' + err);
+                        } else {
+                            alert('Failed to copy SFT JSON: ' + err);
+                        }
                     });
             } catch (e) {
-                alert('Failed to parse Q&A dataset: ' + e);
+                if (typeof window.showClientSideAlert === 'function') {
+                    window.showClientSideAlert('Failed to parse Q&A dataset: ' + e);
+                } else {
+                    alert('Failed to parse Q&A dataset: ' + e);
+                }
             }
         });
     }
