@@ -13,7 +13,7 @@ logger = logging.getLogger("init_surreal")
 SURREAL_URL = os.getenv("SURREAL_URL", "http://surrealdb:8000")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "root")
-SURREAL_NS = os.getenv("SURREAL_NS", "aetheromni")
+SURREAL_NS = os.getenv("SURREAL_NS", "omnirag")
 SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
 
 
