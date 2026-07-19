@@ -10,6 +10,7 @@ NC='\033[0;m'
 
 echo -e "${CYAN}====================================================${NC}"
 echo -e "${CYAN}        AetherOmni - Pre-check QA Runner     ${NC}"
+echo -e "${CYAN}   Version: $(cat VERSION 2>/dev/null || echo 'unknown')     ${NC}"
 echo -e "${CYAN}====================================================${NC}"
 
 # Ensure virtual env is active
@@ -44,7 +45,10 @@ echo -e "${GREEN}✓ Django integrity checks passed.${NC}"
 
 echo -e "\n${YELLOW}[Step 4/6] Executing Django Unit Tests...${NC}"
 echo -e "${YELLOW}Running tests in offline mode...${NC}"
-SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 $PYTHON_BIN manage.py test --keepdb
+SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 $PYTHON_BIN manage.py test --keepdb 2>&1 | tee /tmp/test_output.txt
+# Cache test count for the auto-doc updater
+TEST_COUNT=$(grep -oP '(?<=Ran )\d+' /tmp/test_output.txt | tail -1)
+if [ -n "$TEST_COUNT" ]; then echo "$TEST_COUNT" > .test_count; fi
 echo -e "${GREEN}✓ All unit tests passed!${NC}"
 
 echo -e "\n${YELLOW}[Step 5/6] Running Bandit Static Security Scan...${NC}"
@@ -61,6 +65,13 @@ if $PYTHON_BIN -m pip_audit --ignore-vuln PYSEC-2026-2132; then
 else
     echo -e "${RED}✗ Pip-Audit detected vulnerable dependencies! Please upgrade them.${NC}"
     exit 1
+fi
+
+echo -e "\n${YELLOW}[Step 7/7] Auto-updating Documentation...${NC}"
+if $PYTHON_BIN scripts/update_docs.py; then
+    echo -e "${GREEN}✓ Documentation refreshed successfully.${NC}"
+else
+    echo -e "${YELLOW}⚠ Documentation update skipped (non-fatal).${NC}"
 fi
 
 echo -e "\n${GREEN}====================================================${NC}"

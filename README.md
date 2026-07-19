@@ -4,8 +4,11 @@ AetherOmni is a secure, high-performance web application and background worker a
 
 <img src="scorecard.png" width="100%">
 
-[![Version](https://img.shields.io/badge/version-v1.1.0-blue.svg)](https://github.com/aetheromni/aetheromni)
-[![Last Updated](https://img.shields.io/badge/last%20updated-2026--07--10-green.svg)](#)
+<!-- auto:badges -->
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue.svg)](https://github.com/lucivskvn/AetherOmni)
+[![Last Updated](https://img.shields.io/badge/last%20updated-2026--07--19-green.svg)](#)
+[![Commit](https://img.shields.io/badge/commit-f59e13b-lightgrey.svg)](#)
+<!-- /auto:badges -->
 
 ---
 
@@ -36,7 +39,7 @@ This project is hardened to comply with leading security standards:
 
 ## 🛡️ Pre-Check QA Gates
 
-We use a 6-gate unified pre-check QA runner to prevent bugs or security leaks from reaching production:
+We use a **7-gate** unified pre-check QA runner to prevent bugs or security leaks from reaching production:
 
 ```bash
 ./run_checks.sh
@@ -49,6 +52,20 @@ We use a 6-gate unified pre-check QA runner to prevent bugs or security leaks fr
 4. **Django Unit Tests**: Executes 158 comprehensive unit tests with coverage generation.
 5. **Bandit SAST**: Scans code for security vulnerabilities.
 6. **Pip-Audit SCA**: Queries the PyPI database to block any insecure or outdated dependencies.
+7. **Auto-Doc Sync**: Refreshes version badges, last-updated stamps, and metadata across all docs.
+
+## 📰 Auto-Updated Documentation
+
+README.md and `gcp_deployment_guide.md` are **never stale**. Every push to `current` triggers a GitHub Actions workflow that:
+- Bumps the **version badge** from the canonical `VERSION` file
+- Stamps the **last-updated date** and **commit SHA** badge
+- Updates the **RELEASE_VERSION** in `service.yaml` / `service-worker.yaml` with the live build timestamp
+- Updates **test counts** and **health scores** when they change
+
+You can also run it locally at any time:
+```bash
+python scripts/update_docs.py
+```
 
 ---
 
