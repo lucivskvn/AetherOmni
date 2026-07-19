@@ -128,8 +128,8 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
         return
 
     project = details.get("project_id")
-    region = details.get("region") or getattr(settings, "GCP_REGION", "us-central1")
-    queue_name = getattr(settings, "CLOUD_TASKS_QUEUE", "aetheromni-tasks")
+    region = details.get("region") or getattr(settings, "GCP_REGION", "asia-southeast1")
+    queue_name = getattr(settings, "CLOUD_TASKS_QUEUE", "extractor-tasks")
     service_url = getattr(settings, "WORKER_URL", "") or getattr(settings, "APP_URL", "")
 
     if not project or not service_url:
@@ -145,7 +145,11 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
     queue_path = f"projects/{project}/locations/{region}/queues/{queue_name}"
     body = json.dumps(payload).encode()
 
-    service_account = get_gcp_service_account() or f"{project}@appspot.gserviceaccount.com"
+    # Prefer the project-number-based compute SA (Cloud Run default SA format).
+    # Fall back to the appspot SA if project_number is unavailable.
+    project_number = details.get("project_number") or project
+    default_sa = f"{project_number}-compute@developer.gserviceaccount.com"
+    service_account = get_gcp_service_account() or default_sa
 
     task: dict[str, Any] = {
         "http_request": {

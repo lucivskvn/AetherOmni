@@ -23,7 +23,7 @@ SURREALDB_OFFLINE = TESTING or os.getenv("SURREALDB_OFFLINE", "False").lower() i
 
 # ── Core Security ──────────────────────────────────────────────────────────────
 
-DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in ("true", "1", "t")
+DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("true", "1", "t")
 
 # ── Logging Configuration ─────────────────────────────────────────────────────
 LOGGING_LEVEL = "INFO" if DEBUG else "WARNING"
@@ -240,10 +240,19 @@ SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "root")
 
+if not DEBUG and SURREAL_PASS in ("", "root") and not os.getenv("SURREALDB_OFFLINE"):
+    logger.warning(
+        "[SurrealDB] SURREAL_PASS is using the default 'root' credential in a non-debug environment. "
+        "Set the SURREAL_PASS environment variable to a strong password for production deployments."
+    )
+
 
 # ── Google Cloud Tasks Configuration ──────────────────────────────────────────
 
-CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "aetheromni-tasks"
+# Priority: CLOUD_TASKS_QUEUE > GCP_QUEUE_NAME > canonical fallback
+# IMPORTANT: must match the actual queue name created in GCP Cloud Tasks.
+# The deployed service.yaml sets GCP_QUEUE_NAME="extractor-tasks".
+CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "extractor-tasks"
 # APP_URL is the fully-qualified URL of this Cloud Run service (used for task callbacks)
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")
 # WORKER_URL is the fully-qualified URL of the data-extractor-worker service
@@ -299,9 +308,8 @@ for host in ALLOWED_HOSTS:
             CSRF_TRUSTED_ORIGINS.append(f"https://*{host_clean}")
             CSRF_TRUSTED_ORIGINS.append(f"http://*{host_clean}")
 
-# 4. In DEBUG mode, trust common local tunnel services
-# Unconditionally trust localhost, loopback, and common local tunnels to support gcloud Run proxy
-local_and_tunnel_origins = [
+# 4. Trust localhost and loopback — always needed for gcloud Run proxy / health checks
+local_origins = [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
     "http://localhost",
@@ -310,18 +318,27 @@ local_and_tunnel_origins = [
     "https://127.0.0.1:8080",
     "https://localhost",
     "https://127.0.0.1",
-    "https://*.ngrok-free.app",
-    "http://*.ngrok-free.app",
-    "https://*.trycloudflare.com",
-    "http://*.trycloudflare.com",
-    "https://*.localtunnel.me",
-    "http://*.localtunnel.me",
-    "https://*.gitpod.io",
-    "https://*.github.dev",
 ]
-for origin in local_and_tunnel_origins:
+for origin in local_origins:
     if origin not in CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append(origin)
+
+# 5. In DEBUG mode only: trust common local tunnel services (ngrok, Cloudflare Tunnel, etc.)
+#    These are NOT added in production to limit the CSRF attack surface.
+if DEBUG:
+    tunnel_origins = [
+        "https://*.ngrok-free.app",
+        "http://*.ngrok-free.app",
+        "https://*.trycloudflare.com",
+        "http://*.trycloudflare.com",
+        "https://*.localtunnel.me",
+        "http://*.localtunnel.me",
+        "https://*.gitpod.io",
+        "https://*.github.dev",
+    ]
+    for origin in tunnel_origins:
+        if origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(origin)
 
 # In production, enforce SSL and secure cookies (fully configurable via environment variables)
 if not DEBUG:
@@ -344,9 +361,17 @@ MONTHLY_BUDGET_USD = float(os.getenv("MONTHLY_BUDGET_USD", "10.00"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
+if not DEBUG and not GEMINI_API_KEY and not os.getenv("GOOGLE_CLOUD_PROJECT") and not os.getenv("GCP_PROJECT"):
+    logger.warning(
+        "[LLM] Neither GEMINI_API_KEY nor GCP_PROJECT is set. "
+        "LLM calls will fail unless Vertex AI ADC credentials are available."
+    )
+
 # Google Cloud Platform (GCP) and Vertex AI Settings
 GCP_PROJECT = os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
-GCP_REGION = os.getenv("GCP_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
+# Canonical default: asia-southeast1 — matches cloudbuild.yaml and deployment.py
+# All three defaults were previously inconsistent (settings=us-central1, deployment=asia-southeast1, cloud_tasks=us-central1)
+GCP_REGION = os.getenv("GCP_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "asia-southeast1"
 VERTEX_API_KEY = os.getenv("VERTEX_API_KEY")
 
 

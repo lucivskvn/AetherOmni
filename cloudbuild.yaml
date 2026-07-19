@@ -52,7 +52,26 @@ steps:
         echo "Build environment written to /workspace/build_env.sh"
     id: 'compute-version'
 
-  # 1. Pull the previous image for Docker layer caching
+  # 1. Ensure the Artifact Registry repository exists (idempotent)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud artifacts repositories describe $_AR_REPO \
+          --location=$_REGION \
+          --project=$PROJECT_ID \
+          --quiet 2>/dev/null || \
+        gcloud artifacts repositories create $_AR_REPO \
+          --repository-format=docker \
+          --location=$_REGION \
+          --project=$PROJECT_ID \
+          --description="AetherOmni container images"
+        echo "Artifact Registry repository '$_AR_REPO' is ready."
+    id: 'ensure-repo'
+    waitFor: ['compute-version']
+
+  # 2. Pull the previous image for Docker layer caching
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
@@ -60,9 +79,9 @@ steps:
       - |
         docker pull $_IMAGE:latest || exit 0
     id: 'pull'
-    waitFor: ['compute-version']
+    waitFor: ['ensure-repo']
 
-  # 2. Build the container image with the semantic version as a build arg
+  # 3. Build the container image with the semantic version as a build arg
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
@@ -79,7 +98,7 @@ steps:
     id: 'build'
     waitFor: ['pull']
 
-  # 3. Push all image tags to Artifact Registry
+  # 4. Push all image tags to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
@@ -92,7 +111,7 @@ steps:
     id: 'push'
     waitFor: ['build']
 
-  # 4. Prepare service YAMLs — inject dynamic image tag + RELEASE_VERSION
+  # 5. Prepare service YAMLs -- inject dynamic image tag + RELEASE_VERSION
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
@@ -102,12 +121,10 @@ steps:
         set -e
 
         # Pin image to the specific build ID (immutable, traceable)
-        sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service.yaml
-        sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service-worker.yaml
+        sed -i "s|aether-web:latest|aether-web:$BUILD_ID|g" service.yaml
+        sed -i "s|aether-web:latest|aether-web:$BUILD_ID|g" service-worker.yaml
 
-        # Inject the semantic RELEASE_VERSION — matches any quoted value
-        sed -i "s|value: \"[^\"]*\"\(.*# RELEASE_VERSION\)|value: \"$${RELEASE_VERSION}\"\1|g" service.yaml service-worker.yaml
-        # Also match the standard YAML pattern (no comment marker)
+        # Inject the semantic RELEASE_VERSION
         python3 - << 'PYEOF'
         import re, sys, os
 
@@ -115,7 +132,7 @@ steps:
         for fname in ("service.yaml", "service-worker.yaml"):
             with open(fname, "r") as f:
                 text = f.read()
-            # Replace RELEASE_VERSION value — robust to any prior value format
+            # Replace RELEASE_VERSION value -- robust to any prior value format
             text = re.sub(
                 r'(- name: RELEASE_VERSION\s+value:\s+")[^"]*(")',
                 lambda m: m.group(1) + release_ver + m.group(2),
@@ -124,7 +141,7 @@ steps:
             )
             with open(fname, "w") as f:
                 f.write(text)
-            print(f"[OK] {fname}: RELEASE_VERSION → {release_ver}")
+            print(f"[OK] {fname}: RELEASE_VERSION -> {release_ver}")
         PYEOF
 
         echo ""
@@ -133,7 +150,64 @@ steps:
     id: 'prepare-yaml'
     waitFor: ['push']
 
-  # 5. Deploy web service
+  # 6. Inject APP_URL and WORKER_URL after deploying (requires knowing the Cloud Run URLs)
+  #    We derive them from the service name + project hash that Cloud Run generates.
+  #    If this is a first-time deploy, the URLs will be set in a post-deploy patch step.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        # Resolve the stable Cloud Run URLs for both services (they contain the project hash)
+        # gcloud returns empty string if the service doesn't exist yet (first deploy)
+        WEB_URL=$$(gcloud run services describe $_WEB_SERVICE \
+          --region=$_REGION --project=$PROJECT_ID \
+          --format="value(status.url)" 2>/dev/null || echo "")
+        WORKER_URL=$$(gcloud run services describe $_WORKER_SERVICE \
+          --region=$_REGION --project=$PROJECT_ID \
+          --format="value(status.url)" 2>/dev/null || echo "")
+
+        echo "Pre-deploy URLs (may be empty on first deploy):"
+        echo "  WEB_URL    = $$WEB_URL"
+        echo "  WORKER_URL = $$WORKER_URL"
+
+        # Patch service.yaml with the resolved URLs
+        python3 - << PYEOF
+        import re, os
+
+        web_url = os.environ.get("WEB_URL", "")
+        worker_url = os.environ.get("WORKER_URL", "")
+
+        for fname, app_url, worker_url_val in [
+            ("service.yaml", web_url, worker_url),
+            ("service-worker.yaml", worker_url, worker_url),
+        ]:
+            with open(fname) as f:
+                text = f.read()
+            if app_url:
+                text = re.sub(
+                    r'(- name: APP_URL\s+value:\s+)"[^"]*"',
+                    lambda m, v=app_url: m.group(1) + f'"{v}"',
+                    text, flags=re.MULTILINE,
+                )
+            if worker_url_val:
+                text = re.sub(
+                    r'(- name: WORKER_URL\s+value:\s+)"[^"]*"',
+                    lambda m, v=worker_url_val: m.group(1) + f'"{v}"',
+                    text, flags=re.MULTILINE,
+                )
+            with open(fname, "w") as f:
+                f.write(text)
+            print(f"[OK] {fname}: APP_URL={app_url!r}, WORKER_URL={worker_url_val!r}")
+        PYEOF
+    env:
+      - 'WEB_URL=$(WEB_URL)'
+      - 'WORKER_URL=$(WORKER_URL)'
+    id: 'inject-urls'
+    waitFor: ['prepare-yaml']
+
+  # 7. Deploy web service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -141,11 +215,11 @@ steps:
       - 'services'
       - 'replace'
       - 'service.yaml'
-      - '--region=asia-southeast1'
+      - '--region=$_REGION'
     id: 'deploy-web'
-    waitFor: ['prepare-yaml']
+    waitFor: ['inject-urls']
 
-  # 6. Deploy worker service
+  # 8. Deploy worker service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -153,13 +227,11 @@ steps:
       - 'services'
       - 'replace'
       - 'service-worker.yaml'
-      - '--region=asia-southeast1'
+      - '--region=$_REGION'
     id: 'deploy-worker'
-    waitFor: ['prepare-yaml']
+    waitFor: ['inject-urls']
 
-  # 7. Post-deploy: write the deployed version back to the repo (README badges, service YAMLs)
-  #    This step runs ONLY after both services are deployed successfully.
-  #    It commits "docs: set version vX.Y.Z [skip ci]" back to the branch.
+  # 9. Post-deploy: patch APP_URL/WORKER_URL with the actual deployed URLs, then commit docs
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
@@ -168,7 +240,40 @@ steps:
         source /workspace/build_env.sh
         set -e
 
-        echo "=== Post-deploy documentation sync ==="
+        echo "=== Post-deploy URL patch + documentation sync ==="
+
+        # Resolve the actual URLs now that services are deployed
+        WEB_URL=$$(gcloud run services describe $_WEB_SERVICE \
+          --region=$_REGION --project=$PROJECT_ID \
+          --format="value(status.url)" 2>/dev/null || echo "")
+        WORKER_URL=$$(gcloud run services describe $_WORKER_SERVICE \
+          --region=$_REGION --project=$PROJECT_ID \
+          --format="value(status.url)" 2>/dev/null || echo "")
+
+        echo "  Deployed WEB_URL    = $$WEB_URL"
+        echo "  Deployed WORKER_URL = $$WORKER_URL"
+
+        # Patch the service YAMLs with the real URLs for the next deployment
+        python3 - << PYEOF
+        import re, os
+        web_url = os.environ.get("WEB_URL_ACTUAL", "")
+        worker_url = os.environ.get("WORKER_URL_ACTUAL", "")
+        for fname, app_url, w_url in [
+            ("service.yaml", web_url, worker_url),
+            ("service-worker.yaml", worker_url, worker_url),
+        ]:
+            with open(fname) as f:
+                text = f.read()
+            if app_url:
+                text = re.sub(r'(- name: APP_URL\s+value:\s+)"[^"]*"',
+                    lambda m, v=app_url: m.group(1) + f'"{v}"', text, flags=re.MULTILINE)
+            if w_url:
+                text = re.sub(r'(- name: WORKER_URL\s+value:\s+)"[^"]*"',
+                    lambda m, v=w_url: m.group(1) + f'"{v}"', text, flags=re.MULTILINE)
+            with open(fname, "w") as f:
+                f.write(text)
+            print(f"[OK] {fname} patched with actual URLs.")
+        PYEOF
 
         if [ ! -d .git ]; then
           echo "No .git directory found. Skipping repository documentation sync."
@@ -177,7 +282,7 @@ steps:
 
         # Configure git identity for the commit
         git config user.name  "cloud-build[bot]"
-        git config user.email "cloud-build[bot]@aetheromni.fainko.cloud"
+        git config user.email "cloud-build[bot]@users.noreply.github.com"
 
         # Run the doc updater to patch README badges + service YAMLs
         python3 scripts/update_docs.py --ci
@@ -190,9 +295,23 @@ steps:
           git commit -m "docs: set version $${RELEASE_VERSION} after successful Cloud Build [skip ci]"
           git push origin $_BRANCH_NAME 2>/dev/null || git push origin HEAD:current || echo "Push skipped (detached HEAD or no write access)"
         fi
-    id: 'sync-docs'
+    env:
+      - 'WEB_URL_ACTUAL=$(WEB_URL)'
+      - 'WORKER_URL_ACTUAL=$(WORKER_URL)'
+    id: 'post-deploy'
     waitFor: ['deploy-web', 'deploy-worker']
 
 substitutions:
-  _IMAGE: 'asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app'
+  # ── Image & Repository ────────────────────────────────────────────────────────
+  # Change _AR_REPO and _IMAGE together if you rename the Artifact Registry repo.
+  _AR_REPO: 'aether-repo'
+  _IMAGE: 'asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/aether-repo/aether-web'
+
+  # ── Deployment Targets ────────────────────────────────────────────────────────
+  # Change _REGION once to deploy to a different GCP region.
+  _REGION: 'asia-southeast1'
+  _WEB_SERVICE: 'aether-web'
+  _WORKER_SERVICE: 'aether-worker'
+
+  # ── Git Branch ────────────────────────────────────────────────────────────────
   _BRANCH_NAME: 'current'

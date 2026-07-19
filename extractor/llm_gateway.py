@@ -56,7 +56,7 @@ except ImportError:
 
 GEMINI_API_KEY_ERROR = "GEMINI_API_KEY is not configured."
 VAL_ERROR_UNAVAILABLE = "GEMINI_API_KEY is not configured and Vertex AI is unavailable."
-MODEL_GEMINI_FLASH = "gemini-3.5-flash"
+# Note: MODEL_GEMINI_FLASH is defined at module top (line ~37); not redefined here.
 MIME_PDF = "application/pdf"
 MIME_OCTET_STREAM = "application/octet-stream"
 
@@ -310,8 +310,8 @@ def _call_openrouter(prompt: str, system_instruction: str | None, model_name: st
         messages.append({"role": "system", "content": system_instruction})
     messages.append({"role": "user", "content": prompt})
 
-    # Gap E-9: use APP_URL from settings (no localhost referer in production)
-    app_url = getattr(settings, "APP_URL", None) or os.getenv("APP_URL", "http://localhost:8000")
+    # Gap E-9: use APP_URL from settings (no hardcoded localhost referer in production)
+    app_url = getattr(settings, "APP_URL", None) or os.getenv("APP_URL", "http://localhost:8080")
     headers = {
         "Authorization": f"Bearer {api_key}",
         "HTTP-Referer": app_url,

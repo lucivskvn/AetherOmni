@@ -10,7 +10,7 @@ LOG_LEVEL = logging.INFO if DJANGO_DEBUG else logging.WARNING
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("init_surreal")
 
-SURREAL_URL = os.getenv("SURREAL_URL", "http://surrealdb:8000")
+SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "root")
 SURREAL_NS = os.getenv("SURREAL_NS", "aetheromni")
@@ -205,16 +205,30 @@ def init_django_admin():
         if cleaned_count > 0:
             logger.info("Removed stray SFT Q&A headers/descriptions from %d existing documents.", cleaned_count)
 
-        # Automatic SystemSettings model migration to upgrade legacy selected models
+        # Automatic SystemSettings model migration to upgrade legacy selected models.
+        # Normalises old bare model names and provider-prefixed variants to canonical forms.
         try:
             from extractor.models import SystemSettings
 
             settings_obj = SystemSettings.get_settings()
-            if settings_obj.selected_model in ["google/gemini-3.1-flash-lite", "google/gemini-3.1-flash-lite"]:
+            # Normalise any flash-lite variant to the canonical prefixed form
+            if settings_obj.selected_model in [
+                "gemini-3.1-flash-lite",
+                "google/gemini-3.1-flash-lite",
+                "gemini-1.5-flash-lite",
+                "google/gemini-1.5-flash-lite",
+            ]:
                 settings_obj.selected_model = "google/gemini-3.1-flash-lite"
                 settings_obj.save()
                 logger.info("System settings migrated: updated legacy model to 'google/gemini-3.1-flash-lite'")
-            elif settings_obj.selected_model in ["google/gemini-3.5-flash", "google/gemini-3.1-flash"]:
+            elif settings_obj.selected_model in [
+                "gemini-3.5-flash",
+                "google/gemini-3.5-flash",
+                "gemini-3.1-flash",
+                "google/gemini-3.1-flash",
+                "gemini-1.5-flash",
+                "google/gemini-1.5-flash",
+            ]:
                 settings_obj.selected_model = "google/gemini-3.5-flash"
                 settings_obj.save()
                 logger.info("System settings migrated: updated legacy model to 'google/gemini-3.5-flash'")
