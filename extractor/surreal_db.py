@@ -98,6 +98,7 @@ def _get_surreal_url() -> str:
     if not url:
         # Auto-detect from common local/Docker addresses
         import httpx
+
         local_urls = ["http://localhost:8001", "http://surrealdb:8000"]
         detected = None
         for l_url in local_urls:
@@ -189,7 +190,11 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
                     if count_res and isinstance(count_res, list):
                         first_el = count_res[0]
                         if isinstance(first_el, dict):
-                            if "result" in first_el and isinstance(first_el["result"], list) and len(first_el["result"]) > 0:
+                            if (
+                                "result" in first_el
+                                and isinstance(first_el["result"], list)
+                                and len(first_el["result"]) > 0
+                            ):
                                 count = first_el["result"][0].get("count", 0)
                             elif "count" in first_el:
                                 count = first_el.get("count", 0)
@@ -198,7 +203,11 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
 
                     if count > 0:
                         _detected_ns = ns
-                        logger.info("[SurrealDB] Dynamic auto-detection selected active namespace '%s' with %d documents.", ns, count)
+                        logger.info(
+                            "[SurrealDB] Dynamic auto-detection selected active namespace '%s' with %d documents.",
+                            ns,
+                            count,
+                        )
                         return _detected_ns
                 except Exception as ns_err:
                     logger.debug("[SurrealDB] Namespace '%s' probe failed: %s", ns, ns_err)

@@ -26,3 +26,12 @@
 **Action:**
 1. Expose a global `window.showClientSideAlert(message, type)` function that mirrors Django's server-rendered alerts by dynamically building container `alert-card` DOM nodes.
 2. Check for the existence of `showClientSideAlert` before calling it from sub-scripts to maintain graceful fallback support when scripts load asynchronously.
+
+## 2026-07-19 - Dynamic Input-Clear Controls and Sibling Keyboard Shortcut Hint Coordination
+**Learning:**
+1. Custom client-side input-clearing controls are superior to inconsistent native browser elements for custom theme layouts, but they must explicitly coordinate with neighboring keyboard shortcut badges (e.g. `<kbd>`) to prevent overlapping text and layout clutter during active typing.
+2. Dynamic visibility transitions should be handled cleanly via style attributes (such as opacity and visibility) while preserving standard keyboard and mouse event delegation (like click-and-focus recovery).
+
+**Action:**
+1. Programmatically coordinate custom clear button displays and sibling `<kbd>` indicators using conditional listeners triggered on `input`, `focus`, and `blur` events.
+2. Ensure clear buttons use standard HTML `<button type="button">` wrappers with explicit `aria-label` attributes to maintain accessible landmarks for screen readers.
