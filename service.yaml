@@ -1,7 +1,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: data-extractor-web
+  name: aether-web
   namespace: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
   labels:
     cloud.googleapis.com/location: asia-southeast1
@@ -15,7 +15,7 @@ spec:
     spec:
       serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
       containers:
-      - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/data-extractor-repo/web-app:latest
+      - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/aether-repo/aether-web:latest
         name: web
         ports:
         - containerPort: 8080
@@ -45,9 +45,9 @@ spec:
         - name: GCP_QUEUE_NAME
           value: "extractor-tasks"
         - name: APP_URL
-          value: "https://data-extractor-web-751922320980.asia-southeast1.run.app"
+          value: "https://aether-web-751922320980.asia-southeast1.run.app"
         - name: WORKER_URL
-          value: "https://data-extractor-worker-751922320980.asia-southeast1.run.app"
+          value: "https://aether-worker-751922320980.asia-southeast1.run.app"
         - name: SURREAL_NS
           value: "aetheromni"
         - name: SURREAL_DB
