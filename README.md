@@ -5,9 +5,9 @@ AetherOmni is a secure, high-performance web application and background worker a
 <img src="scorecard.png" width="100%">
 
 <!-- auto:badges -->
-[![Version](https://img.shields.io/badge/version-v1.2.108-blue.svg)](https://github.com/lucivskvn/AetherOmni)
+[![Version](https://img.shields.io/badge/version-v1.2.109-blue.svg)](https://github.com/lucivskvn/AetherOmni)
 [![Last Updated](https://img.shields.io/badge/last%20updated-2026--07--19-green.svg)](#)
-[![Commit](https://img.shields.io/badge/commit-22e97a1-lightgrey.svg)](#)
+[![Commit](https://img.shields.io/badge/commit-d35a23f-lightgrey.svg)](#)
 <!-- /auto:badges -->
 
 ---
@@ -49,7 +49,7 @@ We use a **7-gate** unified pre-check QA runner to prevent bugs or security leak
 1. **Ruff Linter**: Enforces clean Python syntax and coding rules.
 2. **Ruff Formatter**: Assures code layout and indent consistency.
 3. **Django Integrity**: Verifies database schemas, migrations, and settings validations.
-4. **Django Unit Tests**: Executes 158 comprehensive unit tests with coverage generation.
+4. **Django Unit Tests**: Executes 159 comprehensive unit tests with coverage generation.
 5. **Bandit SAST**: Scans code for security vulnerabilities.
 6. **Pip-Audit SCA**: Queries the PyPI database to block any insecure or outdated dependencies.
 7. **Auto-Doc Sync**: Refreshes version badges, last-updated stamps, and metadata across all docs.

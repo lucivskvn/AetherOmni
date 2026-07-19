@@ -19,7 +19,7 @@ spec:
         - containerPort: 8080
         env:
         - name: RELEASE_VERSION
-          value: "v1.2.108+22e97a1"
+          value: "v1.2.109+d35a23f-dirty"
         - name: DJANGO_DEBUG
           value: "False"
         - name: GS_BUCKET_NAME
@@ -39,7 +39,7 @@ spec:
         - name: APP_URL
           value: "https://data-extractor-worker-751922320980.asia-southeast1.run.app"
         - name: SURREAL_NS
-          value: "aetheromni"
+          value: "omnirag"
         - name: SURREAL_DB
           value: "extractor"
         - name: SURREALDB_OFFLINE

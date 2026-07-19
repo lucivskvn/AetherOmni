@@ -141,11 +141,17 @@ def _run(sql: str, params: dict | None = None) -> list[dict]:
         return async_to_sync(_async_run)(sql, params)
 
 
-def _first_result(results: list[dict]) -> list[Any]:
-    if results and isinstance(results, list):
-        return results[0].get("result", [])
-    elif results and isinstance(results, dict):
-        return results.get("result", [])
+def _first_result(results: Any) -> list[Any]:
+    if not results:
+        return []
+    if isinstance(results, list):
+        if len(results) > 0 and isinstance(results[0], dict) and "result" in results[0]:
+            return results[0].get("result", [])
+        return results
+    elif isinstance(results, dict):
+        if "result" in results:
+            return results.get("result", [])
+        return [results]
     return []
 
 

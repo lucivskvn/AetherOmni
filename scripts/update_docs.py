@@ -53,6 +53,7 @@ ROOT = Path(__file__).parent.parent.resolve()
 
 # ── Version computation ────────────────────────────────────────────────────────
 
+
 def _git(*args: str) -> str:
     """Run a git command and return stripped stdout, or '' on failure."""
     try:
@@ -149,6 +150,7 @@ def compute_version() -> dict:
 
 # ── Metadata helpers ───────────────────────────────────────────────────────────
 
+
 def get_test_count() -> str:
     """Read cached test count written by run_checks.sh."""
     cache = ROOT / ".test_count"
@@ -165,6 +167,7 @@ def get_health_scores() -> dict[str, str]:
     if score_file.exists():
         try:
             import json
+
             data = json.loads(score_file.read_text(encoding="utf-8"))
             return {
                 "objective": str(round(data.get("objective", 0), 1)),
@@ -176,6 +179,7 @@ def get_health_scores() -> dict[str, str]:
 
 
 # ── Section rewriter ───────────────────────────────────────────────────────────
+
 
 def _replace_sentinel(text: str, key: str, new_content: str) -> tuple[str, bool]:
     """Replace content between <!-- auto:KEY --> … <!-- /auto:KEY --> sentinels."""
@@ -189,6 +193,7 @@ def _replace_sentinel(text: str, key: str, new_content: str) -> tuple[str, bool]
 
 
 # ── README update ──────────────────────────────────────────────────────────────
+
 
 def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     """Patch README.md. Returns True if the file changed."""
@@ -212,19 +217,19 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     text, replaced = _replace_sentinel(text, "badges", badge_block)
     if not replaced:
         text = re.sub(
-            r'\[!\[Version\]\(https://img\.shields\.io/badge/version-[^\)]+\)\]\([^\)]*\)',
+            r"\[!\[Version\]\(https://img\.shields\.io/badge/version-[^\)]+\)\]\([^\)]*\)",
             f'[![Version](https://img.shields.io/badge/version-{v["badge_ver"]}-blue.svg)]'
             f'(https://github.com/lucivskvn/AetherOmni)',
             text,
         )
         text = re.sub(
-            r'\[!\[Last Updated\]\(https://img\.shields\.io/badge/last%20updated-[^\)]+\)\]\([^\)]*\)',
+            r"\[!\[Last Updated\]\(https://img\.shields\.io/badge/last%20updated-[^\)]+\)\]\([^\)]*\)",
             f'[![Last Updated](https://img.shields.io/badge/last%20updated-'
             f'{v["today"].replace("-", "--")}-green.svg)](#)',
             text,
         )
         text = re.sub(
-            r'\[!\[Commit\]\(https://img\.shields\.io/badge/commit-[^\)]+\)\]\([^\)]*\)',
+            r"\[!\[Commit\]\(https://img\.shields\.io/badge/commit-[^\)]+\)\]\([^\)]*\)",
             f'[![Commit](https://img.shields.io/badge/commit-{v["sha"]}-lightgrey.svg)](#)',
             text,
         )
@@ -232,21 +237,21 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     # Test count
     if test_count:
         text = re.sub(
-            r'(Executes\s+)\d+(\s+comprehensive unit tests)',
-            rf'\g<1>{test_count}\g<2>',
+            r"(Executes\s+)\d+(\s+comprehensive unit tests)",
+            rf"\g<1>{test_count}\g<2>",
             text,
         )
 
     # Desloppify scores
     if scores.get("objective"):
         text = re.sub(
-            r'(Current Objective/Mechanical Score:\s+\*\*)\d+\.?\d*(/100\*\*)',
+            r"(Current Objective/Mechanical Score:\s+\*\*)\d+\.?\d*(/100\*\*)",
             rf'\g<1>{scores["objective"]}\g<2>',
             text,
         )
     if scores.get("strict"):
         text = re.sub(
-            r'(Current Strict Code Health Score:\s+\*\*)\d+\.?\d*(/100\*\*)',
+            r"(Current Strict Code Health Score:\s+\*\*)\d+\.?\d*(/100\*\*)",
             rf'\g<1>{scores["strict"]}\g<2>',
             text,
         )
@@ -262,6 +267,7 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
 
 # ── GCP deployment guide update ────────────────────────────────────────────────
 
+
 def update_gcp_guide(v: dict) -> bool:
     """Update gcp_deployment_guide.md heading. Returns True if modified."""
     guide = ROOT / "gcp_deployment_guide.md"
@@ -270,7 +276,7 @@ def update_gcp_guide(v: dict) -> bool:
 
     original = guide.read_text(encoding="utf-8")
     text = re.sub(
-        r'(# Google Cloud Run Production Deployment Guide \(Version )\S+(\))',
+        r"(# Google Cloud Run Production Deployment Guide \(Version )\S+(\))",
         rf'\g<1>{v["semver"]}\g<2>',
         original,
     )
@@ -285,6 +291,7 @@ def update_gcp_guide(v: dict) -> bool:
 
 
 # ── service.yaml / service-worker.yaml update ─────────────────────────────────
+
 
 def update_service_yamls(v: dict) -> bool:
     """
@@ -315,14 +322,13 @@ def update_service_yamls(v: dict) -> bool:
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="AetherOmni auto documentation updater.")
     parser.add_argument("--ci", action="store_true", help="CI mode: compact output.")
     parser.add_argument("--dry-run", action="store_true", help="Show changes without writing.")
-    parser.add_argument("--print-version", action="store_true",
-                        help="Print semver only (machine-readable) and exit.")
-    parser.add_argument("--print-release", action="store_true",
-                        help="Print full release_ver (v1.2.107+sha) and exit.")
+    parser.add_argument("--print-version", action="store_true", help="Print semver only (machine-readable) and exit.")
+    parser.add_argument("--print-release", action="store_true", help="Print full release_ver (v1.2.107+sha) and exit.")
     args = parser.parse_args()
 
     v = compute_version()
@@ -335,7 +341,7 @@ def main() -> int:
         print(v["release_ver"])
         return 0
 
-    print(f'AetherOmni Doc Updater')
+    print("AetherOmni Doc Updater")
     print(f'  Semver        : {v["semver"]}')
     print(f'  Release ver   : {v["release_ver"]}')
     print(f'  Branch        : {v["branch"]}')
@@ -346,9 +352,9 @@ def main() -> int:
     test_count = get_test_count()
     scores = get_health_scores()
     if test_count:
-        print(f'  Test count    : {test_count}')
+        print(f"  Test count    : {test_count}")
     if scores:
-        print(f'  Health scores : {scores}')
+        print(f"  Health scores : {scores}")
     print()
 
     if args.dry_run:
