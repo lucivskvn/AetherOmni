@@ -21,7 +21,7 @@ spec:
         - containerPort: 8080
         env:
         - name: RELEASE_VERSION
-          value: "v1.2.113+9375819"
+          value: "v1.2.114+f455129-dirty"
         - name: DJANGO_DEBUG
           value: "False"
         - name: SECURE_SSL_REDIRECT
@@ -49,7 +49,7 @@ spec:
         - name: WORKER_URL
           value: "https://data-extractor-worker-751922320980.asia-southeast1.run.app"
         - name: SURREAL_NS
-          value: "omnirag"
+          value: "aetheromni"
         - name: SURREAL_DB
           value: "extractor"
         - name: SURREALDB_OFFLINE
