@@ -131,8 +131,11 @@ def get_gcp_project_details():
         "project_id": project_id or None,
         "project_number": project_number or project_id or None,
         "region": region,
-        "web_service": "data-extractor-web",
-        "worker_service": "data-extractor-worker",
+        # Service names are configurable via environment variables so renaming
+        # Cloud Run services (e.g. data-extractor-web -> aether-web) requires
+        # only a YAML env var change, not a code change.
+        "web_service": os.getenv("GCP_WEB_SERVICE") or getattr(django_settings, "GCP_WEB_SERVICE", "aether-web"),
+        "worker_service": os.getenv("GCP_WORKER_SERVICE") or getattr(django_settings, "GCP_WORKER_SERVICE", "aether-worker"),
     }
 
 

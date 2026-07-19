@@ -96,7 +96,7 @@ def _get_surreal_url() -> str:
     # Check settings/env first
     url = getattr(settings, "SURREAL_URL", None) or os.getenv("SURREAL_URL")
     if not url:
-        # Detect dynamically
+        # Auto-detect from common local/Docker addresses
         import httpx
         local_urls = ["http://localhost:8001", "http://surrealdb:8000"]
         detected = None
@@ -107,21 +107,21 @@ def _get_surreal_url() -> str:
                     if r.status_code == 200:
                         detected = l_url
                         break
-            except Exception:
+            except Exception as probe_err:
+                logger.debug("[SurrealDB] Local probe %s failed: %s", l_url, probe_err)
                 continue
 
-        if not detected:
-            # Try remote production URL fallback
-            prod_url = "https://surrealdb.fainko.cloud"
-            try:
-                with httpx.Client(timeout=1.0) as client:
-                    r = client.get(prod_url + "/health")
-                    if r.status_code == 200:
-                        detected = prod_url
-            except Exception:
-                pass
-
-        url = detected or "http://localhost:8001"
+        if detected:
+            url = detected
+        else:
+            # SURREAL_URL is required in production -- no tenant-specific fallback baked in.
+            # Set the SURREAL_URL environment variable in your Cloud Run service YAML.
+            logger.warning(
+                "[SurrealDB] SURREAL_URL is not set and no local SurrealDB instance was found. "
+                "Set the SURREAL_URL environment variable. Defaulting to http://localhost:8001 "
+                "which will fail if SurrealDB is not running locally."
+            )
+            url = "http://localhost:8001"
 
     if url.startswith("ws://") or url.startswith("wss://"):
         if not url.endswith("/rpc"):
@@ -135,6 +135,11 @@ def _get_surreal_url() -> str:
 def _get_surreal_auth() -> dict:
     user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
     password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", "root"))
+    if not getattr(settings, "DEBUG", True) and password in ("", "root"):
+        logger.warning(
+            "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment. "
+            "Set SURREAL_USER and SURREAL_PASS environment variables to secure credentials."
+        )
     return {"username": user, "password": password}
 
 
@@ -195,7 +200,8 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
                         _detected_ns = ns
                         logger.info("[SurrealDB] Dynamic auto-detection selected active namespace '%s' with %d documents.", ns, count)
                         return _detected_ns
-                except Exception:
+                except Exception as ns_err:
+                    logger.debug("[SurrealDB] Namespace '%s' probe failed: %s", ns, ns_err)
                     continue
 
             # Default to the first available namespace or fallback
