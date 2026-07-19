@@ -11,38 +11,42 @@ steps:
         set -e
 
         # Read MAJOR.MINOR from the VERSION file (only human-bumped part)
-        MAJOR_MINOR=$(cat VERSION | tr -d '[:space:]' | grep -oP '^\d+\.\d+' || echo "0.1")
+        MAJOR_MINOR=$$(cat VERSION | tr -d '[:space:]' | grep -oP '^\d+\.\d+' || echo "0.1")
 
         # PATCH = total commit count in history (auto-increments every merged commit)
         # git is available in this image when Cloud Build clones from GitHub trigger.
         # For manual `gcloud builds submit` (tarball source), git rev-list may fail;
         # we fall back to the SHORT_SHA substitution prefix as a deterministic patch.
-        PATCH=$(git rev-list --count HEAD 2>/dev/null || echo "")
-        if [ -z "$PATCH" ] || ! echo "$PATCH" | grep -qE '^[0-9]+$'; then
-          # Fallback: derive numeric patch from first 4 hex chars of SHORT_SHA
-          PATCH=$(printf '%d' "0x${SHORT_SHA:0:4}" 2>/dev/null || echo "0")
+        PATCH=$$(git rev-list --count HEAD 2>/dev/null || echo "")
+        if [ -z "$$PATCH" ] || ! echo "$$PATCH" | grep -qE '^[0-9]+$' ; then
+          # Fallback: derive numeric patch from first 4 hex chars of SHORT_SHA/BUILD_ID
+          HEX_PART=$$(echo "${SHORT_SHA:-${BUILD_ID}}" | cut -c1-4)
+          PATCH=$$(printf '%d' "0x$$HEX_PART" 2>/dev/null || echo "0")
         fi
 
-        SEMVER="${MAJOR_MINOR}.${PATCH}"
+        SEMVER="$${MAJOR_MINOR}.$${PATCH}"
 
         # SHORT_SHA is populated by Cloud Build GitHub trigger; fallback to BUILD_ID prefix
-        SHA="${SHORT_SHA:-${BUILD_ID:0:7}}"
+        SHA_VAL="${SHORT_SHA}"
+        if [ -z "$$SHA_VAL" ]; then
+          SHA_VAL=$$(echo "${BUILD_ID}" | cut -c1-7)
+        fi
 
-        RELEASE_VERSION="v${SEMVER}+${SHA}"
+        RELEASE_VERSION="v$${SEMVER}+$${SHA_VAL}"
 
         echo "=== AetherOmni Version Computation ==="
-        echo "  MAJOR.MINOR    : ${MAJOR_MINOR}"
-        echo "  PATCH (commits): ${PATCH}"
-        echo "  SEMVER         : ${SEMVER}"
-        echo "  SHA            : ${SHA}"
-        echo "  RELEASE_VERSION: ${RELEASE_VERSION}"
+        echo "  MAJOR.MINOR    : $${MAJOR_MINOR}"
+        echo "  PATCH (commits): $${PATCH}"
+        echo "  SEMVER         : $${SEMVER}"
+        echo "  SHA            : $${SHA_VAL}"
+        echo "  RELEASE_VERSION: $${RELEASE_VERSION}"
         echo "======================================"
 
         # Write to shared workspace file so all subsequent steps can source it
         cat > /workspace/build_env.sh << EOF
-        export SEMVER="${SEMVER}"
-        export RELEASE_VERSION="${RELEASE_VERSION}"
-        export SHA="${SHA}"
+        export SEMVER="$${SEMVER}"
+        export RELEASE_VERSION="$${RELEASE_VERSION}"
+        export SHA="$${SHA_VAL}"
         EOF
 
         echo "Build environment written to /workspace/build_env.sh"
@@ -67,9 +71,9 @@ steps:
         source /workspace/build_env.sh
         docker build \
           --cache-from "$_IMAGE:latest" \
-          --build-arg RELEASE_VERSION="${RELEASE_VERSION}" \
+          --build-arg RELEASE_VERSION="$${RELEASE_VERSION}" \
           -t "$_IMAGE:latest" \
-          -t "$_IMAGE:${SEMVER}" \
+          -t "$_IMAGE:$${SEMVER}" \
           -t "$_IMAGE:$BUILD_ID" \
           .
     id: 'build'
@@ -83,7 +87,7 @@ steps:
       - |
         source /workspace/build_env.sh
         docker push "$_IMAGE:latest"
-        docker push "$_IMAGE:${SEMVER}"
+        docker push "$_IMAGE:$${SEMVER}"
         docker push "$_IMAGE:$BUILD_ID"
     id: 'push'
     waitFor: ['build']
@@ -102,12 +106,12 @@ steps:
         sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service-worker.yaml
 
         # Inject the semantic RELEASE_VERSION — matches any quoted value
-        sed -i "s|value: \"[^\"]*\"\(.*# RELEASE_VERSION\)|value: \"${RELEASE_VERSION}\"\1|g" service.yaml service-worker.yaml
+        sed -i "s|value: \"[^\"]*\"\(.*# RELEASE_VERSION\)|value: \"$${RELEASE_VERSION}\"\1|g" service.yaml service-worker.yaml
         # Also match the standard YAML pattern (no comment marker)
         python3 - << 'PYEOF'
-        import re, sys
+        import re, sys, os
 
-        release_ver = "$RELEASE_VERSION"
+        release_ver = os.environ.get("RELEASE_VERSION", "unknown")
         for fname in ("service.yaml", "service-worker.yaml"):
             with open(fname, "r") as f:
                 text = f.read()
@@ -178,7 +182,7 @@ steps:
           echo "No documentation changes to commit."
         else
           git add README.md gcp_deployment_guide.md service.yaml service-worker.yaml .test_count 2>/dev/null || true
-          git commit -m "docs: set version ${RELEASE_VERSION} after successful Cloud Build [skip ci]"
+          git commit -m "docs: set version $${RELEASE_VERSION} after successful Cloud Build [skip ci]"
           git push origin $_BRANCH_NAME 2>/dev/null || git push origin HEAD:current || echo "Push skipped (detached HEAD or no write access)"
         fi
     id: 'sync-docs'
