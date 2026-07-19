@@ -636,7 +636,8 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     try:
         settings_obj = surreal_db.get_system_settings()
         selected_model = settings_obj.get("selected_model", "auto")
-    except Exception:
+    except Exception as _settings_err:
+        logger.warning("[Stage2] Could not fetch system settings, using default model: %s", _settings_err)
         selected_model = "auto"
 
     chunks = _split_markdown_into_chunks(raw_markdown)

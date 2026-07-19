@@ -119,6 +119,62 @@ from extractor.utils import (
 )
 
 
+def _is_budget_exceeded(user) -> bool:
+    """
+    Lightweight budget gate that only reads Django ORM tables — no SurrealDB.
+    Safe to call from any view, including in test environments.
+    Returns True when the authenticated user has consumed their monthly AI budget.
+    Staff / superusers are never budget-gated.
+    """
+    if user.is_staff or user.is_superuser:
+        return False
+    try:
+        from decimal import Decimal
+
+        from django.utils import timezone
+
+        from extractor.models import MonthlySpendLog, SystemSettings
+
+        settings_obj = SystemSettings.get_settings()
+        budget_cap = Decimal(str(settings_obj.monthly_budget_usd or 10.0))
+        if budget_cap <= 0:
+            return False
+
+        now = timezone.now()
+        monthly_logged = MonthlySpendLog.total_for_month(now.year, now.month)
+
+        # Add live spend from active SurrealDB documents if available
+        monthly_live = Decimal("0")
+        try:
+            from extractor import surreal_db as _sdb
+
+            raw_docs = _sdb.list_documents(str(user.id))
+            from datetime import datetime
+
+            first_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+            monthly_live = Decimal(
+                str(sum(float(d.get("cost_usd") or 0) for d in raw_docs if _parse_dt(d.get("created_at")) and _parse_dt(d.get("created_at")) >= first_of_month))
+            )
+        except Exception:
+            pass  # SurrealDB unavailable — rely on MonthlySpendLog only
+
+        return (monthly_live + monthly_logged) >= budget_cap
+    except Exception:
+        return False  # Fail-open: never block if budget check itself fails
+
+
+def _parse_dt(value):
+    """Safely parse a datetime string; returns None on any error."""
+    if value is None:
+        return None
+    try:
+        from extractor.utils import parse_datetime
+
+        return parse_datetime(str(value))
+    except Exception:
+        return None
+
+
 def _get_dashboard_stats(request):
     """
     Helper to calculate and format dashboard statistics, avoiding duplicate logic
@@ -535,6 +591,15 @@ class UploadView(LoginRequiredMixin, View):
             messages.error(request, "No file uploaded.")
             return redirect("dashboard")
 
+        # Budget pre-check: block new LLM processing when monthly budget is exhausted
+        if _is_budget_exceeded(request.user):
+            messages.error(
+                request,
+                "Monthly AI budget has been reached. New document processing is paused until the budget resets "
+                "or an administrator increases the budget cap.",
+            )
+            return redirect("dashboard")
+
         ip = get_client_ip(request)
         successful_uploads = []
         cached_uploads = []
@@ -840,9 +905,28 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
     """
 
     def get(self, request):
+        from django.core.cache import cache
+
         query = request.GET.get("q", "").strip()
         if not query:
             return JsonResponse({"error": "Empty search query."}, status=400)
+
+        # Per-user rate limiting: max 10 RAG queries per minute to prevent runaway LLM spend
+        rl_key = f"rag_ratelimit_{request.user.id}"
+        rl_count = cache.get(rl_key, 0)
+        if rl_count >= 10:
+            return JsonResponse(
+                {"error": "Search rate limit reached. Please wait a moment before sending another query."},
+                status=429,
+            )
+        cache.set(rl_key, rl_count + 1, 60)  # Rolling 60-second window
+
+        # Budget gate: block LLM calls when monthly budget is exhausted
+        if _is_budget_exceeded(request.user):
+            return JsonResponse(
+                {"error": "Monthly AI budget has been reached. Intelligent search is paused until the budget resets."},
+                status=402,
+            )
 
         document_ids_str = request.GET.get("document_ids", "").strip()
         document_ids = None
