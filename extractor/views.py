@@ -459,6 +459,20 @@ class UploadView(LoginRequiredMixin, View):
     def _process_single_file(self, request, uploaded_file, ip, processed_hashes):
         orig_name = uploaded_file.name
 
+        # Validate file extension to prevent uploading scripts, web shells, or executables
+        import os
+        ext = os.path.splitext(orig_name)[1].lower().replace(".", "")
+        ALLOWED_EXTENSIONS = {
+            "pdf", "png", "jpg", "jpeg", "webp", "gif", "tiff", "heic", "heif",
+            "csv", "txt", "md", "markdown", "json", "docx", "doc", "xlsx", "xls"
+        }
+        if not ext or ext not in ALLOWED_EXTENSIONS:
+            return {
+                "status": "error",
+                "name": orig_name,
+                "error": f"Unsupported file type. Supported types: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+            }
+
         if uploaded_file.size > 31457280:
             return {"status": "error", "name": orig_name, "error": f"'{orig_name}' exceeds maximum 30MB constraint."}
 
@@ -855,9 +869,11 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
             results["answer_html"] = render_markdown_to_html(results["answer"])
             return JsonResponse(results)
         except ValueError as e:
+            logger.warning("[RAG Search] Validation error: %s", e)
             return JsonResponse({"error": str(e)}, status=400)
         except Exception as e:
-            return JsonResponse({"error": f"Search Error: {e!s}"}, status=500)
+            logger.exception("[RAG Search] Internal exception during semantic search: %s", e)
+            return JsonResponse({"error": "An unexpected error occurred during search. Please try again later."}, status=500)
 
 
 class ExportZipView(LoginRequiredMixin, View):

@@ -200,11 +200,13 @@ class MonthlySpendLog(models.Model):
         from decimal import Decimal as D
 
         try:
-            cls.objects.update_or_create(
-                year=year,
-                month=month,
-                defaults={},
-            )
+            from django.db import IntegrityError
+            try:
+                cls.objects.get_or_create(year=year, month=month)
+            except IntegrityError:
+                # Concurrent thread inserted it, so we can ignore and proceed to update
+                pass
+
             # Use F-expression to avoid race conditions on concurrent workers
             cls.objects.filter(year=year, month=month).update(
                 accumulated_cost_usd=models.F("accumulated_cost_usd") + D(str(cost)),

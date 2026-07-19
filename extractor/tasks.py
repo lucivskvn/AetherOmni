@@ -47,29 +47,70 @@ def format_datetime(dt):
 
 
 def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
-    """Helper to parse the PDF file structures and extract page count using regex."""
+    """Helper to parse the PDF file structures and extract page count using regex without loading the entire file into memory."""
     if doc_type != "PDF":
         return 1
     try:
         import re
 
+        chunk_size = 128 * 1024
+        overlap = 1024
+        pages_count = 0
+        parent_count = 0
+
+        pages_pattern = re.compile(rb"/Type\s*/Page\b")
+        parent_pattern = re.compile(rb"/Parent\s*\d+\s*\d+\s*R")
+        count_pattern = re.compile(rb"/Type\s*/Pages.*?/Count\s*(\d+)", re.DOTALL)
+
+        # Check for small or empty/dummy file first
         with open(working_path, "rb") as f:
-            content = f.read()
-            if b"Dummy PDF Content" in content:
+            header = f.read(1024)
+            if b"Dummy PDF Content" in header:
                 return 1
-            pages = re.findall(rb"/Type\s*/Page\b", content)
-            count = len(pages)
-            if count > 0:
-                return count
-            match = re.search(rb"/Type\s*/Pages.*?/Count\s*(\d+)", content, re.DOTALL)
-            if match:
-                return int(match.group(1))
-            parent_count = len(re.findall(rb"/Parent\s*\d+\s*\d+\s*R", content))
-            if parent_count > 0:
-                return parent_count
+
+        # We first do a pass to count occurrences of Page and Parent.
+        with open(working_path, "rb") as f:
+            buffer = b""
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                content = buffer + chunk
+                pages_count += len(pages_pattern.findall(content))
+                parent_count += len(parent_pattern.findall(content))
+                
+                # Keep overlap in buffer
+                if len(content) > overlap:
+                    buffer = content[-overlap:]
+                else:
+                    buffer = content
+
+        if pages_count > 0:
+            return pages_count
+
+        # If no /Type /Page found, search for the count pattern
+        with open(working_path, "rb") as f:
+            buffer = b""
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                content = buffer + chunk
+                match = count_pattern.search(content)
+                if match:
+                    return int(match.group(1))
+                if len(content) > overlap:
+                    buffer = content[-overlap:]
+                else:
+                    buffer = content
+
+        if parent_count > 0:
+            return parent_count
+
     except Exception as exc:
         logger.warning("[Worker] Failed to determine PDF page count: %s", exc)
     return 1
+
 
 
 # Maximum field lengths — prevents Cloud Run OOM and DB varchar crashes (Gap E-17)

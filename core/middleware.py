@@ -123,9 +123,11 @@ class DynamicCsrfTrustedOriginsMiddleware:
         # 2. Reset the trusted origins to the base configuration to prevent stale whitelist buildup
         settings.CSRF_TRUSTED_ORIGINS = list(DynamicCsrfTrustedOriginsMiddleware._base_origins)
 
-        # 3. Always trust the host origin (derived from the current request Host header)
-        # to ensure CSRF protection matches the active domain serving the request.
-        self._trust_host_origin(request)
+        # 3. Trust the host origin (derived from the current request Host header)
+        # only in DEBUG mode to support local tunnels/dev servers.
+        # Enforcing static/configured origins in production prevents CSRF bypass.
+        if settings.DEBUG:
+            self._trust_host_origin(request)
 
         # 4. Trust headers if DEBUG is enabled, or if they point to a local loopback interface
         self._trust_header_origins_if_safe(request)
