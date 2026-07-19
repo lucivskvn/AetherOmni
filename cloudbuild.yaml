@@ -170,6 +170,11 @@ steps:
 
         echo "=== Post-deploy documentation sync ==="
 
+        if [ ! -d .git ]; then
+          echo "No .git directory found. Skipping repository documentation sync."
+          exit 0
+        fi
+
         # Configure git identity for the commit
         git config user.name  "cloud-build[bot]"
         git config user.email "cloud-build[bot]@aetheromni.fainko.cloud"
