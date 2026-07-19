@@ -207,30 +207,30 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
 
     # Badge block — use sentinel if present, else inline patch
     badge_block = (
-        f'[![Version](https://img.shields.io/badge/version-{v["badge_ver"]}-blue.svg)]'
-        f'(https://github.com/lucivskvn/AetherOmni)\n'
-        f'[![Last Updated](https://img.shields.io/badge/last%20updated-'
-        f'{v["today"].replace("-", "--")}-green.svg)](#)\n'
-        f'[![Commit](https://img.shields.io/badge/commit-{v["sha"]}-lightgrey.svg)](#)'
+        f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)]"
+        f"(https://github.com/lucivskvn/AetherOmni)\n"
+        f"[![Last Updated](https://img.shields.io/badge/last%20updated-"
+        f"{v['today'].replace('-', '--')}-green.svg)](#)\n"
+        f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](#)"
     )
 
     text, replaced = _replace_sentinel(text, "badges", badge_block)
     if not replaced:
         text = re.sub(
             r"\[!\[Version\]\(https://img\.shields\.io/badge/version-[^\)]+\)\]\([^\)]*\)",
-            f'[![Version](https://img.shields.io/badge/version-{v["badge_ver"]}-blue.svg)]'
-            f'(https://github.com/lucivskvn/AetherOmni)',
+            f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)]"
+            f"(https://github.com/lucivskvn/AetherOmni)",
             text,
         )
         text = re.sub(
             r"\[!\[Last Updated\]\(https://img\.shields\.io/badge/last%20updated-[^\)]+\)\]\([^\)]*\)",
-            f'[![Last Updated](https://img.shields.io/badge/last%20updated-'
-            f'{v["today"].replace("-", "--")}-green.svg)](#)',
+            f"[![Last Updated](https://img.shields.io/badge/last%20updated-"
+            f"{v['today'].replace('-', '--')}-green.svg)](#)",
             text,
         )
         text = re.sub(
             r"\[!\[Commit\]\(https://img\.shields\.io/badge/commit-[^\)]+\)\]\([^\)]*\)",
-            f'[![Commit](https://img.shields.io/badge/commit-{v["sha"]}-lightgrey.svg)](#)',
+            f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](#)",
             text,
         )
 
@@ -246,13 +246,13 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     if scores.get("objective"):
         text = re.sub(
             r"(Current Objective/Mechanical Score:\s+\*\*)\d+\.?\d*(/100\*\*)",
-            rf'\g<1>{scores["objective"]}\g<2>',
+            rf"\g<1>{scores['objective']}\g<2>",
             text,
         )
     if scores.get("strict"):
         text = re.sub(
             r"(Current Strict Code Health Score:\s+\*\*)\d+\.?\d*(/100\*\*)",
-            rf'\g<1>{scores["strict"]}\g<2>',
+            rf"\g<1>{scores['strict']}\g<2>",
             text,
         )
 
@@ -261,7 +261,7 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
         return False
 
     readme.write_text(text, encoding="utf-8")
-    print(f'[OK]   README.md — {v["badge_ver"]} | {v["today"]} | sha:{v["sha"]}')
+    print(f"[OK]   README.md — {v['badge_ver']} | {v['today']} | sha:{v['sha']}")
     return True
 
 
@@ -277,7 +277,7 @@ def update_gcp_guide(v: dict) -> bool:
     original = guide.read_text(encoding="utf-8")
     text = re.sub(
         r"(# Google Cloud Run Production Deployment Guide \(Version )\S+(\))",
-        rf'\g<1>{v["semver"]}\g<2>',
+        rf"\g<1>{v['semver']}\g<2>",
         original,
     )
 
@@ -286,7 +286,7 @@ def update_gcp_guide(v: dict) -> bool:
         return False
 
     guide.write_text(text, encoding="utf-8")
-    print(f'[OK]   gcp_deployment_guide.md — heading updated to v{v["semver"]}')
+    print(f"[OK]   gcp_deployment_guide.md — heading updated to v{v['semver']}")
     return True
 
 
@@ -310,13 +310,13 @@ def update_service_yamls(v: dict) -> bool:
         if not f.exists():
             continue
         original = f.read_text(encoding="utf-8")
-        text = pattern.sub(rf'\g<1>{v["release_ver"]}\g<2>', original)
+        text = pattern.sub(rf"\g<1>{v['release_ver']}\g<2>", original)
         if text != original:
             f.write_text(text, encoding="utf-8")
-            print(f'[OK]   {fname} — RELEASE_VERSION → {v["release_ver"]}')
+            print(f"[OK]   {fname} — RELEASE_VERSION → {v['release_ver']}")
             changed = True
         else:
-            print(f'[INFO] {fname} — RELEASE_VERSION already {v["release_ver"]}')
+            print(f"[INFO] {fname} — RELEASE_VERSION already {v['release_ver']}")
     return changed
 
 
@@ -342,12 +342,12 @@ def main() -> int:
         return 0
 
     print("AetherOmni Doc Updater")
-    print(f'  Semver        : {v["semver"]}')
-    print(f'  Release ver   : {v["release_ver"]}')
-    print(f'  Branch        : {v["branch"]}')
-    print(f'  Commit        : {v["sha"]} (total: {v["patch"]})')
-    print(f'  Date          : {v["today"]}')
-    print(f'  Dirty         : {v["dirty"]}')
+    print(f"  Semver        : {v['semver']}")
+    print(f"  Release ver   : {v['release_ver']}")
+    print(f"  Branch        : {v['branch']}")
+    print(f"  Commit        : {v['sha']} (total: {v['patch']})")
+    print(f"  Date          : {v['today']}")
+    print(f"  Dirty         : {v['dirty']}")
 
     test_count = get_test_count()
     scores = get_health_scores()

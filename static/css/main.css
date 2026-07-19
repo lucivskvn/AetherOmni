@@ -463,6 +463,15 @@ dialog.settings-dialog textarea {
     transition: var(--transition-smooth);
 }
 
+/* Hide native WebKit search input cancel button for custom clear control uniformity */
+.search-input::-webkit-search-cancel-button,
+.search-input::-webkit-search-decoration,
+.search-input::-webkit-search-results-button,
+.search-input::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
 [data-theme="dark"] dialog.settings-dialog input[type="text"],
 [data-theme="dark"] dialog.settings-dialog input[type="number"],
 [data-theme="dark"] dialog.settings-dialog input[type="url"],
