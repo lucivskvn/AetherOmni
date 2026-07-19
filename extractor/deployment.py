@@ -89,12 +89,30 @@ def get_gcp_project_details():
     or the local GCP Metadata Server.
     Gap E-25: returns None for project_id if not configured (no hardcoded fallback).
     Gap E-39: skips metadata server in DEBUG mode to avoid blocking local developers.
+    Also falls back to local gcloud CLI config for ease of local development.
     """
     from django.conf import settings as django_settings
 
     project_id = os.getenv("GCP_PROJECT_ID") or os.getenv("GCP_PROJECT", "")
     region = os.getenv("GCP_REGION", "asia-southeast1")
     project_number = None
+
+    # Fallback to local gcloud config if not set in environment (both in debug/non-debug)
+    if not project_id:
+        try:
+            import subprocess  # nosec B404
+            res = subprocess.run(
+                ["gcloud", "config", "get-value", "project"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )  # nosec B603 B607
+            if res.returncode == 0 and res.stdout.strip():
+                project_id = res.stdout.strip()
+                logger.info("[Deployment] Auto-detected local gcloud project ID: %s", project_id)
+        except Exception:
+            pass
 
     if not django_settings.DEBUG:
         if not project_id:
