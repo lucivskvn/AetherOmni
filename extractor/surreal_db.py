@@ -656,8 +656,12 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     for chunk in chunk_payloads:
         chunk["doc_uuid"] = doc_uuid
 
-    # Bulk insert in a single network request to prevent HTTP connection timeouts
-    _run("INSERT INTO chunks $payloads;", {"payloads": chunk_payloads})
+    # Insert chunks in small batches to prevent HTTP 413 Payload Too Large errors
+    # resulting from large serialized vector embedding payloads in a single request.
+    batch_size = 15
+    for i in range(0, len(chunk_payloads), batch_size):
+        batch = chunk_payloads[i : i + batch_size]
+        _run("INSERT INTO chunks $payloads;", {"payloads": batch})
 
 
 def delete_chunks(doc_uuid: str) -> None:
