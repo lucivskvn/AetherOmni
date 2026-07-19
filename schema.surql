@@ -23,7 +23,7 @@ DEFINE FIELD IF NOT EXISTS page_count        ON documents TYPE int    DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS raw_markdown      ON documents TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS refined_markdown  ON documents TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS yaml_metadata     ON documents TYPE string DEFAULT "";
-DEFINE FIELD IF NOT EXISTS qa_dataset        ON documents TYPE array  DEFAULT [];
+DEFINE FIELD IF NOT EXISTS qa_dataset        ON documents TYPE any  DEFAULT [];
 DEFINE FIELD IF NOT EXISTS input_tokens      ON documents TYPE int    DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS output_tokens     ON documents TYPE int    DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS cost_usd          ON documents TYPE float  DEFAULT 0.0;
