@@ -1,0 +1,83 @@
+name: Auto-Update Documentation
+
+on:
+  push:
+    branches:
+      - current
+      - main
+    paths-ignore:
+      # Prevent infinite loop: don't re-trigger when only docs change
+      - "README.md"
+      - "gcp_deployment_guide.md"
+      - "service.yaml"
+      - "service-worker.yaml"
+      - ".github/workflows/update_docs.yml"
+
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+
+jobs:
+  update-docs:
+    name: Refresh Documentation & Version Stamps
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # needed to commit updated docs back to the branch
+
+    steps:
+      # ── 1. Checkout with full history so git log works ─────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 2. Set up Python (no extra deps needed — stdlib only) ──────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── 3. Count unit tests and cache the result ───────────────────────────
+      - name: Count unit tests
+        run: |
+          # Install minimal Django deps to run --list-tests (no DB needed)
+          pip install django==6.0.7 python-dotenv==1.2.2 --quiet
+          export DJANGO_SETTINGS_MODULE=core.settings
+          export DATABASE_URL=sqlite:///:memory:
+          export SURREALDB_OFFLINE=True
+          export DJANGO_SECRET_KEY=ci-dummy-key-not-used-in-production
+          COUNT=$(python -m django test extractor --list 2>/dev/null | grep -c "^extractor\." || echo "")
+          if [ -n "$COUNT" ] && [ "$COUNT" -gt 0 ]; then
+            echo "$COUNT" > .test_count
+            echo "Test count: $COUNT"
+          else
+            echo "Could not determine test count, skipping .test_count update."
+          fi
+        continue-on-error: true
+
+      # ── 4. Run the documentation updater ──────────────────────────────────
+      - name: Update documentation
+        run: python scripts/update_docs.py --ci
+
+      # ── 5. Check if anything changed ──────────────────────────────────────
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No documentation changes to commit."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --name-only
+          fi
+
+      # ── 6. Commit and push updated docs back to the branch ─────────────────
+      - name: Commit and push updated docs
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md gcp_deployment_guide.md service.yaml service-worker.yaml .test_count || true
+          git commit -m "docs: auto-update version badges, stamps, and metadata [skip ci]"
+          git push

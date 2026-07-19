@@ -33,14 +33,20 @@ steps:
     id: 'push-sha'
     waitFor: ['build']
 
-  # 4. Prepare YAML configurations
+  # 4. Prepare YAML configurations — inject dynamic RELEASE_VERSION from build timestamp
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        # Stamp the docker image tag
         sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service.yaml
         sed -i "s|web-app:latest|web-app:$BUILD_ID|g" service-worker.yaml
+        # Inject a live RELEASE_VERSION = <date>-<short-sha> so the UI always shows the correct build
+        RELEASE_STAMP="$(date -u +%Y%m%d-%H%M%S)-${BUILD_ID:0:8}"
+        sed -i "s|value: \"[0-9]\{8\}-[0-9]\{6\}\"|value: \"$RELEASE_STAMP\"|g" service.yaml
+        sed -i "s|value: \"[0-9]\{8\}-[0-9]\{6\}\"|value: \"$RELEASE_STAMP\"|g" service-worker.yaml
+        echo "RELEASE_VERSION set to: $RELEASE_STAMP"
     id: 'prepare-yaml'
     waitFor: ['build']
 
