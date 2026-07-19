@@ -84,12 +84,52 @@ def _audit_log_to_dict(log) -> dict:
     }
 
 
+_detected_url: str | None = None
+_detected_ns: str | None = None
+
+
 def _get_surreal_url() -> str:
-    url = getattr(settings, "SURREAL_URL", os.getenv("SURREAL_URL", "http://localhost:8001"))
+    global _detected_url
+    if _detected_url:
+        return _detected_url
+
+    # Check settings/env first
+    url = getattr(settings, "SURREAL_URL", None) or os.getenv("SURREAL_URL")
+    if not url:
+        # Detect dynamically
+        import httpx
+        local_urls = ["http://localhost:8001", "http://surrealdb:8000"]
+        detected = None
+        for l_url in local_urls:
+            try:
+                with httpx.Client(timeout=0.5) as client:
+                    r = client.get(l_url.rstrip("/") + "/health")
+                    if r.status_code == 200:
+                        detected = l_url
+                        break
+            except Exception:
+                continue
+
+        if not detected:
+            # Try remote production URL fallback
+            prod_url = "https://surrealdb.fainko.cloud"
+            try:
+                with httpx.Client(timeout=1.0) as client:
+                    r = client.get(prod_url + "/health")
+                    if r.status_code == 200:
+                        detected = prod_url
+            except Exception:
+                pass
+
+        url = detected or "http://localhost:8001"
+
     if url.startswith("ws://") or url.startswith("wss://"):
         if not url.endswith("/rpc"):
             url = url.rstrip("/") + "/rpc"
-    return url
+
+    _detected_url = url
+    logger.info("[SurrealDB] Using database URL: %s", _detected_url)
+    return _detected_url
 
 
 def _get_surreal_auth() -> dict:
@@ -98,8 +138,79 @@ def _get_surreal_auth() -> dict:
     return {"username": user, "password": password}
 
 
+async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
+    global _detected_ns
+    if _detected_ns:
+        return _detected_ns
+
+    # Check if SURREAL_NS is explicitly set in environment/settings (not default)
+    env_ns = os.getenv("SURREAL_NS") or getattr(settings, "SURREAL_NS", None)
+    if env_ns and env_ns not in ("", "aetheromni", "omnirag"):
+        _detected_ns = env_ns
+        return _detected_ns
+
+    fallback_ns = env_ns or "aetheromni"
+    try:
+        async with AsyncSurreal(url) as db:
+            await db.signin(auth)
+            root_info_res = await db.query("INFO FOR ROOT;")
+            namespaces = []
+            if root_info_res and isinstance(root_info_res, list):
+                first_el = root_info_res[0]
+                if isinstance(first_el, dict):
+                    if "result" in first_el and isinstance(first_el["result"], dict):
+                        namespaces = list(first_el["result"].get("namespaces", {}).keys())
+                    else:
+                        namespaces = list(first_el.get("namespaces", {}).keys())
+            elif isinstance(root_info_res, dict):
+                namespaces = list(root_info_res.get("namespaces", {}).keys())
+
+            if not namespaces:
+                _detected_ns = fallback_ns
+                return _detected_ns
+
+            # Prioritize canonical namespaces in scan order
+            pref = ["aetheromni", "omnirag"]
+            for p in reversed(pref):
+                if p in namespaces:
+                    namespaces.remove(p)
+                    namespaces.insert(0, p)
+
+            for ns in namespaces:
+                try:
+                    await db.use(ns, db_name)
+                    count_res = await db.query("SELECT count() FROM documents GROUP ALL;")
+                    count = 0
+                    if count_res and isinstance(count_res, list):
+                        first_el = count_res[0]
+                        if isinstance(first_el, dict):
+                            if "result" in first_el and isinstance(first_el["result"], list) and len(first_el["result"]) > 0:
+                                count = first_el["result"][0].get("count", 0)
+                            elif "count" in first_el:
+                                count = first_el.get("count", 0)
+                        elif isinstance(first_el, list) and len(first_el) > 0:
+                            count = first_el[0].get("count", 0)
+
+                    if count > 0:
+                        _detected_ns = ns
+                        logger.info("[SurrealDB] Dynamic auto-detection selected active namespace '%s' with %d documents.", ns, count)
+                        return _detected_ns
+                except Exception:
+                    continue
+
+            # Default to the first available namespace or fallback
+            _detected_ns = namespaces[0] if namespaces else fallback_ns
+            logger.info("[SurrealDB] Dynamic auto-detection fallback selected namespace: %s", _detected_ns)
+            return _detected_ns
+    except Exception as err:
+        logger.warning("[SurrealDB] Dynamic namespace detection failed, falling back to '%s': %s", fallback_ns, err)
+        _detected_ns = fallback_ns
+        return _detected_ns
+
+
 def _get_surreal_ns_db() -> tuple[str, str]:
-    ns = getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "aetheromni"))
+    global _detected_ns
+    ns = _detected_ns or getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "aetheromni"))
     db = getattr(settings, "SURREAL_DB", os.getenv("SURREAL_DB", "extractor"))
     return ns, db
 
@@ -107,7 +218,13 @@ def _get_surreal_ns_db() -> tuple[str, str]:
 async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
     url = _get_surreal_url()
     auth = _get_surreal_auth()
-    ns, db_name = _get_surreal_ns_db()
+    db_name = getattr(settings, "SURREAL_DB", os.getenv("SURREAL_DB", "extractor"))
+
+    global _detected_ns
+    if not _detected_ns and "INFO FOR ROOT" not in sql:
+        await _detect_active_namespace(url, auth, db_name)
+
+    ns, _ = _get_surreal_ns_db()
 
     try:
         async with AsyncSurreal(url) as db:
