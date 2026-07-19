@@ -1,4 +1,4 @@
-name: Auto-Update Documentation
+name: Auto-Update Documentation & Version
 
 on:
   push:
@@ -6,78 +6,138 @@ on:
       - current
       - main
     paths-ignore:
-      # Prevent infinite loop: don't re-trigger when only docs change
+      # Prevent infinite loop — these files are written by this workflow itself
       - "README.md"
       - "gcp_deployment_guide.md"
       - "service.yaml"
       - "service-worker.yaml"
       - ".github/workflows/update_docs.yml"
 
-  # Allow manual trigger from GitHub UI
+  # Allow manual trigger from GitHub UI or API
   workflow_dispatch:
 
 jobs:
-  update-docs:
-    name: Refresh Documentation & Version Stamps
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Job 1: Compute the canonical version from git and export it as an output
+  # ──────────────────────────────────────────────────────────────────────────────
+  compute-version:
+    name: Compute Version
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write   # needed to commit updated docs back to the branch
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      release_ver: ${{ steps.version.outputs.release_ver }}
+      badge_ver: ${{ steps.version.outputs.badge_ver }}
+      sha: ${{ steps.version.outputs.sha }}
+      today: ${{ steps.version.outputs.today }}
 
     steps:
-      # ── 1. Checkout with full history so git log works ─────────────────────
-      - name: Checkout repository
+      - name: Checkout (full history for commit count)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 2. Set up Python (no extra deps needed — stdlib only) ──────────────
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # ── 3. Count unit tests and cache the result ───────────────────────────
-      - name: Count unit tests
+      - name: Compute version from git
+        id: version
         run: |
-          # Install minimal Django deps to run --list-tests (no DB needed)
-          pip install django==6.0.7 python-dotenv==1.2.2 --quiet
-          export DJANGO_SETTINGS_MODULE=core.settings
-          export DATABASE_URL=sqlite:///:memory:
-          export SURREALDB_OFFLINE=True
-          export DJANGO_SECRET_KEY=ci-dummy-key-not-used-in-production
-          COUNT=$(python -m django test extractor --list 2>/dev/null | grep -c "^extractor\." || echo "")
+          # Run the script in --print-version mode to get the semver
+          SEMVER=$(python scripts/update_docs.py --print-version)
+          RELEASE_VER=$(python scripts/update_docs.py --print-release)
+          SHA=$(git rev-parse --short HEAD)
+          TODAY=$(date -u +%Y-%m-%d)
+          BADGE_VER="v${SEMVER}"
+
+          echo "semver=${SEMVER}"         >> "$GITHUB_OUTPUT"
+          echo "release_ver=${RELEASE_VER}" >> "$GITHUB_OUTPUT"
+          echo "badge_ver=${BADGE_VER}"   >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}"               >> "$GITHUB_OUTPUT"
+          echo "today=${TODAY}"           >> "$GITHUB_OUTPUT"
+
+          echo "=== Version computed ==="
+          echo "  Semver      : ${SEMVER}"
+          echo "  Release ver : ${RELEASE_VER}"
+          echo "  SHA         : ${SHA}"
+          echo "  Today       : ${TODAY}"
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Job 2: Refresh docs with the computed version + commit back to the branch
+  # ──────────────────────────────────────────────────────────────────────────────
+  update-docs:
+    name: Refresh Docs — ${{ needs.compute-version.outputs.release_ver }}
+    runs-on: ubuntu-latest
+    needs: compute-version
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── Optional: count unit tests ─────────────────────────────────────────
+      - name: Count unit tests (best effort)
+        run: |
+          pip install django==6.0.7 python-dotenv==1.2.2 --quiet 2>/dev/null
+          COUNT=$(python -m django test extractor --list \
+            --settings=core.settings \
+            2>/dev/null | grep -c "^extractor\." || echo "")
           if [ -n "$COUNT" ] && [ "$COUNT" -gt 0 ]; then
             echo "$COUNT" > .test_count
-            echo "Test count: $COUNT"
-          else
-            echo "Could not determine test count, skipping .test_count update."
+            echo "Test count cached: $COUNT"
           fi
+        env:
+          DATABASE_URL: "sqlite:///:memory:"
+          SURREALDB_OFFLINE: "True"
+          DJANGO_SECRET_KEY: "ci-dummy-key"
+          DJANGO_SETTINGS_MODULE: "core.settings"
         continue-on-error: true
 
-      # ── 4. Run the documentation updater ──────────────────────────────────
-      - name: Update documentation
+      # ── Run the updater ────────────────────────────────────────────────────
+      - name: Run documentation updater
         run: python scripts/update_docs.py --ci
 
-      # ── 5. Check if anything changed ──────────────────────────────────────
+      # ── Check and commit ───────────────────────────────────────────────────
       - name: Check for changes
-        id: check_changes
+        id: diff
         run: |
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No documentation changes to commit."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changed files:"
             git diff --name-only
           fi
 
-      # ── 6. Commit and push updated docs back to the branch ─────────────────
-      - name: Commit and push updated docs
-        if: steps.check_changes.outputs.changed == 'true'
+      - name: Commit updated docs back to branch
+        if: steps.diff.outputs.changed == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add README.md gcp_deployment_guide.md service.yaml service-worker.yaml .test_count || true
-          git commit -m "docs: auto-update version badges, stamps, and metadata [skip ci]"
+          git commit -m "docs: set version ${{ needs.compute-version.outputs.release_ver }} [skip ci]"
           git push
+
+      - name: Summary
+        run: |
+          echo "### 📦 Version: ${{ needs.compute-version.outputs.release_ver }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Semver | \`${{ needs.compute-version.outputs.semver }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Version | \`${{ needs.compute-version.outputs.release_ver }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit SHA | \`${{ needs.compute-version.outputs.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Date | ${{ needs.compute-version.outputs.today }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docs updated | ${{ steps.diff.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
