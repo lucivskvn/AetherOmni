@@ -372,6 +372,7 @@ def create_document(data: dict) -> dict:
 
 def update_document(doc_uuid: str, data: dict) -> dict:
     """Update fields on a document record in SurrealDB."""
+    doc_uuid = str(doc_uuid)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -436,6 +437,7 @@ def update_document(doc_uuid: str, data: dict) -> dict:
 
 def get_document(doc_uuid: str) -> dict | None:
     """Retrieve a single document record by UUID."""
+    doc_uuid = str(doc_uuid)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -585,6 +587,7 @@ def count_audit_logs() -> int:
 
 def delete_document(doc_uuid: str) -> None:
     """Delete document record and all associated chunks/cache entries."""
+    doc_uuid = str(doc_uuid)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -642,6 +645,7 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     Atomically replace all chunks for a document.
     Deletes existing chunks first, then bulk-inserts new ones in a single statement.
     """
+    doc_uuid = str(doc_uuid)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -666,6 +670,7 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
 
 def delete_chunks(doc_uuid: str) -> None:
     """Remove all vector chunks for a document."""
+    doc_uuid = str(doc_uuid)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -679,6 +684,7 @@ def delete_chunks(doc_uuid: str) -> None:
 
 def count_document_chunks(doc_uuid: str) -> int:
     """Returns the number of chunks stored in SurrealDB for the given doc_uuid."""
+    doc_uuid = str(doc_uuid)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -700,6 +706,7 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
     Returns a dictionary mapping doc_uuid to the number of chunks stored in SurrealDB
     for each doc_uuid in the provided list.
     """
+    doc_uuids = [str(u) for u in doc_uuids]
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):

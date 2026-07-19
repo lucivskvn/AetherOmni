@@ -45,7 +45,7 @@ class CloudTasksTestCase(TestCase):
         mock_client_class.return_value = mock_client
 
         # Mock project ID to return dummy
-        with self.settings(DEBUG=False, APP_URL="https://my-app.run.app"):
+        with self.settings(DEBUG=False, APP_URL="https://my-app.run.app", WORKER_URL="https://my-app.run.app"):
             cloud_tasks.enqueue("process_document", {"document_id": 99})
 
             # Check that the Cloud Tasks client was used to create a task
