@@ -29,7 +29,9 @@ def _get_ann_value(annotations_dicts, keys):
                 try:
                     return int(ann[key])
                 except (ValueError, TypeError) as num_err:
-                    logger.debug("[Deployment] Could not parse scaling annotation '%s' value '%s': %s", key, ann[key], num_err)
+                    logger.debug(
+                        "[Deployment] Could not parse scaling annotation '%s' value '%s': %s", key, ann[key], num_err
+                    )
     return None
 
 
