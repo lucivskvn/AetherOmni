@@ -474,8 +474,6 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
                 HTTP_ORIGIN="https://custom-tunnel-domain.example.com",
             )
 
-            # Ensure DEBUG is True and custom host is allowed during test execution
-            with self.settings(DEBUG=True, ALLOWED_HOSTS=["custom-tunnel-domain.example.com"]):
             # Ensure DEBUG is True and ALLOWED_HOSTS permits test domain
             with self.settings(DEBUG=True, ALLOWED_HOSTS=["custom-tunnel-domain.example.com", "localhost", "127.0.0.1"]):
                 # Call middleware

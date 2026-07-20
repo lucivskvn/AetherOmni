@@ -2,7 +2,7 @@
 SurrealDB REST Client Adapter — AetherOmni v2.0
 
 Implements a thread-safe connection pool using a single global httpx.Client
-instance (Gap B-10) to prevent socket exhaustion under concurrent request load.
+instance to prevent socket exhaustion under concurrent request load.
 
 All public methods execute SurrealQL via the /sql endpoint and return
 plain Python dicts/lists — no ORM coupling.

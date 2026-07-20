@@ -23,7 +23,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# ── Knative scaling annotation constants (Gap E-18) ───────────────────────────
+# ── Knative scaling annotation constants ──────────────────────────────────────
 KNATIVE_MIN_SCALE = "autoscaling.knative.dev/minScale"
 KNATIVE_MAX_SCALE = "autoscaling.knative.dev/maxScale"
 
@@ -68,7 +68,7 @@ from extractor.rag import (
     query_semantic_knowledge_rag,
 )
 
-# ── Dual-Write Audit Log Helper (Gap E-24) ────────────────────────────────────
+# ── Dual-Write Audit Log Helper ──────────────────────────────────────────────
 
 
 def log_audit_event(
@@ -126,7 +126,7 @@ def log_audit_event(
         logger.warning("[AuditLog] Failed to write SurrealDB audit entry: %s", exc)
 
 
-# ── Supabase Realtime Broadcast Helper (Gap D-7, E-42) ───────────────────────
+# ── Supabase Realtime Broadcast Helper ────────────────────────────────────────
 
 
 def validate_url_scheme(url: str) -> None:
@@ -145,7 +145,7 @@ def validate_url_scheme(url: str) -> None:
 def broadcast_status_change(doc_uuid: str, status: str) -> None:
     """
     Broadcast a document status change event over Supabase Realtime.
-    Gap E-42: gracefully handles missing/invalid Supabase credentials without crashing.
+    Gracefully handles missing/invalid Supabase credentials without crashing.
     This is a fire-and-forget helper — failures are logged only.
     """
     from django.conf import settings
@@ -190,7 +190,7 @@ def broadcast_status_change(doc_uuid: str, status: str) -> None:
         with urllib.request.urlopen(req, timeout=3) as response:  # nosec B310 nosemgrep
             logger.debug("[Broadcast] Status '%s' sent for doc %s: %s", status, doc_uuid, response.status)
     except Exception as exc:
-        # Gap E-42: never crash a task because Supabase is unavailable
+        # Never crash a task because Supabase is unavailable
         logger.warning("[Broadcast] Failed to broadcast status '%s' for doc %s: %s", status, doc_uuid, exc)
 
 

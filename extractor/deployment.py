@@ -87,8 +87,8 @@ def get_gcp_project_details():
     """
     Retrieves the GCP project ID and region from environment variables
     or the local GCP Metadata Server.
-    Gap E-25: returns None for project_id if not configured (no hardcoded fallback).
-    Gap E-39: skips metadata server in DEBUG mode to avoid blocking local developers.
+    Returns None for project_id if not configured (no hardcoded fallback).
+    Skips metadata server in DEBUG mode to avoid blocking local developers.
     Also falls back to local gcloud CLI config for ease of local development.
     """
     from django.conf import settings as django_settings
@@ -144,12 +144,12 @@ def get_gcp_project_details():
 def get_gcp_access_token():
     """
     Fetches an OAuth2 access token from the local GCP Metadata Server.
-    Gap E-39: returns None immediately in DEBUG mode to avoid blocking local devs.
+    Returns None immediately in DEBUG mode to avoid blocking local devs.
     """
     from django.conf import settings as django_settings
 
     if django_settings.DEBUG:
-        logger.debug("[Deployment] Skipping metadata credential fetch in DEBUG mode (E-39).")
+        logger.debug("[Deployment] Skipping metadata credential fetch in DEBUG mode.")
         return None
 
     try:

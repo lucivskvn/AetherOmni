@@ -78,7 +78,7 @@ logger = logging.getLogger(__name__)
 _raw_secret = os.getenv("DJANGO_SECRET_KEY", "")
 if not _raw_secret:
     if not DEBUG:
-        # Gap F-11: fail-closed in production if secret key is absent
+        # Fail-closed in production if secret key is absent
         raise ImproperlyConfigured(
             "DJANGO_SECRET_KEY environment variable is not set. Production deployments require an explicit secret key."
         )
@@ -207,7 +207,7 @@ if GS_BUCKET_NAME:
     DEFAULT_STORAGE_BACKEND = "storages.backends.gcloud.GoogleCloudStorage"
 else:
     DEFAULT_STORAGE_BACKEND = "django.core.files.storage.FileSystemStorage"
-    # Gap I-7: warn operators that local storage is ephemeral on Cloud Run
+    # Warn operators that local storage is ephemeral on Cloud Run
     if not DEBUG:
         logger.warning(
             "[Storage] GS_BUCKET_NAME is not set in production. "
@@ -303,7 +303,7 @@ csrf_origins = os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "")
 if csrf_origins:
     CSRF_TRUSTED_ORIGINS.extend([o.strip() for o in csrf_origins.split(",") if o.strip()])
 
-# 2. Gap F-10: auto-append APP_URL so initial login is never blocked by CSRF
+# 2. Auto-append APP_URL so initial login is never blocked by CSRF
 _app_url = APP_URL.rstrip("/")
 if _app_url and _app_url not in CSRF_TRUSTED_ORIGINS:
     CSRF_TRUSTED_ORIGINS.append(_app_url)

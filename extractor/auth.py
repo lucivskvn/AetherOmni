@@ -45,7 +45,7 @@ def _sync_supabase_user(
     """
     Retrieve or create a Django User from a successful Supabase auth response.
     Promotes to superuser/staff if the email matches the Supabase admin address.
-    Stores the Supabase user_id in the session (Gap E-43).
+    Stores the Supabase user_id in the session.
     """
     import hashlib
     from urllib.parse import urlparse
@@ -99,7 +99,7 @@ def _sync_supabase_user(
     else:
         logger.info("[Auth] Supabase user session established: %s", user_email)
 
-    # Gap E-43: store Supabase user_id on the request session for audit log linkage
+    # Store Supabase user_id on the request session for audit log linkage
     supabase_user_id = user_info.get("id", "")
     if request and supabase_user_id:
         request.session["supabase_user_id"] = supabase_user_id
@@ -144,7 +144,7 @@ class SupabaseAuthBackend(ModelBackend):
                 return None
 
         # 3. Securely dispatch HTTPS POST to Supabase GoTrue Auth REST endpoint
-        # Gap F-6: validate email format to prevent auth bypass via crafted usernames
+        # Validate email format to prevent auth bypass via crafted usernames
         import re
 
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", target_email):

@@ -112,7 +112,7 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
     return 1
 
 
-# Maximum field lengths — prevents Cloud Run OOM and DB varchar crashes (Gap E-17)
+# Maximum field lengths — prevents Cloud Run OOM and DB varchar crashes
 _MAX_TITLE_LEN = 255
 _MAX_AUTHOR_LEN = 255
 _MAX_LANGUAGE_LEN = 50
@@ -152,7 +152,7 @@ def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: b
             details=details,
         )
 
-    # Broadcast failure outside transaction (Gap D-7)
+    # Broadcast failure outside transaction
     try:
         broadcast_status_change(doc_uuid, "FAILED")
     except Exception as exc:
@@ -220,7 +220,7 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
 def _get_working_path(doc: dict) -> tuple[str, str | None]:
     """
     Get a local file path for processing.
-    For GCS-backed files, streams content in chunks to /tmp to avoid RAM spikes (Gap E-19).
+    For GCS-backed files, streams content in chunks to /tmp to avoid RAM spikes.
     Returns (working_path, temp_path_or_None).
     """
     temp_local_path = None
@@ -247,7 +247,7 @@ def _get_working_path(doc: dict) -> tuple[str, str | None]:
     temp_local_path = temp_file_obj.name
     temp_file_obj.close()
     try:
-        # Gap E-19: stream in 64KB chunks to prevent Cloud Run OOM
+        # Stream in 64KB chunks to prevent Cloud Run OOM
         if isinstance(doc, dict):
             with default_storage.open(file_rel_path, "rb") as in_f:
                 with open(temp_local_path, "wb") as out_f:
@@ -827,7 +827,7 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
             for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
         ]
 
-        # Gap B-8: delete old SurrealDB chunks first, then insert new ones atomically
+        # Delete old SurrealDB chunks first, then insert new ones atomically
         surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
 
         expires_at = timezone.now() + timedelta(days=retention_days)
@@ -971,7 +971,7 @@ def process_document_task(payload: dict) -> None:
 def reembed_edited_document_task(payload: dict) -> None:
     """
     Lightweight task to re-chunk and re-embed a document after manual user edits.
-    Gap B-8: explicitly purges old SurrealDB chunks before inserting new ones.
+    Explicitly purges old SurrealDB chunks before inserting new ones.
     """
     doc_uuid = payload.get("document_uuid") or payload.get("document_id")
     if not doc_uuid:
@@ -994,7 +994,7 @@ def reembed_edited_document_task(payload: dict) -> None:
         chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
         chunks = chunk_document_semantically(text_for_chunks, max_chunk_size=chunk_size)
 
-        # Gap B-8: always purge old SurrealDB chunks on re-embed
+        # Always purge old SurrealDB chunks on re-embed
         surreal_db.delete_chunks(doc_uuid)
 
         if chunks:
@@ -1078,13 +1078,13 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
     if file_hash in hash_counts:
         hash_counts[file_hash] = max(0, hash_counts[file_hash] - 1)
 
-    # Gap B-8: cascade delete SurrealDB chunks for compliance
+    # Cascade delete SurrealDB chunks for compliance
     try:
         surreal_db.delete_chunks(doc_uuid)
     except Exception as exc:
         logger.warning("[Cron] Failed to delete SurrealDB chunks for %s: %s", doc_uuid, exc)
 
-    # Gap E-30: write audit log before deletion
+    # Write audit log before deletion
     log_audit_event(
         action=AuditAction.DELETE,
         user=None,
@@ -1098,9 +1098,9 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
 def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     """
     Reference-counted document garbage disposal.
-    Gap B-8: cascades SurrealDB chunk deletions on expiry.
-    Gap B-9: purges expired SurrealDB RAG cache entries.
-    Gap E-30: writes audit entries for each purged document.
+    Cascades SurrealDB chunk deletions on expiry.
+    Purges expired SurrealDB RAG cache entries.
+    Writes audit entries for each purged document.
     """
     from extractor import surreal_db
 
@@ -1142,7 +1142,7 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
         _cleanup_single_expired_doc(doc, hash_counts, surreal_db)
         purged_count += 1
 
-    # Gap B-9: purge expired SurrealDB RAG cache entries
+    # Purge expired SurrealDB RAG cache entries
     try:
         pruned = surreal_db.purge_expired_rag_cache()
         if pruned:
@@ -1175,7 +1175,7 @@ def _reap_single_stale_doc(doc: dict) -> bool:
     uploaded_by_id = doc.get("uploaded_by_id")
     user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
-    # Gap E-31: write audit log for reaped task
+    # Write audit log for reaped task
     log_audit_event(
         action=AuditAction.EXTRACTION_FAILED,
         user=user,
@@ -1186,7 +1186,7 @@ def _reap_single_stale_doc(doc: dict) -> bool:
         ),
     )
 
-    # Gap E-31: broadcast status update so dashboard updates without hard reload
+    # Broadcast status update so dashboard updates without hard reload
     try:
         broadcast_status_change(doc_uuid, "FAILED")
     except Exception as exc:
@@ -1198,7 +1198,7 @@ def _reap_single_stale_doc(doc: dict) -> bool:
 def reap_stale_tasks(_payload: dict | None = None) -> int:
     """
     Marks documents stuck in transient states for >15 minutes as FAILED.
-    Gap E-31: writes audit entries and broadcasts status updates for reaped tasks.
+    Writes audit entries and broadcasts status updates for reaped tasks.
     """
     logger.info("[Reaper] Scanning for stale active tasks...")
     stale_threshold = timezone.now() - timezone.timedelta(minutes=15)
