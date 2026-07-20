@@ -37,8 +37,8 @@ class CloudTasksTestCase(TestCase):
         mock_details.return_value = {
             "project_id": "my-gcp-project",
             "region": "asia-southeast1",
-            "web_service": "data-extractor-web",
-            "worker_service": "data-extractor-worker",
+            "web_service": "aether-web",
+            "worker_service": "aether-worker",
         }
 
         mock_client = MagicMock()

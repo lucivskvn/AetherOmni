@@ -1558,19 +1558,19 @@ def _resolve_worker_config(worker_config_default):
 
     worker_config = worker_config_default
     gcp_active = False
-    worker_service_name = "data-extractor-worker"
+    worker_service_name = "aether-worker"
 
     try:
-        worker_real = get_service_config("data-extractor-worker")
+        worker_real = get_service_config("aether-worker")
         if worker_real:
             worker_config = worker_real
             gcp_active = True
     except Exception as e:
         logger.warning(f"Could not load worker config from GCP (local fallback): {e}")
         try:
-            web_real = get_service_config("data-extractor-web")
+            web_real = get_service_config("aether-web")
             if web_real:
-                worker_service_name = "data-extractor-web"
+                worker_service_name = "aether-web"
                 worker_config = web_real
                 gcp_active = True
         except Exception as e_web:
@@ -1632,13 +1632,13 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         }
         worker_logs = []
         web_logs = []
-        worker_service_name = "data-extractor-worker"
+        worker_service_name = "aether-worker"
         gcp_active = False
 
         worker_config, gcp_active, worker_service_name = _resolve_worker_config(worker_config)
 
         try:
-            web_real = get_service_config("data-extractor-web")
+            web_real = get_service_config("aether-web")
             if web_real:
                 web_config = web_real
         except Exception as e:
@@ -1663,7 +1663,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             worker_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
 
         try:
-            web_logs = get_service_logs("data-extractor-web", limit=50)
+            web_logs = get_service_logs("aether-web", limit=50)
         except Exception as e:
             web_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
 
@@ -1706,15 +1706,15 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             return redirect("deployment_controller")
 
         # Resolve which service to scale on GCP
-        target_service = "data-extractor-worker"
+        target_service = "aether-worker"
         try:
-            get_service_config("data-extractor-worker")
+            get_service_config("aether-worker")
         except (OSError, ValueError, RuntimeError):
             try:
-                get_service_config("data-extractor-web")
-                target_service = "data-extractor-web"
+                get_service_config("aether-web")
+                target_service = "aether-web"
             except Exception as exc:
-                logger.debug("Failed to check fallback service data-extractor-web: %s", exc)
+                logger.debug("Failed to check fallback service aether-web: %s", exc)
 
         try:
             update_service_scale(target_service, min_scale, max_scale)

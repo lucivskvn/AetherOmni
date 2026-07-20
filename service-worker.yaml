@@ -1,7 +1,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: data-extractor-worker
+  name: aether-worker
   namespace: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
   labels:
     cloud.googleapis.com/location: asia-southeast1
@@ -20,7 +20,7 @@ spec:
         - containerPort: 8080
         env:
         - name: RELEASE_VERSION
-          value: "v1.2.160+2dfafd2"
+          value: "v1.2.161+90090ba-dirty"
         - name: DJANGO_DEBUG
           value: "False"
         - name: GS_BUCKET_NAME
@@ -38,7 +38,7 @@ spec:
         - name: GCP_QUEUE_NAME
           value: "extractor-tasks"
         - name: APP_URL
-          value: "https://data-extractor-worker-751922320980.asia-southeast1.run.app"
+          value: "https://aether-worker-751922320980.asia-southeast1.run.app"
         - name: SURREAL_NS
           value: "aetheromni"
         - name: SURREAL_DB
