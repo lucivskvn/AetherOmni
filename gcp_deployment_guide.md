@@ -1,4 +1,4 @@
-# Google Cloud Run Production Deployment Guide (Version 1.2.139)
+# Google Cloud Run Production Deployment Guide (Version 1.2.140)
 
 This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
 
