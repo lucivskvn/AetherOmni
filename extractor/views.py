@@ -845,8 +845,10 @@ class DocumentDeleteView(LoginRequiredMixin, View):
             try:
                 from django.core.files.storage import default_storage
 
-                if default_storage.exists(file_rel_path):
-                    default_storage.delete(file_rel_path)
+                # Ensure file_rel_path is a valid non-empty string path
+                path_str = str(file_rel_path or "").strip()
+                if path_str and default_storage.exists(path_str):
+                    default_storage.delete(path_str)
                 logger.info("[De-duplication Delete] Purged file hash %s physically.", file_hash)
             except Exception as e:
                 logger.warning("[De-duplication Delete] Failed to physically delete file for hash %s: %s", file_hash, e)
@@ -1083,8 +1085,10 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
 
     if shared_references == 0:
         try:
-            if default_storage.exists(file_rel_path):
-                default_storage.delete(file_rel_path)
+            # Ensure file_rel_path is a valid non-empty string path
+            path_str = str(file_rel_path or "").strip()
+            if path_str and default_storage.exists(path_str):
+                default_storage.delete(path_str)
         except Exception as e:
             logger.warning("[Bulk Delete] Failed to physically delete file: %s", e)
 
