@@ -41,6 +41,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 12. Global search keyboard shortcuts for advanced curation UX
     initializeSearchShortcuts();
+
+    // 13. Dynamic instant client-side table filtering
+    initializeLibraryFilter();
 });
 
 /**
@@ -72,6 +75,57 @@ function initializeAlerts() {
         const card = document.getElementById(targetId);
         if (card) {
             dismissCard(card);
+        }
+    });
+}
+
+
+/**
+ * Dynamic instant client-side filtering for the Library documents table.
+ */
+function initializeLibraryFilter() {
+    const filterInput = document.getElementById('table-filter');
+    if (!filterInput) return;
+
+    filterInput.addEventListener('input', () => {
+        const query = filterInput.value.toLowerCase().trim();
+        const rows = document.querySelectorAll('.files-panel table tbody tr');
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length < 2) return; // Skip empty state or special rows
+            if (row.id === 'table-filter-empty-row') return; // Skip our own empty row
+
+            // Search title (index 1) and author/metadata text (index 2) safely
+            const titleText = cells[1] ? cells[1].textContent : '';
+            const metaText = cells[2] ? cells[2].textContent : '';
+            const textToSearch = (titleText + ' ' + metaText).toLowerCase();
+            const matches = textToSearch.includes(query);
+            row.style.display = matches ? '' : 'none';
+            if (matches) visibleCount++;
+        });
+
+        // Dynamic filtered empty-state block
+        let emptyStateRow = document.getElementById('table-filter-empty-row');
+        if (visibleCount === 0 && rows.length > 0 && query !== '') {
+            if (!emptyStateRow) {
+                emptyStateRow = document.createElement('tr');
+                emptyStateRow.id = 'table-filter-empty-row';
+                emptyStateRow.innerHTML = `
+                    <td colspan="6" class="empty-table-cell" style="text-align: center; padding: 32px 16px;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted); margin-bottom: 12px; display: inline-block;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
+                        <p id="table-filter-empty-text" style="margin: 0; font-size: 13px; color: var(--text-muted); font-weight: 500;"></p>
+                    </td>
+                `;
+                document.querySelector('.files-panel table tbody').appendChild(emptyStateRow);
+            }
+            const emptyTextEl = emptyStateRow.querySelector('#table-filter-empty-text');
+            if (emptyTextEl) {
+                emptyTextEl.textContent = `No documents match your filter term "${filterInput.value}".`;
+            }
+        } else if (emptyStateRow) {
+            emptyStateRow.remove();
         }
     });
 }
