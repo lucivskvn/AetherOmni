@@ -5,9 +5,9 @@ AetherOmni is a secure, high-performance web application and background worker a
 <img src="scorecard.png" width="100%">
 
 <!-- auto:badges -->
-[![Version](https://img.shields.io/badge/version-v1.2.160-blue.svg)](https://github.com/lucivskvn/AetherOmni)
+[![Version](https://img.shields.io/badge/version-v1.2.161-blue.svg)](https://github.com/lucivskvn/AetherOmni)
 [![Last Updated](https://img.shields.io/badge/last%20updated-2026--07--20-green.svg)](#)
-[![Commit](https://img.shields.io/badge/commit-2dfafd2-lightgrey.svg)](#)
+[![Commit](https://img.shields.io/badge/commit-90090ba-lightgrey.svg)](#)
 <!-- /auto:badges -->
 
 ---
@@ -19,7 +19,7 @@ AetherOmni is a secure, high-performance web application and background worker a
 * **SurrealDB Vector Memory**: Maintains long-term user style and formatting preferences directly within SurrealDB (replacing Mem0) with a token-saving write gate and strict multi-tenant isolation.
 * **Batched Database Insertion**: Optimized SurrealDB ingestion with batched payloads to prevent HTTP 413 errors on large documents.
 * **Double-Tier Caching**: Uses exact-match SurrealDB KV caching and cosine-distance vector semantic caching (`RAGQueryCache`) to bypass LLM generation costs for repeated queries.
-* **Dual Container Architecture**: Designed for deployment on **Google Cloud Run** as a web handler (`aetheromni-web`) and a steady task queue listener (`aetheromni-worker`).
+* **Dual Container Architecture**: Designed for deployment on **Google Cloud Run** as a web handler (`aether-web`) and a steady task queue listener (`aether-worker`).
 
 ---
 

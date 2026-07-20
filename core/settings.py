@@ -266,7 +266,7 @@ if not DEBUG and SURREAL_PASS in ("", "root") and not os.getenv("SURREALDB_OFFLI
 CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "extractor-tasks"
 # APP_URL is the fully-qualified URL of this Cloud Run service (used for task callbacks)
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")
-# WORKER_URL is the fully-qualified URL of the data-extractor-worker service
+# WORKER_URL is the fully-qualified URL of the aether-worker service
 WORKER_URL = os.getenv("WORKER_URL", "")
 
 

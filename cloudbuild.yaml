@@ -313,7 +313,7 @@ substitutions:
   # Change _REGION once to deploy to a different GCP region.
   _REGION: 'asia-southeast1'
   _WEB_SERVICE: 'aether-web'
-  _WORKER_SERVICE: 'data-extractor-worker'
+  _WORKER_SERVICE: 'aether-worker'
 
   # ── Git Branch ────────────────────────────────────────────────────────────────
   _BRANCH_NAME: 'current'
