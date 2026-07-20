@@ -8,6 +8,9 @@ AetherOmni is a secure, high-performance web application and background worker a
 [![Version](https://img.shields.io/badge/version-v1.2.1-blue.svg)](https://github.com/lucivskvn/AetherOmni)
 [![Last Updated](https://img.shields.io/badge/last%20updated-2026--07--20-green.svg)](#)
 [![Commit](https://img.shields.io/badge/commit-ab49738-lightgrey.svg)](#)
+[![Version](https://img.shields.io/badge/version-v1.2.144-blue.svg)](https://github.com/lucivskvn/AetherOmni)
+[![Last Updated](https://img.shields.io/badge/last%20updated-2026--07--20-green.svg)](#)
+[![Commit](https://img.shields.io/badge/commit-028b278-lightgrey.svg)](#)
 <!-- /auto:badges -->
 
 ---
@@ -76,8 +79,8 @@ Run the local code health checks:
 ```bash
 uvx desloppify scan --skip-slow
 ```
-* Current Objective/Mechanical Score: **87.5/100**
-* Current Strict Code Health Score: **96.9/100**
+* Current Objective/Mechanical Score: **93.7/100**
+* Current Strict Code Health Score: **98.3/100**
 
 ### SonarQube
 Run the pre-production Sonar scan:

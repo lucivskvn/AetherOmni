@@ -175,6 +175,20 @@ def get_health_scores() -> dict[str, str]:
             }
         except Exception:
             pass
+
+    query_file = ROOT / ".desloppify" / "query.json"
+    if query_file.exists():
+        try:
+            import json
+
+            data = json.loads(query_file.read_text(encoding="utf-8"))
+            if "objective_score" in data and "strict_score" in data:
+                return {
+                    "objective": str(round(data.get("objective_score", 0), 1)),
+                    "strict": str(round(data.get("strict_score", 0), 1)),
+                }
+        except Exception:
+            pass
     return {}
 
 

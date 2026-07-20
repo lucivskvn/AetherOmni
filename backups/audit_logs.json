@@ -1,0 +1,3195 @@
+[
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:035tzq638z04px8qjt31",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar_akidat_almuslim.pdf' (UUID: 458addec-2259-49ff-b5a4-d5f46f92b339).\"}",
+    "timestamp": "2026-07-19 07:16:48.530703+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "d78cfa01-954f-451e-881d-20563079a555",
+    "id": "audit_logs:03tsj913tjhybzwew2h7",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_thalathauthool.pdf' (ID: 27).",
+    "timestamp": "2026-07-07 09:23:55+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "cbc781bb-9d3c-47b1-991d-0b2ec4d323be",
+    "id": "audit_logs:052bf6inywluxbazb6sj",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'EN_fadhlu_ashr_dhilhijjah.pdf' uploaded successfully (size: 1107341 bytes).",
+    "timestamp": "2026-07-06 01:38:45+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:05q59e256tr75bu7dx1g",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded).\"}",
+    "timestamp": "2026-07-19 06:53:39.066704+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:0mb3lsfgih1wqz4swe66",
+    "ip_address": "127.0.0.1",
+    "metadata": "{\"details\": \"User 'admin' authenticated successfully.\"}",
+    "timestamp": "2026-07-19 07:27:35.153747+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:0rd3r3n6eybp9yog3ij7",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 171. Cost: $0.281285 USD. Tokens in: 89607, out: 101761.",
+    "timestamp": "2026-07-06 03:02:55+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:0x1h6yh1x31nnnlm3j4x",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 301. Cost: $0.907103 USD. Tokens in: 948826, out: 248982.",
+    "timestamp": "2026-07-07 03:07:19+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:0x5sb47mvkwgyszcsdfj",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 236. Cost: $1.303169 USD. Tokens in: 453814, out: 466810.",
+    "timestamp": "2026-07-07 03:33:27+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:0xxofs829yxiu3xs9icv",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}",
+    "timestamp": "2026-07-06 00:36:50+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "22cf58f5-155a-4281-8407-f7e397f4d47d",
+    "id": "audit_logs:17fsnmbbuu9w7yfnlw3u",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_minahkam_assiyam.pdf' (ID: 28).",
+    "timestamp": "2026-07-06 01:39:13+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:1960gae6psvvb4k93tjs",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 02:08:50+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:1g1c0s1kywt27k9lhrxw",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Uncaught outer pipeline crash: Source file 'documents/2026/07/06/en-attahqiq_walidoh_2.pdf' not found in GCS storage. The file may have been deleted or the upload did not complete. Original error: [Errno 2] No such file or directory: '/media/elang/TMSSD/CrossSharing/Repos/AetherOmni/media/documents/2026/07/06/en-attahqiq_walidoh_2.pdf'\"}",
+    "timestamp": "2026-07-19 06:51:40.526105+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:1hf88m96a8idwu8ccf56",
+    "ip_address": "127.0.0.1",
+    "metadata": "Bulk Deleted document 'en-kaifiyah_solat-2.1.pdf' (Title: The Prophet's Manner of Prayer). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 01:37:53+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:1omygl76n2gmg13fwhpu",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.003536 USD. Tokens in: 1459, out: 1239.",
+    "timestamp": "2026-07-06 02:31:38+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:1phmwm2z12u1ww8l0qbp",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 5. Cost: $0.105740 USD. Tokens in: 473863, out: 57768.",
+    "timestamp": "2026-07-05 05:46:52+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "b2a6604e-0434-4cc8-991f-6b505bbe455f",
+    "id": "audit_logs:1pkc9508uwb3nditz5iq",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 26. Cost: $0.271003 USD. Tokens in: 48521, out: 39673.",
+    "timestamp": "2026-07-07 09:24:33+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "0cfa5d4e-c33e-43ba-98d6-2fcc393dddd9",
+    "id": "audit_logs:1wtq2dmsihi6tdzz9tc9",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-risalatan-2.pdf' (ID: 33).",
+    "timestamp": "2026-07-07 09:16:58+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "71521ec5-8eac-4de6-940c-939f190b8219",
+    "id": "audit_logs:1ylycyzne9jsdmybb7rf",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 50. Cost: $0.086898 USD. Tokens in: 27633, out: 31443.",
+    "timestamp": "2026-07-06 02:14:50+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:23sqb4it7647xxhd26kw",
+    "ip_address": "",
+    "metadata": "{\"details\": \"[Reaper] Document 'ar_akidat_almuslim.pdf' was stuck in 'EXTRACTING' for >15 minutes and has been automatically marked as FAILED.\"}",
+    "timestamp": "2026-07-19 07:13:40.181365+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:24b0lxivz8px8bb0iyj1",
+    "ip_address": "",
+    "metadata": "{\"details\": \"[Reaper] Document 'ar_akidat_almuslim.pdf' was stuck in 'EXTRACTING' for >15 minutes and has been automatically marked as FAILED.\"}",
+    "timestamp": "2026-07-19 07:13:37.777686+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:281f9jaxysui4mh1ko6c",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_sifat-umrah.pdf' (ID: 24).",
+    "timestamp": "2026-07-06 02:10:59+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:299pa4uqlh8k2r06gucd",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded).\"}",
+    "timestamp": "2026-07-19 06:51:51.507363+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:2ei5fnptad0g7z5fk0le",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 51. Cost: $1.103119 USD. Tokens in: 222760, out: 85442.",
+    "timestamp": "2026-07-07 09:15:29+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:2jvxlrpsqcbzlytzh5mj",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 02:16:22+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:2l0lv7ss4wcjrrorx5bj",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (UUID: 17488cb9-a22a-4019-b73e-691b69f86aef).\"}",
+    "timestamp": "2026-07-19 07:17:50.617684+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "d78cfa01-954f-451e-881d-20563079a555",
+    "id": "audit_logs:2omwwb7p6522wic81ljo",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 32. Cost: $0.332645 USD. Tokens in: 50584, out: 48333.",
+    "timestamp": "2026-07-07 09:26:32+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "SYSTEM_CONTROL",
+    "id": "audit_logs:2r6h8xmwnih6wvi8b469",
+    "ip_address": "169.254.169.126",
+    "metadata": "Admins toggled worker scaling mode to 'always-on' (minScale: 1, maxScale: 5).",
+    "timestamp": "2026-07-05 05:38:36+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:2sdgj126e304corlotep",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-07 03:30:06+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:2sdgx6gnv6bmxw1ypjfj",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:27:48.185424+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "73dd540d-c763-4a99-8d16-6606058843bc",
+    "id": "audit_logs:36lgi6lwvgjy2h06epvx",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 24. Cost: $0.044252 USD. Tokens in: 13305, out: 16104.",
+    "timestamp": "2026-07-06 01:40:09+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "71521ec5-8eac-4de6-940c-939f190b8219",
+    "id": "audit_logs:3d1xsv9srtknlprvjs0v",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-aqidah_sohihah-4.pdf' (ID: 22).",
+    "timestamp": "2026-07-06 01:39:04+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:3ddlfnrertjgu1m39lsy",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 122. Cost: $1.032543 USD. Tokens in: 114498, out: 95644.\"}",
+    "timestamp": "2026-07-19 07:25:45.370645+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:3ou9stz8ptvfdhilfj6q",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_sifat-umrah.pdf' (ID: 31).",
+    "timestamp": "2026-07-07 09:23:11+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:3qn643a4kjp18ey3aopw",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for document 'quran-uthmani.txt' (ID: 8).",
+    "timestamp": "2026-06-20 07:33:03+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "cbc781bb-9d3c-47b1-991d-0b2ec4d323be",
+    "id": "audit_logs:46ou8c24mstp3sz9syfg",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 10. Cost: $0.117755 USD. Tokens in: 19876, out: 17033.",
+    "timestamp": "2026-07-07 09:23:57+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:47kr8fu69t5f4mvbfx4y",
+    "ip_address": "",
+    "metadata": "GDPR retention cleanup: document 'expired_shared_with_active.pdf' (UUID: 06b7afaa-b259-4566-89fd-dc2adc6f902d) expired and purged.",
+    "timestamp": "2026-07-12 02:42:36+00:00",
+    "user_id": "None"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:4dkhqw5dp6x84mur63y1",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-04 16:01:47+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:4g2n3t8ky6952xjct1o1",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar_akidat_almuslim.pdf' (UUID: 458addec-2259-49ff-b5a4-d5f46f92b339).\"}",
+    "timestamp": "2026-07-19 06:52:59.668727+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:4kfb891e59znhycjeseg",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en.sahih.txt' (Title: en.sahih). Shared references remaining: 1.",
+    "timestamp": "2026-06-20 07:46:50+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:4npxlu16o9fkvlq401ki",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e).\"}",
+    "timestamp": "2026-07-19 06:52:27.506971+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:4ntxf6l4pyxz3zajsot2",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 7. Cost: $0.764405 USD. Tokens in: 106295, out: 67218.",
+    "timestamp": "2026-07-07 09:14:01+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:4nx4fy26uz48ni426fma",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 161. Cost: $0.256897 USD. Tokens in: 80737, out: 93070.",
+    "timestamp": "2026-07-06 03:01:49+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:4rh0uxyxys95xlmesixn",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for document 'en.sahih.txt' (ID: 7).",
+    "timestamp": "2026-06-20 07:33:03+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:5371vkelumgk429l9qbe",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-alwasail_almufidah-2.1.pdf' uploaded successfully (size: 367761 bytes).",
+    "timestamp": "2026-07-05 05:54:45+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:539v0vx263w9bqxt3aeh",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-06 03:01:52+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:58h4scts1eio0eeieef1",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:27:51.901314+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:5ap9xmr1bxdlzduzi5oo",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:27:46.676909+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:5e3psydz4xejnmsge1bb",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 11. Cost: $0.020995 USD. Tokens in: 7483, out: 7500.",
+    "timestamp": "2026-07-06 01:39:59+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "SYSTEM_CONTROL",
+    "id": "audit_logs:5gopelijywhjf0zl9985",
+    "ip_address": "169.254.169.126",
+    "metadata": "Admins toggled worker scaling mode to 'on-demand' (minScale: 0, maxScale: 5).",
+    "timestamp": "2026-07-05 05:34:15+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:5l2gbxy12bpbu7jjl3ip",
+    "ip_address": "",
+    "metadata": "GDPR retention cleanup: document 'expired_shared2.pdf' (UUID: 2001496e-ce50-4594-a44d-b6464e00561c) expired and purged.",
+    "timestamp": "2026-07-12 02:42:54+00:00",
+    "user_id": "None"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "7d9199da-e795-4018-b8bb-7f98e3c9c163",
+    "id": "audit_logs:5lewnpn3tzsyt3gxk3wb",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hukm_sihr-4.pdf' (ID: 20).",
+    "timestamp": "2026-07-07 09:25:05+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:5lpdt76csdfpv4iiqklo",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en_sifat-umrah.pdf' uploaded successfully (size: 1118624 bytes).",
+    "timestamp": "2026-07-06 02:51:07+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:5u3vb50wq1upock33dlj",
+    "ip_address": "",
+    "metadata": "Stage 2 failed: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 250000, model: gemini-3.5-flash\\nPlease retry in 12.531014534s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.5-flash'}, 'quotaValue': '250000'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '12s'}]}}",
+    "timestamp": "2026-06-23 01:08:48+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:5wm1p0qodnaioo5bqomj",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.002505 USD. Tokens in: 1440, out: 829.",
+    "timestamp": "2026-07-06 01:39:00+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "0cfa5d4e-c33e-43ba-98d6-2fcc393dddd9",
+    "id": "audit_logs:5yhe53rlvc08ai7ljvo2",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 22. Cost: $0.258265 USD. Tokens in: 45955, out: 39161.",
+    "timestamp": "2026-07-07 09:18:19+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:5ytg6qnl27bedq6hrjso",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-06 03:11:40+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:5zzw6t7i0g57mgyoizcu",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-alwasail_almufidah-2.1.pdf' uploaded successfully (size: 367761 bytes).",
+    "timestamp": "2026-07-06 01:38:41+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:61uwlpt6dsjwoufl97ky",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 21).",
+    "timestamp": "2026-07-06 02:23:37+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:64dahvouyh01qmwqgmtr",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 40. Cost: $0.863256 USD. Tokens in: 59983, out: 47925.\"}",
+    "timestamp": "2026-07-19 07:24:50.480344+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:64o878n31hja43ki6d39",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-aqidah_sohihah-4.pdf' uploaded successfully (size: 938559 bytes).",
+    "timestamp": "2026-07-05 05:45:41+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:68ihqcfh7tohq829v900",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_malaa_yasaa.pdf' (ID: 38).",
+    "timestamp": "2026-07-06 02:56:32+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:6a6kfu6px5rjay19xmhy",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 1. Cost: $1.089063 USD. Tokens in: 135072, out: 98495.\"}",
+    "timestamp": "2026-07-19 07:35:46.398415+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "450ec868-8fe3-4699-ba00-2375c3c3d4d8",
+    "id": "audit_logs:6d9aoorsnhvzu4rb55bi",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-risalah_fi_dima-3.pdf' (ID: 26).",
+    "timestamp": "2026-07-06 01:39:12+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:6fkc4iogjultjzc9ol8u",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'quran-uthmani.txt' uploaded successfully (size: 1396087 bytes).",
+    "timestamp": "2026-07-06 01:38:49+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:6g3z5wmlz30v6fm0dc8t",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_malaa_yasaa.pdf' (ID: 38).",
+    "timestamp": "2026-07-06 03:11:44+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:6k7v2xnu3se54lzo1wjm",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 224. Cost: $0.348658 USD. Tokens in: 117225, out: 125396.",
+    "timestamp": "2026-07-07 03:18:18+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGOUT",
+    "id": "audit_logs:6l35z75tp1ewd3wswyhg",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' logged out.",
+    "timestamp": "2026-07-07 08:54:52+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:6lf2zdzokfzi6x21re05",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-kaifiyah_solat-2.1.pdf' (ID: 14).",
+    "timestamp": "2026-07-05 05:54:58+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "5dfd2740-ee12-4b59-90e7-8727737f539c",
+    "id": "audit_logs:6mvq8tnmnor4wby9byuz",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-man_kholaqo-alkaun-2.pdf' (ID: 32).",
+    "timestamp": "2026-07-07 09:16:59+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:6mxrysotmiytlh84bd6r",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 12. Cost: $0.021887 USD. Tokens in: 7634, out: 7839.",
+    "timestamp": "2026-07-06 02:51:58+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:6qehsp6aytgkjg0pvx49",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:27:46.707970+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:6ryzj9qlruc4sfeagpjx",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 136. Cost: $0.085607 USD. Tokens in: 28448, out: 30829.",
+    "timestamp": "2026-07-06 03:02:39+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:6voep1z7mo651ud6meqp",
+    "ip_address": "",
+    "metadata": "Test Audit Entry",
+    "timestamp": "2026-07-05 02:27:44+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:6x668ew35agu0wgl3ee1",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 481. Cost: $1.532865 USD. Tokens in: 952148, out: 498888.",
+    "timestamp": "2026-07-06 02:11:54+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:75aaber7nkmqzn60zp2l",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 146. Cost: $0.762666 USD. Tokens in: 271893, out: 272439.",
+    "timestamp": "2026-07-06 03:13:43+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:77fyaagkhdl7ksvnuyah",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.000567 USD. Tokens in: 2225, out: 1333.",
+    "timestamp": "2026-07-05 05:55:11+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:79w3dfv3187uiwkcwfvl",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 21).",
+    "timestamp": "2026-07-06 01:49:15+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "73dd540d-c763-4a99-8d16-6606058843bc",
+    "id": "audit_logs:7a4qmbp2ejqehskg88tb",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-kaifiyah_solat-2.1.pdf' uploaded successfully (size: 788468 bytes).",
+    "timestamp": "2026-07-06 01:38:42+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:7fe65qtenjtepevpx5id",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en-alwasail_almufidah-2.1.pdf' (Title: The Beneficial Means to a Happy Life). Shared references remaining: 0.",
+    "timestamp": "2026-07-07 09:20:52+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:7iyb5vrer1i2rywlycnx",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'quran-uthmani.txt' uploaded successfully (size: 1396087 bytes).",
+    "timestamp": "2026-06-20 07:01:29+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "b2a6604e-0434-4cc8-991f-6b505bbe455f",
+    "id": "audit_logs:7t8uvo5v0w13tvn63swt",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 35. Cost: $0.057949 USD. Tokens in: 19447, out: 20846.",
+    "timestamp": "2026-07-06 02:58:01+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:7uxfbgp9unor85thrk4t",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:27:48.184022+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:7uxr76xf77m87zt1mjy4",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'quran-uthmani.txt' uploaded successfully (size: 1396087 bytes).",
+    "timestamp": "2026-07-05 05:43:24+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:7vv12hyc05c3lsbw3bmr",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 17. Cost: $0.009713 USD. Tokens in: 39247, out: 22567.",
+    "timestamp": "2026-07-05 05:47:13+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:82rrjv3lsprx0ksre0y7",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (UUID: 17488cb9-a22a-4019-b73e-691b69f86aef).\"}",
+    "timestamp": "2026-07-19 06:51:38.861278+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:83pmtas1fozq22xh8wen",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 21).",
+    "timestamp": "2026-07-06 02:18:33+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:85egm0ndgfxrgvlejcef",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: Client error '413 Payload Too Large' for url 'http://localhost:8000/sql'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413",
+    "timestamp": "2026-07-07 09:21:07+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "73dd540d-c763-4a99-8d16-6606058843bc",
+    "id": "audit_logs:87636ym311za4v4hkjtt",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 22. Cost: $0.220997 USD. Tokens in: 33233, out: 32421.",
+    "timestamp": "2026-07-07 09:26:32+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:8fobcvb5z3w12umkrkjw",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en.sahih.txt' (Title: en.sahih). Shared references remaining: 0.",
+    "timestamp": "2026-07-05 05:54:28+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:8fx6f24kejnobcdmcl3x",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: timed out",
+    "timestamp": "2026-07-06 02:09:24+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "71521ec5-8eac-4de6-940c-939f190b8219",
+    "id": "audit_logs:8r9153es5tvzt1vaw07u",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-aqidah_sohihah-4.pdf' (ID: 22).",
+    "timestamp": "2026-07-06 02:12:48+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "71521ec5-8eac-4de6-940c-939f190b8219",
+    "id": "audit_logs:8tz2e2u40lazsh5dt939",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 15. Cost: $0.325047 USD. Tokens in: 66453, out: 51434.",
+    "timestamp": "2026-07-07 09:26:05+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:8yli274covp0o6px3j4x",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.003080 USD. Tokens in: 1449, out: 1058.",
+    "timestamp": "2026-07-06 02:51:24+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:8zub8c1pkrbaucisom8i",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-07 03:19:46+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "0cfa5d4e-c33e-43ba-98d6-2fcc393dddd9",
+    "id": "audit_logs:92pxs2dpznpvtbdamilw",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 35. Cost: $0.059716 USD. Tokens in: 18709, out: 21641.",
+    "timestamp": "2026-07-06 02:57:54+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:93imfgyt1lhopxgsmtof",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (ID: 35).",
+    "timestamp": "2026-07-06 02:56:29+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:97ifndrdbo6ociu3zucg",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 453. Cost: $0.783442 USD. Tokens in: 559296, out: 246261.",
+    "timestamp": "2026-07-06 02:34:49+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:99lvyirzb79qn9bwp8zs",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-06 00:40:22+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:9ao8fkzhdphc3beo6rlb",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 10).",
+    "timestamp": "2026-07-05 05:43:32+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:9fiaa1wcrnp53ntc95oa",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar_akidat_almuslim.pdf' (UUID: 458addec-2259-49ff-b5a4-d5f46f92b339).\"}",
+    "timestamp": "2026-07-19 07:16:48.413322+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:9ft9l5tqs6nsos90yk1g",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-alwasail_almufidah-2.1.pdf' uploaded successfully (size: 367761 bytes).",
+    "timestamp": "2026-07-06 02:51:06+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:9iqjqxiu4l6bzhjcaon8",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 18).",
+    "timestamp": "2026-07-06 02:12:39+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:9js029s2fn3imquw30tw",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'ar_alhajj_khatwoah.pdf' (ID: 12).",
+    "timestamp": "2026-07-05 05:48:45+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:9sxkj1r7q1oi1d0f188r",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 21).",
+    "timestamp": "2026-07-06 01:54:23+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD_CACHED",
+    "id": "audit_logs:9w43rgyn6qermae5zvxk",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-aqidah_sohihah-4.pdf' uploaded and instantly cached via de-duplication.",
+    "timestamp": "2026-07-05 05:54:48+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:9y078mmtco2gcmj47hcf",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 09:45:04+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:9zges4cmbpm6o6aaj8y4",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 08:49:18+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "SYSTEM_CONTROL",
+    "id": "audit_logs:a0jzd9alk44l16fmix30",
+    "ip_address": "169.254.169.126",
+    "metadata": "Admins toggled worker scaling mode to 'on-demand' (minScale: 0, maxScale: 5).",
+    "timestamp": "2026-07-07 02:21:02+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:a35gnrq1pbi4wpkca8zd",
+    "ip_address": "127.0.0.1",
+    "metadata": "Bulk Deleted document 'ar_alhajj_khatwoah.pdf' (Title: \u0627\u0644\u062d\u062c \u062e\u0637\u0648\u0629 \u0628\u062e\u0637\u0648\u0629). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 01:37:55+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:a3n6swodakrp6y7t6ljf",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en.sahih.txt' uploaded successfully (size: 898049 bytes).",
+    "timestamp": "2026-07-05 05:54:47+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "7d9199da-e795-4018-b8bb-7f98e3c9c163",
+    "id": "audit_logs:a5b2f6tv1iw7pawyp1dg",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 24. Cost: $0.039999 USD. Tokens in: 13171, out: 14419.",
+    "timestamp": "2026-07-06 01:40:28+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:a89eo095m8ts4m98qni9",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-07 03:09:26+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:ay1mr0sbndvfawzhvjyb",
+    "ip_address": "",
+    "metadata": "GDPR retention cleanup: document 'expired_shared_with_active.pdf' (UUID: bfcc7904-a10a-4723-9f68-6757fab869c7) expired and purged.",
+    "timestamp": "2026-07-12 02:42:54+00:00",
+    "user_id": "None"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:b1shii6xc5cj9r285qc1",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-06 00:55:54+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:b30sgh67wxyet94fzwau",
+    "ip_address": "127.0.0.1",
+    "metadata": "{\"details\": \"Curation pipeline re-enqueued for document: The Manner of Performing Umrah\"}",
+    "timestamp": "2026-07-20 02:14:19.357111+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:b7ppf2qmvzdxbcr0qw6t",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded) expired and purged.\"}",
+    "timestamp": "2026-07-19 06:18:25.732697+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "086a7f5f-7b6c-4f35-91b5-e12ac7dd4d1d",
+    "id": "audit_logs:b9383wimgof7x1a5kk1q",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 15. Cost: $0.028755 USD. Tokens in: 9367, out: 10378.",
+    "timestamp": "2026-07-06 01:40:07+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:bbdd1pymm1znarxzlbo2",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-06 00:32:40+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:bcpdm7x574565n7vsweg",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 18).",
+    "timestamp": "2026-07-06 01:38:45+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:bksc4lgtahx0ja392uh0",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar_akidat_almuslim.pdf' (UUID: 458addec-2259-49ff-b5a4-d5f46f92b339).\"}",
+    "timestamp": "2026-07-19 06:51:42.673748+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:bqa2a553adt19auhfmwx",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded).\"}",
+    "timestamp": "2026-07-19 06:51:15.238952+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cbc781bb-9d3c-47b1-991d-0b2ec4d323be",
+    "id": "audit_logs:bqfmv6j6rhfng6namta8",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'EN_fadhlu_ashr_dhilhijjah.pdf' (ID: 23).",
+    "timestamp": "2026-07-06 01:39:05+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "c3f35298-7fe7-4f80-8c58-e52e2e3675d1",
+    "id": "audit_logs:brff10mn0qmwi80jn9aw",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-nubzah_fil_aqidah-1.2.pdf' (ID: 34).",
+    "timestamp": "2026-07-06 02:56:28+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:brk2hxz7j864pi09ilsv",
+    "ip_address": "127.0.0.1",
+    "metadata": "Bulk Deleted document 'en-aqidah_sohihah-4.pdf' (Title: The Sound Creed and What is Contrary to It). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 01:37:56+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:bu2325l967sjg1siagfx",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en_sifat_alomrah_harmain.pdf' (UUID: e7f70163-b738-4c59-a066-6da50a5e22c9).\"}",
+    "timestamp": "2026-07-19 07:20:48.573207+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:bvy97v698k0dq66ufrug",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 21).",
+    "timestamp": "2026-07-06 02:13:31+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:bwizhyoxht9t8d9t9hic",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b) expired and purged.\"}",
+    "timestamp": "2026-07-19 06:18:24.238377+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:c0loowb8wo07dprhe50o",
+    "ip_address": "",
+    "metadata": "Stage 2 failed: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 250000, model: gemini-3.5-flash\\nPlease retry in 14.059141309s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'model': 'gemini-3.5-flash', 'location': 'global'}, 'quotaValue': '250000'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '14s'}]}}",
+    "timestamp": "2026-06-23 01:08:47+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "7d9199da-e795-4018-b8bb-7f98e3c9c163",
+    "id": "audit_logs:c4e49uhp2lbgm9e0fe6g",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hukm_sihr-4.pdf' (ID: 20).",
+    "timestamp": "2026-07-06 01:39:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:cb7l1e5xn249luscc5jb",
+    "ip_address": "127.0.0.1",
+    "metadata": "{\"details\": \"User 'admin' authenticated successfully.\"}",
+    "timestamp": "2026-07-19 06:16:32.636733+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:cvjjqlxdfkanr0aqa5qq",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-07 03:03:08+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:d07vg89jpglcmangenko",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-05 02:54:15+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:d2rxsbed9g7mc4zyd434",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b) expired and purged.\"}",
+    "timestamp": "2026-07-19 07:13:32.188261+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:d68012ve0t3622pt3dzp",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en_sifat-umrah.pdf' (UUID: cfa036f2-f5fc-43d0-9a60-c431670c84f2).\"}",
+    "timestamp": "2026-07-20 02:17:48.221409+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:df2rowxvkz8vyl213tpu",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-06 03:06:36+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:dfjihjwxmxlitfhj6kgg",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en_sifat_alomrah_harmain.pdf' (UUID: e7f70163-b738-4c59-a066-6da50a5e22c9).\"}",
+    "timestamp": "2026-07-19 07:16:48.118024+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:dhc1z7ce3qrm8wzx808v",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 18).",
+    "timestamp": "2026-07-06 02:11:09+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:dn8ush6p8yv6phpqfsuk",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'quran-uthmani.txt' (Title: quran uthmani). Shared references remaining: 0.",
+    "timestamp": "2026-06-20 07:01:00+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "DOCUMENT_EDITED",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:dr3457nysebjckpavf6r",
+    "ip_address": "127.0.0.1",
+    "metadata": "Document 'en_sifat_alomrah_harmain.pdf' content modified and re-embedding queued.",
+    "timestamp": "2026-07-06 03:02:52+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:drj11a0i3dziwwlppy25",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (UUID: 17488cb9-a22a-4019-b73e-691b69f86aef).\"}",
+    "timestamp": "2026-07-19 06:52:43.738862+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:dwqnc7l2p16y4qbz30gq",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.002412 USD. Tokens in: 1448, out: 791.",
+    "timestamp": "2026-07-06 02:17:58+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:dz4vgppg9hbvvi9qtbnb",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 01:55:15+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:dzcm9ouxw6tkz8wuu3qt",
+    "ip_address": "127.0.0.1",
+    "metadata": "{\"details\": \"User 'admin' authenticated successfully.\"}",
+    "timestamp": "2026-07-20 02:38:11.273019+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:e132vkenlbha53zdnpbs",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en_malaa_yasaa.pdf' (Title: What A Muslim Must Know). Shared references remaining: 0.",
+    "timestamp": "2026-07-07 02:18:04+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "73dd540d-c763-4a99-8d16-6606058843bc",
+    "id": "audit_logs:e1z57k6tmcotvx1p1gxm",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-kaifiyah_solat-2.1.pdf' (ID: 19).",
+    "timestamp": "2026-07-07 09:25:18+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:e2v48e4wdt2jobejtvuj",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Uncaught outer pipeline crash: Source file 'documents/2026/06/16/ar-kaifiyah_solat_nabi-2.pdf' not found in GCS storage. The file may have been deleted or the upload did not complete. Original error: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.\"}",
+    "timestamp": "2026-07-19 06:53:40.763495+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:e5ryz5wwfinqmaohstvb",
+    "ip_address": "",
+    "metadata": "Uncaught outer pipeline crash: [Errno 2] No such file or directory: '/media/elang/TMSSD1/CrossSharing/Repos/data-extractor-python/media/documents/2026/06/20/en.sahih.txt'",
+    "timestamp": "2026-06-20 07:17:11+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:e77lvttcwpwycbhhgzwi",
+    "ip_address": "",
+    "metadata": "GDPR retention cleanup: document 'expired_unique.pdf' (UUID: 3a022a82-d513-469e-b112-1f9785eb9147) expired and purged.",
+    "timestamp": "2026-07-12 02:42:54+00:00",
+    "user_id": "None"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:e7fuccjat7y30ulc5rd9",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 07:33:27+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:e8ku8dbeghsiyjskif6e",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: Embeddings generation failed: both Vertex AI and AI Studio pathways are exhausted.",
+    "timestamp": "2026-07-06 02:23:06+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:e9imtp0zfa1nb93e8hdr",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 58. Cost: $0.086885 USD. Tokens in: 26433, out: 31582.",
+    "timestamp": "2026-07-06 03:00:17+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:eew6pwgcbt4y6mpav599",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'quran-uthmani.txt' (Title: quran uthmani). Shared references remaining: 0.",
+    "timestamp": "2026-07-05 05:42:59+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "b2a6604e-0434-4cc8-991f-6b505bbe455f",
+    "id": "audit_logs:ei494yk53ruto2kmwccv",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-addurus_almuhimmah-2.1.pdf' (ID: 36).",
+    "timestamp": "2026-07-07 09:23:11+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:enmnen5l5fus5jo8wgat",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-kaifiyah_solat-2.1.pdf' uploaded successfully (size: 788468 bytes).",
+    "timestamp": "2026-07-05 05:54:46+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:erb3h4rnveuyzfh4g29m",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 41).",
+    "timestamp": "2026-07-07 09:06:23+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:ew20mmnqvn3zxt3zmp65",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 766. Cost: $0.412483 USD. Tokens in: 321259, out: 126442.",
+    "timestamp": "2026-07-06 02:33:38+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:f2691qe4fxl4x2ilvced",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 02:41:12+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:f2w6z0iae5emxcarqyfl",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-attahqiq_walidoh_2.pdf' uploaded successfully (size: 1703886 bytes).",
+    "timestamp": "2026-07-06 02:56:27+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:ffvplcyhvi798z8fy8ql",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 139. Cost: $0.446766 USD. Tokens in: 474413, out: 121777.",
+    "timestamp": "2026-07-06 01:56:05+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:fk7wcayevw2fh108nuuh",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_malaa_yasaa.pdf' (ID: 38).",
+    "timestamp": "2026-07-06 03:16:56+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "086a7f5f-7b6c-4f35-91b5-e12ac7dd4d1d",
+    "id": "audit_logs:frz94vz4gvf7g2au0n84",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-ahkam_hadyi-1.2.pdf' (ID: 25).",
+    "timestamp": "2026-07-06 01:39:12+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "0cfa5d4e-c33e-43ba-98d6-2fcc393dddd9",
+    "id": "audit_logs:g0w7rw6cv5q1lmh5z789",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-risalatan-2.pdf' (ID: 33).",
+    "timestamp": "2026-07-06 02:56:27+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:g13dp0ui3kwxwimhrqj8",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-06 01:01:00+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:gfe754qh54te31fd99br",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_sifat-umrah.pdf' (ID: 31).",
+    "timestamp": "2026-07-06 02:51:12+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:gnc75ospbxq86mdv1fmv",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Uncaught outer pipeline crash: Source file 'documents/2026/07/06/ar_akidat_almuslim.pdf' not found in GCS storage. The file may have been deleted or the upload did not complete. Original error: [Errno 2] No such file or directory: '/media/elang/TMSSD/CrossSharing/Repos/AetherOmni/media/documents/2026/07/06/ar_akidat_almuslim.pdf'\"}",
+    "timestamp": "2026-07-19 06:51:44.400223+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:grly28r64m01ktt86h5v",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: timed out",
+    "timestamp": "2026-07-06 02:10:21+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:gtdfelgcyn1our7e8za3",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 01:50:05+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:gu48h00rwgeru1c1xec3",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 13).",
+    "timestamp": "2026-07-05 05:55:01+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "0cfa5d4e-c33e-43ba-98d6-2fcc393dddd9",
+    "id": "audit_logs:gxnfas2upyt5aqj2rnsq",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-risalatan-2.pdf' uploaded successfully (size: 1566774 bytes).",
+    "timestamp": "2026-07-06 02:56:25+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "7d9199da-e795-4018-b8bb-7f98e3c9c163",
+    "id": "audit_logs:h0j64t739ogg72it7la3",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-hukm_sihr-4.pdf' uploaded successfully (size: 871727 bytes).",
+    "timestamp": "2026-07-06 01:38:42+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:h5ho03bm8bhbetwowtfz",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_sifat-umrah.pdf' (ID: 24).",
+    "timestamp": "2026-07-06 02:15:13+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:h81qwxly799r3jlw9g2k",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en_sifat-umrah.pdf' (UUID: cfa036f2-f5fc-43d0-9a60-c431670c84f2).\"}",
+    "timestamp": "2026-07-20 02:17:09.922486+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:h827i1v61o84zi1pudmw",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Uncaught outer pipeline crash: Source file 'documents/2026/07/06/en-attahqiq_walidoh_2.pdf' not found in GCS storage. The file may have been deleted or the upload did not complete. Original error: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.\"}",
+    "timestamp": "2026-07-19 06:52:57.359220+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:h89af6p1ifpu6qzgiv7l",
+    "ip_address": "127.0.0.1",
+    "metadata": "Bulk Deleted document 'en_sifat-umrah.pdf' (Title: en sifat umrah). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 02:49:01+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "71521ec5-8eac-4de6-940c-939f190b8219",
+    "id": "audit_logs:hasjhyqmy2bziz9sxh1h",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-aqidah_sohihah-4.pdf' (ID: 22).",
+    "timestamp": "2026-07-07 09:24:35+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:hdunxir4eexcbgi4wqpr",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 166. Cost: $0.562070 USD. Tokens in: 179856, out: 203245.",
+    "timestamp": "2026-07-06 03:08:58+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:hhxrdr7soct7mnz576uw",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:41:41.450421+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:hm6786ye47qr9zalegil",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for document 'en.sahih.txt' (ID: 7).",
+    "timestamp": "2026-06-23 01:08:11+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:hobfcs7xoycmh54a9u0o",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (UUID: 17488cb9-a22a-4019-b73e-691b69f86aef).\"}",
+    "timestamp": "2026-07-19 07:22:52.773503+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:honaf32ub0ig8nl6srfg",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 1. Cost: $0.461072 USD. Tokens in: 68989, out: 39732.\"}",
+    "timestamp": "2026-07-19 07:26:07.862515+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:hre0gh5o2kq0yj0o0y5w",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-hirasah_tauhid-4.pdf' uploaded successfully (size: 2047158 bytes).",
+    "timestamp": "2026-07-06 02:56:28+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:ht9lkpc9f0g03dx8bq2q",
+    "ip_address": "127.0.0.1",
+    "metadata": "{\"details\": \"User 'admin' authenticated successfully.\"}",
+    "timestamp": "2026-07-19 06:16:47.223487+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:htmtwc0x6v7dt94tv0sg",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en_malaa_yasaa.pdf' uploaded successfully (size: 2147880 bytes).",
+    "timestamp": "2026-07-06 02:56:29+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:i55nig5jgj061k3txfcj",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: Client error '413 Payload Too Large' for url 'http://localhost:8000/sql'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413",
+    "timestamp": "2026-07-06 02:45:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:i96x1ks366q646mpknnl",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar_akidat_almuslim.pdf' (UUID: 458addec-2259-49ff-b5a4-d5f46f92b339).\"}",
+    "timestamp": "2026-07-19 07:20:47.341395+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:idl8unjz089unfon54ms",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-07 03:24:56+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:iemydxzx5jzbffw29yx6",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Stage 1 process failed: GEMINI_API_KEY is not configured and Vertex AI is unavailable.\"}",
+    "timestamp": "2026-07-19 06:51:02.779257+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:ifprm5mqzmlnvinb6obx",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 235. Cost: $1.267591 USD. Tokens in: 440087, out: 454226.",
+    "timestamp": "2026-07-06 03:19:06+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:iigueiix01xgbvs0fdz7",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en-aqidah_sohihah-4.pdf' (Title: The Sound Creed and What is Contrary to It (Copy)). Shared references remaining: 1.",
+    "timestamp": "2026-07-06 00:27:44+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:ir455xgfrz8yoptgv3ur",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Stage 1 process failed: GEMINI_API_KEY is not configured and Vertex AI is unavailable.\"}",
+    "timestamp": "2026-07-19 06:51:49.116126+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "SYSTEM_CONTROL",
+    "id": "audit_logs:isplyf011nos7hr369yf",
+    "ip_address": "169.254.169.126",
+    "metadata": "{\"details\": \"Admins toggled worker scaling mode to 'on-demand' (minScale: 0, maxScale: 5).\"}",
+    "timestamp": "2026-07-20 02:43:18.037143+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "cbc781bb-9d3c-47b1-991d-0b2ec4d323be",
+    "id": "audit_logs:ivifadwnp4r8fl61sdt2",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 32. Cost: $0.023850 USD. Tokens in: 7967, out: 8584.",
+    "timestamp": "2026-07-06 01:39:58+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:izclv3m0an5qfl76o56q",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-07 02:48:11+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "22cf58f5-155a-4281-8407-f7e397f4d47d",
+    "id": "audit_logs:j1e3wdgxxemdf07l2f83",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_minahkam_assiyam.pdf' (ID: 28).",
+    "timestamp": "2026-07-07 09:23:13+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "7d9199da-e795-4018-b8bb-7f98e3c9c163",
+    "id": "audit_logs:j38eeeagpsis4pifpyix",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 49. Cost: $0.183584 USD. Tokens in: 31758, out: 27275.",
+    "timestamp": "2026-07-07 09:26:12+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:j4hrg4ye7ty49h37honk",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: Embeddings generation failed: both Vertex AI and AI Studio pathways are exhausted.",
+    "timestamp": "2026-07-06 02:53:22+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:j7h1moqz0vbyy42cmus7",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 2. Cost: $0.013194 USD. Tokens in: 38473, out: 661.",
+    "timestamp": "2026-07-07 02:16:43+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:j97tqqlrxkv1ts5rv1sx",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en_sifat_alomrah_harmain.pdf' uploaded successfully (size: 2869798 bytes).",
+    "timestamp": "2026-07-06 02:56:30+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:jbnt6hfl1bec92ye6ko2",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar_akidat_almuslim.pdf' (UUID: 458addec-2259-49ff-b5a4-d5f46f92b339).\"}",
+    "timestamp": "2026-07-19 07:30:57.531903+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:jg82syl1y9u9fcna2jfo",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 30).",
+    "timestamp": "2026-07-06 02:51:07+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:jgaf98ukw5xyyajv9ik1",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en-hukm_sihr-4.pdf' (Title: en hukm sihr 4). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 00:27:51+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:jh0u2efd6n96w9tnl615",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 21).",
+    "timestamp": "2026-07-06 01:39:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:jh6uml5j8bcihn3pi3jp",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-hukm_sihr-4.pdf' uploaded successfully (size: 871727 bytes).",
+    "timestamp": "2026-07-05 05:54:46+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "086a7f5f-7b6c-4f35-91b5-e12ac7dd4d1d",
+    "id": "audit_logs:jmqmgvghm547x0d84c3q",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-ahkam_hadyi-1.2.pdf' (ID: 25).",
+    "timestamp": "2026-07-07 09:24:20+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:jq5yt3s6ci2k16eewl4t",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (UUID: 17488cb9-a22a-4019-b73e-691b69f86aef).\"}",
+    "timestamp": "2026-07-19 07:16:36.876546+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:jszozakbvi42p7gxh34m",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 18).",
+    "timestamp": "2026-07-06 01:49:38+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "SYSTEM_CONTROL",
+    "id": "audit_logs:jvlnisrpgv7d2yvkj6xt",
+    "ip_address": "169.254.169.126",
+    "metadata": "Admins toggled worker scaling mode to 'on-demand' (minScale: 0, maxScale: 5).",
+    "timestamp": "2026-07-05 05:38:45+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:jwblffj75q1iepdk8ns7",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en.sahih.txt' uploaded successfully (size: 898049 bytes).",
+    "timestamp": "2026-07-06 01:38:43+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:jx9nwljiws1lszzlp5kf",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 35. Cost: $0.007062 USD. Tokens in: 29396, out: 16191.",
+    "timestamp": "2026-07-05 05:50:13+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:jxgar0y9xlp93mx3m6yp",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 21).",
+    "timestamp": "2026-07-06 01:44:10+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:k5de5ldmrzvly8yjfram",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 01:39:59+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:k5qpczlj4rq3l76yawje",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-alwasail_almufidah-2.1.pdf' uploaded successfully (size: 367761 bytes).",
+    "timestamp": "2026-07-07 02:19:16+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:kb69xhffoufg892xf6ei",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for document 'en.sahih.txt' (ID: 7).",
+    "timestamp": "2026-06-23 01:08:19+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "5dfd2740-ee12-4b59-90e7-8727737f539c",
+    "id": "audit_logs:kfpdo35oh69oxe5xlzdx",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 20. Cost: $0.264780 USD. Tokens in: 48078, out: 39239.",
+    "timestamp": "2026-07-07 09:18:20+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:kih7fc7ihobd34ui5o09",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.003033 USD. Tokens in: 1450, out: 1039.",
+    "timestamp": "2026-07-06 02:11:27+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "d78cfa01-954f-451e-881d-20563079a555",
+    "id": "audit_logs:kikp79t96o99pffrrtmx",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en_thalathauthool.pdf' uploaded successfully (size: 1341807 bytes).",
+    "timestamp": "2026-07-06 01:38:48+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:kkgmegg7vj53zjuy9gjo",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar_akidat_almuslim.pdf' (UUID: 458addec-2259-49ff-b5a4-d5f46f92b339).\"}",
+    "timestamp": "2026-07-19 07:25:55.970966+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:knb3oggm0t13s3c0ywvm",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-aqidah_sohihah-4.pdf' (ID: 11).",
+    "timestamp": "2026-07-05 05:45:45+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:kwtc98s2to61gfj0q8o3",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_malaa_yasaa.pdf' (ID: 38).",
+    "timestamp": "2026-07-07 02:15:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:kzh986sba5aupv64fz2y",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e) expired and purged.\"}",
+    "timestamp": "2026-07-19 06:18:15.444518+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:kznxtikh5rk63vzwl5ft",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-06 03:16:48+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:l9929wmevnsidayspuc1",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e) expired and purged.\"}",
+    "timestamp": "2026-07-19 07:08:39.184765+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:ldzqaqw7ajp4q14p3wqh",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b).\"}",
+    "timestamp": "2026-07-19 06:51:10.703508+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:le4tfesb8nfotdcr9437",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 240. Cost: $0.921117 USD. Tokens in: 338087, out: 327876.",
+    "timestamp": "2026-07-06 03:17:27+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:lf7k51d9emzgb9u3ih8k",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-06 00:50:44+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:lgfcd8xl4rjqvz2a1wrj",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 48. Cost: $1.786208 USD. Tokens in: 1897652, out: 486765.",
+    "timestamp": "2026-07-07 03:16:18+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "5dfd2740-ee12-4b59-90e7-8727737f539c",
+    "id": "audit_logs:li9uvdw6mesrgh49f9nx",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-man_kholaqo-alkaun-2.pdf' uploaded successfully (size: 1407541 bytes).",
+    "timestamp": "2026-07-06 02:52:46+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:lt4bucsd74ir5mdmd1mi",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b) expired and purged.\"}",
+    "timestamp": "2026-07-19 06:18:24.238295+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:lt5ri40fwaoewxma4tyt",
+    "ip_address": "",
+    "metadata": "Stage 2 failed: expected string or bytes-like object, got 'NoneType'",
+    "timestamp": "2026-07-05 05:47:17+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "d78cfa01-954f-451e-881d-20563079a555",
+    "id": "audit_logs:lx7eljmcjwu1fb6a36w2",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_thalathauthool.pdf' (ID: 27).",
+    "timestamp": "2026-07-06 01:39:13+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:lxzlyrwlngb8vj3kyegj",
+    "ip_address": "127.0.0.1",
+    "metadata": "{\"details\": \"User 'elang' authenticated successfully.\"}",
+    "timestamp": "2026-07-13 23:26:04.431268+00:00",
+    "user_id": "2"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:lyqymmbirsbcf48kdpsc",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.002886 USD. Tokens in: 1461, out: 979.",
+    "timestamp": "2026-07-07 07:16:05+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "b2a6604e-0434-4cc8-991f-6b505bbe455f",
+    "id": "audit_logs:m1pwuqyri9clln1w9ore",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-addurus_almuhimmah-2.1.pdf' uploaded successfully (size: 1707051 bytes).",
+    "timestamp": "2026-07-06 02:56:27+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:m5ae2kyxqnuayilzdjpp",
+    "ip_address": "127.0.0.1",
+    "metadata": "{\"details\": \"User 'admin' authenticated successfully.\"}",
+    "timestamp": "2026-07-20 02:13:51.188103+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:m5cjin3g7cx60xda3a5i",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 173. Cost: $0.670350 USD. Tokens in: 234414, out: 240010.",
+    "timestamp": "2026-07-07 03:23:04+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "5dfd2740-ee12-4b59-90e7-8727737f539c",
+    "id": "audit_logs:m5zszjagisfofi591k37",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 34. Cost: $0.058596 USD. Tokens in: 19384, out: 21112.",
+    "timestamp": "2026-07-06 02:54:19+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:m6zw5kef2n5v60yisg8m",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 281. Cost: $0.456576 USD. Tokens in: 474413, out: 125701.",
+    "timestamp": "2026-07-06 02:41:52+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:m8o1kc7tf5yxf9q81eqe",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 13. Cost: $0.131874 USD. Tokens in: 18772, out: 11524.\"}",
+    "timestamp": "2026-07-20 02:18:53.932303+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:m8o1uio94wmvx3o5u7bh",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 21).",
+    "timestamp": "2026-07-06 01:59:33+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:mb20pp0m6upryitq4npw",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded) expired and purged.\"}",
+    "timestamp": "2026-07-19 07:15:29.489409+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:mdd8rjbaugpluet2txua",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-06 02:56:31+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:midhaemmmdbtbcw7y8qx",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e).\"}",
+    "timestamp": "2026-07-19 06:51:34.661774+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "22cf58f5-155a-4281-8407-f7e397f4d47d",
+    "id": "audit_logs:mmgycqscr2p1f2dhyu6r",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en_minahkam_assiyam.pdf' uploaded successfully (size: 1385635 bytes).",
+    "timestamp": "2026-07-06 01:38:49+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:mmkmr3ttz5katjfjhtjo",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (UUID: 17488cb9-a22a-4019-b73e-691b69f86aef).\"}",
+    "timestamp": "2026-07-19 07:33:06.899863+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:mmslthipal9jm8ni94va",
+    "ip_address": "",
+    "metadata": "Stage 2 failed: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}",
+    "timestamp": "2026-07-06 00:15:26+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "c3f35298-7fe7-4f80-8c58-e52e2e3675d1",
+    "id": "audit_logs:mn8paoy8uxiaukh1y25f",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 113. Cost: $0.193480 USD. Tokens in: 60099, out: 70180.",
+    "timestamp": "2026-07-06 03:01:00+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:mnqvzts0yddu81zilm9a",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_malaa_yasaa.pdf' (ID: 38).",
+    "timestamp": "2026-07-06 03:02:41+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:mq3g1nddxuhogyjvncug",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en.sahih.txt' uploaded successfully (size: 898049 bytes).",
+    "timestamp": "2026-06-20 07:01:16+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:mvez41fng3l6mnijhger",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:41:41.442203+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "086a7f5f-7b6c-4f35-91b5-e12ac7dd4d1d",
+    "id": "audit_logs:mwyqovabxn8wzlhlsam6",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 30. Cost: $0.150012 USD. Tokens in: 24596, out: 21217.",
+    "timestamp": "2026-07-07 09:25:16+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:mxw485n2bu6qls3sx2dl",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.002438 USD. Tokens in: 1476, out: 798.",
+    "timestamp": "2026-07-06 02:13:08+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:n4fgl3idw0ri683hq9jq",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 56. Cost: $0.006208 USD. Tokens in: 19059, out: 15929.",
+    "timestamp": "2026-07-05 05:56:10+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:nci5nvcdnx8gsyx7ulno",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Stage 1 process failed: GEMINI_API_KEY is not configured and Vertex AI is unavailable.\"}",
+    "timestamp": "2026-07-19 06:51:17.141309+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:ngq6kfecc1v1954w9sfr",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-07 09:08:51+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:nhb0i5u5mq09d3jf6j1h",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'ar_alhajj_khatwoah.pdf' uploaded successfully (size: 14754821 bytes).",
+    "timestamp": "2026-07-05 05:48:42+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:nktfzj7c27h85dl6nsmd",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 02:30:54+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "b2a6604e-0434-4cc8-991f-6b505bbe455f",
+    "id": "audit_logs:nt9gzza6xvyuwl0cdjtq",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-addurus_almuhimmah-2.1.pdf' (ID: 36).",
+    "timestamp": "2026-07-06 02:56:30+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "086a7f5f-7b6c-4f35-91b5-e12ac7dd4d1d",
+    "id": "audit_logs:nuhyt535l2niunjins7s",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-ahkam_hadyi-1.2.pdf' uploaded successfully (size: 1198043 bytes).",
+    "timestamp": "2026-07-06 01:38:46+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:nwgj7xm313fj0wbdmwwb",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for document 'en.sahih.txt' (ID: 6).",
+    "timestamp": "2026-06-20 07:17:10+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:o42zgwr5zbavosydfycf",
+    "ip_address": "",
+    "metadata": "[Reaper] Document 'en-hirasah_tauhid-4.pdf' was stuck in 'EMBEDDING' for >15 minutes and has been automatically marked as FAILED.",
+    "timestamp": "2026-07-07 07:13:23+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "450ec868-8fe3-4699-ba00-2375c3c3d4d8",
+    "id": "audit_logs:o4avak4b0fh45ght6x8a",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-risalah_fi_dima-3.pdf' uploaded successfully (size: 1245538 bytes).",
+    "timestamp": "2026-07-06 01:38:47+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:o7tsm122gyk3frz9yj04",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.003134 USD. Tokens in: 1454, out: 1079.",
+    "timestamp": "2026-07-06 01:49:58+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:oij4orz9u5iyupgxfk0y",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_sifat_alomrah_harmain.pdf' (ID: 39).",
+    "timestamp": "2026-07-07 09:23:10+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:otzyp9220dorkszitm60",
+    "ip_address": "",
+    "metadata": "Mid-pipeline budget breach: Monthly budget limit of $5.00 USD has been reached. Current usage: $5.5253 USD.",
+    "timestamp": "2026-07-06 03:20:20+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "SYSTEM_CONTROL",
+    "id": "audit_logs:ozh5ivqsmmc4277fzaj0",
+    "ip_address": "169.254.169.126",
+    "metadata": "Admins toggled worker scaling mode to 'on-demand' (minScale: 0, maxScale: 5).",
+    "timestamp": "2026-07-07 08:51:02+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:ozp2ed6medhwt2w7xhl8",
+    "ip_address": "127.0.0.1",
+    "metadata": "Bulk Deleted document 'quran-uthmani.txt' (Title: Tanzil Quran Text (Uthmani)). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 01:37:57+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:p9lzpmhoptfrqz7d6h3q",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_malaa_yasaa.pdf' (ID: 38).",
+    "timestamp": "2026-07-06 03:06:37+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:pd2ia8e9bb1w7x4bf2e4",
+    "ip_address": "",
+    "metadata": "Uncaught outer pipeline crash: File does not exist: documents/2026/06/20/en.sahih.txt",
+    "timestamp": "2026-07-05 05:41:55+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:pfpql7jvlf8oy66bnu10",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Stage 1 process failed: GEMINI_API_KEY is not configured and Vertex AI is unavailable.\"}",
+    "timestamp": "2026-07-19 06:51:36.464957+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:pif3og5lildrwgn9p4r7",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b) expired and purged.\"}",
+    "timestamp": "2026-07-19 07:13:13.285798+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:pw2p86we2nd63m7kqt7b",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 1. Cost: $0.995868 USD. Tokens in: 119124, out: 90798.\"}",
+    "timestamp": "2026-07-19 07:33:34.531978+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:px7wwg2kic3ji96aleye",
+    "ip_address": "",
+    "metadata": "Mid-pipeline budget breach: Monthly budget limit of $5.00 USD has been reached. Current usage: $5.4078 USD.",
+    "timestamp": "2026-07-06 03:20:18+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:pzaxl6uj217li8sb3kg8",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'ar_akidat_almuslim.pdf' (ID: 40).",
+    "timestamp": "2026-07-07 09:23:09+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "73dd540d-c763-4a99-8d16-6606058843bc",
+    "id": "audit_logs:q2d9xa2w0dllpk695kee",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-kaifiyah_solat-2.1.pdf' (ID: 19).",
+    "timestamp": "2026-07-06 01:38:52+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:q37hbde52ggnifmf9dgi",
+    "ip_address": "127.0.0.1",
+    "metadata": "Bulk Deleted document 'en-alwasail_almufidah-2.1.pdf' (Title: en alwasail almufidah 2.1). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 02:49:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:q6i2w7djku2njygk9ww8",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Stage 2 process failed: SurrealDB error: Found field 'license_type', but no such field exists for table 'documents'\"}",
+    "timestamp": "2026-07-19 07:19:38.938878+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:q6vh53hbzxuco7l9a7b8",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-07 02:52:56+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:q82h8r8rsp5or00jubn6",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 194. Cost: $0.306204 USD. Tokens in: 108131, out: 109506.",
+    "timestamp": "2026-07-06 03:03:42+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:q8hy1wz61o666w6fq15f",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded) expired and purged.\"}",
+    "timestamp": "2026-07-19 07:16:30.084949+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:qgny700c7laprslm53jt",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en_sifat-umrah.pdf' uploaded successfully (size: 1118624 bytes).",
+    "timestamp": "2026-07-06 01:38:46+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:qme60iv00n3w6czb65y2",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 473. Cost: $0.383316 USD. Tokens in: 238037, out: 124762.",
+    "timestamp": "2026-07-06 01:54:37+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:qnbaae7s6bdvrkdaunvn",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 122. Cost: $2.136522 USD. Tokens in: 260648, out: 193950.\"}",
+    "timestamp": "2026-07-19 07:36:47.595993+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:qrts7qlu99eoommnemxz",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 276. Cost: $0.452519 USD. Tokens in: 474413, out: 124078.",
+    "timestamp": "2026-07-07 03:03:27+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:r22tqd7b00w3kz8pdngf",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en.sahih.txt' (Title: The Holy Quran). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 01:22:11+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:r2ue4ahwgcz9zadrex2t",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}",
+    "timestamp": "2026-07-06 01:05:33+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:r2y156rdcgmh14jrjy9c",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:41:52.742723+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:rg3y7wplgltoqc1zx7i7",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Stage 1 process failed: GEMINI_API_KEY is not configured and Vertex AI is unavailable.\"}",
+    "timestamp": "2026-07-19 06:51:53.577999+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "c3f35298-7fe7-4f80-8c58-e52e2e3675d1",
+    "id": "audit_logs:rjwxym3d6hn0jwnd1wrs",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-nubzah_fil_aqidah-1.2.pdf' uploaded successfully (size: 1658352 bytes).",
+    "timestamp": "2026-07-06 02:56:26+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:rq23atfv0f3t4xh82not",
+    "ip_address": "",
+    "metadata": "GDPR retention cleanup: document 'expired_shared3.pdf' (UUID: 86052b01-2b05-4003-b6c9-9418941adfed) expired and purged.",
+    "timestamp": "2026-07-12 02:42:36+00:00",
+    "user_id": "None"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:rwf9jwksu0lujc8xd4be",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en.sahih.txt' (Title: en.sahih). Shared references remaining: 0.",
+    "timestamp": "2026-07-05 05:43:01+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:s3jbft3m4o676zyfe1xx",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 224. Cost: $0.228906 USD. Tokens in: 238037, out: 62998.",
+    "timestamp": "2026-07-06 02:24:20+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:s48u6nqyljhjcmlxi706",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:27:51.892980+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "71521ec5-8eac-4de6-940c-939f190b8219",
+    "id": "audit_logs:sa2p4iav50ehx58fpie3",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en-aqidah_sohihah-4.pdf' uploaded successfully (size: 938559 bytes).",
+    "timestamp": "2026-07-06 01:38:44+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:sh42h76ikt7q3ur8z7x8",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 9).",
+    "timestamp": "2026-07-05 05:43:30+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:sj272zzrlhr5d89rsl8o",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e) expired and purged.\"}",
+    "timestamp": "2026-07-19 07:08:34.580924+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:so1niqx0dns799kbpr54",
+    "ip_address": "",
+    "metadata": "GDPR retention cleanup: document 'expired_shared3.pdf' (UUID: 925f5d59-b2db-4932-9ea9-ff2cf5435c82) expired and purged.",
+    "timestamp": "2026-07-12 02:42:54+00:00",
+    "user_id": "None"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:sonagpl8nnaaeycqeoi7",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 170. Cost: $0.945246 USD. Tokens in: 336552, out: 337712.",
+    "timestamp": "2026-07-07 03:27:46+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:sq4dywnxwbbo3yhm1h2v",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 09:05:20+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:sw62g3h7bnsx4g3ig3h4",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b).\"}",
+    "timestamp": "2026-07-19 06:53:27.388382+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "22cf58f5-155a-4281-8407-f7e397f4d47d",
+    "id": "audit_logs:swfdz05vh6fmc4fr1jag",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 49. Cost: $0.177199 USD. Tokens in: 29893, out: 25426.",
+    "timestamp": "2026-07-07 09:24:19+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:sx5o6ti4bvsrtv7np6wm",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:41:51.742709+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:sxz4jnr6wm4fn1ualuyv",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:42:06.393044+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:szgnr1gfikhcaspzz6f5",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-07 09:13:53+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:t00laqatahp7hrik853b",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 02:03:02+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:t0445fdnmaxsmbnucf55",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (ID: 35).",
+    "timestamp": "2026-07-07 09:16:57+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:t05nyeksfme6lcy03pnf",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 171. Cost: $0.597968 USD. Tokens in: 214268, out: 213475.",
+    "timestamp": "2026-07-06 03:08:22+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:t3vb3d1gecw6sjz2ggp9",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Stage 1 process failed: GEMINI_API_KEY is not configured and Vertex AI is unavailable.\"}",
+    "timestamp": "2026-07-19 06:51:12.668422+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:t7e837b6c25ig9gr3z7x",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 27. Cost: $0.104296 USD. Tokens in: 18923, out: 15114.",
+    "timestamp": "2026-07-07 09:23:53+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:t7wd7kur9d7sg7ptgkry",
+    "ip_address": "",
+    "metadata": "Stage 2 failed: expected string or bytes-like object, got 'NoneType'",
+    "timestamp": "2026-07-05 05:58:59+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "cfa036f2-f5fc-43d0-9a60-c431670c84f2",
+    "id": "audit_logs:tquobv2psq3skm6camcf",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 13. Cost: $0.086340 USD. Tokens in: 14348, out: 7202.\"}",
+    "timestamp": "2026-07-20 02:18:16.984672+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:tscoyygd2961hvjtruyz",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 41).",
+    "timestamp": "2026-07-07 02:19:18+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:ttrb31azvqxfv1h5h1oq",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'ar_akidat_almuslim.pdf' uploaded successfully (size: 3221009 bytes).",
+    "timestamp": "2026-07-06 02:56:31+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:twpt5b2f3uyhn4pon097",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e) expired and purged.\"}",
+    "timestamp": "2026-07-19 06:18:15.634748+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:u0faidy6h3ck4jv7sfh8",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-07 02:58:00+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:uadt86n5sf6qonglfj71",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.011687 USD. Tokens in: 2313, out: 913.",
+    "timestamp": "2026-07-07 09:06:35+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:ufpkv59km09uvfzuw4qa",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 1. Cost: $0.002631 USD. Tokens in: 1486, out: 874.",
+    "timestamp": "2026-07-07 02:19:44+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:ugu1nt2j4qpjb75t3vus",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Uncaught outer pipeline crash: Source file 'documents/2026/07/12/active_n1HSz6I.pdf' not found in GCS storage. The file may have been deleted or the upload did not complete. Original error: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.\"}",
+    "timestamp": "2026-07-19 06:52:41.226570+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "71521ec5-8eac-4de6-940c-939f190b8219",
+    "id": "audit_logs:uiy61zvrrzlt7fmstxhq",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 51. Cost: $0.088419 USD. Tokens in: 27797, out: 32032.",
+    "timestamp": "2026-07-06 01:41:15+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "cbc781bb-9d3c-47b1-991d-0b2ec4d323be",
+    "id": "audit_logs:ul0gqeqx8r9amtenyw4m",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'EN_fadhlu_ashr_dhilhijjah.pdf' (ID: 23).",
+    "timestamp": "2026-07-07 09:23:16+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:ul1c5yiarhdu2r302adb",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-05 05:55:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:uoxildh14wnieopqgdfk",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Curation pipeline completed. Pages: 122. Cost: $2.643039 USD. Tokens in: 311172, out: 241809.\"}",
+    "timestamp": "2026-07-19 07:50:02.104922+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:v2cnubzbm7ncc439ked0",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 18).",
+    "timestamp": "2026-07-06 02:31:19+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "d78cfa01-954f-451e-881d-20563079a555",
+    "id": "audit_logs:v4f9yo5eralcogwrvx23",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 32. Cost: $0.065193 USD. Tokens in: 20783, out: 23583.",
+    "timestamp": "2026-07-06 01:41:00+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "c75fbeb5-3869-4d5f-a405-ce1f70015a6b",
+    "id": "audit_logs:vdx4pc0w60lmdx3a0tih",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'ar-kaifiyah_solat_nabi-2.pdf' (UUID: c75fbeb5-3869-4d5f-a405-ce1f70015a6b).\"}",
+    "timestamp": "2026-07-19 06:51:46.975907+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:vgitj34jubt5zo98rdy0",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 306. Cost: $0.896505 USD. Tokens in: 948826, out: 244743.",
+    "timestamp": "2026-07-06 02:27:47+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "22cf58f5-155a-4281-8407-f7e397f4d47d",
+    "id": "audit_logs:vh48r4bkx9xeujkchw9q",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 17. Cost: $0.035161 USD. Tokens in: 12037, out: 12620.",
+    "timestamp": "2026-07-06 01:40:17+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:vlo9cax1hlbkax718fjc",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-hirasah_tauhid-4.pdf' (ID: 37).",
+    "timestamp": "2026-07-07 03:14:36+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:vp4togz14l0nnaxjqpo2",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 08:52:19+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "5dfd2740-ee12-4b59-90e7-8727737f539c",
+    "id": "audit_logs:vqdo5s2ni17t2nv86fjc",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-man_kholaqo-alkaun-2.pdf' (ID: 32).",
+    "timestamp": "2026-07-06 02:52:47+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:vsbcyuxd2c4av5aolz9e",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 08:55:11+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:vsl55vlc6aenelxmznwf",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 02:36:02+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:vsmnh16pkih2vf5wdrds",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-06 00:15:23+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "450ec868-8fe3-4699-ba00-2375c3c3d4d8",
+    "id": "audit_logs:vwtxcosjullptdra0jp5",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 88. Cost: $0.143575 USD. Tokens in: 48984, out: 51552.",
+    "timestamp": "2026-07-06 01:43:33+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:vyno64mrls9qbhttfe0x",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 7).",
+    "timestamp": "2026-07-05 05:41:52+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "id": "audit_logs:w0b4nzsah5r6ke2j1ya0",
+    "ip_address": "",
+    "metadata": "Stage 2 failed: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 250000, model: gemini-3.5-flash\\nPlease retry in 6.613249918s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.5-flash'}, 'quotaValue': '250000'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '6s'}]}}",
+    "timestamp": "2026-06-23 01:08:54+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "DELETE",
+    "doc_uuid": "cb0fe951-3c19-4e70-af6f-488ab3acdded",
+    "id": "audit_logs:w6zw1bnv59vczagxk10e",
+    "ip_address": "",
+    "metadata": "{\"details\": \"GDPR retention cleanup: document 'active.pdf' (UUID: cb0fe951-3c19-4e70-af6f-488ab3acdded) expired and purged.\"}",
+    "timestamp": "2026-07-13 23:42:06.409890+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:w7t0s3kw3mz2m8cb9wmx",
+    "ip_address": "",
+    "metadata": "GDPR retention cleanup: document 'expired_unique.pdf' (UUID: b536c9da-34b0-48ed-be57-fd06a7253ea8) expired and purged.",
+    "timestamp": "2026-07-12 02:42:37+00:00",
+    "user_id": "None"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:w8kcz83g7bi68q3ptfzu",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for document 'quran-uthmani.txt' (ID: 8).",
+    "timestamp": "2026-06-23 01:08:09+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:wh1r124kw35yh3lofsob",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Stage 2 process failed: SurrealDB error: Found field 'license_type', but no such field exists for table 'documents'\"}",
+    "timestamp": "2026-07-19 07:20:03.190091+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:wmb2b7f49zz8e2h6w5v8",
+    "ip_address": "127.0.0.1",
+    "metadata": "Bulk Deleted document 'en-alwasail_almufidah-2.1.pdf' (Title: The Beneficial Means To A Happy Life). Shared references remaining: 0.",
+    "timestamp": "2026-07-06 01:37:55+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:wrx42j84exy8r1bpvuwf",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 02:12:11+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "086a7f5f-7b6c-4f35-91b5-e12ac7dd4d1d",
+    "id": "audit_logs:wrzeis7wchvum1zh57cl",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 17. Cost: $0.028435 USD. Tokens in: 9299, out: 10258.",
+    "timestamp": "2026-07-06 02:11:51+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:wscwmo3wbce4fvnnwxlo",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_sifat_alomrah_harmain.pdf' (ID: 39).",
+    "timestamp": "2026-07-06 02:58:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "e7f70163-b738-4c59-a066-6da50a5e22c9",
+    "id": "audit_logs:wt4yip377c8o9lr768g6",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: Client error '413 Payload Too Large' for url 'http://localhost:8000/sql'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413",
+    "timestamp": "2026-07-07 09:25:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:wxwc7rc1pm48l0220xzi",
+    "ip_address": "",
+    "metadata": "GDPR retention cleanup: document 'expired_shared2.pdf' (UUID: 56695eaa-6d7c-48b6-b2d5-3b153ee4b073) expired and purged.",
+    "timestamp": "2026-07-12 02:42:36+00:00",
+    "user_id": "None"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "f8b2d279-94ca-4232-8dd2-1805027515b5",
+    "id": "audit_logs:wym7pjsnoq1nb8ajm370",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 489. Cost: $0.765615 USD. Tokens in: 476074, out: 249117.",
+    "timestamp": "2026-07-06 02:00:29+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:wzlugkb9uzajjmv029n9",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'ar_akidat_almuslim.pdf' (ID: 40).",
+    "timestamp": "2026-07-06 03:00:18+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:x4nkpt0cqa8bg4l64lev",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en.sahih.txt' uploaded successfully (size: 898049 bytes).",
+    "timestamp": "2026-06-20 07:01:29+00:00",
+    "user_id": "1"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:xav1hz3lz4fm3k28wp38",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 211. Cost: $1.339494 USD. Tokens in: 1423239, out: 365009.",
+    "timestamp": "2026-07-07 03:12:07+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "458addec-2259-49ff-b5a4-d5f46f92b339",
+    "id": "audit_logs:xj4mikne2csykpfqo8kh",
+    "ip_address": "",
+    "metadata": "Stage 3 failed: Client error '413 Payload Too Large' for url 'http://localhost:8000/sql'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/413",
+    "timestamp": "2026-07-07 09:27:00+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DOCUMENT_EDITED",
+    "doc_uuid": "b2a6604e-0434-4cc8-991f-6b505bbe455f",
+    "id": "audit_logs:xyv7y0h2yqc49vd69mu5",
+    "ip_address": "127.0.0.1",
+    "metadata": "Document 'en-addurus_almuhimmah-2.1.pdf' content modified and re-embedding queued.",
+    "timestamp": "2026-07-07 09:27:39+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:y38gvom44ajx6mt9lk8z",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en_sifat-umrah.pdf' (ID: 24).",
+    "timestamp": "2026-07-06 01:39:12+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "UPLOAD",
+    "id": "audit_logs:yaga1xskje47noroexm6",
+    "ip_address": "127.0.0.1",
+    "metadata": "File 'en.sahih.txt' uploaded successfully (size: 898049 bytes).",
+    "timestamp": "2026-07-05 05:43:23+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:ydwrrp0l9vzkpof6nsld",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 188. Cost: $0.862630 USD. Tokens in: 948826, out: 231193.",
+    "timestamp": "2026-07-06 02:01:50+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "DELETE",
+    "id": "audit_logs:yebt1e1i6nyy5dh2s1os",
+    "ip_address": "127.0.0.1",
+    "metadata": "Deleted document 'en-alwasail_almufidah-2.1.pdf' (Title: en alwasail almufidah 2.1). Shared references remaining: 0.",
+    "timestamp": "2026-07-07 02:18:49+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "086a7f5f-7b6c-4f35-91b5-e12ac7dd4d1d",
+    "id": "audit_logs:yek37dyh1xe99nkamhpi",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-ahkam_hadyi-1.2.pdf' (ID: 25).",
+    "timestamp": "2026-07-06 02:10:49+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:ygmn5mnou2t03r00r34r",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 41).",
+    "timestamp": "2026-07-07 07:15:35+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:yk0p2n8h5zy2wpydmt2j",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-06 00:27:41+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:ymy4iv04pq6amaxjre5t",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en.sahih.txt' (ID: 16).",
+    "timestamp": "2026-07-06 00:45:30+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_FAILED",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:ysl4bbrryvqz5ll6xuru",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Uncaught outer pipeline crash: Source file 'documents/2026/07/06/en-attahqiq_walidoh_2.pdf' not found in GCS storage. The file may have been deleted or the upload did not complete. Original error: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.\"}",
+    "timestamp": "2026-07-19 07:16:51.046221+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:yuu3w0djbpv1sphjo1bf",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 02:11:20+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "17488cb9-a22a-4019-b73e-691b69f86aef",
+    "id": "audit_logs:yv64tbc9ot10xzrd83wu",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'en-attahqiq_walidoh_2.pdf' (UUID: 17488cb9-a22a-4019-b73e-691b69f86aef).\"}",
+    "timestamp": "2026-07-19 07:27:56.765839+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "id": "audit_logs:z5iks7kffz5b415nch9o",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'en-alwasail_almufidah-2.1.pdf' (ID: 18).",
+    "timestamp": "2026-07-06 02:17:44+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:za4hgcxv2h63qxdaczp8",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 12. Cost: $0.021681 USD. Tokens in: 7545, out: 7767.",
+    "timestamp": "2026-07-06 02:17:54+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:zdood4pdi3p3fis8fhe7",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 07:12:41+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:zh4jxwdfod9qtwbus76j",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 07:18:03+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "00d9f8a3-43a6-4c89-aa27-b27a6182525e",
+    "id": "audit_logs:zhunk0h8wkd14prqwjdb",
+    "ip_address": "",
+    "metadata": "{\"details\": \"Background curation pipeline started for 'active.pdf' (UUID: 00d9f8a3-43a6-4c89-aa27-b27a6182525e).\"}",
+    "timestamp": "2026-07-19 06:51:00.154794+00:00",
+    "user_id": "system"
+  },
+  {
+    "action": "EXTRACTION_START",
+    "doc_uuid": "2d889a96-37ad-4a3d-b7aa-a0141367608b",
+    "id": "audit_logs:zivv7nfcs6rzdwa4flok",
+    "ip_address": "",
+    "metadata": "Background curation pipeline started for 'quran-uthmani.txt' (ID: 29).",
+    "timestamp": "2026-07-06 01:45:07+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "LOGIN",
+    "id": "audit_logs:zldfhdkw5250jg75x2x4",
+    "ip_address": "127.0.0.1",
+    "metadata": "User 'elang' authenticated successfully.",
+    "timestamp": "2026-07-07 01:38:50+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "doc_uuid": "542641ae-fb9d-4a1c-aeeb-920d5149a7ea",
+    "id": "audit_logs:zsoah5n9zlwqummydjts",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 202. Cost: $0.914584 USD. Tokens in: 323453, out: 327019.",
+    "timestamp": "2026-07-06 03:13:55+00:00",
+    "user_id": "3"
+  },
+  {
+    "action": "EXTRACTION_COMPLETED",
+    "id": "audit_logs:zzklcavjl808hbgaoj6m",
+    "ip_address": "",
+    "metadata": "Curation pipeline completed. Pages: 13. Cost: $0.021796 USD. Tokens in: 7572, out: 7810.",
+    "timestamp": "2026-07-06 02:11:46+00:00",
+    "user_id": "3"
+  }
+]
