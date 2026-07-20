@@ -93,8 +93,8 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
                 logger.error("[CloudTasks/local] Unknown task: '%s'", task_name)
                 return
             handler(payload)
-        except Exception:
-            logger.exception("[CloudTasks/local] Task '%s' raised an exception", task_name)
+        except Exception as task_err:
+            logger.exception("[CloudTasks/local] Task '%s' raised an exception: %s", task_name, task_err)
 
     thread = threading.Thread(target=_run, daemon=True, name=f"ct-{task_name}")
     thread.start()

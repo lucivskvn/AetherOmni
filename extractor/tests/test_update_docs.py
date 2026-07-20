@@ -1,16 +1,18 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from scripts.update_docs import (
     _git,
-    get_major_minor,
-    compute_version,
-    get_test_count,
-    get_health_scores,
     _replace_sentinel,
-    update_readme,
+    compute_version,
+    get_health_scores,
+    get_major_minor,
+    get_test_count,
     update_gcp_guide,
+    update_readme,
     update_service_yamls,
 )
+
 
 class UpdateDocsTestCase(unittest.TestCase):
 

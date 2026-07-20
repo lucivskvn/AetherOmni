@@ -420,16 +420,16 @@ def _fetch_live_rates_with_fallback():
                     from extractor import surreal_db
 
                     surreal_db.kv_cache_set("usd_exchange_rates", rates, ttl_seconds=86400)
-                except Exception as exc:
+                except (RuntimeError, ValueError, KeyError, AttributeError) as exc:
                     logger.debug("[Exchange Rates] Failed to cache rates: %s", exc)
-    except Exception as exc:
+    except (urllib.error.URLError, ValueError, TypeError, KeyError, OSError) as exc:
         logger.warning("[Exchange Rates] Error fetching live rates: %s — using fallback.", exc)
         rates = _FALLBACK_RATES.copy()
         try:
             from extractor import surreal_db
 
             surreal_db.kv_cache_set("usd_exchange_rates", rates, ttl_seconds=3600)
-        except Exception as exc:
+        except (RuntimeError, ValueError, KeyError, AttributeError) as exc:
             logger.debug("[Exchange Rates] Failed to cache fallback rates: %s", exc)
     return rates
 
@@ -440,7 +440,7 @@ def _get_exchange_rates():
         from extractor import surreal_db
 
         rates = surreal_db.kv_cache_get("usd_exchange_rates")
-    except Exception as exc:
+    except (RuntimeError, ValueError, KeyError, AttributeError) as exc:
         logger.debug("[Exchange Rates] Failed to read cached rates: %s", exc)
 
     if not rates:

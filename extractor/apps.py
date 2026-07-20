@@ -54,8 +54,8 @@ class ExtractorConfig(AppConfig):
                     reaped = reap_stale_tasks()
                     if reaped:
                         logger.info("[AppReady] Reaped %s stuck document task(s).", reaped)
-                except Exception:
-                    logger.exception("[AppReady] reap_stale_tasks raised an exception.")
+                except Exception as loop_err:
+                    logger.exception("[AppReady] reap_stale_tasks encountered error: %s", loop_err)
                 time.sleep(300)  # every 5 minutes
 
         t = threading.Thread(target=_loop, daemon=True, name="stale-task-reaper")
@@ -74,8 +74,8 @@ class ExtractorConfig(AppConfig):
                     from extractor.tasks import cleanup_expired_documents_task
 
                     cleanup_expired_documents_task()
-                except Exception:
-                    logger.exception("[AppReady] cleanup_expired_documents_task raised an exception.")
+                except Exception as cleanup_err:
+                    logger.exception("[AppReady] cleanup_expired_documents_task encountered error: %s", cleanup_err)
                 time.sleep(3600)  # every hour
 
         t = threading.Thread(target=_loop, daemon=True, name="doc-cleanup")
