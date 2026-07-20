@@ -342,13 +342,7 @@ function initializeDragAndDrop() {
 
     dropZone.addEventListener('click', () => fileInput.click());
 
-    // Keyboard accessibility for interactive div container
-    dropZone.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            fileInput.click();
-        }
-    });
+
 
     fileInput.addEventListener('change', () => {
         if (fileInput.files.length > 0) {
