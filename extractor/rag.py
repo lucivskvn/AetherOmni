@@ -35,7 +35,7 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
     """
     Chunks large documents on natural boundaries (paragraphs or sentences)
     to maintain context coherence during semantic memory searches.
-    Gap H-3: max_chunk_size is passed by the caller — tasks.py uses 500 for Arabic,
+    max_chunk_size is passed by the caller — tasks.py uses 500 for Arabic,
     1200 for Latin/Latin-script languages.
     """
     paragraphs = text.split("\n\n")
@@ -233,7 +233,7 @@ def _lookup_semantic_cache(
         sem_hits = surreal_db.search_rag_cache_hnsw(user_part, query_embedding, threshold=0.15)
         if sem_hits:
             hit = sem_hits[0]
-            # Gap F-8: verify all cited source UUIDs are accessible to this user
+            # Verify all cited source UUIDs are accessible to this user
             allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
             hit_sources = hit.get("sources", [])
             if allowed_uuids is None or all(s in allowed_uuids for s in hit_sources):
@@ -280,7 +280,7 @@ def _lookup_kv_cache(cache_key, user, document_ids, surreal_db):
     try:
         cached_result = surreal_db.kv_cache_get(cache_key)
         if cached_result:
-            # Enforce access control and filter boundaries on cached KV result (Gap F-8)
+            # Enforce access control and filter boundaries on cached KV result
             allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
             cached_sources = [s.get("uuid") for s in cached_result.get("sources", [])]
             if allowed_uuids is None or all(s in allowed_uuids for s in cached_sources):
@@ -426,7 +426,7 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
         sources.append(
             {
                 "id": doc_meta["id"],  # For test compatibility (SQLite integer ID)
-                "uuid": doc_uuid_str,  # Gap E-29: use UUID for correct frontend URL routing
+                "uuid": doc_uuid_str,  # use UUID for correct frontend URL routing
                 "title": doc_meta["title"],
                 "author": doc_meta["author"],
                 "language": doc_meta["language"],
@@ -472,7 +472,7 @@ def _get_allowed_doc_uuids(user: Any, document_ids: list[str] | list[int] | None
     """
     Returns a list of UUID strings the user is allowed to access.
     Returns None if the user is staff/superuser (no filter).
-    Gap F-8: enforces tenant isolation on semantic cache hits and chunk searches.
+    Enforces tenant isolation on semantic cache hits and chunk searches.
     """
     from django.conf import settings
 

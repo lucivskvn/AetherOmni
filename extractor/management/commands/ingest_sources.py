@@ -110,7 +110,7 @@ class Command(BaseCommand):
     def _handle_duplicate_document(self, filename, file_hash, existing_doc):
         """
         Deduplication match — clone SurrealDB chunks from existing doc to new record.
-        Gap B-8: uses surreal_db.clone_chunks instead of DocumentChunk.clone_chunks.
+        Uses surreal_db.clone_chunks to clone chunks atomically.
         """
         from extractor import surreal_db
 

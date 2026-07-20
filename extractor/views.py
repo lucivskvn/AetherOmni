@@ -772,7 +772,7 @@ class DocumentSaveView(LoginRequiredMixin, View):
             ip_address=get_client_ip(request),
         )
 
-        # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes (Gap B-8)
+        # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes
         from django.conf import settings
 
         from extractor import cloud_tasks

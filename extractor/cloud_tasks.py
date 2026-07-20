@@ -6,7 +6,7 @@ In production (Cloud Run, DEBUG=False):
   - Cloud Tasks then POSTs to /internal/tasks/<task_name>/ on the same service.
 
 In local development (DEBUG=True):
-  - Skips metadata server lookups immediately (Gap E-39).
+  - Skips metadata server lookups immediately.
   - Falls back to executing task functions inside a background daemon thread
     so the developer experience is identical to production without requiring
     Cloud Tasks infrastructure.

@@ -128,7 +128,7 @@ def clean_html_content(raw_html: str) -> str:
     """
     Sanitizes HTML content using bleach to shield against XSS.
     This is ONLY called on already-compiled HTML, NOT on raw Markdown text.
-    Preserves RTL wrappers (div, dir attribute) required for Arabic script rendering (Gap H-7).
+    Preserves RTL wrappers (div, dir attribute) required for Arabic script rendering.
     """
     allowed_tags = [
         "h1",
@@ -159,7 +159,7 @@ def clean_html_content(raw_html: str) -> str:
         "blockquote",
         "a",
         "span",
-        "div",  # Gap H-7: required for <div dir="rtl"> Arabic script wrappers
+        "div",  # required for <div dir="rtl"> Arabic script wrappers
     ]
     allowed_attrs = {
         "a": ["href", "title", "target"],
@@ -235,7 +235,7 @@ def render_markdown_to_html(markdown_text: str) -> str:
 
 
 def _build_yaml_frontmatter(doc: Any) -> str:
-    """Build a YAML frontmatter header for export markdown files (Gap H-4)."""
+    """Build a YAML frontmatter header for export markdown files."""
     return (
         "---\n"
         f'title: "{doc.title}"\n'
@@ -275,7 +275,7 @@ def _process_zip_doc(idx, doc, seen_lang_paths, seen_author_paths, manifest, mas
     seen_author_paths.add(author_path)
 
     doc_markdown = doc.refined_markdown or doc.raw_markdown or "*Empty Document Content*"
-    # Gap H-4: prepend YAML frontmatter to each exported file
+    # prepend YAML frontmatter to each exported file
     frontmatter = _build_yaml_frontmatter(doc)
     full_content = frontmatter + doc_markdown
 
@@ -313,7 +313,7 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
     """
     Aggregates selected documents into an organized directory structure.
     Saves them by Language/ and Author/.
-    Prepends YAML frontmatter to each exported markdown file (Gap H-4).
+    Prepends YAML frontmatter to each exported markdown file.
     Enforces user boundaries if `user` is provided and is not a staff/superuser.
     """
     from django.conf import settings
@@ -457,8 +457,8 @@ def get_locale_currency_details(request: Any) -> dict[str, Any]:
     """
     Resolves target currency, local currency name, and current exchange rate from USD
     by parsing browser settings (HTTP_ACCEPT_LANGUAGE) or system settings override.
-    Gap E-38: caches fallback rates for 1 hour when external API is unavailable.
-    Gap D-6: uses SurrealDB KV cache instead of Redis.
+    Caches fallback rates for 1 hour when external API is unavailable.
+    Uses SurrealDB KV cache instead of Redis.
     """
     from extractor.models import SystemSettings
 
@@ -504,7 +504,7 @@ def format_localized_cost(cost_usd: Decimal, currency_details: dict[str, Any]) -
 def get_google_oidc_token(audience: str) -> str | None:
     """
     Fetches an OIDC ID token from the GCP metadata server for the given audience.
-    Gap E-39: returns None immediately in DEBUG mode to skip blocking network calls.
+    Returns None immediately in DEBUG mode to skip blocking network calls.
     """
     if settings.DEBUG:
         return None
@@ -521,7 +521,7 @@ def get_google_oidc_token(audience: str) -> str | None:
 
 def async_task_with_wakeup(task_name: str, payload: dict, countdown: int = 0) -> None:
     """
-    Gap C-2: Alias for cloud_tasks.enqueue — replaces the old Django-Q async_task wrapper.
+    Alias for cloud_tasks.enqueue — replaces the old Django-Q async_task wrapper.
     Provides backward-compatible interface for call sites that used the old signature.
     """
     from extractor import cloud_tasks

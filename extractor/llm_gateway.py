@@ -310,7 +310,7 @@ def _call_openrouter(prompt: str, system_instruction: str | None, model_name: st
         messages.append({"role": "system", "content": system_instruction})
     messages.append({"role": "user", "content": prompt})
 
-    # Gap E-9: use APP_URL from settings (no hardcoded localhost referer in production)
+    # Use APP_URL from settings (no hardcoded localhost referer in production)
     app_url = getattr(settings, "APP_URL", None) or os.getenv("APP_URL", "http://localhost:8080")
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -567,11 +567,12 @@ def generate_llm_content_unified(
       1. Intelligent Auto-Routing (routes vision/heavy files to Gemini and standard text tasks to OpenRouter free if key exists).
       2. Progressive Deprecation Fallback Chain (catches retired/deleted Gemini models and cascades to stable alternatives).
       3. Accurate token usage and USD cost tracking.
-      4. Gap H-5: NFC Unicode normalisation applied to prompt before dispatch.
+      4. NFC Unicode normalisation applied to prompt before dispatch.
+      5. Structured JSON query result generation.
     """
     import unicodedata
 
-    # Gap H-5: normalise Unicode (e.g. Arabic/Harakat) to NFC to prevent diacritic stripping
+    # Normalise Unicode (e.g. Arabic/Harakat) to NFC to prevent diacritic stripping
     prompt = unicodedata.normalize("NFC", prompt)
     if system_instruction:
         system_instruction = unicodedata.normalize("NFC", system_instruction)

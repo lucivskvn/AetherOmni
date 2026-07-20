@@ -140,7 +140,7 @@ class DynamicCsrfTrustedOriginsMiddleware:
     def _trust_database_origins(self):
         """Load CSRF trusted origins from the database with eventual consistency (60s cache).
 
-        Gap E-28: queries database at most once every 60 seconds per process.
+        Queries database at most once every 60 seconds per process.
         Origins are merged into the shared settings list.
         """
         import time
@@ -237,7 +237,7 @@ class ForcePasswordChangeMiddleware:
             from django.urls import reverse
 
             if path == reverse("password_change_done"):
-                # Gap F-9: re-verify the password to prevent bypassing the change
+                # Re-verify the password to prevent bypassing the change
                 # by resetting back to the default 'admin' password.
                 still_default = request.user.check_password("admin")
                 request.session["is_default_password"] = still_default
