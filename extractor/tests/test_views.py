@@ -463,6 +463,7 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
     def test_dynamic_csrf_middleware_adds_origin(self):
         # Backup the current CSRF_TRUSTED_ORIGINS
         original_origins = list(settings.CSRF_TRUSTED_ORIGINS)
+        original_hosts = list(settings.ALLOWED_HOSTS)
 
         try:
             factory = RequestFactory()
@@ -473,8 +474,8 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
                 HTTP_ORIGIN="https://custom-tunnel-domain.example.com",
             )
 
-            # Ensure DEBUG is True
-            with self.settings(DEBUG=True):
+            # Ensure DEBUG is True and custom host is allowed during test execution
+            with self.settings(DEBUG=True, ALLOWED_HOSTS=["custom-tunnel-domain.example.com"]):
                 # Call middleware
                 from core.middleware import DynamicCsrfTrustedOriginsMiddleware
 
@@ -488,6 +489,7 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
         finally:
             # Restore original settings
             settings.CSRF_TRUSTED_ORIGINS = original_origins
+            settings.ALLOWED_HOSTS = original_hosts
 
     def test_dynamic_csrf_middleware_database_origins(self):
         # Backup the current CSRF_TRUSTED_ORIGINS
