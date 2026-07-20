@@ -308,14 +308,30 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
     stage1_input_tokens = 0
     stage1_output_tokens = 0
 
-    if lower_name.endswith(".csv"):
+    existing_raw = (doc.get("raw_markdown") if isinstance(doc, dict) else getattr(doc, "raw_markdown", None)) or ""
+    file_hash = (doc.get("file_hash") if isinstance(doc, dict) else getattr(doc, "file_hash", None)) or ""
+    cached_ocr = surreal_db.kv_cache_get(f"ocr:{file_hash}") if (file_hash and not getattr(settings, "SURREALDB_OFFLINE", False)) else None
+
+    if len(existing_raw.strip()) > 20:
+        logger.info("[Worker/Stage 1] Reusing existing raw_markdown for Document ID: %s (Skipping OCR call, $0.00 cost)", doc_id_display)
+        raw_markdown = existing_raw
+        doc_type_detected = (doc.get("document_type") if isinstance(doc, dict) else getattr(doc, "document_type", None)) or ("PDF" if lower_name.endswith(".pdf") else "IMAGE")
+        page_count_detected = (doc.get("page_count") if isinstance(doc, dict) else getattr(doc, "page_count", 0)) or _determine_actual_page_count(working_path, doc_type_detected)
+    elif isinstance(cached_ocr, dict) and cached_ocr.get("raw_markdown"):
+        logger.info("[Worker/Stage 1] Found cached OCR result in KV Cache for file_hash %s (Skipping OCR call, $0.00 cost)", file_hash)
+        raw_markdown = cached_ocr["raw_markdown"]
+        doc_type_detected = cached_ocr.get("document_type") or ("PDF" if lower_name.endswith(".pdf") else "IMAGE")
+        page_count_detected = cached_ocr.get("page_count") or _determine_actual_page_count(working_path, doc_type_detected)
+    elif lower_name.endswith(".csv"):
         logger.info("[Worker] Routing CSV to local parser for Document ID: %s", doc_id_display)
         raw_markdown = process_csv_local(working_path)
         doc_type_detected = "CSV"
+        page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
     elif lower_name.endswith(".txt"):
         logger.info("[Worker] Routing TXT to local parser for Document ID: %s", doc_id_display)
         raw_markdown = process_txt_local(working_path)
         doc_type_detected = "TXT"
+        page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
     else:
         logger.info("[Worker] Routing to Gemini Multimodal OCR for Document ID: %s", doc_id_display)
         doc_type_detected = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
@@ -324,8 +340,17 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
         stage1_cost = ocr_results["cost_usd"]
         stage1_input_tokens = ocr_results["input_tokens"]
         stage1_output_tokens = ocr_results["output_tokens"]
+        page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
 
-    page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
+        if file_hash and raw_markdown and not getattr(settings, "SURREALDB_OFFLINE", False):
+            surreal_db.kv_cache_set(
+                f"ocr:{file_hash}",
+                {
+                    "raw_markdown": raw_markdown,
+                    "document_type": doc_type_detected,
+                    "page_count": page_count_detected,
+                },
+            )
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         with transaction.atomic():
@@ -633,23 +658,21 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
         raise ValueError(f"Document {doc_uuid} not found")
     logger.info("[Worker] Launching Stage 2 Refinement for Document UUID: %s", doc_uuid)
 
+    existing_refined = (doc.get("refined_markdown") if isinstance(doc, dict) else getattr(doc, "refined_markdown", None)) or ""
+    existing_yaml = (doc.get("yaml_metadata") if isinstance(doc, dict) else getattr(doc, "yaml_metadata", None)) or ""
+    file_hash = (doc.get("file_hash") if isinstance(doc, dict) else getattr(doc, "file_hash", None)) or ""
+    cached_refine = surreal_db.kv_cache_get(f"refine:{file_hash}") if (file_hash and not getattr(settings, "SURREALDB_OFFLINE", False)) else None
+
+    if len(existing_refined.strip()) > 20 and len(existing_yaml.strip()) > 5:
+        logger.info("[Worker/Stage 2] Reusing existing refined_markdown and metadata for Document UUID: %s (Skipping LLM call, $0.00 cost)", doc_uuid)
+        return doc
+
     try:
         settings_obj = surreal_db.get_system_settings()
         selected_model = settings_obj.get("selected_model", "auto")
     except Exception as _settings_err:
         logger.warning("[Stage2] Could not fetch system settings, using default model: %s", _settings_err)
         selected_model = "auto"
-
-    chunks = _split_markdown_into_chunks(raw_markdown)
-    total_chunks = len(chunks)
-
-    if total_chunks > 1:
-        logger.info(
-            "[Worker] Document UUID %s is large (%d chars). Splitting Stage 2 into %d chunks.",
-            doc_uuid,
-            len(raw_markdown),
-            total_chunks,
-        )
 
     refined_parts: list[str] = []
     yaml_metadata_block: str = ""
@@ -658,35 +681,58 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     stage2_input_tokens = 0
     stage2_output_tokens = 0
 
-    for idx, chunk in enumerate(chunks, 1):
-        logger.info("[Worker] Stage 2 chunk %d/%d for Document UUID %s", idx, total_chunks, doc_uuid)
-        try:
-            chunk_results = run_stage2_editorial_refinement(chunk, model_name=selected_model)
-        except Exception as chunk_err:
-            logger.exception(
-                "[Worker] Stage 2 chunk %d/%d failed for Document UUID %s: %s", idx, total_chunks, doc_uuid, chunk_err
+    if isinstance(cached_refine, dict) and cached_refine.get("refined_markdown"):
+        logger.info("[Worker/Stage 2] Found cached Refinement result in KV Cache for file_hash %s (Skipping LLM call, $0.00 cost)", file_hash)
+        refined_markdown = cached_refine["refined_markdown"]
+        yaml_metadata_block = cached_refine.get("yaml_metadata", "")
+        qa_dataset = cached_refine.get("qa_dataset", [])
+    else:
+        chunks = _split_markdown_into_chunks(raw_markdown)
+        total_chunks = len(chunks)
+
+        if total_chunks > 1:
+            logger.info(
+                "[Worker] Document UUID %s is large (%d chars). Splitting Stage 2 into %d chunks.",
+                doc_uuid,
+                len(raw_markdown),
+                total_chunks,
             )
-            # On chunk failure, preserve the raw chunk text so content is not lost
-            refined_parts.append(chunk)
-            continue
 
-        refined_parts.append(chunk_results["refined_markdown"])
+        for idx, chunk in enumerate(chunks, 1):
+            logger.info("[Worker] Stage 2 chunk %d/%d for Document UUID %s", idx, total_chunks, doc_uuid)
+            try:
+                chunk_results = run_stage2_editorial_refinement(chunk, model_name=selected_model)
+            except Exception as chunk_err:
+                logger.exception(
+                    "[Worker] Stage 2 chunk %d/%d failed for Document UUID %s: %s", idx, total_chunks, doc_uuid, chunk_err
+                )
+                refined_parts.append(chunk)
+                continue
 
-        # Only keep YAML from the first chunk (it has the title/author/language)
-        if idx == 1:
-            yaml_metadata_block = chunk_results["yaml_metadata"]
+            refined_parts.append(chunk_results["refined_markdown"])
 
-        # Accumulate Q&A pairs (cap total at 20)
-        for qa in chunk_results.get("qa_dataset", []):
-            if len(qa_dataset) < 20:
-                qa_dataset.append(qa)
+            if idx == 1:
+                yaml_metadata_block = chunk_results["yaml_metadata"]
 
-        stage2_cost += float(chunk_results["cost_usd"])
-        stage2_input_tokens += chunk_results["input_tokens"]
-        stage2_output_tokens += chunk_results["output_tokens"]
+            for qa in chunk_results.get("qa_dataset", []):
+                if len(qa_dataset) < 20:
+                    qa_dataset.append(qa)
 
-    # Merge refined text — join chunks with a light visual separator
-    refined_markdown = "\n\n---\n\n".join(p for p in refined_parts if p.strip())
+            stage2_cost += float(chunk_results["cost_usd"])
+            stage2_input_tokens += chunk_results["input_tokens"]
+            stage2_output_tokens += chunk_results["output_tokens"]
+
+        refined_markdown = "\n\n---\n\n".join(p for p in refined_parts if p.strip())
+
+        if file_hash and refined_markdown and not getattr(settings, "SURREALDB_OFFLINE", False):
+            surreal_db.kv_cache_set(
+                f"refine:{file_hash}",
+                {
+                    "refined_markdown": refined_markdown,
+                    "yaml_metadata": yaml_metadata_block,
+                    "qa_dataset": qa_dataset,
+                },
+            )
 
     (
         parsed_title,

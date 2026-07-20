@@ -604,12 +604,34 @@ function compileMarkdown(markdown) {
 
     html += closeAll();
 
-    // Restore safe <div> elements the LLM may emit for RTL wrappers
+    // Restore safe HTML tags (b, i, u, strong, em, sup, sub, br, hr, span, div, p, table, etc.) and their safe attributes (dir, class, style, colspan, rowspan) for live rendering
     html = html
-        .replace(/&lt;div\s+([^&]*?dir=(?:&quot;|')rtl(?:&quot;|')[^&]*?)&gt;/gi, '<div $1>')
-        .replace(/&lt;div\s+([^&]*?class=(?:&quot;|')[^&]*?(?:&quot;|')[^&]*?)&gt;/gi, '<div $1>')
-        .replace(/&lt;div&gt;/gi, '<div>')
-        .replace(/&lt;\/div&gt;/gi, '</div>');
+        .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
+        .replace(/&lt;hr\s*\/?&gt;/gi, '<hr>')
+        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b([^&]*)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+            let cleanAttrs = '';
+            if (attrs) {
+                const decodedAttrs = attrs.replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
+                const attrRegex = /\b(colspan|rowspan|class|style|dir)\s*=\s*["']([^"']*)["']/gi;
+                let m;
+                while ((m = attrRegex.exec(decodedAttrs)) !== null) {
+                    cleanAttrs += ` ${m[1]}="${m[2]}"`;
+                }
+            }
+            return `<${closeSlash || ''}${tagName}${cleanAttrs}>`;
+        })
+        .replace(/&lt;(\/)?(span|div|p)\b([^&]*)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+            let cleanAttrs = '';
+            if (attrs) {
+                const decodedAttrs = attrs.replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
+                const attrRegex = /\b(class|dir|style)\s*=\s*["']([^"']*)["']/gi;
+                let m;
+                while ((m = attrRegex.exec(decodedAttrs)) !== null) {
+                    cleanAttrs += ` ${m[1]}="${m[2]}"`;
+                }
+            }
+            return `<${closeSlash || ''}${tagName}${cleanAttrs}>`;
+        });
 
     return html;
 
