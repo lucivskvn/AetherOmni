@@ -1153,7 +1153,7 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     logger.info("[Cron] Cleanup finished. Deleted %s expired records.", purged_count)
 
 
-def _reap_single_stale_doc(doc: dict, stale_threshold_str: str) -> bool:
+def _reap_single_stale_doc(doc: dict) -> bool:
     """Lock and check one stale document; mark FAILED if still stuck. Returns True if reaped."""
     doc_uuid = doc.get("doc_uuid")
 
@@ -1223,7 +1223,7 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
     reaped_count = 0
 
     for doc in stale_docs:
-        if _reap_single_stale_doc(doc, stale_threshold_str):
+        if _reap_single_stale_doc(doc):
             reaped_count += 1
 
     if reaped_count > 0:

@@ -161,8 +161,8 @@ def _is_budget_exceeded(user) -> bool:
                     )
                 )
             )
-        except Exception:
-            pass  # SurrealDB unavailable — rely on MonthlySpendLog only
+        except Exception as err:
+            logger.debug("[Budget Check] SurrealDB query bypassed, relying on MonthlySpendLog: %s", err)
 
         return (monthly_live + monthly_logged) >= budget_cap
     except Exception:
@@ -1490,7 +1490,7 @@ class AuditLogListView(LoginRequiredMixin, View):
             try:
                 meta_dict = json.loads(metadata_val) if isinstance(metadata_val, str) else (metadata_val or {})
             except Exception:
-                meta_dict = {}
+                meta_dict = {"details": ""}
             details_val = (meta_dict.get("details") if isinstance(meta_dict, dict) else "") or rl.get("details") or ""
 
             # Filter in-memory if user/search queries are provided
@@ -1552,7 +1552,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _resolve_worker_config(worker_config_default, web_config_default):
+def _resolve_worker_config(worker_config_default):
     """Try to load live GCP service configs; fall back to local defaults."""
     from extractor.deployment import get_service_config
 
@@ -1635,7 +1635,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         worker_service_name = "data-extractor-worker"
         gcp_active = False
 
-        worker_config, gcp_active, worker_service_name = _resolve_worker_config(worker_config, web_config)
+        worker_config, gcp_active, worker_service_name = _resolve_worker_config(worker_config)
 
         try:
             web_real = get_service_config("data-extractor-web")

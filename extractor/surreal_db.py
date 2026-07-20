@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 _test_chunks: dict[str, list[dict]] = {}
 
 
+ISO8601_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
 def _model_to_dict(doc) -> dict:
     if not doc:
         return {}
@@ -54,9 +57,9 @@ def _model_to_dict(doc) -> dict:
         "cost_usd": float(doc.cost_usd),
         "semantic_signature": doc.semantic_signature,
         "retry_count": doc.retry_count,
-        "created_at": doc.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if doc.created_at else None,
-        "updated_at": doc.updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if doc.updated_at else None,
-        "expires_at": doc.expires_at.strftime("%Y-%m-%dT%H:%M:%SZ") if doc.expires_at else None,
+        "created_at": doc.created_at.strftime(ISO8601_FMT) if doc.created_at else None,
+        "updated_at": doc.updated_at.strftime(ISO8601_FMT) if doc.updated_at else None,
+        "expires_at": doc.expires_at.strftime(ISO8601_FMT) if doc.expires_at else None,
     }
 
 

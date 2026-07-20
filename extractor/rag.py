@@ -291,7 +291,7 @@ def _lookup_kv_cache(cache_key, user, document_ids, surreal_db):
     return None
 
 
-def _ensure_chunks_loaded_for_user(user, allowed_uuids):
+def _ensure_chunks_loaded(allowed_uuids):
     if allowed_uuids is not None:
         ensure_document_chunks_loaded(allowed_uuids)
     else:
@@ -365,7 +365,7 @@ def query_semantic_knowledge_rag(
 
     # ── 6. SurrealDB HNSW chunk search ────────────────────────────────────────
     allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
-    _ensure_chunks_loaded_for_user(user, allowed_uuids)
+    _ensure_chunks_loaded(allowed_uuids)
 
     try:
         matching_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
