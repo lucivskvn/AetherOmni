@@ -196,6 +196,7 @@ def _fetch_user_memories_block(user: Any, query_embedding: list[float]) -> str:
             db_count = 0
 
         from django.conf import settings
+
         if db_count == 0 and getattr(settings, "SURREALDB_OFFLINE", False):
             _sync_postgres_memories_to_surreal(user, surreal_db, UserMemory)
 

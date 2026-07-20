@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 # ANSI styling colors
 GREEN='\033[0;32m'

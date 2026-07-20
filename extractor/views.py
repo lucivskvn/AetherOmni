@@ -11,9 +11,9 @@ from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods
-from django.views.decorators.cache import never_cache
 from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_http_methods
 
 if TYPE_CHECKING:  # nosonar
     # Statically import ingest_sources to satisfy desloppify importer analyzer
@@ -153,7 +153,13 @@ def _is_budget_exceeded(user) -> bool:
 
             first_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
             monthly_live = Decimal(
-                str(sum(float(d.get("cost_usd") or 0) for d in raw_docs if _parse_dt(d.get("created_at")) and _parse_dt(d.get("created_at")) >= first_of_month))
+                str(
+                    sum(
+                        float(d.get("cost_usd") or 0)
+                        for d in raw_docs
+                        if _parse_dt(d.get("created_at")) and _parse_dt(d.get("created_at")) >= first_of_month
+                    )
+                )
             )
         except Exception:
             pass  # SurrealDB unavailable — rely on MonthlySpendLog only
@@ -520,10 +526,27 @@ class UploadView(LoginRequiredMixin, View):
 
         # Validate file extension to prevent uploading scripts, web shells, or executables
         import os
+
         ext = os.path.splitext(orig_name)[1].lower().replace(".", "")
         ALLOWED_EXTENSIONS = {
-            "pdf", "png", "jpg", "jpeg", "webp", "gif", "tiff", "heic", "heif",
-            "csv", "txt", "md", "markdown", "json", "docx", "doc", "xlsx", "xls"
+            "pdf",
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "gif",
+            "tiff",
+            "heic",
+            "heif",
+            "csv",
+            "txt",
+            "md",
+            "markdown",
+            "json",
+            "docx",
+            "doc",
+            "xlsx",
+            "xls",
         }
         if not ext or ext not in ALLOWED_EXTENSIONS:
             return {
@@ -822,8 +845,10 @@ class DocumentDeleteView(LoginRequiredMixin, View):
             try:
                 from django.core.files.storage import default_storage
 
-                if default_storage.exists(file_rel_path):
-                    default_storage.delete(file_rel_path)
+                # Ensure file_rel_path is a valid non-empty string path
+                path_str = str(file_rel_path or "").strip()
+                if path_str and default_storage.exists(path_str):
+                    default_storage.delete(path_str)
                 logger.info("[De-duplication Delete] Purged file hash %s physically.", file_hash)
             except Exception as e:
                 logger.warning("[De-duplication Delete] Failed to physically delete file for hash %s: %s", file_hash, e)
@@ -961,7 +986,9 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
             return JsonResponse({"error": str(e)}, status=400)
         except Exception as e:
             logger.exception("[RAG Search] Internal exception during semantic search: %s", e)
-            return JsonResponse({"error": "An unexpected error occurred during search. Please try again later."}, status=500)
+            return JsonResponse(
+                {"error": "An unexpected error occurred during search. Please try again later."}, status=500
+            )
 
 
 class ExportZipView(LoginRequiredMixin, View):
@@ -1058,8 +1085,10 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
 
     if shared_references == 0:
         try:
-            if default_storage.exists(file_rel_path):
-                default_storage.delete(file_rel_path)
+            # Ensure file_rel_path is a valid non-empty string path
+            path_str = str(file_rel_path or "").strip()
+            if path_str and default_storage.exists(path_str):
+                default_storage.delete(path_str)
         except Exception as e:
             logger.warning("[Bulk Delete] Failed to physically delete file: %s", e)
 
