@@ -281,7 +281,7 @@ def _first_result(results: Any) -> list[Any]:
 async def _async_check_health() -> bool:
     url = _get_surreal_url()
     try:
-        async with AsyncSurreal(url) as db:
+        async with AsyncSurreal(url):
             pass
         return True
     except Exception as e:

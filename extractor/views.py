@@ -1462,7 +1462,7 @@ class AuditLogListView(LoginRequiredMixin, View):
                 meta_dict = json.loads(metadata_val) if isinstance(metadata_val, str) else (metadata_val or {})
             except Exception:
                 meta_dict = {}
-            details_val = meta_dict.get("details") or ""
+            details_val = (meta_dict.get("details") if isinstance(meta_dict, dict) else "") or rl.get("details") or ""
 
             # Filter in-memory if user/search queries are provided
             if is_staff_or_superuser and user_query:

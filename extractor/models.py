@@ -230,13 +230,16 @@ class MonthlySpendLog(models.Model):
             key = f"monthly_spend_log:{year}:{month}"
             try:
                 existing = surreal_db.kv_cache_get(key)
-                if existing:
+                if isinstance(existing, dict):
+                    data = existing
+                elif isinstance(existing, str):
                     try:
                         data = json.loads(existing)
                     except Exception:
                         data = {}
                 else:
                     data = {}
+
                 accumulated_cost = D(str(data.get("accumulated_cost_usd", 0.0))) + D(str(cost))
                 accumulated_in = int(data.get("accumulated_input_tokens", 0)) + in_tok
                 accumulated_out = int(data.get("accumulated_output_tokens", 0)) + out_tok
@@ -246,7 +249,7 @@ class MonthlySpendLog(models.Model):
                     "accumulated_input_tokens": accumulated_in,
                     "accumulated_output_tokens": accumulated_out,
                 }
-                surreal_db.kv_cache_set(key, json.dumps(new_data))
+                surreal_db.kv_cache_set(key, new_data)
                 return
             except Exception as exc:
                 logger.warning("[SurrealDB] Failed to add cost to KV cache monthly log: %s", exc)
