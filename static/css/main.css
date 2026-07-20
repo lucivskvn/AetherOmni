@@ -598,6 +598,7 @@ dialog.settings-dialog .dialog-footer {
 }
 
 .upload-zone {
+    width: 100%;
     padding: 32px 24px;
     text-align: center;
     border: 2px dashed rgba(255,255,255,0.15);
@@ -609,6 +610,9 @@ dialog.settings-dialog .dialog-footer {
     flex-direction: column;
     align-items: center;
     gap: 12px;
+    font-family: inherit;
+    color: inherit;
+    outline: none;
 }
 
 .upload-zone:hover, .upload-zone.dragover {

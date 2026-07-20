@@ -90,8 +90,14 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 
 # ALLOWED_HOSTS configuration
-django_allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,*.run.app")
-ALLOWED_HOSTS = [host.strip() for host in django_allowed_hosts.split(",") if host.strip()]
+django_allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,.run.app")
+ALLOWED_HOSTS = []
+for host in django_allowed_hosts.split(","):
+    host_clean = host.strip()
+    if host_clean:
+        if host_clean.startswith("*."):
+            host_clean = host_clean[1:]  # *.run.app -> .run.app
+        ALLOWED_HOSTS.append(host_clean)
 if DEBUG and "*" not in ALLOWED_HOSTS:
     # Ensure local development tunnels/proxies (e.g. ngrok, cloudflare) work seamlessly
     ALLOWED_HOSTS.append("*")

@@ -314,7 +314,7 @@
                     {% for log in logs %}
                         <tr>
                             <td>
-                                <span class="doc-meta-sub local-datetime" data-utc="{{ log.created_at|date:'c' }}">{{ log.created_at|date:"Y-m-d H:i:s" }} UTC</span>
+                                <span class="doc-meta-sub local-datetime" data-utc="{{ log.timestamp|date:'c' }}">{{ log.timestamp|date:"Y-m-d H:i:s" }} UTC</span>
                             </td>
                             <td>
                                 <span class="user-cell">
