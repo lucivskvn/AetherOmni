@@ -199,6 +199,7 @@ os.makedirs(os.path.join(BASE_DIR, "static"), exist_ok=True)
 GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME")
 
 import sys
+
 if "test" in sys.argv or "test_coverage" in sys.argv:
     GS_BUCKET_NAME = None
 

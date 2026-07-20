@@ -124,11 +124,15 @@ class SystemSettings(models.Model):
     @classmethod
     def get_settings(cls):
         from django.conf import settings
+
         if not getattr(settings, "SURREALDB_OFFLINE", False):
-            from extractor import surreal_db
             from decimal import Decimal
+
+            from extractor import surreal_db
+
             try:
                 raw = surreal_db.get_system_settings()
+
                 class SurrealSettings:
                     def __init__(self, raw_data):
                         self.monthly_budget_usd = Decimal(str(raw_data.get("monthly_budget_usd", 10.0)))
@@ -143,6 +147,7 @@ class SystemSettings(models.Model):
 
                     def __str__(self):
                         return f"SystemSettings(Budget=${self.monthly_budget_usd}, Model={self.selected_model})"
+
                 return SurrealSettings(raw)
             except Exception as e:
                 logger.warning("[SystemSettings] Failed to fetch settings from SurrealDB: %s", e)
@@ -221,12 +226,15 @@ class MonthlySpendLog(models.Model):
     @classmethod
     def add_cost(cls, year: int, month: int, cost: "Decimal", in_tok: int = 0, out_tok: int = 0):
         """Thread-safe upsert: add cost to the specified year/month bucket."""
-        from django.conf import settings
         from decimal import Decimal as D
 
+        from django.conf import settings
+
         if not getattr(settings, "SURREALDB_OFFLINE", False):
-            from extractor import surreal_db
             import json
+
+            from extractor import surreal_db
+
             key = f"monthly_spend_log:{year}:{month}"
             try:
                 existing = surreal_db.kv_cache_get(key)
@@ -256,6 +264,7 @@ class MonthlySpendLog(models.Model):
 
         try:
             from django.db import IntegrityError
+
             try:
                 cls.objects.get_or_create(year=year, month=month)
             except IntegrityError:
@@ -274,12 +283,15 @@ class MonthlySpendLog(models.Model):
     @classmethod
     def total_for_month(cls, year: int, month: int) -> "Decimal":
         """Return the total spend for the given calendar month."""
-        from django.conf import settings
         from decimal import Decimal as D
 
+        from django.conf import settings
+
         if not getattr(settings, "SURREALDB_OFFLINE", False):
-            from extractor import surreal_db
             import json
+
+            from extractor import surreal_db
+
             key = f"monthly_spend_log:{year}:{month}"
             try:
                 existing = surreal_db.kv_cache_get(key)

@@ -85,6 +85,79 @@ function initializeSearchShortcuts() {
     const ragQuery = document.getElementById('rag-query');
     if (!ragQuery) return;
 
+    // Create clear button dynamically to avoid markup modification
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'search-clear-btn';
+    clearBtn.setAttribute('aria-label', 'Clear search query');
+    clearBtn.title = 'Clear search';
+    clearBtn.style.position = 'absolute';
+    clearBtn.style.right = '12px';
+    clearBtn.style.top = '50%';
+    clearBtn.style.transform = 'translateY(-50%)';
+    clearBtn.style.background = 'none';
+    clearBtn.style.border = 'none';
+    clearBtn.style.color = 'var(--text-muted)';
+    clearBtn.style.cursor = 'pointer';
+    clearBtn.style.display = 'none';
+    clearBtn.style.alignItems = 'center';
+    clearBtn.style.justifyContent = 'center';
+    clearBtn.style.padding = '4px';
+    clearBtn.style.zIndex = '5';
+    clearBtn.style.transition = 'color 0.2s';
+    clearBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
+    const container = ragQuery.closest('.search-input-container');
+    const shortcutHint = document.getElementById('search-hint');
+    if (container) {
+        container.appendChild(clearBtn);
+    }
+
+    clearBtn.addEventListener('mouseenter', () => {
+        clearBtn.style.color = 'var(--text-main)';
+    });
+    clearBtn.addEventListener('mouseleave', () => {
+        clearBtn.style.color = 'var(--text-muted)';
+    });
+
+    function updateUIState() {
+        const hasText = ragQuery.value.trim().length > 0;
+        if (hasText) {
+            clearBtn.style.display = 'inline-flex';
+            if (shortcutHint) {
+                shortcutHint.style.opacity = '0';
+                shortcutHint.style.visibility = 'hidden';
+            }
+        } else {
+            clearBtn.style.display = 'none';
+            if (shortcutHint && document.activeElement !== ragQuery) {
+                shortcutHint.style.opacity = '1';
+                shortcutHint.style.visibility = 'visible';
+            }
+        }
+    }
+
+    ragQuery.addEventListener('input', updateUIState);
+    ragQuery.addEventListener('focus', () => {
+        if (shortcutHint) {
+            shortcutHint.style.opacity = '0';
+            shortcutHint.style.visibility = 'hidden';
+        }
+    });
+    ragQuery.addEventListener('blur', () => {
+        setTimeout(() => {
+            if (document.activeElement !== ragQuery) {
+                updateUIState();
+            }
+        }, 100);
+    });
+
+    clearBtn.addEventListener('click', () => {
+        ragQuery.value = '';
+        updateUIState();
+        ragQuery.focus();
+    });
+
     document.addEventListener('keydown', (e) => {
         // Prevent stealing focus when user is typing in another input element
         const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
@@ -513,7 +586,13 @@ function initializeRAGSearch() {
     function runSemanticRAG() {
         if (!ragQuery || !ragBtn || !ragLoader || !ragResults || !ragAnswer || !ragSourcesList) return;
         const query = ragQuery.value.trim();
-        if (!query) return;
+        if (!query) {
+            ragQuery.focus();
+            if (typeof window.showClientSideAlert === 'function') {
+                window.showClientSideAlert('Please enter a search query first.', 'error');
+            }
+            return;
+        }
 
         ragLoader.style.display = 'block';
         ragResults.style.display = 'none';

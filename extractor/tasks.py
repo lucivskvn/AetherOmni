@@ -78,7 +78,7 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
                 content = buffer + chunk
                 pages_count += len(pages_pattern.findall(content))
                 parent_count += len(parent_pattern.findall(content))
-                
+
                 # Keep overlap in buffer
                 if len(content) > overlap:
                     buffer = content[-overlap:]
@@ -110,7 +110,6 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
     except Exception as exc:
         logger.warning("[Worker] Failed to determine PDF page count: %s", exc)
     return 1
-
 
 
 # Maximum field lengths — prevents Cloud Run OOM and DB varchar crashes (Gap E-17)
