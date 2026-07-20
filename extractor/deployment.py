@@ -17,8 +17,8 @@ def _get_subprocess_env():
 
         # Restore true user home directory to allow gcloud fallback to find user credentials
         env["HOME"] = pwd.getpwuid(os.getuid()).pw_dir
-    except ImportError:
-        pass
+    except (ImportError, KeyError, AttributeError):
+        env["HOME"] = os.path.expanduser("~")
     return env
 
 
@@ -28,8 +28,8 @@ def _get_ann_value(annotations_dicts, keys):
             if key in ann:
                 try:
                     return int(ann[key])
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as num_err:
+                    logger.debug("[Deployment] Could not parse scaling annotation '%s' value '%s': %s", key, ann[key], num_err)
     return None
 
 
@@ -39,23 +39,26 @@ def extract_knative_scaling(config, default_min, default_max):
     Supports both Knative standards and GCP-native (run.googleapis.com) annotations
     at both the service metadata level and the revision template metadata level.
     """
-    if not config:
+    if not config or not isinstance(config, dict):
         return default_min, default_max
 
     # Gather all possible annotations dictionaries
     annotations_dicts = []
-    try:
-        ann_template = config.get("spec", {}).get("template", {}).get("metadata", {}).get("annotations", {})
-        if ann_template:
-            annotations_dicts.append(ann_template)
-    except AttributeError:
-        pass
-    try:
-        ann_meta = config.get("metadata", {}).get("annotations", {})
-        if ann_meta:
+    spec_dict = config.get("spec")
+    if isinstance(spec_dict, dict):
+        template_dict = spec_dict.get("template")
+        if isinstance(template_dict, dict):
+            metadata_dict = template_dict.get("metadata")
+            if isinstance(metadata_dict, dict):
+                ann_template = metadata_dict.get("annotations")
+                if isinstance(ann_template, dict) and ann_template:
+                    annotations_dicts.append(ann_template)
+
+    metadata_root = config.get("metadata")
+    if isinstance(metadata_root, dict):
+        ann_meta = metadata_root.get("annotations")
+        if isinstance(ann_meta, dict) and ann_meta:
             annotations_dicts.append(ann_meta)
-    except AttributeError:
-        pass
 
     min_keys = [KNATIVE_MIN_SCALE, "run.googleapis.com/minScale"]
     max_keys = ["autoscaling.knative.dev/maxScale", "run.googleapis.com/maxScale"]
@@ -112,8 +115,8 @@ def get_gcp_project_details():
             if res.returncode == 0 and res.stdout.strip():
                 project_id = res.stdout.strip()
                 logger.info("[Deployment] Auto-detected local gcloud project ID: %s", project_id)
-        except Exception:
-            pass
+        except (subprocess.SubprocessError, OSError, FileNotFoundError) as proc_err:
+            logger.debug("[Deployment] gcloud CLI project lookup skipped: %s", proc_err)
 
     if not django_settings.DEBUG:
         if not project_id:

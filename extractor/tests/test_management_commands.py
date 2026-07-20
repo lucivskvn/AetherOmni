@@ -1,9 +1,12 @@
 import datetime
 from io import StringIO
 from unittest.mock import patch
-from django.test import TestCase
+
 from django.core.management import call_command
+from django.test import TestCase
+
 from extractor.models import SourceDocument
+
 
 class BackfillMetadataTestCase(TestCase):
     def setUp(self):

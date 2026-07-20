@@ -1,6 +1,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+
 from django.test import TestCase
+
 from extractor import surreal_db
+
 
 class SurrealDBClientTestCase(TestCase):
     def setUp(self):

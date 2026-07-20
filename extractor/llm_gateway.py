@@ -138,7 +138,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
         from extractor import surreal_db
 
         cached_pricing = surreal_db.kv_cache_get("realtime_model_pricing")
-    except Exception as exc:
+    except (RuntimeError, ValueError, KeyError, AttributeError) as exc:
         logger.debug("[Pricing API] Failed to read cached pricing: %s", exc)
 
     if not cached_pricing:
@@ -153,13 +153,14 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                 }
                 for k, v in cached_pricing.items()
             }
-        except Exception as e:
+        except (KeyError, ValueError, TypeError, AttributeError) as e:
             logger.warning("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
 
     # Fetch live from OpenRouter public API
     try:
         import json
         import urllib.request
+        from urllib.error import URLError
 
         with urllib.request.urlopen("https://openrouter.ai/api/v1/models", timeout=5) as response:  # nosec B310 nosemgrep
             data = json.loads(response.read().decode())
@@ -183,7 +184,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                     from extractor import surreal_db
 
                     surreal_db.kv_cache_set("realtime_model_pricing", pricing_map, ttl_seconds=86400)
-                except Exception as exc:
+                except (RuntimeError, ValueError, KeyError, AttributeError) as exc:
                     logger.debug("[Pricing API] Failed to write cache: %s", exc)
 
                 cache.set("realtime_model_pricing", pricing_map, 86400)
@@ -195,7 +196,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                     }
                     for k, v in pricing_map.items()
                 }
-    except Exception as exc:
+    except (URLError, ValueError, TypeError, KeyError, OSError) as exc:
         logger.warning("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
 
     return None
@@ -227,7 +228,7 @@ def resolve_realtime_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
         for m_id, pricing in pricing_map.items():
             if model_name in m_id or m_id in model_name:
                 return pricing["prompt"], pricing["completion"]
-    except Exception as e:
+    except (KeyError, ValueError, TypeError, AttributeError) as e:
         logger.debug("[Pricing API] Error resolving pricing for %s: %s", model_name, e)
 
     return None
@@ -790,12 +791,12 @@ def _is_file_ref(item: Any) -> bool:
     try:
         if hasattr(item, "uri") or (hasattr(item, "name") and isinstance(item, types.File)):
             return True
-    except Exception:  # nosec B110
+    except (AttributeError, TypeError):
         pass
     try:
         if type(item).__name__ == "File" or hasattr(item, "state"):
             return True
-    except Exception:  # nosec B110
+    except (AttributeError, TypeError):
         pass
     return False
 

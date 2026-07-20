@@ -54,8 +54,9 @@ def _patched_process_view(self, request, callback, callback_args, callback_kwarg
                 host = host.strip("[]").lower()
                 if host in ("localhost", "127.0.0.1", "::1"):
                     is_loopback_referer = True
-        except ValueError:
-            pass
+        except (ValueError, TypeError, AttributeError) as val_err:
+            logger.debug("[CSRF Middleware] Could not split referer URL '%s': %s", referer, val_err)
+            is_loopback_referer = False
 
     if is_loopback_referer:
         orig_is_secure = request.is_secure
@@ -157,8 +158,8 @@ class DynamicCsrfTrustedOriginsMiddleware:
                 DynamicCsrfTrustedOriginsMiddleware._cached_db_origins = _parse_db_origins(db_origins)
                 DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = True
                 DynamicCsrfTrustedOriginsMiddleware._last_query_time = now
-            except Exception as e:
-                logger.debug("[Middleware] Could not load CSRF trusted origins from DB: %s", e)
+            except (AttributeError, RuntimeError, ValueError) as db_err:
+                logger.debug("[Middleware] Could not load CSRF trusted origins from DB: %s", db_err)
 
         for origin in DynamicCsrfTrustedOriginsMiddleware._cached_db_origins:
             if origin not in settings.CSRF_TRUSTED_ORIGINS:
@@ -189,8 +190,8 @@ class DynamicCsrfTrustedOriginsMiddleware:
                 if parsed.scheme and parsed.netloc:
                     ref_origin = f"{parsed.scheme}://{parsed.netloc}"
                     self._trust_origin_if_safe(ref_origin)
-            except Exception as e:
-                logger.debug("[Middleware] Could not parse referer header for CSRF trust: %s", e)
+            except (ValueError, AttributeError) as parse_err:
+                logger.debug("[Middleware] Could not parse referer header for CSRF trust: %s", parse_err)
 
 
 class ForcePasswordChangeMiddleware:
@@ -205,13 +206,13 @@ class ForcePasswordChangeMiddleware:
     def _is_allowed_path(self, path):
         allowed_names = ["password_change", "password_change_done", "logout"]
         allowed_paths = []
-        from django.urls import reverse
+        from django.urls import NoReverseMatch, reverse
 
         for name in allowed_names:
             try:
                 allowed_paths.append(reverse(name))
-            except Exception as e:
-                logger.debug("[Middleware] Could not resolve URL name '%s': %s", name, e)
+            except NoReverseMatch as rev_err:
+                logger.debug("[Middleware] Could not resolve URL name '%s': %s", name, rev_err)
         return (
             any(path == p for p in allowed_paths)
             or path.startswith("/static/")
@@ -234,7 +235,7 @@ class ForcePasswordChangeMiddleware:
                 return redirect("password_change")
 
         try:
-            from django.urls import reverse
+            from django.urls import NoReverseMatch, reverse
 
             if path == reverse("password_change_done"):
                 # Re-verify the password to prevent bypassing the change
@@ -244,7 +245,7 @@ class ForcePasswordChangeMiddleware:
                 if still_default:
                     # User reset their password back to 'admin' — redirect again!
                     return redirect("password_change")
-        except Exception as e:
-            logger.debug("[Middleware] Could not resolve identity reset finished URL: %s", e)
+        except (NoReverseMatch, AttributeError) as rev_err:
+            logger.debug("[Middleware] Could not resolve identity reset finished URL: %s", rev_err)
 
         return self.get_response(request)
