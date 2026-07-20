@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import argparse
 import re
-import subprocess
+import subprocess  # nosec B404
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,18 +54,25 @@ ROOT = Path(__file__).parent.parent.resolve()
 # ── Version computation ────────────────────────────────────────────────────────
 
 
+import shutil
+
+
 def _git(*args: str) -> str:
     """Run a git command and return stripped stdout, or '' on failure."""
+    git_bin = shutil.which("git")
+    if not git_bin:
+        return ""
     try:
-        result = subprocess.run(
-            ["git", *args],
+        result = subprocess.run(  # nosec B603
+            [git_bin, *args],
             cwd=ROOT,
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         return result.stdout.strip()
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         return ""
 
 
@@ -173,8 +180,8 @@ def get_health_scores() -> dict[str, str]:
                 "objective": str(round(data.get("objective", 0), 1)),
                 "strict": str(round(data.get("strict", 0), 1)),
             }
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass  # Gracefully proceed to query.json fallback
 
     query_file = ROOT / ".desloppify" / "query.json"
     if query_file.exists():
@@ -187,8 +194,8 @@ def get_health_scores() -> dict[str, str]:
                     "objective": str(round(data.get("objective_score", 0), 1)),
                     "strict": str(round(data.get("strict_score", 0), 1)),
                 }
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError, ValueError):
+            return {}
     return {}
 
 

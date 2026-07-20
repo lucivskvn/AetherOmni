@@ -101,7 +101,12 @@ def log_audit_event(
     try:
         from extractor import surreal_db
 
-        user_id = str(user.id) if user and hasattr(user, "id") else (str(user) if user else "system")
+        if user and hasattr(user, "id"):
+            user_id = str(user.id)
+        elif user:
+            user_id = str(user)
+        else:
+            user_id = "system"
 
         doc_uuid = None
         if document:
