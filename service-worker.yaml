@@ -12,6 +12,7 @@ spec:
         run.googleapis.com/launch-stage: BETA
     spec:
       serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+      timeoutSeconds: 900
       containers:
       - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/aether-repo/aether-web:latest
         name: web

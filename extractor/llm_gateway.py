@@ -864,14 +864,12 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
                 is_region_gap = any(sig in err_str for sig in NOT_FOUND_SIGNALS)
                 if is_region_gap:
                     logger.warning(
-                        "[Gateway/Vertex] Model '%s' not available in '%s' — will retry in next region.",
+                        "[Gateway/Vertex] Model '%s' not available in '%s' — trying next model.",
                         attempt_model,
                         region,
                     )
-                    # Don't try other models in this region for this 404 — break
-                    # inner loop and let the outer region loop advance.
                     last_error = ve
-                    break
+                    continue
                 else:
                     logger.warning(
                         "[Gateway/Vertex] Model '%s' failed in '%s': %s — trying next model.",
