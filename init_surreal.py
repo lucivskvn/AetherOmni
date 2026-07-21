@@ -103,8 +103,12 @@ def init_django_admin():
         admin_password = os.getenv("ADMIN_PASSWORD")
         if not admin_password:
             import secrets
+
             admin_password = secrets.token_urlsafe(16)
-            logger.warning("[Security] ADMIN_PASSWORD not set in environment. Auto-generated temporary password for '%s'.", admin_username)
+            logger.warning(
+                "[Security] ADMIN_PASSWORD not set in environment. Auto-generated temporary password for '%s'.",
+                admin_username,
+            )
 
         # If Supabase is configured, register admin on Supabase directly
         if supabase_url and supabase_key:

@@ -15,7 +15,6 @@ from scripts.update_docs import (
 
 
 class UpdateDocsTestCase(unittest.TestCase):
-
     @patch("scripts.update_docs.shutil.which", return_value=None)
     def test_git_no_executable(self, mock_which):
         self.assertEqual(_git("status"), "")
