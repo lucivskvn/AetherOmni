@@ -475,7 +475,9 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
             )
 
             # Ensure DEBUG is True and ALLOWED_HOSTS permits test domain
-            with self.settings(DEBUG=True, ALLOWED_HOSTS=["custom-tunnel-domain.example.com", "localhost", "127.0.0.1"]):
+            with self.settings(
+                DEBUG=True, ALLOWED_HOSTS=["custom-tunnel-domain.example.com", "localhost", "127.0.0.1"]
+            ):
                 # Call middleware
                 from core.middleware import DynamicCsrfTrustedOriginsMiddleware
 
