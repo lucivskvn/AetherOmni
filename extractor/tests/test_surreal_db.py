@@ -8,11 +8,13 @@ from extractor import surreal_db
 class SurrealDBClientTestCase(TestCase):
     def setUp(self):
         from django.conf import settings
+
         self.original_offline = getattr(settings, "SURREALDB_OFFLINE", False)
         settings.SURREALDB_OFFLINE = False
 
     def tearDown(self):
         from django.conf import settings
+
         settings.SURREALDB_OFFLINE = self.original_offline
 
     def _create_mock_db(self, return_value=None):
@@ -51,13 +53,17 @@ class SurrealDBClientTestCase(TestCase):
 
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_search_chunks_hnsw(self, mock_surreal):
-        query_res = [{
-            "result": [{
-                "doc_uuid": "00000000-0000-0000-0000-000000000000",
-                "content": "Found text content",
-                "chunk_index": 0,
-            }]
-        }]
+        query_res = [
+            {
+                "result": [
+                    {
+                        "doc_uuid": "00000000-0000-0000-0000-000000000000",
+                        "content": "Found text content",
+                        "chunk_index": 0,
+                    }
+                ]
+            }
+        ]
         mock_db = self._create_mock_db(query_res)
         mock_surreal.return_value = mock_db
 
