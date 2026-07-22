@@ -244,7 +244,11 @@ class MonthlySpendLog(models.Model):
                     try:
                         data = json.loads(existing)
                     except Exception:
-                        data = {"accumulated_cost_usd": 0.0, "accumulated_input_tokens": 0, "accumulated_output_tokens": 0}
+                        data = {
+                            "accumulated_cost_usd": 0.0,
+                            "accumulated_input_tokens": 0,
+                            "accumulated_output_tokens": 0,
+                        }
                 else:
                     data = {"accumulated_cost_usd": 0.0, "accumulated_input_tokens": 0, "accumulated_output_tokens": 0}
 

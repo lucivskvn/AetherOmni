@@ -101,6 +101,11 @@
                         <i data-lucide="archive"></i> Academic Publications Library
                     </div>
                     <div class="flex-gap-sm" style="display: flex; gap: 12px; align-items: center;">
+                        <div class="table-filter-wrapper" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); position: relative;">
+                            <label for="table-filter" class="visually-hidden">Filter library documents</label>
+                            <input type="search" id="table-filter" placeholder="Filter library..." style="padding: 6px 12px 6px 28px; font-size: 13px; height: auto; border-radius: var(--border-radius-sm); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-glass); color: white; width: 140px; transition: width 0.2s ease-in-out; outline: none;" onfocus="this.style.width='180px'; this.style.borderColor='var(--primary)'" onblur="if(!this.value) { this.style.width='140px'; } this.style.borderColor='var(--border-glass)'">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted);"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        </div>
                         <div class="sort-select-wrapper" style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted);">
                             <label for="sort-select" style="display: flex; align-items: center; gap: 4px;">
                                 <i data-lucide="arrow-up-down" style="width: 14px; height: 14px;"></i> Sort
