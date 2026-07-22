@@ -317,6 +317,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ── 5.5 Copy Curation Markdown to Clipboard ──────────────────────────────
+    const copyMarkdownBtn = document.getElementById('btn-copy-markdown');
+    if (copyMarkdownBtn && editor) {
+        copyMarkdownBtn.addEventListener('click', () => {
+            const content = editor.value || '';
+            navigator.clipboard.writeText(content)
+                .then(() => {
+                    const origHTML = copyMarkdownBtn.innerHTML;
+                    const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="color: #10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
+                    copyMarkdownBtn.innerHTML = checkSvg;
+                    copyMarkdownBtn.title = "Copied!";
+                    copyMarkdownBtn.setAttribute('aria-label', "Copied!");
+
+                    if (typeof window.showClientSideAlert === 'function') {
+                        window.showClientSideAlert('Copied curation markdown to clipboard successfully!', 'success');
+                    }
+
+                    setTimeout(() => {
+                        copyMarkdownBtn.innerHTML = origHTML;
+                        copyMarkdownBtn.title = "Copy Markdown to Clipboard";
+                        copyMarkdownBtn.setAttribute('aria-label', "Copy Markdown to Clipboard");
+                    }, 2000);
+                })
+                .catch(err => {
+                    if (typeof window.showClientSideAlert === 'function') {
+                        window.showClientSideAlert('Failed to copy Markdown content: ' + err, 'error');
+                    } else {
+                        alert('Failed to copy Markdown content: ' + err);
+                    }
+                });
+        });
+    }
+
     // ── 6. SFT Training Dataset copy-to-clipboard ────────────────────────────
     const copySftBtn = document.getElementById('btn-copy-sft');
     if (copySftBtn) {
