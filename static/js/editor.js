@@ -317,7 +317,82 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── 6. SFT Training Dataset copy-to-clipboard ────────────────────────────
+    // ── 6. Robust Clipboard Utilities with Fallbacks ─────────────────────────
+    function copyTextToClipboard(text, successCallback, errorCallback) {
+        if (!text || !text.trim()) {
+            if (errorCallback) errorCallback('Content is empty.');
+            return;
+        }
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(text)
+                .then(successCallback)
+                .catch(() => {
+                    fallbackCopyTextToClipboard(text, successCallback, errorCallback);
+                });
+        } else {
+            fallbackCopyTextToClipboard(text, successCallback, errorCallback);
+        }
+    }
+
+    function fallbackCopyTextToClipboard(text, successCallback, errorCallback) {
+        try {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.top = '0';
+            textArea.style.left = '0';
+            textArea.style.position = 'fixed';
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (successful) {
+                if (successCallback) successCallback();
+            } else {
+                if (errorCallback) errorCallback('Copy command rejected by browser host.');
+            }
+        } catch (err) {
+            if (errorCallback) errorCallback(err);
+        }
+    }
+
+    // ── 7. Copy Markdown to Clipboard ────────────────────────────────────────
+    const copyMarkdownBtn = document.getElementById('btn-copy-markdown');
+    if (copyMarkdownBtn && editor) {
+        copyMarkdownBtn.addEventListener('click', () => {
+            const markdownText = editor.value || '';
+            copyTextToClipboard(
+                markdownText,
+                () => {
+                    const origHtml = copyMarkdownBtn.innerHTML;
+                    const origTitle = copyMarkdownBtn.title;
+                    const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+                    copyMarkdownBtn.innerHTML = checkSvg;
+                    copyMarkdownBtn.title = 'Copied!';
+                    copyMarkdownBtn.setAttribute('aria-label', 'Copied!');
+
+                    if (typeof window.showClientSideAlert === 'function') {
+                        window.showClientSideAlert('Markdown content copied to clipboard successfully.', 'success');
+                    }
+
+                    setTimeout(() => {
+                        copyMarkdownBtn.innerHTML = origHtml;
+                        copyMarkdownBtn.title = origTitle;
+                        copyMarkdownBtn.setAttribute('aria-label', origTitle);
+                    }, 2000);
+                },
+                (err) => {
+                    if (typeof window.showClientSideAlert === 'function') {
+                        window.showClientSideAlert('Failed to copy Markdown content: ' + err, 'error');
+                    }
+                }
+            );
+        });
+    }
+
+    // ── 8. SFT Training Dataset copy-to-clipboard ────────────────────────────
     const copySftBtn = document.getElementById('btn-copy-sft');
     if (copySftBtn) {
         copySftBtn.addEventListener('click', () => {
@@ -332,25 +407,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     ]
                 }));
                 const jsonText = JSON.stringify(formatted, null, 2);
-                navigator.clipboard.writeText(jsonText)
-                    .then(() => {
+                copyTextToClipboard(
+                    jsonText,
+                    () => {
                         const origText = copySftBtn.innerHTML;
                         const checkSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="margin-right: 4px;"><polyline points="20 6 9 17 4 12"/></svg>`;
                         copySftBtn.innerHTML = checkSvg + 'Copied!';
+                        if (typeof window.showClientSideAlert === 'function') {
+                            window.showClientSideAlert('SFT Dataset exported and copied to clipboard successfully.', 'success');
+                        }
                         setTimeout(() => {
                             copySftBtn.innerHTML = origText;
                         }, 2000);
-                    })
-                    .catch(err => {
+                    },
+                    (err) => {
                         if (typeof window.showClientSideAlert === 'function') {
-                            window.showClientSideAlert('Failed to copy SFT JSON: ' + err);
+                            window.showClientSideAlert('Failed to copy SFT JSON: ' + err, 'error');
                         } else {
                             alert('Failed to copy SFT JSON: ' + err);
                         }
-                    });
+                    }
+                );
             } catch (e) {
                 if (typeof window.showClientSideAlert === 'function') {
-                    window.showClientSideAlert('Failed to parse Q&A dataset: ' + e);
+                    window.showClientSideAlert('Failed to parse Q&A dataset: ' + e, 'error');
                 } else {
                     alert('Failed to parse Q&A dataset: ' + e);
                 }
@@ -358,7 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── 7. Delete confirmation ────────────────────────────────────────────────
+    // ── 9. Delete confirmation ────────────────────────────────────────────────
     if (deleteForm) {
         deleteForm.addEventListener('submit', (e) => {
             if (!confirm('Are you sure you want to permanently delete this document?')) {
