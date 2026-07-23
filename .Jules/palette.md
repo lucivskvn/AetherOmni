@@ -47,3 +47,7 @@
 ## 2026-07-20 - Instant Client-Side Library Table Filtering and Responsive Focus Expanders
 **Learning:** In metadata-rich dashboard systems, providing an instant client-side table filter improves discoverability and spatial navigation compared to full-page server-reloads. Seamlessly expanding search input widths during focus increases spatial accessibility for longer terms without breaking header grid constraints, provided we use CSS transition properties and handle keyboard layout alignment gracefully.
 **Action:** Implement lightweight, dynamic `input` event listeners coupled with flexible layout elements that expand gracefully on focus and collapse on blur to deliver an engaging search and navigation experience.
+
+## 2026-07-23 - Keyboard Focus Indicator Preservation on Custom Interactive Cards
+**Learning:** Explicitly setting `outline: none;` on custom dashboard cards or dropzones (such as `.upload-zone`) to suppress default browser styling also silently strips away the standard focus outline for keyboard users. To maintain WCAG standard-compliant accessibility, custom components that disable native outlines must provide equivalent `:focus-visible` styles that visually elevate active states with proper contrast and spacing without cluttering mouse interaction.
+**Action:** Always complement `outline: none` settings on interactive components with custom `:focus-visible` definitions that leverage transitions, matching colors, or outline offsets to support seamless keyboard tab-navigation.
