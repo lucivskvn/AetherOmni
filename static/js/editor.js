@@ -322,31 +322,63 @@ document.addEventListener('DOMContentLoaded', () => {
     if (copyMarkdownBtn && editor) {
         copyMarkdownBtn.addEventListener('click', () => {
             const content = editor.value || '';
-            navigator.clipboard.writeText(content)
-                .then(() => {
-                    const origHTML = copyMarkdownBtn.innerHTML;
-                    const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="color: #10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
-                    copyMarkdownBtn.innerHTML = checkSvg;
-                    copyMarkdownBtn.title = "Copied!";
-                    copyMarkdownBtn.setAttribute('aria-label', "Copied!");
 
-                    if (typeof window.showClientSideAlert === 'function') {
-                        window.showClientSideAlert('Copied curation markdown to clipboard successfully!', 'success');
-                    }
+            function handleSuccess() {
+                const origHTML = copyMarkdownBtn.innerHTML;
+                const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="color: #10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
+                copyMarkdownBtn.innerHTML = checkSvg;
+                copyMarkdownBtn.title = "Copied!";
+                copyMarkdownBtn.setAttribute('aria-label', "Copied!");
 
-                    setTimeout(() => {
-                        copyMarkdownBtn.innerHTML = origHTML;
-                        copyMarkdownBtn.title = "Copy Markdown to Clipboard";
-                        copyMarkdownBtn.setAttribute('aria-label', "Copy Markdown to Clipboard");
-                    }, 2000);
-                })
-                .catch(err => {
-                    if (typeof window.showClientSideAlert === 'function') {
-                        window.showClientSideAlert('Failed to copy Markdown content: ' + err, 'error');
+                if (typeof window.showClientSideAlert === 'function') {
+                    window.showClientSideAlert('Copied curation markdown to clipboard successfully!', 'success');
+                }
+
+                setTimeout(() => {
+                    copyMarkdownBtn.innerHTML = origHTML;
+                    copyMarkdownBtn.title = "Copy Markdown to Clipboard";
+                    copyMarkdownBtn.setAttribute('aria-label', "Copy Markdown to Clipboard");
+                }, 2000);
+            }
+
+            function fallbackCopy() {
+                try {
+                    const tempTextArea = document.createElement('textarea');
+                    tempTextArea.value = content;
+                    tempTextArea.style.top = '0';
+                    tempTextArea.style.left = '0';
+                    tempTextArea.style.position = 'fixed';
+                    tempTextArea.style.opacity = '0';
+                    document.body.appendChild(tempTextArea);
+                    tempTextArea.focus();
+                    tempTextArea.select();
+
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(tempTextArea);
+
+                    if (successful) {
+                        handleSuccess();
                     } else {
-                        alert('Failed to copy Markdown content: ' + err);
+                        throw new Error('execCommand copy returned false');
                     }
-                });
+                } catch (fallbackErr) {
+                    if (typeof window.showClientSideAlert === 'function') {
+                        window.showClientSideAlert('Failed to copy Markdown content: ' + fallbackErr, 'error');
+                    } else {
+                        alert('Failed to copy Markdown content: ' + fallbackErr);
+                    }
+                }
+            }
+
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                navigator.clipboard.writeText(content)
+                    .then(handleSuccess)
+                    .catch(() => {
+                        fallbackCopy();
+                    });
+            } else {
+                fallbackCopy();
+            }
         });
     }
 
