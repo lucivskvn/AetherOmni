@@ -206,6 +206,12 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
                 e.preventDefault();
                 toggleFullscreen();
+            } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') {
+                e.preventDefault();
+                const copyMarkdownBtn = document.getElementById('btn-copy-markdown');
+                if (copyMarkdownBtn) {
+                    copyMarkdownBtn.click();
+                }
             }
         });
     }
@@ -336,8 +342,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 setTimeout(() => {
                     copyMarkdownBtn.innerHTML = origHTML;
-                    copyMarkdownBtn.title = "Copy Markdown to Clipboard";
-                    copyMarkdownBtn.setAttribute('aria-label', "Copy Markdown to Clipboard");
+                    copyMarkdownBtn.title = "Copy Markdown to Clipboard (Ctrl+Shift+C)";
+                    copyMarkdownBtn.setAttribute('aria-label', "Copy Markdown to Clipboard (Ctrl+Shift+C)");
                 }, 2000);
             }
 
