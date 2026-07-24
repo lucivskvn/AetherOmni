@@ -51,3 +51,12 @@
 ## 2026-07-23 - Keyboard Focus Indicator Preservation on Custom Interactive Cards
 **Learning:** Explicitly setting `outline: none;` on custom dashboard cards or dropzones (such as `.upload-zone`) to suppress default browser styling also silently strips away the standard focus outline for keyboard users. To maintain WCAG standard-compliant accessibility, custom components that disable native outlines must provide equivalent `:focus-visible` styles that visually elevate active states with proper contrast and spacing without cluttering mouse interaction.
 **Action:** Always complement `outline: none` settings on interactive components with custom `:focus-visible` definitions that leverage transitions, matching colors, or outline offsets to support seamless keyboard tab-navigation.
+
+## 2026-07-24 - Active State Context Awareness for Critical Credential Inputs
+**Learning:**
+1. Users commonly experience friction when authenticating or changing credentials due to system-level modifier keys (specifically Caps Lock) being active without active visual feedback. Proactively warning users about modifier states prevents failed submission loops and reduces authentication cognitive load.
+2. Form state warning indicators must have ARIA live properties (`role="status"` and `aria-live="polite"`) to ensure screen reader users are notified when the state is activated/toggled while preserving clean visual animations (such as fade-in transforms) for sighted users.
+
+**Action:**
+1. Implement client-side `CapsLock` modifier key detectors on password fields by attaching `keydown`, `keyup`, and `focus` listeners.
+2. Dynamically spawn styled, localized badges mapped precisely adjacent to inputs or input wrappers to elevate usability of critical security gateways.

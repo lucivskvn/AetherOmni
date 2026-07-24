@@ -44,6 +44,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 13. Dynamic instant client-side table filtering
     initializeLibraryFilter();
+
+    // 14. Caps Lock active warning detector for password entries
+    initializeCapsLockDetector();
 });
 
 /**
@@ -222,6 +225,47 @@ function initializePasswordToggles() {
             btn.setAttribute('aria-label', label);
             btn.title = label;
             btn.innerHTML = isPwd ? SVGS.hide : SVGS.show;
+        });
+    });
+}
+
+/**
+ * Detects Caps Lock status on password fields and displays a sleek warning badge.
+ */
+function initializeCapsLockDetector() {
+    document.querySelectorAll('input[type="password"]').forEach(input => {
+        const warning = document.createElement('div');
+        warning.className = 'caps-lock-warning';
+        warning.style.display = 'none';
+        warning.setAttribute('role', 'status');
+        warning.setAttribute('aria-live', 'polite');
+        warning.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; display: inline-block; vertical-align: middle;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span style="vertical-align: middle;">Caps Lock is active</span>
+        `;
+
+        // If the password input has been wrapped, insert the warning after the wrapper.
+        // Otherwise, insert it after the input itself.
+        const wrapper = input.closest('.password-toggle-wrapper');
+        if (wrapper) {
+            wrapper.parentNode.insertBefore(warning, wrapper.nextSibling);
+        } else {
+            input.parentNode.insertBefore(warning, input.nextSibling);
+        }
+
+        const checkCapsLock = (e) => {
+            if (e.getModifierState && e.getModifierState('CapsLock')) {
+                warning.style.display = 'inline-flex';
+            } else {
+                warning.style.display = 'none';
+            }
+        };
+
+        input.addEventListener('keydown', checkCapsLock);
+        input.addEventListener('keyup', checkCapsLock);
+        input.addEventListener('focus', checkCapsLock);
+        input.addEventListener('blur', () => {
+            warning.style.display = 'none';
         });
     });
 }

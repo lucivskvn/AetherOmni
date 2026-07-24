@@ -2171,3 +2171,31 @@ dialog.settings-dialog .dialog-footer button i {
     outline: 2px solid var(--primary);
     border-radius: 4px;
 }
+
+/* Caps Lock Warning Badge */
+.caps-lock-warning {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #fbbf24;
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 8px;
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.25);
+    padding: 6px 12px;
+    border-radius: 8px;
+    width: 100%;
+    animation: fade-in-up 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
