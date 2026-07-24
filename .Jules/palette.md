@@ -36,6 +36,14 @@
 1. Programmatically coordinate custom clear button displays and sibling `<kbd>` indicators using conditional listeners triggered on `input`, `focus`, and `blur` events.
 2. Ensure clear buttons use standard HTML `<button type="button">` wrappers with explicit `aria-label` attributes to maintain accessible landmarks for screen readers.
 
+## 2026-07-21 - Copy to Clipboard Micro-Feedback Pattern in Dual-Pane Markdown Workspaces
+**Learning:**
+1. Providing instant copy-to-clipboard functionality directly within rich markdown text workspaces reduces user cognitive load and mouse movement drastically compared to manually selecting large content blocks.
+2. Micro-interactions must provide multi-layered feedback: visual icon states (switching SVG from copy to checkmark), accessible context updates (`title` and `aria-label` changing to 'Copied!'), and clear toast notifications (`window.showClientSideAlert`) for guaranteed multi-modal feedback that is fully WCAG screen-reader friendly.
+
+**Action:**
+1. Embed native inline SVGs for both copy and check states to bypass dynamic framework loading latency and avoid Lucide dynamic icon disconnection issues.
+2. Implement auto-reverting timeouts (usually 2000ms) to cleanly restore interactive UI properties, tooltips, and ARIA labels.
 ## 2026-07-20 - Instant Client-Side Library Table Filtering and Responsive Focus Expanders
 **Learning:** In metadata-rich dashboard systems, providing an instant client-side table filter improves discoverability and spatial navigation compared to full-page server-reloads. Seamlessly expanding search input widths during focus increases spatial accessibility for longer terms without breaking header grid constraints, provided we use CSS transition properties and handle keyboard layout alignment gracefully.
 **Action:** Implement lightweight, dynamic `input` event listeners coupled with flexible layout elements that expand gracefully on focus and collapse on blur to deliver an engaging search and navigation experience.

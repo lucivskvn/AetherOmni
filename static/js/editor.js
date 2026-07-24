@@ -373,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         alert('Failed to copy Markdown content: ' + fallbackErr);
                     }
-                }
+                } 
             }
 
             if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
@@ -403,25 +403,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     ]
                 }));
                 const jsonText = JSON.stringify(formatted, null, 2);
-                navigator.clipboard.writeText(jsonText)
-                    .then(() => {
+                copyTextToClipboard(
+                    jsonText,
+                    () => {
                         const origText = copySftBtn.innerHTML;
                         const checkSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="margin-right: 4px;"><polyline points="20 6 9 17 4 12"/></svg>`;
                         copySftBtn.innerHTML = checkSvg + 'Copied!';
+                        if (typeof window.showClientSideAlert === 'function') {
+                            window.showClientSideAlert('SFT Dataset exported and copied to clipboard successfully.', 'success');
+                        }
                         setTimeout(() => {
                             copySftBtn.innerHTML = origText;
                         }, 2000);
-                    })
-                    .catch(err => {
+                    },
+                    (err) => {
                         if (typeof window.showClientSideAlert === 'function') {
-                            window.showClientSideAlert('Failed to copy SFT JSON: ' + err);
+                            window.showClientSideAlert('Failed to copy SFT JSON: ' + err, 'error');
                         } else {
                             alert('Failed to copy SFT JSON: ' + err);
                         }
-                    });
+                    }
+                );
             } catch (e) {
                 if (typeof window.showClientSideAlert === 'function') {
-                    window.showClientSideAlert('Failed to parse Q&A dataset: ' + e);
+                    window.showClientSideAlert('Failed to parse Q&A dataset: ' + e, 'error');
                 } else {
                     alert('Failed to parse Q&A dataset: ' + e);
                 }
@@ -429,7 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── 7. Delete confirmation ────────────────────────────────────────────────
+    // ── 9. Delete confirmation ────────────────────────────────────────────────
     if (deleteForm) {
         deleteForm.addEventListener('submit', (e) => {
             if (!confirm('Are you sure you want to permanently delete this document?')) {
