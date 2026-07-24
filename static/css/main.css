@@ -615,10 +615,15 @@ dialog.settings-dialog .dialog-footer {
     outline: none;
 }
 
-.upload-zone:hover, .upload-zone.dragover {
+.upload-zone:hover, .upload-zone.dragover, .upload-zone:focus-visible {
     border-color: var(--primary);
     background: rgba(99, 102, 241, 0.04);
     box-shadow: inset 0 0 20px rgba(99, 102, 241, 0.1);
+}
+
+.upload-zone:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 4px;
 }
 
 .upload-zone svg {
