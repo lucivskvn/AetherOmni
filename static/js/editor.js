@@ -206,6 +206,12 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
                 e.preventDefault();
                 toggleFullscreen();
+            } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') {
+                e.preventDefault();
+                const copyMarkdownBtn = document.getElementById('btn-copy-markdown');
+                if (copyMarkdownBtn) {
+                    copyMarkdownBtn.click();
+                }
             }
         });
     }
@@ -317,82 +323,72 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── 6. Robust Clipboard Utilities with Fallbacks ─────────────────────────
-    function copyTextToClipboard(text, successCallback, errorCallback) {
-        if (!text || !text.trim()) {
-            if (errorCallback) errorCallback('Content is empty.');
-            return;
-        }
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-            navigator.clipboard.writeText(text)
-                .then(successCallback)
-                .catch(() => {
-                    fallbackCopyTextToClipboard(text, successCallback, errorCallback);
-                });
-        } else {
-            fallbackCopyTextToClipboard(text, successCallback, errorCallback);
-        }
-    }
-
-    function fallbackCopyTextToClipboard(text, successCallback, errorCallback) {
-        try {
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.top = '0';
-            textArea.style.left = '0';
-            textArea.style.position = 'fixed';
-            textArea.style.opacity = '0';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            const successful = document.execCommand('copy');
-            document.body.removeChild(textArea);
-            if (successful) {
-                if (successCallback) successCallback();
-            } else {
-                if (errorCallback) errorCallback('Copy command rejected by browser host.');
-            }
-        } catch (err) {
-            if (errorCallback) errorCallback(err);
-        }
-    }
-
-    // ── 7. Copy Markdown to Clipboard ────────────────────────────────────────
+    // ── 5.5 Copy Curation Markdown to Clipboard ──────────────────────────────
     const copyMarkdownBtn = document.getElementById('btn-copy-markdown');
     if (copyMarkdownBtn && editor) {
         copyMarkdownBtn.addEventListener('click', () => {
-            const markdownText = editor.value || '';
-            copyTextToClipboard(
-                markdownText,
-                () => {
-                    const origHtml = copyMarkdownBtn.innerHTML;
-                    const origTitle = copyMarkdownBtn.title;
-                    const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><polyline points="20 6 9 17 4 12"/></svg>`;
+            const content = editor.value || '';
 
-                    copyMarkdownBtn.innerHTML = checkSvg;
-                    copyMarkdownBtn.title = 'Copied!';
-                    copyMarkdownBtn.setAttribute('aria-label', 'Copied!');
+            function handleSuccess() {
+                const origHTML = copyMarkdownBtn.innerHTML;
+                const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="color: #10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
+                copyMarkdownBtn.innerHTML = checkSvg;
+                copyMarkdownBtn.title = "Copied!";
+                copyMarkdownBtn.setAttribute('aria-label', "Copied!");
 
-                    if (typeof window.showClientSideAlert === 'function') {
-                        window.showClientSideAlert('Markdown content copied to clipboard successfully.', 'success');
-                    }
-
-                    setTimeout(() => {
-                        copyMarkdownBtn.innerHTML = origHtml;
-                        copyMarkdownBtn.title = origTitle;
-                        copyMarkdownBtn.setAttribute('aria-label', origTitle);
-                    }, 2000);
-                },
-                (err) => {
-                    if (typeof window.showClientSideAlert === 'function') {
-                        window.showClientSideAlert('Failed to copy Markdown content: ' + err, 'error');
-                    }
+                if (typeof window.showClientSideAlert === 'function') {
+                    window.showClientSideAlert('Copied curation markdown to clipboard successfully!', 'success');
                 }
-            );
+
+                setTimeout(() => {
+                    copyMarkdownBtn.innerHTML = origHTML;
+                    copyMarkdownBtn.title = "Copy Markdown to Clipboard (Ctrl+Shift+C)";
+                    copyMarkdownBtn.setAttribute('aria-label', "Copy Markdown to Clipboard (Ctrl+Shift+C)");
+                }, 2000);
+            }
+
+            function fallbackCopy() {
+                try {
+                    const tempTextArea = document.createElement('textarea');
+                    tempTextArea.value = content;
+                    tempTextArea.style.top = '0';
+                    tempTextArea.style.left = '0';
+                    tempTextArea.style.position = 'fixed';
+                    tempTextArea.style.opacity = '0';
+                    document.body.appendChild(tempTextArea);
+                    tempTextArea.focus();
+                    tempTextArea.select();
+
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(tempTextArea);
+
+                    if (successful) {
+                        handleSuccess();
+                    } else {
+                        throw new Error('execCommand copy returned false');
+                    }
+                } catch (fallbackErr) {
+                    if (typeof window.showClientSideAlert === 'function') {
+                        window.showClientSideAlert('Failed to copy Markdown content: ' + fallbackErr, 'error');
+                    } else {
+                        alert('Failed to copy Markdown content: ' + fallbackErr);
+                    }
+                } 
+            }
+
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                navigator.clipboard.writeText(content)
+                    .then(handleSuccess)
+                    .catch(() => {
+                        fallbackCopy();
+                    });
+            } else {
+                fallbackCopy();
+            }
         });
     }
 
-    // ── 8. SFT Training Dataset copy-to-clipboard ────────────────────────────
+    // ── 6. SFT Training Dataset copy-to-clipboard ────────────────────────────
     const copySftBtn = document.getElementById('btn-copy-sft');
     if (copySftBtn) {
         copySftBtn.addEventListener('click', () => {
