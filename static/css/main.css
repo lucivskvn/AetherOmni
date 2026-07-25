@@ -467,7 +467,11 @@ dialog.settings-dialog textarea {
 .search-input::-webkit-search-cancel-button,
 .search-input::-webkit-search-decoration,
 .search-input::-webkit-search-results-button,
-.search-input::-webkit-search-results-decoration {
+.search-input::-webkit-search-results-decoration,
+.table-filter-input::-webkit-search-cancel-button,
+.table-filter-input::-webkit-search-decoration,
+.table-filter-input::-webkit-search-results-button,
+.table-filter-input::-webkit-search-results-decoration {
     -webkit-appearance: none;
     appearance: none;
 }
@@ -754,6 +758,54 @@ dialog.settings-dialog .dialog-footer {
 
 .files-panel {
     padding: 24px;
+}
+
+/* Table Filter Input Styles */
+.table-filter-input {
+    padding: 6px 12px 6px 28px;
+    font-size: 13px;
+    height: auto;
+    border-radius: var(--border-radius-sm);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-glass);
+    color: white;
+    width: 140px;
+    transition: width 0.2s ease-in-out, border-color 0.2s, box-shadow 0.2s, padding-right 0.2s;
+    outline: none;
+}
+
+[data-theme="light"] .table-filter-input {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text-main);
+}
+
+.table-filter-input:focus,
+.table-filter-input:focus-visible {
+    width: 180px;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 12px var(--primary-glow);
+    outline: none;
+}
+
+.table-filter-clear-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    z-index: 5;
+    transition: color 0.2s;
+}
+
+.table-filter-clear-btn:hover {
+    color: var(--text-main);
 }
 
 .panel-header {
