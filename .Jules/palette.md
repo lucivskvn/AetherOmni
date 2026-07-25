@@ -60,3 +60,12 @@
 **Action:**
 1. Implement client-side `CapsLock` modifier key detectors on password fields by attaching `keydown`, `keyup`, and `focus` listeners.
 2. Dynamically spawn styled, localized badges mapped precisely adjacent to inputs or input wrappers to elevate usability of critical security gateways.
+
+## 2026-07-25 - Custom Search and Filter Input Native WebKit Overrides
+**Learning:**
+1. Custom search inputs (`<input type="search">`) modified with custom dynamic SVG clear buttons in webkit browsers (Chrome, Safari, Edge) will display both the custom clear button and the native browser-rendered search cancel button, causing visual clutter (the double "X" visual regression).
+2. Suppressing default browser outline styles via CSS or inline style `outline: none` can break WCAG keyboard focus visibility unless it is explicitly re-enabled using `:focus-visible` or customized focus shadow properties that provide strong, compliant contrast.
+
+**Action:**
+1. Always apply CSS pseudo-element overrides (`::-webkit-search-cancel-button` etc.) to search inputs that use custom programmatic clear/dismiss actions to guarantee a clean, visual-clutter-free user experience.
+2. Prefer CSS classes with clear `:focus-visible` states over inline layout styles to ensure complete styling separation of concerns and maintain compliant, gorgeous interactive focus highlights.
