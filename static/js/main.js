@@ -614,15 +614,66 @@ function selectAllCheckbox(select) {
 }
 
 /**
- * Dynamic instant client-side filtering for the Library documents table.
+ * Dynamic instant client-side filtering for the Library documents table with accessible clear control.
  */
 function initializeLibraryFilter() {
     const filterInput = document.getElementById('table-filter');
     if (!filterInput) return;
 
+    const wrapper = filterInput.closest('.table-filter-wrapper');
+
+    // Create clear button dynamically to avoid markup modification and preserve accessibility
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'table-filter-clear-btn';
+    clearBtn.setAttribute('aria-label', 'Clear filter text');
+    clearBtn.title = 'Clear filter';
+    clearBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
+    if (wrapper) {
+        wrapper.appendChild(clearBtn);
+    }
+
+    function updateUIState() {
+        const query = (filterInput.value || '').trim();
+        const hasText = query.length > 0;
+        if (hasText) {
+            clearBtn.style.display = 'inline-flex';
+            filterInput.style.paddingRight = '28px';
+        } else {
+            clearBtn.style.display = 'none';
+            filterInput.style.paddingRight = '12px';
+        }
+    }
+
     filterInput.addEventListener('input', () => {
         applyLibraryFilter(filterInput.value);
+        updateUIState();
     });
+
+    clearBtn.addEventListener('click', () => {
+        filterInput.value = '';
+        applyLibraryFilter('');
+        updateUIState();
+        filterInput.focus();
+    });
+
+    // Support Escape key to clear or blur
+    filterInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (filterInput.value !== '') {
+                e.preventDefault();
+                filterInput.value = '';
+                applyLibraryFilter('');
+                updateUIState();
+            } else {
+                filterInput.blur();
+            }
+        }
+    });
+
+    // Run initial state setup
+    updateUIState();
 }
 
 function applyLibraryFilter(filterValue) {
