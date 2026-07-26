@@ -391,6 +391,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── 6. SFT Training Dataset copy-to-clipboard ────────────────────────────
     const copySftBtn = document.getElementById('btn-copy-sft');
     if (copySftBtn) {
+        const copySvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy" style="margin-right: 4px;"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+        const checkSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="margin-right: 4px; color: #10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
+
         copySftBtn.addEventListener('click', () => {
             const datasetNode = document.getElementById('qa-dataset-json');
             if (!datasetNode) return;
@@ -406,14 +409,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 copyTextToClipboard(
                     jsonText,
                     () => {
-                        const origText = copySftBtn.innerHTML;
-                        const checkSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="margin-right: 4px;"><polyline points="20 6 9 17 4 12"/></svg>`;
                         copySftBtn.innerHTML = checkSvg + 'Copied!';
                         if (typeof window.showClientSideAlert === 'function') {
                             window.showClientSideAlert('SFT Dataset exported and copied to clipboard successfully.', 'success');
                         }
                         setTimeout(() => {
-                            copySftBtn.innerHTML = origText;
+                            copySftBtn.innerHTML = copySvg + ' Export SFT Dataset';
                         }, 2000);
                     },
                     (err) => {
@@ -762,5 +763,47 @@ function compileMarkdown(markdown) {
             '<a href="$2" target="_blank" rel="noopener" class="preview-link">$1</a>');
 
         return t;
+    }
+}
+
+/**
+ * Copy text content to clipboard with navigator.clipboard and fallback to execCommand.
+ */
+function copyTextToClipboard(text, onSuccess, onError) {
+    function fallbackCopy() {
+        try {
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = text;
+            tempTextArea.style.top = '0';
+            tempTextArea.style.left = '0';
+            tempTextArea.style.position = 'fixed';
+            tempTextArea.style.opacity = '0';
+            document.body.appendChild(tempTextArea);
+            tempTextArea.focus();
+            tempTextArea.select();
+
+            const successful = document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            if (successful) {
+                if (onSuccess) onSuccess();
+            } else {
+                throw new Error('execCommand copy returned false');
+            }
+        } catch (fallbackErr) {
+            if (onError) onError(fallbackErr);
+        }
+    }
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text)
+            .then(() => {
+                if (onSuccess) onSuccess();
+            })
+            .catch(() => {
+                fallbackCopy();
+            });
+    } else {
+        fallbackCopy();
     }
 }
