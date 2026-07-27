@@ -69,3 +69,12 @@
 **Action:**
 1. Always apply CSS pseudo-element overrides (`::-webkit-search-cancel-button` etc.) to search inputs that use custom programmatic clear/dismiss actions to guarantee a clean, visual-clutter-free user experience.
 2. Prefer CSS classes with clear `:focus-visible` states over inline layout styles to ensure complete styling separation of concerns and maintain compliant, gorgeous interactive focus highlights.
+
+## 2026-07-26 - Robust Multi-Modal Copy Feedback and Reversion Visual Stability
+**Learning:**
+1. Reverting button `innerHTML` to raw text containing unresolved framework icons (such as Lucide `<i data-lucide="...">`) after dynamic modification will result in the icon disappearing entirely, since the framework's DOM parser is not re-invoked automatically.
+2. Providing robust copying with clear, accessible multi-modal feedback requires native inline SVG templates for both visual copy/checkmark states and programmatic fallbacks for legacy/unsecured environments to prevent JS execution crashes.
+
+**Action:**
+1. Always use full inline SVGs rather than framework placeholder tags (`<i>`) inside dynamic JavaScript event handlers when reverting elements to their original visual layout.
+2. Implement clipboard routines that leverage `navigator.clipboard` first but gracefully fallback to a programmatic `document.execCommand('copy')` text-selection wrapper.
