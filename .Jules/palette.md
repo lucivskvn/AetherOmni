@@ -78,3 +78,12 @@
 **Action:**
 1. Always use full inline SVGs rather than framework placeholder tags (`<i>`) inside dynamic JavaScript event handlers when reverting elements to their original visual layout.
 2. Implement clipboard routines that leverage `navigator.clipboard` first but gracefully fallback to a programmatic `document.execCommand('copy')` text-selection wrapper.
+
+## 2026-07-27 - Context-Aware Non-Disruptive Form Submit State Transitions
+**Learning:**
+1. In critical authentication and credential submission workflows, standard form submissions can feel unresponsive during server roundtrips, prompting anxious users to repeatedly click submission triggers. This degrades backend performance, risks duplicate database operations, and leaves screen-reader users without live focus feedback on active operations.
+2. Adding context-aware inline loading spinners with ARIA status roles instantly and gracefully communicates state transitions. However, for async or AJAX-driven credential forms (like Supabase password updates), the submission handler must wrap the request in robust `try-catch-finally` or recovery routines to restore interactive buttons if validation or network errors occur, preventing users from being locked out of retrying.
+
+**Action:**
+1. Intercept standard forms at submission to temporarily disable the button, append a native SVG inline loading spinner, and render specific visual and screen-reader status text (e.g., "Unlocking Dashboard...").
+2. Ensure async forms cleanly implement error-recovery branches that revert button contents and interactive properties immediately upon failure or rejection.
