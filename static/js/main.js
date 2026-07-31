@@ -50,6 +50,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 15. Real-time form submission loading spinners
     initializeFormSubmitSpinners();
+
+    // 16. Real-time password matching feedback for security/credentials forms
+    initializePasswordMatchFeedback();
 });
 
 /**
