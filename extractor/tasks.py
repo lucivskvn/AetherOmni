@@ -456,35 +456,21 @@ def _clean_val(val):
     return s
 
 
-def _extract_meta_dict(meta, default_title, default_author, default_lang, default_doc_type):
-    parsed_title = _clean_val(meta.get("title")) or default_title
-    parsed_author = _clean_val(meta.get("author")) or default_author
-    parsed_lang = _clean_val(meta.get("language")) or default_lang
-    parsed_doc_type = _clean_val(meta.get("document_type")) or default_doc_type
-    parsed_sig = _clean_val(meta.get("semantic_signature"))
-    parsed_isbn = _clean_val(meta.get("isbn"))
-    parsed_source_link = _clean_val(meta.get("source_link"))
-    parsed_translator = _clean_val(meta.get("translator"))
-
-    parsed_pub = _clean_val(meta.get("publisher"))
-    parsed_year = _clean_val(meta.get("publication_year"))
-    parsed_lic = _clean_val(meta.get("license_type"))
-    parsed_doi = _clean_val(meta.get("doi"))
-
-    return (
-        parsed_title,
-        parsed_author,
-        parsed_lang,
-        parsed_doc_type,
-        parsed_sig,
-        parsed_isbn,
-        parsed_source_link,
-        parsed_translator,
-        parsed_pub,
-        parsed_year,
-        parsed_lic,
-        parsed_doi,
-    )
+def _extract_meta_dict(meta, default_title, default_author, default_lang, default_doc_type) -> dict:
+    return {
+        "title": _clean_val(meta.get("title")) or default_title,
+        "author": _clean_val(meta.get("author")) or default_author,
+        "language": _clean_val(meta.get("language")) or default_lang,
+        "document_type": _clean_val(meta.get("document_type")) or default_doc_type,
+        "semantic_signature": _clean_val(meta.get("semantic_signature")),
+        "isbn": _clean_val(meta.get("isbn")),
+        "source_link": _clean_val(meta.get("source_link")),
+        "translator": _clean_val(meta.get("translator")),
+        "publisher": _clean_val(meta.get("publisher")),
+        "publication_year": _clean_val(meta.get("publication_year")),
+        "license_type": _clean_val(meta.get("license_type")),
+        "doi": _clean_val(meta.get("doi")),
+    }
 
 
 def _parse_yaml_metadata(
@@ -493,24 +479,24 @@ def _parse_yaml_metadata(
     default_author: str | None,
     default_lang: str | None,
     default_doc_type: str | None,
-) -> tuple:
+) -> dict:
     """Parse YAML metadata block, fallback to defaults on error."""
     import yaml
 
-    parsed = (
-        default_title,
-        default_author,
-        default_lang,
-        default_doc_type,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
+    parsed = {
+        "title": default_title,
+        "author": default_author,
+        "language": default_lang,
+        "document_type": default_doc_type,
+        "semantic_signature": None,
+        "isbn": None,
+        "source_link": None,
+        "translator": None,
+        "publisher": None,
+        "publication_year": None,
+        "license_type": None,
+        "doi": None,
+    }
 
     if not yaml_metadata_block:
         return parsed
@@ -596,20 +582,19 @@ def _get_val(obj, key, default=None):
         return getattr(obj, key, default)
 
 
-def _update_doc_metadata(
-    doc_ref,
-    parsed_title,
-    parsed_author,
-    parsed_lang,
-    parsed_doc_type,
-    parsed_sig,
-    parsed_pub=None,
-    parsed_year=None,
-    parsed_lic=None,
-    parsed_doi=None,
-):
+def _update_doc_metadata(doc_ref, parsed_meta: dict):
     """Apply parsed YAML metadata values to a SourceDocument instance or dictionary (inside atomic block)."""
     import os
+
+    parsed_title = parsed_meta.get("title")
+    parsed_author = parsed_meta.get("author")
+    parsed_lang = parsed_meta.get("language")
+    parsed_doc_type = parsed_meta.get("document_type")
+    parsed_sig = parsed_meta.get("semantic_signature")
+    parsed_pub = parsed_meta.get("publisher")
+    parsed_year = parsed_meta.get("publication_year")
+    parsed_lic = parsed_meta.get("license_type")
+    parsed_doi = parsed_meta.get("doi")
 
     orig_filename = _get_val(doc_ref, "original_filename", "")
     t_val = _truncate(parsed_title, _MAX_TITLE_LEN)
@@ -765,20 +750,7 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
                 },
             )
 
-    (
-        parsed_title,
-        parsed_author,
-        parsed_lang,
-        parsed_doc_type,
-        parsed_sig,
-        _parsed_isbn,
-        _parsed_source_link,
-        _parsed_translator,
-        parsed_pub,
-        parsed_year,
-        parsed_lic,
-        parsed_doi,
-    ) = _parse_yaml_metadata(
+    parsed_meta = _parse_yaml_metadata(
         yaml_metadata_block,
         doc.get("title", ""),
         doc.get("author", ""),
@@ -787,18 +759,7 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     )
 
     doc_ref = surreal_db.get_document(doc_uuid)
-    _update_doc_metadata(
-        doc_ref,
-        parsed_title,
-        parsed_author,
-        parsed_lang,
-        parsed_doc_type,
-        parsed_sig,
-        parsed_pub,
-        parsed_year,
-        parsed_lic,
-        parsed_doi,
-    )
+    _update_doc_metadata(doc_ref, parsed_meta)
 
     input_tokens = _get_val(doc_ref, "input_tokens", 0) + stage2_input_tokens
     output_tokens = _get_val(doc_ref, "output_tokens", 0) + stage2_output_tokens
