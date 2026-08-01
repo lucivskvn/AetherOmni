@@ -24,6 +24,7 @@ import os
 import re
 import time
 import urllib.request
+from dataclasses import InitVar, dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -61,15 +62,24 @@ MIME_PDF = "application/pdf"
 MIME_OCTET_STREAM = "application/octet-stream"
 
 
+@dataclass
 class UnifiedResponse:
     """Unified response wrapper returned by all LLM gateway functions."""
 
-    def __init__(self, text: str, in_toks: int, out_toks: int, cost_val: Decimal, model_used: str) -> None:
-        self.text = text
+    text: str
+    in_toks: InitVar[int]
+    out_toks: InitVar[int]
+    cost_val: InitVar[Decimal]
+    model_used: str
+
+    input_tokens: int = field(init=False)
+    output_tokens: int = field(init=False)
+    cost_usd: Decimal = field(init=False)
+
+    def __post_init__(self, in_toks: int, out_toks: int, cost_val: Decimal) -> None:
         self.input_tokens = in_toks
         self.output_tokens = out_toks
         self.cost_usd = cost_val
-        self.model_used = model_used
 
 
 class BudgetExceededException(Exception):
