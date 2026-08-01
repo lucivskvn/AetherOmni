@@ -50,6 +50,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 15. Real-time form submission loading spinners
     initializeFormSubmitSpinners();
+
+    // 16. Real-time password matching feedback for credential forms
+    initializePasswordMatchFeedback();
 });
 
 /**
@@ -57,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
  * and password reset confirmation forms.
  */
 function initializePasswordMatchFeedback() {
+    // Premium feedback checking for matched credentials
     const pairs = [
         { passwordId: 'id_password', confirmId: 'id_confirm_password' },
         { passwordId: 'id_new_password1', confirmId: 'id_new_password2' },
