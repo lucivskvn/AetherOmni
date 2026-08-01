@@ -83,3 +83,43 @@ class SurrealDBClientTestCase(TestCase):
         val = surreal_db.kv_cache_get("my-key")
         self.assertEqual(val, {"answer": "cached response"})
         mock_db.query.assert_called()
+
+    @patch("extractor.surreal_db.AsyncSurreal")
+    def test_create_document_filters_invalid_keys(self, mock_surreal):
+        query_res = [{"result": [{"doc_uuid": "123", "title": "Test"}]}]
+        mock_db = self._create_mock_db(query_res)
+        mock_surreal.return_value = mock_db
+
+        data = {
+            "doc_uuid": "123",
+            "title": "Test",
+            "malicious_key": "DROP TABLE documents",
+        }
+        res = surreal_db.create_document(data)
+        self.assertEqual(res, {"doc_uuid": "123", "title": "Test"})
+
+        # Check that the sql does not contain malicious_key
+        call_args = mock_db.query.call_args[0]
+        sql = call_args[0]
+        self.assertNotIn("malicious_key", sql)
+        self.assertIn("doc_uuid", sql)
+        self.assertIn("title", sql)
+
+    @patch("extractor.surreal_db.AsyncSurreal")
+    def test_update_document_filters_invalid_keys(self, mock_surreal):
+        query_res = [{"result": [{"doc_uuid": "123", "title": "Test Updated"}]}]
+        mock_db = self._create_mock_db(query_res)
+        mock_surreal.return_value = mock_db
+
+        data = {
+            "title": "Test Updated",
+            "malicious_key": "DROP TABLE documents",
+        }
+        res = surreal_db.update_document("123", data)
+        self.assertEqual(res, {"doc_uuid": "123", "title": "Test Updated"})
+
+        # Check that the sql does not contain malicious_key
+        call_args = mock_db.query.call_args[0]
+        sql = call_args[0]
+        self.assertNotIn("malicious_key", sql)
+        self.assertIn("title", sql)
