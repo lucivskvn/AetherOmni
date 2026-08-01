@@ -87,3 +87,11 @@
 **Action:**
 1. Intercept standard forms at submission to temporarily disable the button, append a native SVG inline loading spinner, and render specific visual and screen-reader status text (e.g., "Unlocking Dashboard...").
 2. Ensure async forms cleanly implement error-recovery branches that revert button contents and interactive properties immediately upon failure or rejection.
+
+## 2026-07-30 - Contextual Activation of Dormant UI Feedback Utilities
+**Learning:**
+1. Codebases often contain robust, beautifully designed client-side feedback or accessibility utilities that remain entirely dormant because they were never registered during DOM initialization (e.g., `initializePasswordMatchFeedback()`).
+2. Ensuring these utilities are loaded on `DOMContentLoaded` restores vital WCAG interactive accessibility landmarks (like live match status with screen-reader announcements via `aria-live="polite"`) without adding custom layout styles or dependencies.
+
+**Action:**
+1. Audit utility scripts for helper functions that are defined but inactive, and explicitly register them in the startup lifecycle event listeners to activate low-risk, high-value micro-interactions.
