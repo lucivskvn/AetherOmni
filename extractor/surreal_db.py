@@ -632,8 +632,7 @@ def delete_document(doc_uuid: str) -> None:
 
                 try:
                     MonthlySpendLog.add_cost(
-                        year=created_at.year,
-                        month=created_at.month,
+                        date=created_at,
                         cost=cost,
                         in_tok=doc.get("input_tokens") or 0,
                         out_tok=doc.get("output_tokens") or 0,
