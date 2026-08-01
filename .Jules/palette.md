@@ -88,11 +88,10 @@
 1. Intercept standard forms at submission to temporarily disable the button, append a native SVG inline loading spinner, and render specific visual and screen-reader status text (e.g., "Unlocking Dashboard...").
 2. Ensure async forms cleanly implement error-recovery branches that revert button contents and interactive properties immediately upon failure or rejection.
 
-## 2026-07-31 - Activation of Accessible Dormant Client-Side Form Feedback
+## 2026-07-30 - Contextual Activation of Dormant UI Feedback Utilities
 **Learning:**
-1. In high-security systems, dynamic client-side helpers (such as real-time password matching feedback) dramatically improve the user experience and prevent authentication form submission errors.
-2. Form feedback systems must employ semantic ARIA indicators (`role="status"`, `aria-live="polite"`) to notify screen readers of matching status changes dynamically, but we must ensure these client-side helpers are actively registered and called during application bootstrapping.
+1. Codebases often contain robust, beautifully designed client-side feedback or accessibility utilities that remain entirely dormant because they were never registered during DOM initialization (e.g., `initializePasswordMatchFeedback()`).
+2. Ensuring these utilities are loaded on `DOMContentLoaded` restores vital WCAG interactive accessibility landmarks (like live match status with screen-reader announcements via `aria-live="polite"`) without adding custom layout styles or dependencies.
 
 **Action:**
-1. Always verify that all designed dynamic micro-interaction helpers (e.g., password checkers) are properly called and registered inside the central `DOMContentLoaded` event listener.
-2. Continue leveraging real-time feedback with aria status and live zones to deliver fully compliant WCAG accessibility patterns.
+1. Audit utility scripts for helper functions that are defined but inactive, and explicitly register them in the startup lifecycle event listeners to activate low-risk, high-value micro-interactions.
