@@ -7,8 +7,11 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
-# Ensure all libraries look up /tmp as home (Cloud Run write sandbox)
-os.environ["HOME"] = "/tmp"  # nosec B108 # NOSONAR
+# Configure specific temporary directories for libraries that need to write to the filesystem
+# in serverless environments (like Cloud Run) where only /tmp is writable.
+os.environ["HF_HOME"] = "/tmp/huggingface"  # nosec B108 # NOSONAR
+os.environ["XDG_CACHE_HOME"] = "/tmp/xdg_cache"  # nosec B108 # NOSONAR
+os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"  # nosec B108 # NOSONAR
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
