@@ -68,14 +68,17 @@ class FileUtilsTestCase(TestCase):
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zip_file:
-            file_utils._process_zip_doc(
-                idx=0,
-                doc=doc,
+            ctx = file_utils.ZipExportContext(
                 seen_lang_paths=seen_lang_paths,
                 seen_author_paths=seen_author_paths,
                 manifest=manifest,
                 master_content=master_content,
                 zip_file=zip_file,
+            )
+            file_utils._process_zip_doc(
+                idx=0,
+                doc=doc,
+                ctx=ctx,
             )
 
         # Check path additions
