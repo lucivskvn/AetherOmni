@@ -419,7 +419,7 @@ class UploadView(LoginRequiredMixin, View):
             user=request.user,
             document=doc,
             details=f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
-            ip_address=ip,
+            ip_address=get_client_ip(request),
         )
         return {"status": "cached", "name": orig_name}
 
@@ -511,7 +511,7 @@ class UploadView(LoginRequiredMixin, View):
             user=request.user,
             document=doc,
             details=f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
-            ip_address=ip,
+            ip_address=get_client_ip(request),
         )
 
         from django.conf import settings

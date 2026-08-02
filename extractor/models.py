@@ -224,11 +224,13 @@ class MonthlySpendLog(models.Model):
         ordering = ["-year", "-month"]
 
     @classmethod
-    def add_cost(cls, year: int, month: int, cost: "Decimal", in_tok: int = 0, out_tok: int = 0):
+    def add_cost(cls, date, cost: "Decimal", in_tok: int = 0, out_tok: int = 0):
         """Thread-safe upsert: add cost to the specified year/month bucket."""
         from decimal import Decimal as D
 
         from django.conf import settings
+
+        year, month = date.year, date.month
 
         if not getattr(settings, "SURREALDB_OFFLINE", False):
             import json
@@ -386,8 +388,7 @@ def flush_cost_to_monthly_log(sender, instance, **kwargs):
         ts = instance.created_at
         try:
             MonthlySpendLog.add_cost(
-                year=ts.year,
-                month=ts.month,
+                date=ts,
                 cost=instance.cost_usd,
                 in_tok=instance.input_tokens or 0,
                 out_tok=instance.output_tokens or 0,
