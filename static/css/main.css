@@ -471,9 +471,14 @@ dialog.settings-dialog textarea {
 .table-filter-input::-webkit-search-cancel-button,
 .table-filter-input::-webkit-search-decoration,
 .table-filter-input::-webkit-search-results-button,
-.table-filter-input::-webkit-search-results-decoration {
+.table-filter-input::-webkit-search-results-decoration,
+.filter-input::-webkit-search-cancel-button,
+.filter-input::-webkit-search-decoration,
+.filter-input::-webkit-search-results-button,
+.filter-input::-webkit-search-results-decoration {
     -webkit-appearance: none;
     appearance: none;
+    display: none !important;
 }
 
 [data-theme="dark"] dialog.settings-dialog input[type="text"],

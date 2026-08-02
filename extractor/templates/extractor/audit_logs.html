@@ -265,7 +265,10 @@
         <form method="get" class="filter-form">
             <div class="form-group">
                 <label for="search-input">Search Log Details</label>
-                <input type="text" id="search-input" name="q" value="{{ search_query }}" placeholder="Filter by details, IP address, file name..." class="filter-input">
+                <div class="search-input-container" style="position: relative; width: 100%;">
+                    <input type="search" id="search-input" name="q" value="{{ search_query }}" placeholder="Filter by details, IP address, file name..." class="filter-input" style="padding-right: 40px;" aria-describedby="audit-search-hint">
+                    <kbd class="search-shortcut-hint" id="audit-search-hint" aria-label="Shortcut: forward slash" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono, monospace); font-size: 11px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-glass); border-radius: 4px; padding: 2px 6px; color: var(--text-muted); pointer-events: none; transition: opacity 0.25s ease, visibility 0.25s ease;">/</kbd>
+                </div>
             </div>
 
             <div class="form-group">
