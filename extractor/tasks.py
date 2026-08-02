@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 from extractor import surreal_db
 from extractor.models import AuditAction
 from extractor.utils import (
+    AuditEvent,
     broadcast_status_change,
     check_budget_and_api_limit,
     chunk_document_semantically,
@@ -146,10 +147,12 @@ def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: b
         uploaded_by_id = doc.get("uploaded_by_id")
         user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
         log_audit_event(
-            action=AuditAction.EXTRACTION_FAILED,
-            user=user,
-            document=doc,
-            details=details,
+            AuditEvent(
+                action=AuditAction.EXTRACTION_FAILED,
+                user=user,
+                document=doc,
+                details=details,
+            )
         )
 
     # Broadcast failure outside transaction
@@ -207,10 +210,12 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
     log_audit_event(
-        action=AuditAction.EXTRACTION_START,
-        user=user,
-        document=doc,
-        details=f"Background curation pipeline started for '{doc.get('original_filename')}' (UUID: {doc_uuid}).",
+        AuditEvent(
+            action=AuditAction.EXTRACTION_START,
+            user=user,
+            document=doc,
+            details=f"Background curation pipeline started for '{doc.get('original_filename')}' (UUID: {doc_uuid}).",
+        )
     )
 
     broadcast_status_change(doc_uuid, "EXTRACTING")
@@ -945,13 +950,15 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
         user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
         log_audit_event(
-            action=AuditAction.EXTRACTION_COMPLETED,
-            user=user,
-            document=doc,
-            details=(
-                f"Curation pipeline completed. Pages: {doc.get('page_count')}. "
-                f"Cost: ${doc.get('cost_usd'):.6f} USD. "
-                f"Tokens in: {doc.get('input_tokens')}, out: {doc.get('output_tokens')}."
+            AuditEvent(
+                action=AuditAction.EXTRACTION_COMPLETED,
+                user=user,
+                document=doc,
+                details=(
+                    f"Curation pipeline completed. Pages: {doc.get('page_count')}. "
+                    f"Cost: ${doc.get('cost_usd'):.6f} USD. "
+                    f"Tokens in: {doc.get('input_tokens')}, out: {doc.get('output_tokens')}."
+                ),
             ),
         )
         return True
@@ -1118,10 +1125,12 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
 
     # Write audit log before deletion
     log_audit_event(
-        action=AuditAction.DELETE,
-        user=None,
-        document=doc,
-        details=f"GDPR retention cleanup: document '{doc.get('original_filename')}' (UUID: {doc_uuid}) expired and purged.",
+        AuditEvent(
+            action=AuditAction.DELETE,
+            user=None,
+            document=doc,
+            details=f"GDPR retention cleanup: document '{doc.get('original_filename')}' (UUID: {doc_uuid}) expired and purged.",
+        )
     )
 
     surreal_db.delete_document(doc_uuid)
@@ -1209,12 +1218,14 @@ def _reap_single_stale_doc(doc: dict) -> bool:
 
     # Write audit log for reaped task
     log_audit_event(
-        action=AuditAction.EXTRACTION_FAILED,
-        user=user,
-        document=doc,
-        details=(
-            f"[Reaper] Document '{doc.get('original_filename')}' was stuck in '{doc.get('status')}' for >15 minutes "
-            "and has been automatically marked as FAILED."
+        AuditEvent(
+            action=AuditAction.EXTRACTION_FAILED,
+            user=user,
+            document=doc,
+            details=(
+                f"[Reaper] Document '{doc.get('original_filename')}' was stuck in '{doc.get('status')}' for >15 minutes "
+                "and has been automatically marked as FAILED."
+            ),
         ),
     )
 
