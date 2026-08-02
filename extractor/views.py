@@ -412,14 +412,16 @@ class UploadView(LoginRequiredMixin, View):
         except Exception as clone_err:
             logger.warning("[Upload] SurrealDB chunk clone failed: %s", clone_err)
 
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.UPLOAD_CACHED,
-            user=request.user,
-            document=doc,
-            details=f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
-            ip_address=get_client_ip(request),
+            AuditEvent(
+                action=AuditAction.UPLOAD_CACHED,
+                user=request.user,
+                document=doc,
+                details=f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
+                ip_address=ip,
+            )
         )
         return {"status": "cached", "name": orig_name}
 
@@ -449,14 +451,16 @@ class UploadView(LoginRequiredMixin, View):
             },
         )
 
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.UPLOAD,
-            user=request.user,
-            document=doc_ref,
-            details=f"File '{orig_name}' re-uploaded; resetting failed pipeline status and re-enqueuing.",
-            ip_address=ip,
+            AuditEvent(
+                action=AuditAction.UPLOAD,
+                user=request.user,
+                document=doc_ref,
+                details=f"File '{orig_name}' re-uploaded; resetting failed pipeline status and re-enqueuing.",
+                ip_address=ip,
+            )
         )
 
         from django.conf import settings
@@ -504,14 +508,16 @@ class UploadView(LoginRequiredMixin, View):
         }
         doc = surreal_db.create_document(data)
 
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.UPLOAD,
-            user=request.user,
-            document=doc,
-            details=f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
-            ip_address=get_client_ip(request),
+            AuditEvent(
+                action=AuditAction.UPLOAD,
+                user=request.user,
+                document=doc,
+                details=f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
+                ip_address=ip,
+            )
         )
 
         from django.conf import settings
@@ -765,14 +771,16 @@ class DocumentSaveView(LoginRequiredMixin, View):
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
 
         # Log the document edit event
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.DOCUMENT_EDITED,
-            user=request.user,
-            document=doc_wrapped,
-            details=f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
-            ip_address=get_client_ip(request),
+            AuditEvent(
+                action=AuditAction.DOCUMENT_EDITED,
+                user=request.user,
+                document=doc_wrapped,
+                details=f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
+                ip_address=get_client_ip(request),
+            )
         )
 
         # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes
@@ -833,14 +841,16 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         ip = get_client_ip(request)
 
         # Create audit log record before deleting to preserve User/Document context
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.DELETE,
-            user=request.user,
-            document=doc,
-            details=f"Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
-            ip_address=ip,
+            AuditEvent(
+                action=AuditAction.DELETE,
+                user=request.user,
+                document=doc,
+                details=f"Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
+                ip_address=ip,
+            )
         )
 
         # Flip delete order: delete file first if shared_references == 0
@@ -887,13 +897,15 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
         ip = get_client_ip(request)
 
         # Log the global purge all event first
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.PURGE_ALL,
-            user=request.user,
-            details=f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
-            ip_address=ip,
+            AuditEvent(
+                action=AuditAction.PURGE_ALL,
+                user=request.user,
+                details=f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
+                ip_address=ip,
+            )
         )
 
         from django.core.files.storage import default_storage
@@ -1065,7 +1077,7 @@ def _handle_bulk_restart(request, document_ids):
 
 def _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db):
     from extractor.models import AuditAction
-    from extractor.utils import get_client_ip, log_audit_event
+    from extractor.utils import AuditEvent, get_client_ip, log_audit_event
 
     file_hash = doc.file_hash
     orig_name = doc.original_filename
@@ -1079,11 +1091,13 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
         hash_ref_counts[file_hash] = max(0, total_refs - 1)
 
     log_audit_event(
-        action=AuditAction.DELETE,
-        user=request.user,
-        document=doc,
-        details=f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
-        ip_address=get_client_ip(request),
+        AuditEvent(
+            action=AuditAction.DELETE,
+            user=request.user,
+            document=doc,
+            details=f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
+            ip_address=get_client_ip(request),
+        )
     )
 
     if shared_references == 0:
@@ -1354,14 +1368,16 @@ class DocumentRetryView(LoginRequiredMixin, View):
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
 
         # Re-dispatch the background task via Cloud Tasks
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.UPLOAD,
-            user=request.user,
-            document=doc_wrapped,
-            details=f"Curation pipeline re-enqueued for document: {doc_wrapped.title or doc_wrapped.original_filename}",
-            ip_address=get_client_ip(request),
+            AuditEvent(
+                action=AuditAction.UPLOAD,
+                user=request.user,
+                document=doc_wrapped,
+                details=f"Curation pipeline re-enqueued for document: {doc_wrapped.title or doc_wrapped.original_filename}",
+                ip_address=get_client_ip(request),
+            )
         )
 
         from django.conf import settings
@@ -1730,13 +1746,15 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             update_service_scale(target_service, min_scale, max_scale)
             messages.success(request, f"Successfully toggled scaling mode of {target_service} to {mode_display}!")
             # Add audit log for this operational action
-            from extractor.utils import log_audit_event
+            from extractor.utils import AuditEvent, log_audit_event
 
             log_audit_event(
-                action=AuditAction.SYSTEM_CONTROL,
-                user=request.user,
-                details=f"Admins toggled worker scaling mode to '{mode}' (minScale: {min_scale}, maxScale: {max_scale}).",
-                ip_address=request.META.get("REMOTE_ADDR"),
+                AuditEvent(
+                    action=AuditAction.SYSTEM_CONTROL,
+                    user=request.user,
+                    details=f"Admins toggled worker scaling mode to '{mode}' (minScale: {min_scale}, maxScale: {max_scale}).",
+                    ip_address=request.META.get("REMOTE_ADDR"),
+                )
             )
 
         except Exception as e:
