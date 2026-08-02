@@ -57,3 +57,30 @@ class CloudTasksTestCase(TestCase):
             task = kwargs.get("task") or args[1]
             self.assertEqual(task["http_request"]["url"], "https://my-app.run.app/internal/tasks/process_document/")
             self.assertEqual(task["http_request"]["headers"]["Content-Type"], "application/json")
+
+
+    @patch("urllib.request.urlopen")
+    def test_get_gcp_service_account_success(self, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.read.return_value = b"test-sa@project.iam.gserviceaccount.com\n"
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+
+        with self.settings(DEBUG=True):
+            account = cloud_tasks.get_gcp_service_account()
+
+        self.assertEqual(account, "test-sa@project.iam.gserviceaccount.com")
+        mock_urlopen.assert_called_once()
+        req = mock_urlopen.call_args[0][0]
+        self.assertEqual(req.full_url, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email")
+        self.assertEqual(req.headers, {"Metadata-flavor": "Google"})
+
+    @patch("urllib.request.urlopen")
+    def test_get_gcp_service_account_failure(self, mock_urlopen):
+        mock_urlopen.side_effect = Exception("Connection error")
+
+        with self.settings(DEBUG=True):
+            account = cloud_tasks.get_gcp_service_account()
+
+        self.assertIsNone(account)
+        mock_urlopen.assert_called_once()
