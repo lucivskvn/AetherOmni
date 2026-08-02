@@ -53,7 +53,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 16. Real-time password matching feedback for credential forms
     initializePasswordMatchFeedback();
+
+    // 17. Enables keyboard shortcuts and instant clearing for the Audit Logs search input
+    initializeAuditSearch();
 });
+
+/**
+ * Enables keyboard shortcuts and instant clearing for the Audit Logs search input.
+ */
+function initializeAuditSearch() {
+    const input = document.getElementById('search-input');
+    if (!input) return;
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'search-clear-btn';
+    clearBtn.setAttribute('aria-label', 'Clear search input');
+    clearBtn.title = 'Clear search';
+    clearBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    clearBtn.style = "position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; display: none; align-items: center; justify-content: center; padding: 4px; z-index: 5;";
+
+    const hint = document.getElementById('audit-search-hint');
+    input.closest('.search-input-container')?.appendChild(clearBtn);
+
+    const update = () => {
+        const hasText = input.value.trim().length > 0;
+        clearBtn.style.display = hasText ? 'inline-flex' : 'none';
+        if (hint) {
+            hint.style.opacity = hasText || document.activeElement === input ? '0' : '1';
+            hint.style.visibility = hasText || document.activeElement === input ? 'hidden' : 'visible';
+        }
+    };
+
+    input.addEventListener('input', update);
+    input.addEventListener('focus', update);
+    input.addEventListener('blur', () => setTimeout(update, 100));
+    clearBtn.addEventListener('click', () => { input.value = ''; update(); input.focus(); });
+
+    document.addEventListener('keydown', (e) => {
+        if (/^(input|textarea|select)$/i.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+        if (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+            e.preventDefault();
+            input.focus();
+            input.select();
+        }
+    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') input.blur(); });
+    update();
+}
 
 /**
  * Real-time password matching feedback helper for register, password change,
