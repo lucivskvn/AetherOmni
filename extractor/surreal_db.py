@@ -138,10 +138,21 @@ def _get_surreal_url() -> str:
 
 def _get_surreal_auth() -> dict:
     user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
-    password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", "root"))
-    if not getattr(settings, "DEBUG", True) and password in ("", "root"):
-        logger.warning(
-            "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment. "
+    password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", ""))
+
+    if not password and getattr(settings, "DEBUG", True):
+        password = "root"  # nosec B105
+
+    # In tests or fallback offline modes we might still have root, but for production
+    # settings.py would have already raised ImproperlyConfigured. If we reach here,
+    # we enforce one last check (unless offline mode is detected).
+    if (
+        not getattr(settings, "DEBUG", True)
+        and password in ("", "root")
+        and not getattr(settings, "SURREALDB_OFFLINE", False)
+    ):
+        raise ImproperlyConfigured(
+            "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment is forbidden. "
             "Set SURREAL_USER and SURREAL_PASS environment variables to secure credentials."
         )
     return {"username": user, "password": password}

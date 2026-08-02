@@ -12,9 +12,20 @@ logger = logging.getLogger("init_surreal")
 
 SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
-SURREAL_PASS = os.getenv("SURREAL_PASS", "root")
+SURREAL_PASS = os.getenv("SURREAL_PASS", "")
 SURREAL_NS = os.getenv("SURREAL_NS", "aetheromni")
 SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
+
+if not SURREAL_PASS and DJANGO_DEBUG:
+    SURREAL_PASS = "root"  # nosec B105
+
+if (
+    not DJANGO_DEBUG
+    and SURREAL_PASS in ("", "root")
+    and os.getenv("SURREALDB_OFFLINE", "False").lower() not in ("true", "1", "t")
+):
+    logger.error("SURREAL_PASS is using the default 'root' or empty credential in production. Aborting.")
+    raise ValueError("Production deployments require an explicit, strong password for SurrealDB.")
 
 
 def wait_for_surreal(client: httpx.Client, max_retries: int = 30) -> bool:
