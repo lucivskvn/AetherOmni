@@ -643,7 +643,7 @@ def _update_doc_metadata(doc_ref, parsed_meta: dict):
         _set_val(doc_ref, "license_type", _truncate(parsed_lic, 100))
 
     if parsed_doi and not _is_unknown_value(parsed_doi):
-        clean_doi = str(parsed_doi).replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+        clean_doi = str(parsed_doi).replace("https://doi.org/", "").replace("http://doi.org/", "").strip()  # NOSONAR
         _set_val(doc_ref, "doi", _truncate(clean_doi, 255))
 
 
