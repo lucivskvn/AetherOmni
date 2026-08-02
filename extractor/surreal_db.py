@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import UTC
 from typing import Any
 
@@ -138,10 +139,21 @@ def _get_surreal_url() -> str:
 
 def _get_surreal_auth() -> dict:
     user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
-    password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", "root"))
-    if not getattr(settings, "DEBUG", True) and password in ("", "root"):
-        logger.warning(
-            "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment. "
+    password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", ""))
+
+    if not password and getattr(settings, "DEBUG", True):
+        password = "root"  # nosec B105
+
+    # In tests or fallback offline modes we might still have root, but for production
+    # settings.py would have already raised ImproperlyConfigured. If we reach here,
+    # we enforce one last check (unless offline mode is detected).
+    if (
+        not getattr(settings, "DEBUG", True)
+        and password in ("", "root")
+        and not getattr(settings, "SURREALDB_OFFLINE", False)
+    ):
+        raise ImproperlyConfigured(
+            "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment is forbidden. "
             "Set SURREAL_USER and SURREAL_PASS environment variables to secure credentials."
         )
     return {"username": user, "password": password}
@@ -321,6 +333,15 @@ def check_health() -> bool:
         return async_to_sync(_async_check_health)()
 
 
+_IDENTIFIER_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _validate_field_name(field_name: str) -> None:
+    """Ensure field names only contain alphanumeric characters and underscores."""
+    if not _IDENTIFIER_REGEX.match(field_name):
+        raise ValueError(f"Invalid field name: {field_name}")
+
+
 def create_document(data: dict) -> dict:
     """Create a new document metadata record in SurrealDB."""
     from django.conf import settings
@@ -367,10 +388,11 @@ def create_document(data: dict) -> dict:
             doc.save()
         return _model_to_dict(doc)
 
-    payload = {k: v for k, v in data.items() if v is not None}
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
     fields = []
     params = {}
     for k, v in payload.items():
+        _validate_field_name(k)
         if k in ("created_at", "updated_at", "expires_at"):
             fields.append(f"{k}: <datetime> ${k}")
             params[k] = v
@@ -425,13 +447,14 @@ def update_document(doc_uuid: str, data: dict) -> dict:
         doc.save()
         return _model_to_dict(doc)
 
-    payload = {k: v for k, v in data.items() if v is not None}
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
     if not payload:
         return get_document(doc_uuid) or {}
 
     set_parts = []
     params = {"doc_uuid": doc_uuid}
     for k, v in payload.items():
+        _validate_field_name(k)
         if k in ("created_at", "updated_at", "expires_at"):
             set_parts.append(f"{k} = <datetime> ${k}")
             params[k] = v
@@ -653,8 +676,7 @@ def delete_document(doc_uuid: str) -> None:
 
                 try:
                     MonthlySpendLog.add_cost(
-                        year=created_at.year,
-                        month=created_at.month,
+                        date=created_at,
                         cost=cost,
                         in_tok=doc.get("input_tokens") or 0,
                         out_tok=doc.get("output_tokens") or 0,

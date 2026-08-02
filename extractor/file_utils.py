@@ -24,6 +24,7 @@ import logging
 import threading
 import urllib.request
 import zipfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
@@ -248,7 +249,16 @@ def _build_yaml_frontmatter(doc: Any) -> str:
     )
 
 
-def _process_zip_doc(idx, doc, seen_lang_paths, seen_author_paths, manifest, master_content, zip_file):
+@dataclass
+class ZipExportContext:
+    seen_lang_paths: set[str]
+    seen_author_paths: set[str]
+    manifest: dict[str, Any]
+    master_content: list[str]
+    zip_file: zipfile.ZipFile
+
+
+def _process_zip_doc(idx, doc, ctx: ZipExportContext):
     clean_lang = slugify(doc.language or "unknown", allow_unicode=True) or "unknown"
     clean_author = slugify(doc.author or "unknown", allow_unicode=True) or "unknown"
     doc_type = doc.document_type or "PDF"
@@ -259,30 +269,30 @@ def _process_zip_doc(idx, doc, seen_lang_paths, seen_author_paths, manifest, mas
     lang_slug = f"{base_slug}.md"
     lang_path = f"Language/{clean_lang}/{lang_slug}"
     counter = 1
-    while lang_path in seen_lang_paths:
+    while lang_path in ctx.seen_lang_paths:
         counter += 1
         lang_slug = f"{base_slug}_{counter}.md"
         lang_path = f"Language/{clean_lang}/{lang_slug}"
-    seen_lang_paths.add(lang_path)
+    ctx.seen_lang_paths.add(lang_path)
 
     author_slug = f"{base_slug}.md"
     author_path = f"Author/{clean_author}/{author_slug}"
     counter = 1
-    while author_path in seen_author_paths:
+    while author_path in ctx.seen_author_paths:
         counter += 1
         author_slug = f"{base_slug}_{counter}.md"
         author_path = f"Author/{clean_author}/{author_slug}"
-    seen_author_paths.add(author_path)
+    ctx.seen_author_paths.add(author_path)
 
     doc_markdown = doc.refined_markdown or doc.raw_markdown or "*Empty Document Content*"
     # prepend YAML frontmatter to each exported file
     frontmatter = _build_yaml_frontmatter(doc)
     full_content = frontmatter + doc_markdown
 
-    zip_file.writestr(lang_path, full_content)
-    zip_file.writestr(author_path, full_content)
+    ctx.zip_file.writestr(lang_path, full_content)
+    ctx.zip_file.writestr(author_path, full_content)
 
-    manifest["documents"].append(
+    ctx.manifest["documents"].append(
         {
             "id": doc.id,
             "filename": doc.original_filename,
@@ -296,17 +306,17 @@ def _process_zip_doc(idx, doc, seen_lang_paths, seen_author_paths, manifest, mas
         }
     )
 
-    master_content.append(
+    ctx.master_content.append(
         f"<!-- SOURCE_START_{idx + 1}: {doc.title} by {doc.author} ({doc.language}) [Type: {doc_type}, Hash: {doc.file_hash}] -->"
     )
-    master_content.append(f"\n# SOURCE: {doc.title}\n")
-    master_content.append(f"**Author:** {doc.author}  ")
-    master_content.append(f"**Language:** {doc.language}  ")
-    master_content.append(f"**Document Type:** {doc_type}\n")
-    master_content.append("---\n")
-    master_content.append(doc_markdown)
-    master_content.append("\n\n---\n\n")
-    master_content.append(f"<!-- SOURCE_END_{idx + 1}: {doc.title} -->\n\n")
+    ctx.master_content.append(f"\n# SOURCE: {doc.title}\n")
+    ctx.master_content.append(f"**Author:** {doc.author}  ")
+    ctx.master_content.append(f"**Language:** {doc.language}  ")
+    ctx.master_content.append(f"**Document Type:** {doc_type}\n")
+    ctx.master_content.append("---\n")
+    ctx.master_content.append(doc_markdown)
+    ctx.master_content.append("\n\n---\n\n")
+    ctx.master_content.append(f"<!-- SOURCE_END_{idx + 1}: {doc.title} -->\n\n")
 
 
 def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any = None) -> bytes:
@@ -337,8 +347,8 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
         users_map = {str(u.id): u for u in User.objects.all()}
 
         docs_list = []
-        for doc_uuid in document_ids:
-            raw_doc = surreal_db.get_document(str(doc_uuid))
+        raw_docs = surreal_db.get_documents(document_ids)
+        for raw_doc in raw_docs:
             if not raw_doc:
                 continue
             if raw_doc.get("status") != "COMPLETED":
@@ -375,8 +385,15 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
     seen_author_paths: set[str] = set()
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        ctx = ZipExportContext(
+            seen_lang_paths=seen_lang_paths,
+            seen_author_paths=seen_author_paths,
+            manifest=manifest,
+            master_content=master_content,
+            zip_file=zip_file,
+        )
         for idx, doc in enumerate(docs_list):
-            _process_zip_doc(idx, doc, seen_lang_paths, seen_author_paths, manifest, master_content, zip_file)
+            _process_zip_doc(idx, doc, ctx)
 
         zip_file.writestr("master_archival_source.md", "\n".join(master_content))
         zip_file.writestr("manifest.json", json.dumps(manifest, indent=2))
@@ -385,14 +402,12 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
     return zip_buffer.getvalue()
 
 
-def get_client_ip(request: HttpRequest) -> str | None:
-    """Extracts client IP, respecting load balancers like Cloud Run or Cloudflare."""
+def get_client_ip(request: Any) -> str:
+    """Extract the true client IP from Django request headers."""
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
     if x_forwarded_for:
-        ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        ip = request.META.get("REMOTE_ADDR")
-    return ip
+        return str(x_forwarded_for.split(",")[0].strip())
+    return str(request.META.get("REMOTE_ADDR", "127.0.0.1"))
 
 
 def _resolve_currency_and_symbol(accept_language: str) -> tuple[str, str]:

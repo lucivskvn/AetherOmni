@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 from extractor import surreal_db
 from extractor.models import AuditAction
 from extractor.utils import (
+    AuditEvent,
     broadcast_status_change,
     check_budget_and_api_limit,
     chunk_document_semantically,
@@ -146,10 +147,12 @@ def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: b
         uploaded_by_id = doc.get("uploaded_by_id")
         user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
         log_audit_event(
-            action=AuditAction.EXTRACTION_FAILED,
-            user=user,
-            document=doc,
-            details=details,
+            AuditEvent(
+                action=AuditAction.EXTRACTION_FAILED,
+                user=user,
+                document=doc,
+                details=details,
+            )
         )
 
     # Broadcast failure outside transaction
@@ -207,10 +210,12 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
     log_audit_event(
-        action=AuditAction.EXTRACTION_START,
-        user=user,
-        document=doc,
-        details=f"Background curation pipeline started for '{doc.get('original_filename')}' (UUID: {doc_uuid}).",
+        AuditEvent(
+            action=AuditAction.EXTRACTION_START,
+            user=user,
+            document=doc,
+            details=f"Background curation pipeline started for '{doc.get('original_filename')}' (UUID: {doc_uuid}).",
+        )
     )
 
     broadcast_status_change(doc_uuid, "EXTRACTING")
@@ -456,35 +461,21 @@ def _clean_val(val):
     return s
 
 
-def _extract_meta_dict(meta, default_title, default_author, default_lang, default_doc_type):
-    parsed_title = _clean_val(meta.get("title")) or default_title
-    parsed_author = _clean_val(meta.get("author")) or default_author
-    parsed_lang = _clean_val(meta.get("language")) or default_lang
-    parsed_doc_type = _clean_val(meta.get("document_type")) or default_doc_type
-    parsed_sig = _clean_val(meta.get("semantic_signature"))
-    parsed_isbn = _clean_val(meta.get("isbn"))
-    parsed_source_link = _clean_val(meta.get("source_link"))
-    parsed_translator = _clean_val(meta.get("translator"))
-
-    parsed_pub = _clean_val(meta.get("publisher"))
-    parsed_year = _clean_val(meta.get("publication_year"))
-    parsed_lic = _clean_val(meta.get("license_type"))
-    parsed_doi = _clean_val(meta.get("doi"))
-
-    return (
-        parsed_title,
-        parsed_author,
-        parsed_lang,
-        parsed_doc_type,
-        parsed_sig,
-        parsed_isbn,
-        parsed_source_link,
-        parsed_translator,
-        parsed_pub,
-        parsed_year,
-        parsed_lic,
-        parsed_doi,
-    )
+def _extract_meta_dict(meta, default_title, default_author, default_lang, default_doc_type) -> dict:
+    return {
+        "title": _clean_val(meta.get("title")) or default_title,
+        "author": _clean_val(meta.get("author")) or default_author,
+        "language": _clean_val(meta.get("language")) or default_lang,
+        "document_type": _clean_val(meta.get("document_type")) or default_doc_type,
+        "semantic_signature": _clean_val(meta.get("semantic_signature")),
+        "isbn": _clean_val(meta.get("isbn")),
+        "source_link": _clean_val(meta.get("source_link")),
+        "translator": _clean_val(meta.get("translator")),
+        "publisher": _clean_val(meta.get("publisher")),
+        "publication_year": _clean_val(meta.get("publication_year")),
+        "license_type": _clean_val(meta.get("license_type")),
+        "doi": _clean_val(meta.get("doi")),
+    }
 
 
 def _parse_yaml_metadata(
@@ -493,24 +484,24 @@ def _parse_yaml_metadata(
     default_author: str | None,
     default_lang: str | None,
     default_doc_type: str | None,
-) -> tuple:
+) -> dict:
     """Parse YAML metadata block, fallback to defaults on error."""
     import yaml
 
-    parsed = (
-        default_title,
-        default_author,
-        default_lang,
-        default_doc_type,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
+    parsed = {
+        "title": default_title,
+        "author": default_author,
+        "language": default_lang,
+        "document_type": default_doc_type,
+        "semantic_signature": None,
+        "isbn": None,
+        "source_link": None,
+        "translator": None,
+        "publisher": None,
+        "publication_year": None,
+        "license_type": None,
+        "doi": None,
+    }
 
     if not yaml_metadata_block:
         return parsed
@@ -596,20 +587,19 @@ def _get_val(obj, key, default=None):
         return getattr(obj, key, default)
 
 
-def _update_doc_metadata(
-    doc_ref,
-    parsed_title,
-    parsed_author,
-    parsed_lang,
-    parsed_doc_type,
-    parsed_sig,
-    parsed_pub=None,
-    parsed_year=None,
-    parsed_lic=None,
-    parsed_doi=None,
-):
+def _update_doc_metadata(doc_ref, parsed_meta: dict):
     """Apply parsed YAML metadata values to a SourceDocument instance or dictionary (inside atomic block)."""
     import os
+
+    parsed_title = parsed_meta.get("title")
+    parsed_author = parsed_meta.get("author")
+    parsed_lang = parsed_meta.get("language")
+    parsed_doc_type = parsed_meta.get("document_type")
+    parsed_sig = parsed_meta.get("semantic_signature")
+    parsed_pub = parsed_meta.get("publisher")
+    parsed_year = parsed_meta.get("publication_year")
+    parsed_lic = parsed_meta.get("license_type")
+    parsed_doi = parsed_meta.get("doi")
 
     orig_filename = _get_val(doc_ref, "original_filename", "")
     t_val = _truncate(parsed_title, _MAX_TITLE_LEN)
@@ -765,20 +755,7 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
                 },
             )
 
-    (
-        parsed_title,
-        parsed_author,
-        parsed_lang,
-        parsed_doc_type,
-        parsed_sig,
-        _parsed_isbn,
-        _parsed_source_link,
-        _parsed_translator,
-        parsed_pub,
-        parsed_year,
-        parsed_lic,
-        parsed_doi,
-    ) = _parse_yaml_metadata(
+    parsed_meta = _parse_yaml_metadata(
         yaml_metadata_block,
         doc.get("title", ""),
         doc.get("author", ""),
@@ -787,18 +764,7 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     )
 
     doc_ref = surreal_db.get_document(doc_uuid)
-    _update_doc_metadata(
-        doc_ref,
-        parsed_title,
-        parsed_author,
-        parsed_lang,
-        parsed_doc_type,
-        parsed_sig,
-        parsed_pub,
-        parsed_year,
-        parsed_lic,
-        parsed_doi,
-    )
+    _update_doc_metadata(doc_ref, parsed_meta)
 
     input_tokens = _get_val(doc_ref, "input_tokens", 0) + stage2_input_tokens
     output_tokens = _get_val(doc_ref, "output_tokens", 0) + stage2_output_tokens
@@ -945,13 +911,15 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
         user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
         log_audit_event(
-            action=AuditAction.EXTRACTION_COMPLETED,
-            user=user,
-            document=doc,
-            details=(
-                f"Curation pipeline completed. Pages: {doc.get('page_count')}. "
-                f"Cost: ${doc.get('cost_usd'):.6f} USD. "
-                f"Tokens in: {doc.get('input_tokens')}, out: {doc.get('output_tokens')}."
+            AuditEvent(
+                action=AuditAction.EXTRACTION_COMPLETED,
+                user=user,
+                document=doc,
+                details=(
+                    f"Curation pipeline completed. Pages: {doc.get('page_count')}. "
+                    f"Cost: ${doc.get('cost_usd'):.6f} USD. "
+                    f"Tokens in: {doc.get('input_tokens')}, out: {doc.get('output_tokens')}."
+                ),
             ),
         )
         return True
@@ -1118,10 +1086,12 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
 
     # Write audit log before deletion
     log_audit_event(
-        action=AuditAction.DELETE,
-        user=None,
-        document=doc,
-        details=f"GDPR retention cleanup: document '{doc.get('original_filename')}' (UUID: {doc_uuid}) expired and purged.",
+        AuditEvent(
+            action=AuditAction.DELETE,
+            user=None,
+            document=doc,
+            details=f"GDPR retention cleanup: document '{doc.get('original_filename')}' (UUID: {doc_uuid}) expired and purged.",
+        )
     )
 
     surreal_db.delete_document(doc_uuid)
@@ -1143,15 +1113,22 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
+        from django.db.models import Count
         from extractor.models import SourceDocument
 
         expired_qs = SourceDocument.objects.filter(expires_at__lte=now)
         expired_docs = [surreal_db._model_to_dict(d) for d in expired_qs]
         if expired_docs:
             expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
-            hash_counts = {}
-            for file_hash in expired_hashes:
-                hash_counts[file_hash] = SourceDocument.objects.filter(file_hash=file_hash).count()
+            hash_counts = {h: 0 for h in expired_hashes}
+            if expired_hashes:
+                counts = (
+                    SourceDocument.objects.filter(file_hash__in=expired_hashes)
+                    .values("file_hash")
+                    .annotate(count=Count("id"))
+                )
+                for item in counts:
+                    hash_counts[item["file_hash"]] = item["count"]
         else:
             hash_counts = {}
     else:
@@ -1161,11 +1138,13 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
         if expired_docs:
             expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
-            hash_counts = {}
-            for file_hash in expired_hashes:
-                count_sql = "SELECT count() AS n FROM documents WHERE file_hash = $file_hash GROUP ALL;"
-                res = surreal_db._first_result(surreal_db._run(count_sql, {"file_hash": file_hash}))
-                hash_counts[file_hash] = res[0].get("n", 0) if res else 0
+            hash_counts = {h: 0 for h in expired_hashes}
+            if expired_hashes:
+                count_sql = "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $expired_hashes GROUP BY file_hash;"
+                res = surreal_db._first_result(surreal_db._run(count_sql, {"expired_hashes": list(expired_hashes)}))
+                if res:
+                    for row in res:
+                        hash_counts[row.get("file_hash")] = row.get("n", 0)
         else:
             hash_counts = {}
 
@@ -1209,12 +1188,14 @@ def _reap_single_stale_doc(doc: dict) -> bool:
 
     # Write audit log for reaped task
     log_audit_event(
-        action=AuditAction.EXTRACTION_FAILED,
-        user=user,
-        document=doc,
-        details=(
-            f"[Reaper] Document '{doc.get('original_filename')}' was stuck in '{doc.get('status')}' for >15 minutes "
-            "and has been automatically marked as FAILED."
+        AuditEvent(
+            action=AuditAction.EXTRACTION_FAILED,
+            user=user,
+            document=doc,
+            details=(
+                f"[Reaper] Document '{doc.get('original_filename')}' was stuck in '{doc.get('status')}' for >15 minutes "
+                "and has been automatically marked as FAILED."
+            ),
         ),
     )
 
