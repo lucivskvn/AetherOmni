@@ -321,6 +321,38 @@ def check_health() -> bool:
         return async_to_sync(_async_check_health)()
 
 
+VALID_DOCUMENT_FIELDS = {
+    "doc_uuid",
+    "uploaded_by_id",
+    "file",
+    "original_filename",
+    "file_hash",
+    "status",
+    "error_message",
+    "language",
+    "author",
+    "title",
+    "document_type",
+    "page_count",
+    "publisher",
+    "publication_year",
+    "license_type",
+    "doi",
+    "raw_markdown",
+    "refined_markdown",
+    "yaml_metadata",
+    "qa_dataset",
+    "input_tokens",
+    "output_tokens",
+    "cost_usd",
+    "semantic_signature",
+    "retry_count",
+    "expires_at",
+    "created_at",
+    "updated_at",
+}
+
+
 def create_document(data: dict) -> dict:
     """Create a new document metadata record in SurrealDB."""
     from django.conf import settings
@@ -367,7 +399,7 @@ def create_document(data: dict) -> dict:
             doc.save()
         return _model_to_dict(doc)
 
-    payload = {k: v for k, v in data.items() if v is not None}
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
     fields = []
     params = {}
     for k, v in payload.items():
@@ -425,7 +457,7 @@ def update_document(doc_uuid: str, data: dict) -> dict:
         doc.save()
         return _model_to_dict(doc)
 
-    payload = {k: v for k, v in data.items() if v is not None}
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
     if not payload:
         return get_document(doc_uuid) or {}
 
