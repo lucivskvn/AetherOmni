@@ -11,6 +11,27 @@ from extractor.models import SourceDocument
 class FileUtilsTestCase(TestCase):
     """Direct unit tests for file_utils.py functions."""
 
+    def test_calculate_file_sha256(self):
+        import os
+        import tempfile
+
+        content = b"Hello World"
+        expected_hash = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
+
+        # Test with file-like object
+        file_obj = io.BytesIO(content)
+        self.assertEqual(file_utils.calculate_file_sha256(file_obj), expected_hash)
+
+        # Test with string path
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        try:
+            self.assertEqual(file_utils.calculate_file_sha256(temp_file_path), expected_hash)
+        finally:
+            os.remove(temp_file_path)
+
     def test_clean_html_content(self):
         dirty_html = "<script>alert('unsafe');</script><p>Safe content</p> <a href='javascript:void(0)'>Link</a>"
         clean = file_utils.clean_html_content(dirty_html)
