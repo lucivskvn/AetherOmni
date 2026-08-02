@@ -356,7 +356,7 @@ class UploadView(LoginRequiredMixin, View):
     Supports multi-file batch uploads.
     """
 
-    def _clone_deduplicated_document(self, request, existing_doc, orig_name, file_hash, ip):
+    def _clone_deduplicated_document(self, request, existing_doc, orig_name, file_hash):
         import uuid
 
         new_uuid = str(uuid.uuid4())
@@ -418,7 +418,7 @@ class UploadView(LoginRequiredMixin, View):
             user=request.user,
             document=doc,
             details=f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
-            ip_address=ip,
+            ip_address=get_client_ip(request),
         )
         return {"status": "cached", "name": orig_name}
 
@@ -468,7 +468,7 @@ class UploadView(LoginRequiredMixin, View):
             cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
         return {"status": "success", "name": f"{orig_name} (re-enqueued)"}
 
-    def _create_fresh_document(self, request, uploaded_file, orig_name, file_hash, ip):
+    def _create_fresh_document(self, request, uploaded_file, orig_name, file_hash):
         import os
         import uuid
 
@@ -507,7 +507,7 @@ class UploadView(LoginRequiredMixin, View):
             user=request.user,
             document=doc,
             details=f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
-            ip_address=ip,
+            ip_address=get_client_ip(request),
         )
 
         from django.conf import settings
@@ -594,7 +594,7 @@ class UploadView(LoginRequiredMixin, View):
                         return {"status": "cached", "name": orig_name}
 
                     logger.info("[Deduplication] Match found for file hash %s. Skipping physical rewrite.", file_hash)
-                    return self._clone_deduplicated_document(request, existing_doc, orig_name, file_hash, ip)
+                    return self._clone_deduplicated_document(request, existing_doc, orig_name, file_hash)
                 elif status in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
                     return {
                         "status": "error",
@@ -604,7 +604,7 @@ class UploadView(LoginRequiredMixin, View):
                 elif status == "FAILED":
                     return self._retry_existing_failed_document(request, existing_doc, orig_name, ip)
 
-            return self._create_fresh_document(request, uploaded_file, orig_name, file_hash, ip)
+            return self._create_fresh_document(request, uploaded_file, orig_name, file_hash)
         except Exception as e:
             return {"status": "error", "name": orig_name, "error": f"Error processing '{orig_name}': {e!s}"}
 
