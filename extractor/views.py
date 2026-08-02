@@ -1131,14 +1131,21 @@ def _handle_bulk_delete(request, document_ids):
     hash_ref_counts = {}
     if getattr(settings, "SURREALDB_OFFLINE", False):
         from extractor.models import SourceDocument
+        from django.db.models import Count
 
+        counts = SourceDocument.objects.filter(file_hash__in=file_hashes).values("file_hash").annotate(n=Count("file_hash"))
+        hash_ref_counts = {item["file_hash"]: item["n"] for item in counts}
         for file_hash in file_hashes:
-            hash_ref_counts[file_hash] = SourceDocument.objects.filter(file_hash=file_hash).count()
+            if file_hash not in hash_ref_counts:
+                hash_ref_counts[file_hash] = 0
     else:
+        if file_hashes:
+            count_sql = "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $file_hashes GROUP BY file_hash;"
+            res = surreal_db._first_result(surreal_db._run(count_sql, {"file_hashes": list(file_hashes)}))
+            hash_ref_counts = {r["file_hash"]: r.get("n", 0) for r in res if "file_hash" in r}
         for file_hash in file_hashes:
-            count_sql = "SELECT count() AS n FROM documents WHERE file_hash = $file_hash GROUP ALL;"
-            res = surreal_db._first_result(surreal_db._run(count_sql, {"file_hash": file_hash}))
-            hash_ref_counts[file_hash] = res[0].get("n", 0) if res else 0
+            if file_hash not in hash_ref_counts:
+                hash_ref_counts[file_hash] = 0
 
     deleted_count = 0
     for doc in docs:
