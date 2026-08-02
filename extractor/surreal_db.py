@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import UTC
 from typing import Any
 
@@ -321,6 +322,15 @@ def check_health() -> bool:
         return async_to_sync(_async_check_health)()
 
 
+_IDENTIFIER_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _validate_field_name(field_name: str) -> None:
+    """Ensure field names only contain alphanumeric characters and underscores."""
+    if not _IDENTIFIER_REGEX.match(field_name):
+        raise ValueError(f"Invalid field name: {field_name}")
+
+
 def create_document(data: dict) -> dict:
     """Create a new document metadata record in SurrealDB."""
     from django.conf import settings
@@ -371,6 +381,7 @@ def create_document(data: dict) -> dict:
     fields = []
     params = {}
     for k, v in payload.items():
+        _validate_field_name(k)
         if k in ("created_at", "updated_at", "expires_at"):
             fields.append(f"{k}: <datetime> ${k}")
             params[k] = v
@@ -432,6 +443,7 @@ def update_document(doc_uuid: str, data: dict) -> dict:
     set_parts = []
     params = {"doc_uuid": doc_uuid}
     for k, v in payload.items():
+        _validate_field_name(k)
         if k in ("created_at", "updated_at", "expires_at"):
             set_parts.append(f"{k} = <datetime> ${k}")
             params[k] = v
