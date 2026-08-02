@@ -7,8 +7,11 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
-# Ensure all libraries look up /tmp as home (Cloud Run write sandbox)
-os.environ["HOME"] = "/tmp"  # nosec B108 # NOSONAR
+# Configure specific temporary directories for libraries that need to write to the filesystem
+# in serverless environments (like Cloud Run) where only /tmp is writable.
+os.environ["HF_HOME"] = "/tmp/huggingface"  # nosec B108 # NOSONAR
+os.environ["XDG_CACHE_HOME"] = "/tmp/xdg_cache"  # nosec B108 # NOSONAR
+os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"  # nosec B108 # NOSONAR
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -249,12 +252,15 @@ SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
 SURREAL_NS = os.getenv("SURREAL_NS", "aetheromni")
 SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
-SURREAL_PASS = os.getenv("SURREAL_PASS", "root")
+SURREAL_PASS = os.getenv("SURREAL_PASS", "")
 
-if not DEBUG and SURREAL_PASS in ("", "root") and not os.getenv("SURREALDB_OFFLINE"):
-    logger.warning(
-        "[SurrealDB] SURREAL_PASS is using the default 'root' credential in a non-debug environment. "
-        "Set the SURREAL_PASS environment variable to a strong password for production deployments."
+if not SURREAL_PASS and DEBUG:
+    SURREAL_PASS = "root"  # nosec B105
+
+if not DEBUG and SURREAL_PASS in ("", "root") and not SURREALDB_OFFLINE:
+    raise ImproperlyConfigured(
+        "SURREAL_PASS environment variable is not set or is using the default 'root' credential. "
+        "Production deployments require an explicit, strong password for SurrealDB."
     )
 
 
