@@ -95,3 +95,12 @@
 
 **Action:**
 1. Audit utility scripts for helper functions that are defined but inactive, and explicitly register them in the startup lifecycle event listeners to activate low-risk, high-value micro-interactions.
+
+## 2026-08-01 - Coordination of Custom Clear and Shortcut Hints in Server-Filtered Forms
+**Learning:**
+1. Integrating custom search components (type="search") inside server-side filtered forms requires coordination with keyboard shortcut indicators (such as `<kbd>`) to prevent overlapping layouts during user input.
+2. WebKit browsers natively inject a search cancel button on type="search", causing visual clutter and double "X" actions when used with custom clear triggers. Disabling WebKit's native cancel buttons via CSS pseudo-elements (like `::-webkit-search-cancel-button`) preserves visual clarity.
+
+**Action:**
+1. Always apply `-webkit-appearance: none; display: none !important;` pseudo-element overrides to custom-styled search inputs.
+2. Dynamically show/hide absolute-positioned `<kbd>` shortcuts and custom SVGs using robust `input`/`focus`/`blur` event orchestration to ensure clean, overlap-free responsive form layouts.
