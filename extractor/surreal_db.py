@@ -139,10 +139,21 @@ def _get_surreal_url() -> str:
 
 def _get_surreal_auth() -> dict:
     user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
-    password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", "root"))
-    if not getattr(settings, "DEBUG", True) and password in ("", "root"):
-        logger.warning(
-            "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment. "
+    password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", ""))
+
+    if not password and getattr(settings, "DEBUG", True):
+        password = "root"  # nosec B105
+
+    # In tests or fallback offline modes we might still have root, but for production
+    # settings.py would have already raised ImproperlyConfigured. If we reach here,
+    # we enforce one last check (unless offline mode is detected).
+    if (
+        not getattr(settings, "DEBUG", True)
+        and password in ("", "root")
+        and not getattr(settings, "SURREALDB_OFFLINE", False)
+    ):
+        raise ImproperlyConfigured(
+            "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment is forbidden. "
             "Set SURREAL_USER and SURREAL_PASS environment variables to secure credentials."
         )
     return {"username": user, "password": password}
@@ -377,7 +388,7 @@ def create_document(data: dict) -> dict:
             doc.save()
         return _model_to_dict(doc)
 
-    payload = {k: v for k, v in data.items() if v is not None}
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
     fields = []
     params = {}
     for k, v in payload.items():
@@ -436,7 +447,7 @@ def update_document(doc_uuid: str, data: dict) -> dict:
         doc.save()
         return _model_to_dict(doc)
 
-    payload = {k: v for k, v in data.items() if v is not None}
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
     if not payload:
         return get_document(doc_uuid) or {}
 
@@ -483,6 +494,47 @@ def get_document(doc_uuid: str) -> dict | None:
     results = _run(sql, {"doc_uuid": doc_uuid})
     rows = _first_result(results)
     return rows[0] if rows else None
+
+
+def get_documents(doc_uuids: list[str]) -> list[dict]:
+    """Retrieve multiple document records by their UUIDs."""
+    doc_uuids = [str(u) for u in doc_uuids]
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        import uuid
+
+        from extractor.models import SourceDocument
+
+        valid_uuids = []
+        valid_ids = []
+        for duid in doc_uuids:
+            try:
+                uuid.UUID(str(duid))
+                valid_uuids.append(duid)
+            except ValueError:
+                try:
+                    valid_ids.append(int(duid))
+                except ValueError:
+                    pass
+
+        from django.db.models import Q
+
+        query = Q()
+        if valid_uuids:
+            query |= Q(uuid__in=valid_uuids)
+        if valid_ids:
+            query |= Q(id__in=valid_ids)
+
+        if not query:
+            return []
+
+        docs = SourceDocument.objects.filter(query)
+        return [_model_to_dict(doc) for doc in docs]
+
+    sql = "SELECT * FROM documents WHERE doc_uuid INSIDE $doc_uuids;"  # nosec B608
+    results = _run(sql, {"doc_uuids": doc_uuids})
+    return _first_result(results)
 
 
 def list_documents(user_id: str | None = None) -> list[dict]:
@@ -644,8 +696,7 @@ def delete_document(doc_uuid: str) -> None:
 
                 try:
                     MonthlySpendLog.add_cost(
-                        year=created_at.year,
-                        month=created_at.month,
+                        date=created_at,
                         cost=cost,
                         in_tok=doc.get("input_tokens") or 0,
                         out_tok=doc.get("output_tokens") or 0,

@@ -337,8 +337,8 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
         users_map = {str(u.id): u for u in User.objects.all()}
 
         docs_list = []
-        for doc_uuid in document_ids:
-            raw_doc = surreal_db.get_document(str(doc_uuid))
+        raw_docs = surreal_db.get_documents([str(uuid) for uuid in document_ids])
+        for raw_doc in raw_docs:
             if not raw_doc:
                 continue
             if raw_doc.get("status") != "COMPLETED":
@@ -385,14 +385,12 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
     return zip_buffer.getvalue()
 
 
-def get_client_ip(request: HttpRequest) -> str | None:
-    """Extracts client IP, respecting load balancers like Cloud Run or Cloudflare."""
+def get_client_ip(request: Any) -> str:
+    """Extract the true client IP from Django request headers."""
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
     if x_forwarded_for:
-        ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        ip = request.META.get("REMOTE_ADDR")
-    return ip
+        return str(x_forwarded_for.split(",")[0].strip())
+    return str(request.META.get("REMOTE_ADDR", "127.0.0.1"))
 
 
 def _resolve_currency_and_symbol(accept_language: str) -> tuple[str, str]:

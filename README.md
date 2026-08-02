@@ -5,9 +5,9 @@ AetherOmni is a secure, high-performance web application and background worker a
 <img src="scorecard.png" width="100%">
 
 <!-- auto:badges -->
-[![Version](https://img.shields.io/badge/version-v1.2.209-blue.svg)](https://github.com/lucivskvn/AetherOmni)
-[![Last Updated](https://img.shields.io/badge/last%20updated-2026--08--01-green.svg)](#)
-[![Commit](https://img.shields.io/badge/commit-6fa5607-lightgrey.svg)](#)
+[![Version](https://img.shields.io/badge/version-v1.2.263-blue.svg)](https://github.com/lucivskvn/AetherOmni)
+[![Last Updated](https://img.shields.io/badge/last%20updated-2026--08--02-green.svg)](#)
+[![Commit](https://img.shields.io/badge/commit-8430376-lightgrey.svg)](#)
 <!-- /auto:badges -->
 
 ---
