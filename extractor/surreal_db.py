@@ -497,42 +497,36 @@ def get_document(doc_uuid: str) -> dict | None:
 
 
 def get_documents(doc_uuids: list[str]) -> list[dict]:
-    """Retrieve multiple document records by their UUIDs."""
-    doc_uuids = [str(u) for u in doc_uuids]
+    """Retrieve multiple document records by a list of UUIDs."""
+    if not doc_uuids:
+        return []
+
+    doc_uuids = [str(uid) for uid in doc_uuids]
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        import uuid
-
         from extractor.models import SourceDocument
 
-        valid_uuids = []
-        valid_ids = []
-        for duid in doc_uuids:
+        try:
+            import uuid
+
             try:
-                uuid.UUID(str(duid))
-                valid_uuids.append(duid)
-            except ValueError:
-                try:
-                    valid_ids.append(int(duid))
-                except ValueError:
-                    pass
-
-        from django.db.models import Q
-
-        query = Q()
-        if valid_uuids:
-            query |= Q(uuid__in=valid_uuids)
-        if valid_ids:
-            query |= Q(id__in=valid_ids)
-
-        if not query:
+                uuid.UUID(str(doc_uuids[0]))
+                qs = SourceDocument.objects.filter(uuid__in=doc_uuids)
+            except (ValueError, IndexError):
+                qs = SourceDocument.objects.filter(id__in=[int(i) for i in doc_uuids])
+            return [_model_to_dict(doc) for doc in qs]
+        except (SourceDocument.DoesNotExist, ValueError):
             return []
 
-        docs = SourceDocument.objects.filter(query)
-        return [_model_to_dict(doc) for doc in docs]
+    try:
+        import uuid
 
-    sql = "SELECT * FROM documents WHERE doc_uuid INSIDE $doc_uuids;"  # nosec B608
+        uuid.UUID(str(doc_uuids[0]))
+        sql = "SELECT * FROM documents WHERE doc_uuid IN $doc_uuids;"  # nosec B608
+    except (ValueError, IndexError):
+        sql = "SELECT * FROM documents WHERE id IN $doc_uuids;"  # nosec B608
+
     results = _run(sql, {"doc_uuids": doc_uuids})
     return _first_result(results)
 

@@ -337,7 +337,7 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
         users_map = {str(u.id): u for u in User.objects.all()}
 
         docs_list = []
-        raw_docs = surreal_db.get_documents([str(uuid) for uuid in document_ids])
+        raw_docs = surreal_db.get_documents(document_ids)
         for raw_doc in raw_docs:
             if not raw_doc:
                 continue
