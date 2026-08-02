@@ -31,7 +31,7 @@ from io import BytesIO
 from typing import IO, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from django.http import HttpRequest
+    pass
 
 import bleach
 import markdown as md_lib

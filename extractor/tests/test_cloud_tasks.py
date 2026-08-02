@@ -58,7 +58,6 @@ class CloudTasksTestCase(TestCase):
             self.assertEqual(task["http_request"]["url"], "https://my-app.run.app/internal/tasks/process_document/")
             self.assertEqual(task["http_request"]["headers"]["Content-Type"], "application/json")
 
-
     @patch("urllib.request.urlopen")
     def test_get_gcp_service_account_success(self, mock_urlopen):
         mock_response = MagicMock()
@@ -72,7 +71,9 @@ class CloudTasksTestCase(TestCase):
         self.assertEqual(account, "test-sa@project.iam.gserviceaccount.com")
         mock_urlopen.assert_called_once()
         req = mock_urlopen.call_args[0][0]
-        self.assertEqual(req.full_url, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email")
+        self.assertEqual(
+            req.full_url, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
+        )
         self.assertEqual(req.headers, {"Metadata-flavor": "Google"})
 
     @patch("urllib.request.urlopen")
