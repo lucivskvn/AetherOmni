@@ -20,9 +20,32 @@ from typing import Any
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from surrealdb import AsyncSurreal
 
 logger = logging.getLogger(__name__)
+
+VALID_DOCUMENT_FIELDS = {
+    "title",
+    "status",
+    "language",
+    "author",
+    "publisher",
+    "publication_year",
+    "license_type",
+    "doi",
+    "metadata_json",
+    "original_filename",
+    "file_hash",
+    "file_path",
+    "file_size",
+    "expires_at",
+    "created_at",
+    "updated_at",
+    "uuid",
+    "doc_uuid",
+}
+
 
 # ── Singleton connection pool ──────────────────────────────────────────────────
 # A single httpx.Client is shared across all threads (safe per httpx docs).

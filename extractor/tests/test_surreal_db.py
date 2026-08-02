@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from extractor import surreal_db
 
@@ -25,6 +25,7 @@ class SurrealDBClientTestCase(TestCase):
         mock_db.query = AsyncMock(return_value=return_value or [])
         return mock_db
 
+    @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_check_health_online(self, mock_surreal):
         mock_db = self._create_mock_db()
@@ -32,12 +33,14 @@ class SurrealDBClientTestCase(TestCase):
         self.assertTrue(surreal_db.check_health())
         mock_surreal.assert_called_once()
 
+    @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_check_health_offline(self, mock_surreal):
         mock_surreal.side_effect = Exception("Connection refused")
         self.assertFalse(surreal_db.check_health())
         mock_surreal.assert_called_once()
 
+    @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_recreate_chunks(self, mock_surreal):
         mock_db = self._create_mock_db()
@@ -51,6 +54,7 @@ class SurrealDBClientTestCase(TestCase):
             "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;", {"doc_uuid": "00000000-0000-0000-0000-000000000000"}
         )
 
+    @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_search_chunks_hnsw(self, mock_surreal):
         query_res = [
@@ -74,6 +78,7 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(results[0]["doc_uuid"], "00000000-0000-0000-0000-000000000000")
         mock_db.query.assert_called_once()
 
+    @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_kv_cache_set_and_get(self, mock_surreal):
         query_res = [{"result": [{"val": {"answer": "cached response"}}]}]
@@ -84,6 +89,7 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(val, {"answer": "cached response"})
         mock_db.query.assert_called()
 
+    @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_create_document_filters_invalid_keys(self, mock_surreal):
         query_res = [{"result": [{"doc_uuid": "123", "title": "Test"}]}]
@@ -105,6 +111,7 @@ class SurrealDBClientTestCase(TestCase):
         self.assertIn("doc_uuid", sql)
         self.assertIn("title", sql)
 
+    @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_update_document_filters_invalid_keys(self, mock_surreal):
         query_res = [{"result": [{"doc_uuid": "123", "title": "Test Updated"}]}]

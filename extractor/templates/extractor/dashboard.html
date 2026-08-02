@@ -83,7 +83,7 @@
         <div class="glass-card padding-lg">
             <form id="upload-form" action="{% url 'upload_document' %}" method="post" enctype="multipart/form-data">
                 {% csrf_token %}
-                <input type="file" id="file-input" name="file" accept=".pdf,.png,.jpg,.jpeg,.csv,.txt" class="visually-hidden" multiple>
+                <input type="file" id="file-input" name="file" accept=".pdf,.png,.jpg,.jpeg,.csv,.txt" class="visually-hidden" multiple aria-label="Upload files">
                 <button type="button" id="drop-zone" class="upload-zone" aria-label="Ingest and upload documents and files">
                     <i data-lucide="cloud-lightning"></i>
                     <div class="upload-title">Ingest Documents & Files</div>

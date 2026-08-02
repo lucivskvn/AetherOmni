@@ -622,12 +622,12 @@ def extract_retry_delay(exception: Exception) -> float | None:
     err_str = str(exception)
 
     # Check "Please retry in X.XXs" pattern
-    match = re.search(r"retry in (\d+\.?\d*)s", err_str, re.IGNORECASE)
+    match = re.search(r"retry in (\d+(?:\.\d*)?)s", err_str, re.IGNORECASE)
     if match:
         return float(match.group(1))
 
     # Check "retryDelay": "XXs" pattern
-    match_json = re.search(r"['\"]retryDelay['\"]\s*:\s*['\"](\d+\.?\d*)s?['\"]", err_str, re.IGNORECASE)
+    match_json = re.search(r"['\"]retryDelay['\"]\s*:\s*['\"](\d+(?:\.\d*)?)s?['\"]", err_str, re.IGNORECASE)
     if match_json:
         return float(match_json.group(1))
 
@@ -1165,18 +1165,18 @@ def _init_refinement_client() -> Any:
 def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
     yaml_block = ""
     # Case 1: YAML block wrapped inside standard markdown code block fences (e.g. ```yaml ... ```)
-    code_block_match = re.match(r"^```(?:yaml)?\s*\n(.*?)\n```", refined_text, re.DOTALL | re.IGNORECASE)
+    code_block_match = re.match(r"^```(?:yaml)?[ \t]*\n(.*)\n```", refined_text, re.DOTALL | re.IGNORECASE)
     if code_block_match:
         yaml_content = code_block_match.group(1).strip()
         # Clean any inner ---\n...\n--- if present in code block
         if yaml_content.startswith("---"):
-            yaml_content = re.sub(r"^---+\s*\n(.*?)\n---+", r"\1", yaml_content, flags=re.DOTALL)
+            yaml_content = re.sub(r"^---+[ \t]*\n(.*)\n---+", r"\1", yaml_content, flags=re.DOTALL)
         yaml_block = yaml_content
         refined_text = refined_text[code_block_match.end() :].lstrip("\n")
     else:
         # Case 2: Standard YAML frontmatter block starting and ending with ---
         yaml_match = re.search(
-            r"^-{3,}\s*\n(.*?)\n\s*-{3,}\s*(?:\n|$)",
+            r"^-{3,}[ \t]*\n(.*)\n[ \t]*-{3,}[ \t]*(?:\n|$)",
             refined_text,
             re.DOTALL | re.MULTILINE,
         )
@@ -1186,7 +1186,7 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
         else:
             # Case 3: YAML block starting directly with key-value pairs at beginning and ending with ---
             direct_match = re.search(
-                r"^(?P<yaml>\w+\s*:.*?)\n\s*-{3,}\s*(?:\n|$)",
+                r"^(?P<yaml>\w+[ \t]*:.*?)\n[ \t]*-{3,}[ \t]*(?:\n|$)",
                 refined_text,
                 re.DOTALL | re.MULTILINE,
             )
@@ -1196,7 +1196,7 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
             else:
                 # Case 4: Standard search fallback
                 yaml_match = re.search(
-                    r"-{3,}\s*\n(.*?)\n\s*-{3,}",
+                    r"-{3,}[ \t]*\n(.*)\n[ \t]*-{3,}",
                     refined_text,
                     re.DOTALL,
                 )
@@ -1222,7 +1222,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
 
     qa_list = []
     # Find JSON Q&A block
-    json_match = re.search(r"`{3,4}json\s*\n(.*?)\n`{3,4}", refined_text, re.DOTALL)
+    json_match = re.search(r"`{3,4}json[ \t]*\n(.*)\n`{3,4}", refined_text, re.DOTALL)
     if json_match:
         try:
             qa_list = json.loads(json_match.group(1))
@@ -1231,7 +1231,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
 
         pre_json = refined_text[: json_match.start()].rstrip()
         pre_json = re.sub(
-            r"\n{1,4}(?:#{1,6}\s+|\*{1,2})(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n.*$",
+            r"\n{1,4}(?:#{1,6}[ \t]+|\*{1,2})(?:Curated[ \t]+)?(?:SFT[ \t]+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*\n.*$",
             "",
             pre_json,
             flags=re.DOTALL | re.IGNORECASE,
