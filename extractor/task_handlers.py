@@ -33,13 +33,13 @@ logger = logging.getLogger(__name__)
 # defense-in-depth and should NOT block tasks that pass OIDC verification.
 # To minimise false positives, we accept all published Google IP ranges.
 GOOGLE_TASKS_IP_CIDRS = [
-    "35.199.0.0/16",  # Cloud Tasks documented range
-    "34.64.0.0/10",  # Google Cloud asia-southeast1
-    "34.128.0.0/10",  # Google Cloud additional
-    "107.178.0.0/16",  # Google Cloud Tasks egress (observed in asia-southeast1 production)
-    "34.2.0.0/16",  # Google Cloud additional egress
-    "130.211.0.0/22",  # Google Cloud Load Balancers / internal
-    "35.191.0.0/16",  # Google health checks / internal
+    "35.199.0.0/16",  # NOSONAR # Cloud Tasks documented range
+    "34.64.0.0/10",  # NOSONAR # Google Cloud asia-southeast1
+    "34.128.0.0/10",  # NOSONAR # Google Cloud additional
+    "107.178.0.0/16",  # NOSONAR # Google Cloud Tasks egress (observed in asia-southeast1 production)
+    "34.2.0.0/16",  # NOSONAR # Google Cloud additional egress
+    "130.211.0.0/22",  # NOSONAR # Google Cloud Load Balancers / internal
+    "35.191.0.0/16",  # NOSONAR # Google health checks / internal
 ]
 
 # ── Task function registry ────────────────────────────────────────────────────
