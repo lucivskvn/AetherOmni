@@ -203,13 +203,23 @@ def init_django_admin():
 
         pattern = r"\n{1,4}(?:#{1,6}\s+|(?:\*{1,2}))(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n(?:[^\n]*(?:Reasoning|downstream|training|NotebookLM)[^\n]*\n?)*.*$"
         cleaned_count = 0
-        for doc in SourceDocument.objects.all():
-            if doc.refined_markdown:
-                cleaned = re.sub(pattern, "", doc.refined_markdown, flags=re.DOTALL | re.IGNORECASE).rstrip()
-                if cleaned != doc.refined_markdown.rstrip():
-                    doc.refined_markdown = cleaned
-                    doc.save()
-                    cleaned_count += 1
+        to_update = []
+        for doc in (
+            SourceDocument.objects.exclude(refined_markdown="")
+            .exclude(refined_markdown__isnull=True)
+            .only("id", "refined_markdown")
+            .iterator(chunk_size=1000)
+        ):
+            cleaned = re.sub(pattern, "", doc.refined_markdown, flags=re.DOTALL | re.IGNORECASE).rstrip()
+            if cleaned != doc.refined_markdown.rstrip():
+                doc.refined_markdown = cleaned
+                to_update.append(doc)
+                cleaned_count += 1
+
+        if to_update:
+            # Batch update the modified documents to avoid N+1 save queries
+            SourceDocument.objects.bulk_update(to_update, ["refined_markdown"], batch_size=100)
+
         if cleaned_count > 0:
             logger.info("Removed stray SFT Q&A headers/descriptions from %d existing documents.", cleaned_count)
 
