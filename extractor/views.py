@@ -1031,12 +1031,14 @@ def _handle_bulk_restart(request, document_ids):
     from extractor import cloud_tasks
 
     restarted_count = 0
-    for doc_uuid in document_ids:
-        doc = surreal_db.get_document(doc_uuid)
-        if not doc:
-            continue
+    docs = surreal_db.get_documents(document_ids)
+    for doc in docs:
+        doc_uuid_val = doc.get("doc_uuid") or doc.get("uuid") or str(doc.get("id"))
+        if isinstance(doc_uuid_val, str) and ":" in doc_uuid_val:
+            doc_uuid_val = doc_uuid_val.split(":", 1)[1]
+        doc_uuid = str(doc_uuid_val)
         uploaded_by_id = doc.get("uploaded_by_id")
-        if not (request.user.is_staff or request.user.is_superuser or uploaded_by_id == str(request.user.id)):
+        if not (request.user.is_staff or request.user.is_superuser or str(uploaded_by_id) == str(request.user.id)):
             continue
 
         status = doc.get("status")
@@ -1113,11 +1115,9 @@ def _handle_bulk_delete(request, document_ids):
         else:
             docs = list(SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user))
     else:
+        raw_docs = surreal_db.get_documents(document_ids)
         docs = []
-        for doc_uuid in document_ids:
-            raw_doc = surreal_db.get_document(doc_uuid)
-            if not raw_doc:
-                continue
+        for raw_doc in raw_docs:
             uploaded_by_id = raw_doc.get("uploaded_by_id")
             if not (request.user.is_staff or request.user.is_superuser or uploaded_by_id == str(request.user.id)):
                 continue

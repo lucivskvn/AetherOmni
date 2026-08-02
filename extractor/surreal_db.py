@@ -473,6 +473,27 @@ def get_document(doc_uuid: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def get_documents(doc_uuids: list[str]) -> list[dict]:
+    """Retrieve multiple document records by a list of UUIDs."""
+    if not doc_uuids:
+        return []
+
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            docs = SourceDocument.objects.filter(uuid__in=doc_uuids)
+            return [_model_to_dict(doc) for doc in docs]
+        except Exception:
+            return []
+
+    sql = "SELECT * FROM documents WHERE doc_uuid IN $doc_uuids;"  # nosec B608
+    results = _run(sql, {"doc_uuids": doc_uuids})
+    return _first_result(results)
+
+
 def list_documents(user_id: str | None = None) -> list[dict]:
     """Retrieve documents from SurrealDB (user-specific + public)."""
     from django.conf import settings
