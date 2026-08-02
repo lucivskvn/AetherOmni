@@ -224,11 +224,13 @@ class MonthlySpendLog(models.Model):
         ordering = ["-year", "-month"]
 
     @classmethod
-    def add_cost(cls, year: int, month: int, cost: "Decimal", in_tok: int = 0, out_tok: int = 0):
+    def add_cost(cls, date, cost: "Decimal", in_tok: int = 0, out_tok: int = 0):
         """Thread-safe upsert: add cost to the specified year/month bucket."""
         from decimal import Decimal as D
 
         from django.conf import settings
+
+        year, month = date.year, date.month
 
         if not getattr(settings, "SURREALDB_OFFLINE", False):
             import json
@@ -325,13 +327,15 @@ def log_user_login(sender, request, user, **kwargs):
         from extractor.utils import get_client_ip
 
         ip = get_client_ip(request)
-    from extractor.utils import log_audit_event
+    from extractor.utils import AuditEvent, log_audit_event
 
     log_audit_event(
-        action=AuditAction.LOGIN,
-        user=user,
-        details=f"User '{user.username}' authenticated successfully.",
-        ip_address=ip,
+        AuditEvent(
+            action=AuditAction.LOGIN,
+            user=user,
+            details=f"User '{user.username}' authenticated successfully.",
+            ip_address=ip,
+        )
     )
 
 
@@ -343,13 +347,15 @@ def log_user_logout(sender, request, user, **kwargs):
             from extractor.utils import get_client_ip
 
             ip = get_client_ip(request)
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.LOGOUT,
-            user=user,
-            details=f"User '{user.username}' logged out.",
-            ip_address=ip,
+            AuditEvent(
+                action=AuditAction.LOGOUT,
+                user=user,
+                details=f"User '{user.username}' logged out.",
+                ip_address=ip,
+            )
         )
 
 
@@ -386,8 +392,7 @@ def flush_cost_to_monthly_log(sender, instance, **kwargs):
         ts = instance.created_at
         try:
             MonthlySpendLog.add_cost(
-                year=ts.year,
-                month=ts.month,
+                date=ts,
                 cost=instance.cost_usd,
                 in_tok=instance.input_tokens or 0,
                 out_tok=instance.output_tokens or 0,

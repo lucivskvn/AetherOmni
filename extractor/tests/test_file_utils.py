@@ -11,6 +11,27 @@ from extractor.models import SourceDocument
 class FileUtilsTestCase(TestCase):
     """Direct unit tests for file_utils.py functions."""
 
+    def test_calculate_file_sha256(self):
+        import os
+        import tempfile
+
+        content = b"Hello World"
+        expected_hash = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
+
+        # Test with file-like object
+        file_obj = io.BytesIO(content)
+        self.assertEqual(file_utils.calculate_file_sha256(file_obj), expected_hash)
+
+        # Test with string path
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        try:
+            self.assertEqual(file_utils.calculate_file_sha256(temp_file_path), expected_hash)
+        finally:
+            os.remove(temp_file_path)
+
     def test_clean_html_content(self):
         dirty_html = "<script>alert('unsafe');</script><p>Safe content</p> <a href='javascript:void(0)'>Link</a>"
         clean = file_utils.clean_html_content(dirty_html)
@@ -47,14 +68,17 @@ class FileUtilsTestCase(TestCase):
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w") as zip_file:
-            file_utils._process_zip_doc(
-                idx=0,
-                doc=doc,
+            ctx = file_utils.ZipExportContext(
                 seen_lang_paths=seen_lang_paths,
                 seen_author_paths=seen_author_paths,
                 manifest=manifest,
                 master_content=master_content,
                 zip_file=zip_file,
+            )
+            file_utils._process_zip_doc(
+                idx=0,
+                doc=doc,
+                ctx=ctx,
             )
 
         # Check path additions
@@ -62,6 +86,26 @@ class FileUtilsTestCase(TestCase):
         self.assertEqual(len(seen_author_paths), 1)
         self.assertEqual(len(manifest["documents"]), 1)
         self.assertIn("Introduction", "".join(master_content))
+
+    def test_get_client_ip_with_x_forwarded_for(self):
+        request = MagicMock()
+        request.META = {"HTTP_X_FORWARDED_FOR": "192.168.1.1"}
+        self.assertEqual(file_utils.get_client_ip(request), "192.168.1.1")
+
+    def test_get_client_ip_with_x_forwarded_for_multiple(self):
+        request = MagicMock()
+        request.META = {"HTTP_X_FORWARDED_FOR": "192.168.1.1, 10.0.0.1, 127.0.0.1"}
+        self.assertEqual(file_utils.get_client_ip(request), "192.168.1.1")
+
+    def test_get_client_ip_with_remote_addr(self):
+        request = MagicMock()
+        request.META = {"REMOTE_ADDR": "10.0.0.1"}
+        self.assertEqual(file_utils.get_client_ip(request), "10.0.0.1")
+
+    def test_get_client_ip_none(self):
+        request = MagicMock()
+        request.META = {}
+        self.assertEqual(file_utils.get_client_ip(request), "127.0.0.1")
 
     @patch("extractor.file_utils.slugify")
     @patch("extractor.models.SourceDocument.objects.filter")

@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -71,14 +72,19 @@ from extractor.rag import (
 # ── Dual-Write Audit Log Helper ──────────────────────────────────────────────
 
 
-def log_audit_event(
-    action: str,
-    user: Any = None,
-    document: Any = None,
-    details: str = "",
-    ip_address: str | None = None,
-    metadata: dict | None = None,
-) -> None:
+@dataclass
+class AuditEvent:
+    """Encapsulates data for an audit log entry."""
+
+    action: str
+    user: Any = None
+    document: Any = None
+    details: str = ""
+    ip_address: str | None = None
+    metadata: dict | None = None
+
+
+def log_audit_event(event: AuditEvent) -> None:
     """
     Dual-write audit log to both SQLite (Django ORM) and SurrealDB.
     Failures in either leg are logged but do not raise to avoid disrupting the main flow.
@@ -88,11 +94,11 @@ def log_audit_event(
     # Leg 1: Django ORM → SQLite
     try:
         AuditLog.objects.create(
-            user=user if hasattr(user, "pk") else None,
-            action=action,
-            document=document if hasattr(document, "pk") else None,
-            details=details,
-            ip_address=ip_address,
+            user=event.user if hasattr(event.user, "pk") else None,
+            action=event.action,
+            document=event.document if hasattr(event.document, "pk") else None,
+            details=event.details,
+            ip_address=event.ip_address,
         )
     except Exception as exc:
         logger.warning("[AuditLog] Failed to write SQLite audit entry: %s", exc)
@@ -101,26 +107,26 @@ def log_audit_event(
     try:
         from extractor import surreal_db
 
-        if user and hasattr(user, "id"):
-            user_id = str(user.id)
-        elif user:
-            user_id = str(user)
+        if event.user and hasattr(event.user, "id"):
+            user_id = str(event.user.id)
+        elif event.user:
+            user_id = str(event.user)
         else:
             user_id = "system"
 
         doc_uuid = None
-        if document:
-            if hasattr(document, "uuid"):
-                doc_uuid = str(document.uuid)
-            elif isinstance(document, dict):
-                doc_uuid = document.get("doc_uuid")
+        if event.document:
+            if hasattr(event.document, "uuid"):
+                doc_uuid = str(event.document.uuid)
+            elif isinstance(event.document, dict):
+                doc_uuid = event.document.get("doc_uuid")
 
         surreal_db.log_audit(
-            action=action,
+            action=event.action,
             user_id=user_id,
             doc_uuid=doc_uuid,
-            metadata=metadata or {"details": details},
-            ip_address=ip_address or "",
+            metadata=event.metadata or {"details": event.details},
+            ip_address=event.ip_address or "",
         )
     except Exception as exc:
         logger.warning("[AuditLog] Failed to write SurrealDB audit entry: %s", exc)
@@ -203,6 +209,7 @@ __all__ = [
     "PREFIX_GOOGLE",
     "PROCESS_DOCUMENT_TASK",
     "BudgetExceededException",
+    "AuditEvent",
     "GeminiProcessingError",
     "UnifiedResponse",
     "async_task_with_wakeup",
