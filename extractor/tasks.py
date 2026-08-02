@@ -1143,15 +1143,22 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
+        from django.db.models import Count
         from extractor.models import SourceDocument
 
         expired_qs = SourceDocument.objects.filter(expires_at__lte=now)
         expired_docs = [surreal_db._model_to_dict(d) for d in expired_qs]
         if expired_docs:
             expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
-            hash_counts = {}
-            for file_hash in expired_hashes:
-                hash_counts[file_hash] = SourceDocument.objects.filter(file_hash=file_hash).count()
+            hash_counts = {h: 0 for h in expired_hashes}
+            if expired_hashes:
+                counts = (
+                    SourceDocument.objects.filter(file_hash__in=expired_hashes)
+                    .values("file_hash")
+                    .annotate(count=Count("id"))
+                )
+                for item in counts:
+                    hash_counts[item["file_hash"]] = item["count"]
         else:
             hash_counts = {}
     else:
@@ -1161,11 +1168,13 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
         if expired_docs:
             expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
-            hash_counts = {}
-            for file_hash in expired_hashes:
-                count_sql = "SELECT count() AS n FROM documents WHERE file_hash = $file_hash GROUP ALL;"
-                res = surreal_db._first_result(surreal_db._run(count_sql, {"file_hash": file_hash}))
-                hash_counts[file_hash] = res[0].get("n", 0) if res else 0
+            hash_counts = {h: 0 for h in expired_hashes}
+            if expired_hashes:
+                count_sql = "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $expired_hashes GROUP BY file_hash;"
+                res = surreal_db._first_result(surreal_db._run(count_sql, {"expired_hashes": list(expired_hashes)}))
+                if res:
+                    for row in res:
+                        hash_counts[row.get("file_hash")] = row.get("n", 0)
         else:
             hash_counts = {}
 
