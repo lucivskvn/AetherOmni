@@ -142,9 +142,9 @@ def validate_url_scheme(url: str) -> None:
     """
     from django.conf import settings
 
-    if not url.startswith(("http://", "https://")):
+    if not url.startswith(("http://", "https://")):  # NOSONAR
         raise ValueError("Invalid URL scheme. Only http and https schemes are permitted.")
-    if not getattr(settings, "DEBUG", True) and url.startswith("http://"):
+    if not getattr(settings, "DEBUG", True) and url.startswith("http://"):  # NOSONAR
         raise ValueError("Insecure URL scheme. Production environments require https.")
 
 
@@ -208,8 +208,8 @@ __all__ = [
     "MODEL_GEMINI_FLASH_LITE",
     "PREFIX_GOOGLE",
     "PROCESS_DOCUMENT_TASK",
-    "BudgetExceededException",
     "AuditEvent",
+    "BudgetExceededException",
     "GeminiProcessingError",
     "UnifiedResponse",
     "async_task_with_wakeup",

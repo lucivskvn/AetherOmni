@@ -105,7 +105,7 @@ class DynamicCsrfTrustedOriginsMiddleware:
         if origin_str in ("localhost", "127.0.0.1", "::1"):
             return True
         try:
-            url = origin_str if "://" in origin_str else f"http://{origin_str}"
+            url = origin_str if "://" in origin_str else f"http://{origin_str}"  # NOSONAR
             parsed = urllib.parse.urlparse(url)
             host = parsed.hostname
             if not host:
