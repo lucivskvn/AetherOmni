@@ -63,6 +63,26 @@ class FileUtilsTestCase(TestCase):
         self.assertEqual(len(manifest["documents"]), 1)
         self.assertIn("Introduction", "".join(master_content))
 
+    def test_get_client_ip_with_x_forwarded_for(self):
+        request = MagicMock()
+        request.META = {"HTTP_X_FORWARDED_FOR": "192.168.1.1"}
+        self.assertEqual(file_utils.get_client_ip(request), "192.168.1.1")
+
+    def test_get_client_ip_with_x_forwarded_for_multiple(self):
+        request = MagicMock()
+        request.META = {"HTTP_X_FORWARDED_FOR": "192.168.1.1, 10.0.0.1, 127.0.0.1"}
+        self.assertEqual(file_utils.get_client_ip(request), "192.168.1.1")
+
+    def test_get_client_ip_with_remote_addr(self):
+        request = MagicMock()
+        request.META = {"REMOTE_ADDR": "10.0.0.1"}
+        self.assertEqual(file_utils.get_client_ip(request), "10.0.0.1")
+
+    def test_get_client_ip_none(self):
+        request = MagicMock()
+        request.META = {}
+        self.assertEqual(file_utils.get_client_ip(request), "127.0.0.1")
+
     @patch("extractor.file_utils.slugify")
     @patch("extractor.models.SourceDocument.objects.filter")
     def test_generate_curated_zip_bundle(self, mock_filter, mock_slugify):
