@@ -325,13 +325,15 @@ def log_user_login(sender, request, user, **kwargs):
         from extractor.utils import get_client_ip
 
         ip = get_client_ip(request)
-    from extractor.utils import log_audit_event
+    from extractor.utils import AuditEvent, log_audit_event
 
     log_audit_event(
-        action=AuditAction.LOGIN,
-        user=user,
-        details=f"User '{user.username}' authenticated successfully.",
-        ip_address=ip,
+        AuditEvent(
+            action=AuditAction.LOGIN,
+            user=user,
+            details=f"User '{user.username}' authenticated successfully.",
+            ip_address=ip,
+        )
     )
 
 
@@ -343,13 +345,15 @@ def log_user_logout(sender, request, user, **kwargs):
             from extractor.utils import get_client_ip
 
             ip = get_client_ip(request)
-        from extractor.utils import log_audit_event
+        from extractor.utils import AuditEvent, log_audit_event
 
         log_audit_event(
-            action=AuditAction.LOGOUT,
-            user=user,
-            details=f"User '{user.username}' logged out.",
-            ip_address=ip,
+            AuditEvent(
+                action=AuditAction.LOGOUT,
+                user=user,
+                details=f"User '{user.username}' logged out.",
+                ip_address=ip,
+            )
         )
 
 
