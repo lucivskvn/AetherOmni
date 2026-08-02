@@ -147,7 +147,7 @@ class SupabaseAuthBackend(ModelBackend):
         # Validate email format to prevent auth bypass via crafted usernames
         import re
 
-        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", target_email):
+        if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", target_email):
             logger.warning("[Auth] Supabase auth rejected: '%s' is not a valid email format.", target_email)
             return None
 

@@ -61,7 +61,7 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
 
         pages_pattern = re.compile(rb"/Type\s*/Page\b")
         parent_pattern = re.compile(rb"/Parent\s*\d+\s*\d+\s*R")
-        count_pattern = re.compile(rb"/Type\s*/Pages.*?/Count\s*(\d+)", re.DOTALL)
+        count_pattern = re.compile(rb"/Type\s*/Pages(?:(?!/Type\s*/Pages).)*?/Count\s*(\d+)", re.DOTALL)
 
         # Check for small or empty/dummy file first
         with open(working_path, "rb") as f:
@@ -1114,13 +1114,14 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         from django.db.models import Count
+
         from extractor.models import SourceDocument
 
         expired_qs = SourceDocument.objects.filter(expires_at__lte=now)
         expired_docs = [surreal_db._model_to_dict(d) for d in expired_qs]
         if expired_docs:
             expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
-            hash_counts = {h: 0 for h in expired_hashes}
+            hash_counts = dict.fromkeys(expired_hashes, 0)
             if expired_hashes:
                 counts = (
                     SourceDocument.objects.filter(file_hash__in=expired_hashes)
@@ -1138,7 +1139,7 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
         if expired_docs:
             expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
-            hash_counts = {h: 0 for h in expired_hashes}
+            hash_counts = dict.fromkeys(expired_hashes, 0)
             if expired_hashes:
                 count_sql = "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $expired_hashes GROUP BY file_hash;"
                 res = surreal_db._first_result(surreal_db._run(count_sql, {"expired_hashes": list(expired_hashes)}))
