@@ -1048,7 +1048,7 @@ class BulkDocumentActionTestCase(TestCase):
             reverse("bulk_action"),
             {
                 "action": "restart",
-                "selected_documents": [self.doc1.id, self.doc2.id],
+                "selected_documents": [str(self.doc1.uuid), str(self.doc2.uuid)],
             },
         )
         self.assertEqual(response.status_code, 302)
