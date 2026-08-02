@@ -24,7 +24,7 @@ import os
 import re
 import time
 import urllib.request
-from dataclasses import InitVar, dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -67,19 +67,22 @@ class UnifiedResponse:
     """Unified response wrapper returned by all LLM gateway functions."""
 
     text: str
-    in_toks: InitVar[int]
-    out_toks: InitVar[int]
-    cost_val: InitVar[Decimal]
+    in_toks: int
+    out_toks: int
+    cost_val: Decimal
     model_used: str
 
-    input_tokens: int = field(init=False)
-    output_tokens: int = field(init=False)
-    cost_usd: Decimal = field(init=False)
+    @property
+    def input_tokens(self) -> int:
+        return self.in_toks
 
-    def __post_init__(self, in_toks: int, out_toks: int, cost_val: Decimal) -> None:
-        self.input_tokens = in_toks
-        self.output_tokens = out_toks
-        self.cost_usd = cost_val
+    @property
+    def output_tokens(self) -> int:
+        return self.out_toks
+
+    @property
+    def cost_usd(self) -> Decimal:
+        return self.cost_val
 
 
 class BudgetExceededException(Exception):
