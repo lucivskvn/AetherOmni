@@ -357,6 +357,7 @@ class UploadView(LoginRequiredMixin, View):
     """
 
     def _clone_deduplicated_document(self, request, existing_doc, orig_name, file_hash):
+        ip = get_client_ip(request)
         import uuid
 
         new_uuid = str(uuid.uuid4())
@@ -422,7 +423,8 @@ class UploadView(LoginRequiredMixin, View):
         )
         return {"status": "cached", "name": orig_name}
 
-    def _retry_existing_failed_document(self, request, existing_doc, orig_name, ip):
+    def _retry_existing_failed_document(self, request, existing_doc, orig_name):
+        ip = get_client_ip(request)
         retry_cnt = (
             existing_doc.retry_count if hasattr(existing_doc, "retry_count") else existing_doc.get("retry_count", 0)
         )
@@ -468,7 +470,9 @@ class UploadView(LoginRequiredMixin, View):
             cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
         return {"status": "success", "name": f"{orig_name} (re-enqueued)"}
 
-    def _create_fresh_document(self, request, uploaded_file, orig_name, file_hash):
+    def _create_fresh_document(self, request, uploaded_file, file_hash):
+        orig_name = uploaded_file.name
+        ip = get_client_ip(request)
         import os
         import uuid
 
@@ -521,7 +525,7 @@ class UploadView(LoginRequiredMixin, View):
             cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
         return {"status": "success", "name": orig_name}
 
-    def _process_single_file(self, request, uploaded_file, ip, processed_hashes):
+    def _process_single_file(self, request, uploaded_file, processed_hashes):
         orig_name = uploaded_file.name
 
         # Validate file extension to prevent uploading scripts, web shells, or executables
@@ -602,9 +606,9 @@ class UploadView(LoginRequiredMixin, View):
                         "error": f"File '{orig_name}' is already being processed by the background worker.",
                     }
                 elif status == "FAILED":
-                    return self._retry_existing_failed_document(request, existing_doc, orig_name, ip)
+                    return self._retry_existing_failed_document(request, existing_doc, orig_name)
 
-            return self._create_fresh_document(request, uploaded_file, orig_name, file_hash)
+            return self._create_fresh_document(request, uploaded_file, file_hash)
         except Exception as e:
             return {"status": "error", "name": orig_name, "error": f"Error processing '{orig_name}': {e!s}"}
 
@@ -623,14 +627,13 @@ class UploadView(LoginRequiredMixin, View):
             )
             return redirect("dashboard")
 
-        ip = get_client_ip(request)
         successful_uploads = []
         cached_uploads = []
         errors = []
         processed_hashes = set()
 
         for uploaded_file in uploaded_files:
-            res = self._process_single_file(request, uploaded_file, ip, processed_hashes)
+            res = self._process_single_file(request, uploaded_file, processed_hashes)
             if res["status"] == "success":
                 successful_uploads.append(res["name"])
             elif res["status"] == "cached":
