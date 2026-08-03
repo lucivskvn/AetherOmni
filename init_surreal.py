@@ -1,3 +1,4 @@
+APPLICATION_JSON = "application/json"
 import logging
 import os
 import time
@@ -58,11 +59,11 @@ def apply_schema(client: httpx.Client) -> None:
     # Pre-define namespace and database for SurrealDB 3.x compatibility
     logger.info("Ensuring namespace '%s' and database '%s' exist...", SURREAL_NS, SURREAL_DB)
     try:
-        client.post("/sql", content=f"DEFINE NAMESPACE {SURREAL_NS};".encode(), headers={"Accept": "application/json"})
+        client.post("/sql", content=f"DEFINE NAMESPACE {SURREAL_NS};".encode(), headers={"Accept": "APPLICATION_JSON"})
         client.post(
             "/sql",
             content=f"DEFINE DATABASE {SURREAL_DB};".encode(),
-            headers={"surreal-ns": SURREAL_NS, "Accept": "application/json"},
+            headers={"surreal-ns": SURREAL_NS, "Accept": "APPLICATION_JSON"},
         )
     except Exception as exc:
         logger.warning("Namespace/database pre-definition warning: %s", exc)
@@ -72,7 +73,7 @@ def apply_schema(client: httpx.Client) -> None:
         "DB": SURREAL_DB,
         "surreal-ns": SURREAL_NS,
         "surreal-db": SURREAL_DB,
-        "Accept": "application/json",
+        "Accept": "APPLICATION_JSON",
         "Content-Type": "text/plain",
     }
 
@@ -96,6 +97,141 @@ def apply_schema(client: httpx.Client) -> None:
         logger.error("Schema applied with %d errors.", errors)
 
 
+def _check_supabase_admin(token_url, payload, headers, admin_email):
+    import urllib.request
+
+    from extractor.utils import validate_url_scheme
+
+    try:
+        validate_url_scheme(token_url)
+        req = urllib.request.Request(token_url, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
+            logger.info("Admin user '%s' already exists and authenticated successfully on Supabase Auth.", admin_email)
+            return True
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8")
+        logger.info("Admin check status code: HTTP %d", e.code)
+        if "email_not_confirmed" in body or "Email not confirmed" in body:
+            logger.info("Admin user '%s' already exists on Supabase Auth but has an unconfirmed email.", admin_email)
+            return True
+    except Exception as e:
+        logger.warning("Failed to check existing admin on Supabase: %s", e)
+    return False
+
+
+def _register_supabase_admin(signup_url, payload, headers, admin_email):
+    import urllib.request
+
+    from extractor.utils import validate_url_scheme
+
+    try:
+        validate_url_scheme(signup_url)
+        req = urllib.request.Request(signup_url, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
+            logger.info("Admin user '%s' registered successfully on Supabase!", admin_email)
+    except urllib.error.HTTPError as e:
+        logger.info("Supabase registration status: HTTP %d", e.code)
+    except Exception:
+        logger.exception("Failed to register admin on Supabase")
+
+
+def _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_username, admin_password):
+    import json
+    import urllib.parse
+
+    from django.conf import settings
+
+    logger.info("Supabase is configured. Checking if '%s' user already exists on Supabase Auth...", admin_username)
+    token_url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
+    headers = {"apikey": supabase_key, "Content-Type": APPLICATION_JSON}
+    payload = json.dumps({"email": admin_email, "password": admin_password}).encode("utf-8")
+
+    admin_exists = _check_supabase_admin(token_url, payload, headers, admin_email)
+
+    if not admin_exists:
+        logger.info("Admin user '%s' not authenticated. Attempting registration on Supabase Auth...", admin_username)
+        app_url = getattr(settings, "APP_URL", "http://localhost:8000")
+        signup_url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
+        _register_supabase_admin(signup_url, payload, headers, admin_email)
+
+
+def _setup_local_admin(admin_username, admin_email, admin_password, supabase_url):
+    from django.contrib.auth.models import User
+
+    if supabase_url:
+        user, created = User.objects.get_or_create(
+            username=admin_username,
+            defaults={
+                "email": admin_email,
+                "is_staff": True,
+                "is_superuser": True,
+                "is_active": True,
+            },
+        )
+        if created:
+            user.set_unusable_password()
+            user.save()
+            logger.info("Local Django superuser stub '%s' created (password managed by Supabase).", admin_username)
+    else:
+        user, created = User.objects.get_or_create(
+            username=admin_username,
+            defaults={
+                "email": admin_email,
+                "is_staff": True,
+                "is_superuser": True,
+                "is_active": True,
+            },
+        )
+        if created:
+            user.set_password(admin_password)
+            user.save()
+            logger.info("Local Django superuser '%s' created successfully.", admin_username)
+            if admin_password == "admin":
+                from core.middleware import ForcePasswordChangeMiddleware
+
+                try:
+                    import bcrypt
+
+                    logger.info("Forcing password reset for default 'admin' credential.")
+                    ForcePasswordChangeMiddleware.set_force_reset_flag(
+                        user.id, bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
+                    )
+                except ImportError:
+                    pass
+        else:
+            if not user.is_staff or not user.is_superuser:
+                user.is_staff = True
+                user.is_superuser = True
+                user.save()
+                logger.info("Updated existing user '%s' to superuser status.", admin_username)
+    return user
+
+
+def _migrate_system_settings():
+    from extractor.models import SystemSettings
+
+    try:
+        from extractor.surreal_db import get_system_settings, save_system_settings
+
+        db_settings = get_system_settings()
+        if db_settings.get("default_llm_model") == "gemini-1.5-flash":
+            db_settings["default_llm_model"] = "google/gemini-3.5-flash"
+            save_system_settings(db_settings)
+            logger.info("System settings migrated: updated db model to 'google/gemini-3.5-flash'")
+    except Exception as me:
+        logger.warning("Failed to migrate SurrealDB settings: %s", me)
+
+    try:
+        if SystemSettings.objects.exists():
+            stg = SystemSettings.objects.first()
+            if stg.default_llm_model == "gemini-1.5-flash":
+                stg.default_llm_model = "google/gemini-3.5-flash"
+                stg.save()
+                logger.info("System settings migrated: updated legacy model to 'google/gemini-3.5-flash'")
+    except Exception as se:
+        logger.warning("Failed to migrate SystemSettings model: %s", se)
+
+
 def init_django_admin():
     logger.info("Initializing Django administrative superuser...")
     try:
@@ -104,7 +240,6 @@ def init_django_admin():
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
         django.setup()
         from django.conf import settings
-        from django.contrib.auth.models import User
 
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
@@ -112,6 +247,7 @@ def init_django_admin():
         admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "admin@example.com"))
         admin_username = os.getenv("ADMIN_USERNAME", getattr(settings, "ADMIN_USERNAME", "admin"))
         admin_password = os.getenv("ADMIN_PASSWORD")
+
         if not admin_password:
             import secrets
 
@@ -121,151 +257,14 @@ def init_django_admin():
                 admin_username,
             )
 
-        # If Supabase is configured, register admin on Supabase directly
         if supabase_url and supabase_key:
-            logger.info(
-                "Supabase is configured. Checking if '%s' user already exists on Supabase Auth...", admin_username
-            )
-            import json
-            import urllib.request
+            _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_username, admin_password)
 
-            from extractor.utils import validate_url_scheme
+        _setup_local_admin(admin_username, admin_email, admin_password, supabase_url)
+        _migrate_system_settings()
 
-            token_url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
-            headers = {"apikey": supabase_key, "Content-Type": "application/json"}
-            payload = json.dumps({"email": admin_email, "password": admin_password}).encode("utf-8")
-
-            admin_exists = False
-            try:
-                validate_url_scheme(token_url)
-                req = urllib.request.Request(token_url, data=payload, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
-                    logger.info(
-                        "Admin user '%s' already exists and authenticated successfully on Supabase Auth.", admin_email
-                    )
-                    admin_exists = True
-            except urllib.error.HTTPError as e:
-                body = e.read().decode("utf-8")
-                logger.info("Admin check status code: HTTP %d", e.code)
-                if "email_not_confirmed" in body or "Email not confirmed" in body:
-                    logger.info(
-                        "Admin user '%s' already exists on Supabase Auth but has an unconfirmed email.", admin_email
-                    )
-                    admin_exists = True
-            except Exception as e:
-                logger.warning("Failed to check existing admin on Supabase: %s", e)
-
-            if not admin_exists:
-                logger.info(
-                    "Admin user '%s' not authenticated. Attempting registration on Supabase Auth...", admin_username
-                )
-                app_url = getattr(settings, "APP_URL", "http://localhost:8000")
-                import urllib.parse
-
-                signup_url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
-                try:
-                    validate_url_scheme(signup_url)
-                    req = urllib.request.Request(signup_url, data=payload, headers=headers, method="POST")
-                    with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
-                        logger.info("Admin user '%s' registered successfully on Supabase!", admin_email)
-                except urllib.error.HTTPError as e:
-                    logger.info("Supabase registration status: HTTP %d", e.code)
-                except Exception as e:
-                    logger.error("Failed to register admin on Supabase: %s", e)
-
-            # Ensure local Django superuser stub exists with unusable password
-            user, created = User.objects.get_or_create(
-                username=admin_username,
-                defaults={
-                    "email": admin_email,
-                    "is_active": True,
-                    "is_superuser": True,
-                    "is_staff": True,
-                },
-            )
-            if created:
-                user.set_unusable_password()
-                user.save()
-                logger.info("Local Django admin stub '%s' created with disabled credential.", admin_username)
-            else:
-                user.set_unusable_password()
-                user.is_superuser = True
-                user.is_staff = True
-                user.email = admin_email
-                user.save()
-                logger.info("Local Django admin stub '%s' updated with disabled credential.", admin_username)
-
-            # Remove any existing local_admin user to enforce Supabase as the sole auth method
-            deleted_count, _ = User.objects.filter(username="local_admin").delete()
-            if deleted_count > 0:
-                logger.info("Removed existing local fallback admin user 'local_admin'.")
-        else:
-            # Fallback to local SQLite db admin creation
-            if not User.objects.filter(username=admin_username).exists():
-                User.objects.create_superuser(admin_username, admin_email, admin_password)
-                logger.info("Default local Django superuser '%s' created successfully!", admin_username)
-            else:
-                logger.info("Local Django superuser '%s' already exists.", admin_username)
-
-        # Clean any stray Q&A descriptions and headers from existing SourceDocuments
-        import re
-
-        from extractor.models import SourceDocument
-
-        pattern = r"\n{1,4}(?:#{1,6}\s+|(?:\*{1,2}))(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n(?:[^\n]*(?:Reasoning|downstream|training|NotebookLM)[^\n]*\n?)*.*$"
-        cleaned_count = 0
-        to_update = []
-        for doc in (
-            SourceDocument.objects.exclude(refined_markdown="")
-            .exclude(refined_markdown__isnull=True)
-            .only("id", "refined_markdown")
-            .iterator(chunk_size=1000)
-        ):
-            cleaned = re.sub(pattern, "", doc.refined_markdown, flags=re.DOTALL | re.IGNORECASE).rstrip()
-            if cleaned != doc.refined_markdown.rstrip():
-                doc.refined_markdown = cleaned
-                to_update.append(doc)
-                cleaned_count += 1
-
-        if to_update:
-            # Batch update the modified documents to avoid N+1 save queries
-            SourceDocument.objects.bulk_update(to_update, ["refined_markdown"], batch_size=100)
-
-        if cleaned_count > 0:
-            logger.info("Removed stray SFT Q&A headers/descriptions from %d existing documents.", cleaned_count)
-
-        # Automatic SystemSettings model migration to upgrade legacy selected models.
-        # Normalises old bare model names and provider-prefixed variants to canonical forms.
-        try:
-            from extractor.models import SystemSettings
-
-            settings_obj = SystemSettings.get_settings()
-            # Normalise any flash-lite variant to the canonical prefixed form
-            if settings_obj.selected_model in [
-                "gemini-3.1-flash-lite",
-                "google/gemini-3.1-flash-lite",
-                "gemini-1.5-flash-lite",
-                "google/gemini-1.5-flash-lite",
-            ]:
-                settings_obj.selected_model = "google/gemini-3.1-flash-lite"
-                settings_obj.save()
-                logger.info("System settings migrated: updated legacy model to 'google/gemini-3.1-flash-lite'")
-            elif settings_obj.selected_model in [
-                "gemini-3.5-flash",
-                "google/gemini-3.5-flash",
-                "gemini-3.1-flash",
-                "google/gemini-3.1-flash",
-                "gemini-1.5-flash",
-                "google/gemini-1.5-flash",
-            ]:
-                settings_obj.selected_model = "google/gemini-3.5-flash"
-                settings_obj.save()
-                logger.info("System settings migrated: updated legacy model to 'google/gemini-3.5-flash'")
-        except Exception as se:
-            logger.warning("Failed to migrate SystemSettings model: %s", se)
-
-    except Exception as exc:
-        logger.error("Failed to initialize Django superuser: %s", exc)
+    except Exception:
+        logger.exception("Failed to initialize Django superuser")
 
 
 def main():

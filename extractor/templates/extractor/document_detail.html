@@ -28,7 +28,7 @@
         </button>
         <form id="delete-document-form" action="{% url 'delete_document' document.uuid %}" method="post">
             {% csrf_token %}
-            <button type="submit" class="btn btn-danger" aria-label="Delete {{ document.title }}">
+            <button type="submit" class="btn btn-danger" aria-label="Delete Document {{ document.title }}">
                 <i data-lucide="trash-2"></i> Delete Document
             </button>
         </form>

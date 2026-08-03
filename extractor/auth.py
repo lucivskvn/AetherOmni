@@ -35,6 +35,31 @@ def _resolve_target_email(username: str, supabase_url: str) -> tuple[str, bool]:
     return "", False
 
 
+def _generate_unique_username(user_email: str) -> str:
+    import hashlib
+
+    base_username = user_email.split("@")[0]
+
+    candidate = base_username[:150]
+    conflicting_user = User.objects.filter(username=candidate).first()
+    if not conflicting_user or conflicting_user.email == user_email:
+        return candidate
+
+    email_hash = hashlib.sha256(user_email.encode("utf-8")).hexdigest()[:8]
+    candidate = f"{base_username}_{email_hash}"[:150]
+    conflicting_user = User.objects.filter(username=candidate).first()
+    if not conflicting_user or conflicting_user.email == user_email:
+        return candidate
+
+    attempt = 1
+    while True:
+        candidate = f"{base_username}_{attempt}"[:150]
+        conflicting_user = User.objects.filter(username=candidate).first()
+        if not conflicting_user or conflicting_user.email == user_email:
+            return candidate
+        attempt += 1
+
+
 def _sync_supabase_user(
     request: HttpRequest | None,
     resp_data: dict,
@@ -47,7 +72,6 @@ def _sync_supabase_user(
     Promotes to superuser/staff if the email matches the Supabase admin address.
     Stores the Supabase user_id in the session.
     """
-    import hashlib
     from urllib.parse import urlparse
 
     from django.conf import settings
@@ -55,25 +79,7 @@ def _sync_supabase_user(
     user_info = resp_data.get("user", {})
     user_email = user_info.get("email", username)
 
-    # Generate clean local Django username (prefix of email)
-    base_username = user_email.split("@")[0]
-    django_username = base_username
-
-    # Ensure username is unique to prevent collisions with other domains sharing the same prefix
-    suffix = ""
-    attempt = 0
-    while True:
-        candidate = f"{base_username}{suffix}"[:150]
-        conflicting_user = User.objects.filter(username=candidate).first()
-        if not conflicting_user or conflicting_user.email == user_email:
-            django_username = candidate
-            break
-        if attempt == 0:
-            email_hash = hashlib.sha256(user_email.encode("utf-8")).hexdigest()[:8]
-            suffix = f"_{email_hash}"
-        else:
-            suffix = f"_{attempt}"
-        attempt += 1
+    django_username = _generate_unique_username(user_email)
 
     # Retrieve or instantiate standard Django User account
     user, created = User.objects.get_or_create(

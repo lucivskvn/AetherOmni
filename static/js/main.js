@@ -211,7 +211,7 @@ function initializeAlerts() {
     document.addEventListener('click', (event) => {
         const btn = event.target.closest('[data-dismiss]');
         if (!btn) return;
-        const targetId = btn.getAttribute('data-dismiss');
+        const targetId = btn.dataset.dismiss;
         const card = document.getElementById(targetId);
         if (card) {
             dismissCard(card);
