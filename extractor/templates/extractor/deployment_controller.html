@@ -153,12 +153,24 @@
     .scaling-name {
         font-size: 14px;
         font-weight: 600;
-        color: #fff;
+        color: var(--text-main, #fff);
     }
 
     .scaling-desc {
         font-size: 12px;
         color: var(--text-muted);
+    }
+
+    /* Interactive visual feedback for checked and keyboard-focused scaling cards */
+    .scaling-option:has(input[type="radio"]:checked) {
+        background: rgba(99, 102, 241, 0.08);
+        border-color: var(--primary, #6366f1);
+        box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+    }
+
+    .scaling-option:has(input[type="radio"]:focus-visible) {
+        outline: 2px solid var(--primary, #6366f1);
+        outline-offset: 2px;
     }
 </style>
 {% endblock %}
@@ -316,4 +328,23 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const deployForm = document.querySelector('.deploy-grid form');
+        if (deployForm) {
+            deployForm.addEventListener('submit', () => {
+                const btn = deployForm.querySelector('button[type="submit"]');
+                if (!btn) return;
+
+                const spinnerSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spinner" style="margin-right: 8px;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
+                btn.innerHTML = `${spinnerSvg} Provisioning Cluster Revision...`;
+                btn.style.pointerEvents = 'none';
+                btn.style.opacity = '0.85';
+            });
+        }
+    });
+</script>
 {% endblock %}
