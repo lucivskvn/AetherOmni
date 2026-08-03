@@ -1,3 +1,5 @@
+ISO_8601_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+DOCUMENT_NOT_FOUND_MSG = "Document not found."
 import logging
 from datetime import datetime
 from decimal import Decimal
@@ -38,7 +40,7 @@ def parse_datetime(val):
     if isinstance(val, datetime):
         return val
     try:
-        return datetime.strptime(val, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.UTC)
+        return datetime.strptime(val, ISO_8601_FORMAT).replace(tzinfo=timezone.UTC)
     except (ValueError, TypeError):
         try:
             from django.utils.dateparse import parse_datetime as django_parse
@@ -58,7 +60,7 @@ def format_datetime(dt):
         return None
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.UTC)
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.strftime(ISO_8601_FORMAT)
 
 
 def _wrap_surreal_doc(d, users_map):
@@ -671,7 +673,7 @@ class DocumentDetailView(LoginRequiredMixin, View):
         if not raw_doc:
             from django.http import Http404
 
-            raise Http404("Document not found.")
+            raise Http404(DOCUMENT_NOT_FOUND_MSG)
 
         from django.contrib.auth import get_user_model
 
@@ -734,7 +736,7 @@ class DocumentSaveView(LoginRequiredMixin, View):
     def post(self, request, doc_uuid):
         raw_doc = surreal_db.get_document(doc_uuid)
         if not raw_doc:
-            messages.error(request, "Document not found.")
+            messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
         from django.contrib.auth import get_user_model
@@ -808,7 +810,7 @@ class DocumentDeleteView(LoginRequiredMixin, View):
     def post(self, request, doc_uuid):
         raw_doc = surreal_db.get_document(doc_uuid)
         if not raw_doc:
-            messages.error(request, "Document not found.")
+            messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
         from django.contrib.auth import get_user_model
@@ -1327,8 +1329,8 @@ class DocumentRetryView(LoginRequiredMixin, View):
                 request.headers.get("x-requested-with") == "XMLHttpRequest"
                 or request.headers.get("accept") == APPLICATION_JSON
             ):
-                return JsonResponse({"error": "Document not found."}, status=404)
-            messages.error(request, "Document not found.")
+                return JsonResponse({"error": DOCUMENT_NOT_FOUND_MSG}, status=404)
+            messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
         from django.contrib.auth import get_user_model
@@ -1405,6 +1407,152 @@ class DocumentRetryView(LoginRequiredMixin, View):
         return redirect("dashboard")
 
 
+def _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query):
+    if is_staff_or_superuser:
+        logs_qs = AuditLog.objects.all().select_related("user", "document")
+    else:
+        logs_qs = AuditLog.objects.filter(user=request.user).select_related("user", "document")
+
+    if action_filter:
+        logs_qs = logs_qs.filter(action=action_filter)
+    if is_staff_or_superuser and user_query:
+        logs_qs = logs_qs.filter(user__username__icontains=user_query)
+    if search_query:
+        logs_qs = logs_qs.filter(
+            Q(details__icontains=search_query)
+            | Q(ip_address__icontains=search_query)
+            | Q(document__original_filename__icontains=search_query)
+            | Q(document__title__icontains=search_query)
+            | Q(document__publisher__icontains=search_query)
+            | Q(document__publication_year__icontains=search_query)
+            | Q(document__doi__icontains=search_query)
+        )
+
+    logs = list(logs_qs.distinct().order_by("-created_at")[:200])
+    action_choices = [
+        (AuditAction.LOGIN, "Login"),
+        (AuditAction.LOGOUT, "Logout"),
+        (AuditAction.UPLOAD, "Upload Fresh"),
+        (AuditAction.UPLOAD_CACHED, "Upload Cached"),
+        (AuditAction.EXTRACTION_START, "Pipeline Started"),
+        (AuditAction.EXTRACTION_COMPLETED, "Pipeline Completed"),
+        (AuditAction.EXTRACTION_FAILED, "Pipeline Failed"),
+        (AuditAction.DELETE, "Delete Document"),
+        (AuditAction.PURGE_ALL, "Purge All Records"),
+        (AuditAction.DOCUMENT_EDITED, "Document Edited"),
+        (AuditAction.DOCUMENT_REQUEUED, "Document Requeued"),
+        (AuditAction.SYSTEM_CONTROL, "System Control"),
+    ]
+    return {
+        "logs": logs,
+        "action_choices": action_choices,
+        "selected_action": action_filter,
+        "selected_user": user_query if is_staff_or_superuser else "",
+        "search_query": search_query,
+    }
+
+
+def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query):
+    where_clauses = []
+    params = {}
+    if not is_staff_or_superuser:
+        where_clauses.append("user_id = $user_id")
+        params["user_id"] = str(request.user.id)
+    if action_filter:
+        where_clauses.append("action = $action")
+        params["action"] = action_filter
+
+    sql = "SELECT * FROM audit_logs"
+    if where_clauses:
+        sql += " WHERE " + " AND ".join(where_clauses)
+    sql += " ORDER BY timestamp DESC LIMIT 200;"
+
+    raw_logs = surreal_db._first_result(surreal_db._run(sql, params))
+
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    users_map = {str(u.id): u for u in User.objects.all()}
+
+    logs = []
+    for rl in raw_logs:
+        if not rl:
+            continue
+        ts = rl.get("timestamp")
+        if ts and isinstance(ts, str):
+            import datetime
+
+            try:
+                ts_parsed = datetime.datetime.strptime(ts, ISO_8601_FORMAT).replace(tzinfo=datetime.UTC)
+            except ValueError:
+                ts_parsed = parse_datetime(ts)
+        else:
+            ts_parsed = parse_datetime(ts)
+
+        uid = rl.get("user_id")
+        u = users_map.get(uid) if uid else None
+
+        doc = None
+        did = rl.get("doc_uuid")
+        if did:
+            d_raw = surreal_db.get_document(did)
+            if d_raw:
+                doc = _wrap_surreal_doc(d_raw, users_map)
+
+        class DummyAuditLog:
+            pass
+
+        a = DummyAuditLog()
+        a.id = rl.get("id", "")
+        a.user = u
+        a.action = rl.get("action", "")
+        a.document = doc
+        a.details = rl.get("details", "")
+        a.ip_address = rl.get("ip_address", "")
+        a.created_at = ts_parsed
+        logs.append(a)
+
+    if is_staff_or_superuser and user_query:
+        logs = [
+            log_item
+            for log_item in logs
+            if log_item.user and user_query.lower() in getattr(log_item.user, "username", "").lower()
+        ]
+
+    if search_query:
+        sq = search_query.lower()
+        logs = [
+            log_item
+            for log_item in logs
+            if sq in log_item.details.lower()
+            or sq in log_item.ip_address.lower()
+            or (log_item.document and sq in getattr(log_item.document, "original_filename", "").lower())
+            or (log_item.document and sq in getattr(log_item.document, "title", "").lower())
+        ]
+
+    action_choices = [
+        ("LOGIN", "Login"),
+        ("LOGOUT", "Logout"),
+        ("UPLOAD", "Upload Fresh"),
+        ("UPLOAD_CACHED", "Upload Cached"),
+        ("EXTRACTION_START", "Pipeline Started"),
+        ("EXTRACTION_COMPLETED", "Pipeline Completed"),
+        ("EXTRACTION_FAILED", "Pipeline Failed"),
+        ("DELETE", "Delete Document"),
+        ("PURGE_ALL", "Purge All Records"),
+        ("DOCUMENT_EDITED", "Document Edited"),
+        ("DOCUMENT_REQUEUED", "Document Requeued"),
+        ("SYSTEM_CONTROL", "System Control"),
+    ]
+    return {
+        "logs": logs,
+        "action_choices": action_choices,
+        "selected_action": action_filter,
+        "selected_user": user_query if is_staff_or_superuser else "",
+        "search_query": search_query,
+    }
+
+
 class AuditLogListView(LoginRequiredMixin, View):
     """
     Renders the secure, premium glassmorphic system audit trail.
@@ -1414,173 +1562,16 @@ class AuditLogListView(LoginRequiredMixin, View):
 
     def get(self, request):
         is_staff_or_superuser = request.user.is_superuser or request.user.is_staff
-
-        # Filtering parameters
         action_filter = request.GET.get("action", "").strip()
         user_query = request.GET.get("user", "").strip()
         search_query = request.GET.get("q", "").strip()
-
         from django.conf import settings
 
         if getattr(settings, "SURREALDB_OFFLINE", False):
-            if is_staff_or_superuser:
-                logs_qs = AuditLog.objects.all().select_related("user", "document")
-            else:
-                logs_qs = AuditLog.objects.filter(user=request.user).select_related("user", "document")
-
-            if action_filter:
-                logs_qs = logs_qs.filter(action=action_filter)
-            if is_staff_or_superuser and user_query:
-                logs_qs = logs_qs.filter(user__username__icontains=user_query)
-            if search_query:
-                logs_qs = logs_qs.filter(
-                    Q(details__icontains=search_query)
-                    | Q(ip_address__icontains=search_query)
-                    | Q(document__original_filename__icontains=search_query)
-                    | Q(document__title__icontains=search_query)
-                    | Q(document__publisher__icontains=search_query)
-                    | Q(document__publication_year__icontains=search_query)
-                    | Q(document__doi__icontains=search_query)
-                )
-
-            logs = list(logs_qs.distinct().order_by("-created_at")[:200])
-            action_choices = [
-                (AuditAction.LOGIN, "Login"),
-                (AuditAction.LOGOUT, "Logout"),
-                (AuditAction.UPLOAD, "Upload Fresh"),
-                (AuditAction.UPLOAD_CACHED, "Upload Cached"),
-                (AuditAction.EXTRACTION_START, "Pipeline Started"),
-                (AuditAction.EXTRACTION_COMPLETED, "Pipeline Completed"),
-                (AuditAction.EXTRACTION_FAILED, "Pipeline Failed"),
-                (AuditAction.DELETE, "Delete Document"),
-                (AuditAction.PURGE_ALL, "Purge All Records"),
-                (AuditAction.DOCUMENT_EDITED, "Document Edited"),
-                (AuditAction.DOCUMENT_REQUEUED, "Document Requeued"),
-                (AuditAction.SYSTEM_CONTROL, "System Control"),
-            ]
-            context = {
-                "logs": logs,
-                "action_choices": action_choices,
-                "selected_action": action_filter,
-                "selected_user": user_query if is_staff_or_superuser else "",
-                "search_query": search_query,
-            }
-            return render(request, "extractor/audit_logs.html", context)
-
-        # Construct SurrealDB query
-        where_clauses = []
-        params = {}
-        if not is_staff_or_superuser:
-            where_clauses.append("user_id = $user_id")
-            params["user_id"] = str(request.user.id)
-        if action_filter:
-            where_clauses.append("action = $action")
-            params["action"] = action_filter
-
-        sql = "SELECT * FROM audit_logs"
-        if where_clauses:
-            sql += " WHERE " + " AND ".join(where_clauses)
-        sql += " ORDER BY timestamp DESC LIMIT 200;"
-
-        raw_logs = surreal_db._first_result(surreal_db._run(sql, params))
-
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-        users = {str(u.id): u for u in User.objects.all()}
-        docs = {d["doc_uuid"]: d for d in surreal_db.list_documents()}
-
-        logs = []
-        for rl in raw_logs:
-            ts = rl.get("timestamp")
-            if ts and isinstance(ts, str):
-                import datetime
-
-                try:
-                    ts_parsed = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.UTC)
-                except ValueError:
-                    ts_parsed = parse_datetime(ts)
-            else:
-                ts_parsed = parse_datetime(ts)
-
-            uid = rl.get("user_id")
-            u = users.get(uid) if uid in users else SimpleNamespace(username=uid)
-
-            d_uuid = rl.get("doc_uuid")
-            d = docs.get(d_uuid) if d_uuid in docs else None
-            if d:
-                doc_obj = SimpleNamespace(
-                    uuid=d.get("doc_uuid"), original_filename=d.get("original_filename"), title=d.get("title")
-                )
-            else:
-                doc_obj = None
-
-            metadata_val = rl.get("metadata")
-            import json
-
-            try:
-                meta_dict = json.loads(metadata_val) if isinstance(metadata_val, str) else (metadata_val or {})
-            except Exception:
-                meta_dict = {"details": ""}
-            details_val = (meta_dict.get("details") if isinstance(meta_dict, dict) else "") or rl.get("details") or ""
-
-            # Filter in-memory if user/search queries are provided
-            if is_staff_or_superuser and user_query:
-                if user_query.lower() not in u.username.lower():
-                    continue
-            if search_query:
-                sq = search_query.lower()
-                details_match = sq in details_val.lower()
-                ip_match = sq in (rl.get("ip_address") or "").lower()
-                doc_match = doc_obj and (
-                    sq in (doc_obj.original_filename or "").lower()
-                    or sq in (doc_obj.title or "").lower()
-                    or sq in (doc_obj.publisher or "").lower()
-                    or sq in (doc_obj.publication_year or "").lower()
-                    or sq in (doc_obj.doi or "").lower()
-                )
-                if not (details_match or ip_match or doc_match):
-                    continue
-
-            logs.append(
-                SimpleNamespace(
-                    timestamp=ts_parsed,
-                    action=rl.get("action"),
-                    user=u,
-                    document=doc_obj,
-                    details=details_val,
-                    ip_address=rl.get("ip_address"),
-                )
-            )
-
-        action_choices = [
-            (AuditAction.LOGIN, "Login"),
-            (AuditAction.LOGOUT, "Logout"),
-            (AuditAction.UPLOAD, "Upload Fresh"),
-            (AuditAction.UPLOAD_CACHED, "Upload Cached"),
-            (AuditAction.EXTRACTION_START, "Pipeline Started"),
-            (AuditAction.EXTRACTION_COMPLETED, "Pipeline Completed"),
-            (AuditAction.EXTRACTION_FAILED, "Pipeline Failed"),
-            (AuditAction.DELETE, "Delete Document"),
-            (AuditAction.PURGE_ALL, "Purge All Records"),
-            (AuditAction.DOCUMENT_EDITED, "Document Edited"),
-            (AuditAction.DOCUMENT_REQUEUED, "Document Requeued"),
-            (AuditAction.SYSTEM_CONTROL, "System Control"),
-        ]
-
-        context = {
-            "logs": logs,
-            "action_choices": action_choices,
-            "selected_action": action_filter,
-            "selected_user": user_query if is_staff_or_superuser else "",
-            "search_query": search_query,
-        }
+            context = _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query)
+        else:
+            context = _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query)
         return render(request, "extractor/audit_logs.html", context)
-
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 def _resolve_worker_config(worker_config_default):
@@ -1932,3 +1923,149 @@ def reset_password_confirm_view(request):
         "supabase_key": supabase_key,
     }
     return render(request, "extractor/reset_password_confirm.html", context)
+
+
+def _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query):
+    if is_staff_or_superuser:
+        logs_qs = AuditLog.objects.all().select_related("user", "document")
+    else:
+        logs_qs = AuditLog.objects.filter(user=request.user).select_related("user", "document")
+
+    if action_filter:
+        logs_qs = logs_qs.filter(action=action_filter)
+    if is_staff_or_superuser and user_query:
+        logs_qs = logs_qs.filter(user__username__icontains=user_query)
+    if search_query:
+        logs_qs = logs_qs.filter(
+            Q(details__icontains=search_query)
+            | Q(ip_address__icontains=search_query)
+            | Q(document__original_filename__icontains=search_query)
+            | Q(document__title__icontains=search_query)
+            | Q(document__publisher__icontains=search_query)
+            | Q(document__publication_year__icontains=search_query)
+            | Q(document__doi__icontains=search_query)
+        )
+
+    logs = list(logs_qs.distinct().order_by("-created_at")[:200])
+    action_choices = [
+        (AuditAction.LOGIN, "Login"),
+        (AuditAction.LOGOUT, "Logout"),
+        (AuditAction.UPLOAD, "Upload Fresh"),
+        (AuditAction.UPLOAD_CACHED, "Upload Cached"),
+        (AuditAction.EXTRACTION_START, "Pipeline Started"),
+        (AuditAction.EXTRACTION_COMPLETED, "Pipeline Completed"),
+        (AuditAction.EXTRACTION_FAILED, "Pipeline Failed"),
+        (AuditAction.DELETE, "Delete Document"),
+        (AuditAction.PURGE_ALL, "Purge All Records"),
+        (AuditAction.DOCUMENT_EDITED, "Document Edited"),
+        (AuditAction.DOCUMENT_REQUEUED, "Document Requeued"),
+        (AuditAction.SYSTEM_CONTROL, "System Control"),
+    ]
+    return {
+        "logs": logs,
+        "action_choices": action_choices,
+        "selected_action": action_filter,
+        "selected_user": user_query if is_staff_or_superuser else "",
+        "search_query": search_query,
+    }
+
+
+def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query):
+    where_clauses = []
+    params = {}
+    if not is_staff_or_superuser:
+        where_clauses.append("user_id = $user_id")
+        params["user_id"] = str(request.user.id)
+    if action_filter:
+        where_clauses.append("action = $action")
+        params["action"] = action_filter
+
+    sql = "SELECT * FROM audit_logs"
+    if where_clauses:
+        sql += " WHERE " + " AND ".join(where_clauses)
+    sql += " ORDER BY timestamp DESC LIMIT 200;"
+
+    raw_logs = surreal_db._first_result(surreal_db._run(sql, params))
+
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    users_map = {str(u.id): u for u in User.objects.all()}
+
+    logs = []
+    for rl in raw_logs:
+        if not rl:
+            continue
+        ts = rl.get("timestamp")
+        if ts and isinstance(ts, str):
+            import datetime
+
+            try:
+                ts_parsed = datetime.datetime.strptime(ts, ISO_8601_FORMAT).replace(tzinfo=datetime.UTC)
+            except ValueError:
+                ts_parsed = parse_datetime(ts)
+        else:
+            ts_parsed = parse_datetime(ts)
+
+        uid = rl.get("user_id")
+        u = users_map.get(uid) if uid else None
+
+        doc = None
+        did = rl.get("doc_uuid")
+        if did:
+            d_raw = surreal_db.get_document(did)
+            if d_raw:
+                doc = _wrap_surreal_doc(d_raw, users_map)
+
+        class DummyAuditLog:
+            pass
+
+        a = DummyAuditLog()
+        a.id = rl.get("id", "")
+        a.user = u
+        a.action = rl.get("action", "")
+        a.document = doc
+        a.details = rl.get("details", "")
+        a.ip_address = rl.get("ip_address", "")
+        a.created_at = ts_parsed
+        logs.append(a)
+
+    if is_staff_or_superuser and user_query:
+        logs = [
+            log_item
+            for log_item in logs
+            if log_item.user and user_query.lower() in getattr(log_item.user, "username", "").lower()
+        ]
+
+    if search_query:
+        sq = search_query.lower()
+        logs = [
+            log_item
+            for log_item in logs
+            if sq in log_item.details.lower()
+            or sq in log_item.ip_address.lower()
+            or (log_item.document and sq in getattr(log_item.document, "original_filename", "").lower())
+            or (log_item.document and sq in getattr(log_item.document, "title", "").lower())
+        ]
+
+    action_choices = [
+        ("LOGIN", "Login"),
+        ("LOGOUT", "Logout"),
+        ("UPLOAD", "Upload Fresh"),
+        ("UPLOAD_CACHED", "Upload Cached"),
+        ("EXTRACTION_START", "Pipeline Started"),
+        ("EXTRACTION_COMPLETED", "Pipeline Completed"),
+        ("EXTRACTION_FAILED", "Pipeline Failed"),
+        ("DELETE", "Delete Document"),
+        ("PURGE_ALL", "Purge All Records"),
+        ("DOCUMENT_EDITED", "Document Edited"),
+        ("DOCUMENT_REQUEUED", "Document Requeued"),
+        ("SYSTEM_CONTROL", "System Control"),
+    ]
+    return {
+        "logs": logs,
+        "action_choices": action_choices,
+        "selected_action": action_filter,
+        "selected_user": user_query if is_staff_or_superuser else "",
+        "search_query": search_query,
+    }
