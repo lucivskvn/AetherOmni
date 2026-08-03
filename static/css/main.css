@@ -773,7 +773,7 @@ dialog.settings-dialog .dialog-footer {
     border-radius: var(--border-radius-sm);
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border-glass);
-    color: white;
+    color: var(--text-main);
     width: 140px;
     transition: width 0.2s ease-in-out, border-color 0.2s, box-shadow 0.2s, padding-right 0.2s;
     outline: none;
@@ -1443,7 +1443,7 @@ tr:hover td {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.82em;
     background: rgba(99, 102, 241, 0.12);
-    color: #a5b4fc;
+    color: var(--text-main);
     border: 1px solid rgba(99, 102, 241, 0.2);
     border-radius: 5px;
     padding: 1px 7px;
@@ -1511,7 +1511,7 @@ tr:hover td {
     padding: 14px 20px;
     margin: 16px 0;
     font-style: italic;
-    color: rgba(255,255,255,0.7);
+    color: var(--text-muted);
 }
 
 /* Horizontal rule */
@@ -1550,9 +1550,6 @@ tr:hover td {
 
 
 /* Code block language label badge */
-.preview-window pre {
-    position: relative;
-}
 .code-lang-label {
     display: inline-block;
     position: absolute;
@@ -1962,11 +1959,6 @@ dialog.settings-dialog .dialog-footer button i {
     border-radius: 6px;
 }
 
-.pane-title-subtext {
-    font-size: 11px;
-    color: var(--text-muted);
-}
-
 .qa-section h3 {
     font-family: var(--font-display);
     font-size: 18px;
@@ -2234,7 +2226,7 @@ dialog.settings-dialog .dialog-footer button i {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: #fbbf24;
+    color: #b45309;
     font-size: 13px;
     font-weight: 500;
     margin-top: 8px;

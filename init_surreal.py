@@ -212,7 +212,7 @@ def init_django_admin():
 
         from extractor.models import SourceDocument
 
-        pattern = r"\n{1,4}(?:#{1,6}\s+|(?:\*{1,2}))(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n(?:[^\n]*(?:Reasoning|downstream|training|NotebookLM)[^\n]*\n?)*.*$"
+        pattern = r"\n{1,4}(?:#{1,6}\s+|\*{1,2})(?:Curated\s+)?(?:SFT\s+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*(?:\*{1,2})?\s*\n.*$"
         cleaned_count = 0
         to_update = []
         for doc in (

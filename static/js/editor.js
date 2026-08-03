@@ -1,3 +1,52 @@
+    // ── Inline parser ─────────────────────────────────────────────────────────
+function parseInline(text) {
+        let t = text;
+
+        // Inline code (must be first to avoid double-parsing)
+        t = t.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+        // Strikethrough ~~text~~
+        t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+        // Bold+italic ***text***
+        t = t.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+
+        // Bold **text** or __text__
+        t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+
+        // Italic *text* or _text_
+        t = t.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+        t = t.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+
+        // Image: ![alt](src)
+        t = t.replace(/!\[([^\]]*)\]\(((?:[^()]+|\([^()]*\))+)\)/g,
+            '<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0;">');
+
+        // Link: [text](href)
+        t = t.replace(/\[([^\]]+)\]\(((?:[^()]+|\([^()]*\))+)\)/g,
+            '<a href="$2" target="_blank" rel="noopener" class="preview-link">$1</a>');
+
+        return t;
+    }
+
+function handleSuccess(btnElement) {
+    const origHTML = btnElement.innerHTML;
+    const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="color: #10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
+    btnElement.innerHTML = checkSvg;
+    btnElement.title = "Copied!";
+    btnElement.setAttribute('aria-label', "Copied!");
+
+    if (typeof window.showClientSideAlert === 'function') {
+        window.showClientSideAlert('Copied curation markdown to clipboard successfully!', 'success');
+    }
+
+    setTimeout(() => {
+        btnElement.innerHTML = origHTML;
+        btnElement.title = "Copy Markdown to Clipboard (Ctrl+Shift+C)";
+        btnElement.setAttribute('aria-label', "Copy Markdown to Clipboard (Ctrl+Shift+C)");
+    }, 2000);
+}
 /**
  * editor.js — Split-pane live Markdown editor with scroll sync, RTL detection,
  * and a robust block + inline parser. Fully XSS-safe via HTML escaping before parse.
@@ -329,23 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
         copyMarkdownBtn.addEventListener('click', () => {
             const content = editor.value || '';
 
-            function handleSuccess() {
-                const origHTML = copyMarkdownBtn.innerHTML;
-                const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="color: #10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
-                copyMarkdownBtn.innerHTML = checkSvg;
-                copyMarkdownBtn.title = "Copied!";
-                copyMarkdownBtn.setAttribute('aria-label', "Copied!");
 
-                if (typeof window.showClientSideAlert === 'function') {
-                    window.showClientSideAlert('Copied curation markdown to clipboard successfully!', 'success');
-                }
-
-                setTimeout(() => {
-                    copyMarkdownBtn.innerHTML = origHTML;
-                    copyMarkdownBtn.title = "Copy Markdown to Clipboard (Ctrl+Shift+C)";
-                    copyMarkdownBtn.setAttribute('aria-label', "Copy Markdown to Clipboard (Ctrl+Shift+C)");
-                }, 2000);
-            }
 
             function fallbackCopy() {
                 try {
@@ -360,10 +393,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     tempTextArea.select();
 
                     const successful = document.execCommand('copy');
-                    document.body.removeChild(tempTextArea);
+                    tempTextArea.remove();
 
                     if (successful) {
-                        handleSuccess();
+                        handleSuccess(copyMarkdownBtn);
                     } else {
                         throw new Error('execCommand copy returned false');
                     }
@@ -524,7 +557,7 @@ function compileMarkdown(markdown) {
                 const colonIdx = line.indexOf(':');
                 if (colonIdx !== -1) {
                     const key = line.substring(0, colonIdx).trim();
-                    const val = line.substring(colonIdx + 1).trim().replace(/^[&quot;&apos;&lt;&gt;]*|[&quot;&apos;&lt;&gt;]*$/g, ''); // strip quotes
+                    const val = line.substring(colonIdx + 1).trim().replace(/^[&quot;&apos;&lt;&gt;]+|[&quot;&apos;&lt;&gt;]+$/g, ''); // strip quotes
                     if (key && val) {
                         rowsHtml += `
                             <div style="display: flex; gap: 8px; font-size: 12px; margin-bottom: 4px; font-family: sans-serif;">
@@ -567,8 +600,7 @@ function compileMarkdown(markdown) {
             if (inCodeBlock) {
                 html += '</code></pre>\n';
                 inCodeBlock = false;
-                codeLang = '';
-            } else {
+                            } else {
                 html += closeAll();
                 codeLang = trimmed.slice(3).trim();
                 const langAttr = codeLang ? ` class="language-${codeLang}"` : '';
@@ -685,7 +717,7 @@ function compileMarkdown(markdown) {
     html = html
         .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
         .replace(/&lt;hr\s*\/?&gt;/gi, '<hr>')
-        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b([^&]*)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b(.*?)\&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
                 const decodedAttrs = attrs.replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
@@ -697,7 +729,7 @@ function compileMarkdown(markdown) {
             }
             return `<${closeSlash || ''}${tagName}${cleanAttrs}>`;
         })
-        .replace(/&lt;(\/)?(span|div|p)\b([^&]*)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?(span|div|p)\b(.*?)\&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
                 const decodedAttrs = attrs.replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
@@ -733,37 +765,7 @@ function compileMarkdown(markdown) {
         return closeLists() + closeBlockquote() + closeTable();
     }
 
-    // ── Inline parser ─────────────────────────────────────────────────────────
-    function parseInline(text) {
-        let t = text;
 
-        // Inline code (must be first to avoid double-parsing)
-        t = t.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-        // Strikethrough ~~text~~
-        t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>');
-
-        // Bold+italic ***text***
-        t = t.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
-
-        // Bold **text** or __text__
-        t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-
-        // Italic *text* or _text_
-        t = t.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
-        t = t.replace(/_([^_\n]+)_/g, '<em>$1</em>');
-
-        // Image: ![alt](src)
-        t = t.replace(/!\[([^\]]*)\]\(((?:[^()]+|\([^()]*\))+)\)/g,
-            '<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0;">');
-
-        // Link: [text](href)
-        t = t.replace(/\[([^\]]+)\]\(((?:[^()]+|\([^()]*\))+)\)/g,
-            '<a href="$2" target="_blank" rel="noopener" class="preview-link">$1</a>');
-
-        return t;
-    }
 }
 
 /**
@@ -783,7 +785,7 @@ function copyTextToClipboard(text, onSuccess, onError) {
             tempTextArea.select();
 
             const successful = document.execCommand('copy');
-            document.body.removeChild(tempTextArea);
+            tempTextArea.remove();
 
             if (successful) {
                 if (onSuccess) onSuccess();
