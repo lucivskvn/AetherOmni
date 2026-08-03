@@ -266,13 +266,13 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     # Desloppify scores
     if scores.get("objective"):
         text = re.sub(
-            r"(Current Objective/Mechanical Score:\s+\*\*)\d+\.?\d*(/100\*\*)",
+            r"(Current Objective/Mechanical Score:\s+\*\*)[\\d.]+?(/100\*\*)",
             rf"\g<1>{scores['objective']}\g<2>",
             text,
         )
     if scores.get("strict"):
         text = re.sub(
-            r"(Current Strict Code Health Score:\s+\*\*)\d+\.?\d*(/100\*\*)",
+            r"(Current Strict Code Health Score:\s+\*\*)[\\d.]+?(/100\*\*)",
             rf"\g<1>{scores['strict']}\g<2>",
             text,
         )

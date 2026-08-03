@@ -259,14 +259,11 @@ def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int
 
     if "embedding" in model_name or "embed" in model_name:
         return Decimal("0.00")
-    elif "3.5" in model_name and "flash" in model_name:
-        in_rate = Decimal("1.50")
-        out_rate = Decimal("9.00")
     elif "3.1" in model_name and "lite" in model_name:
         in_rate = Decimal("0.25")
         out_rate = Decimal("1.50")
     else:
-        # Safe default for modern 3.x general requests
+        # Safe default for modern 3.x general requests (including 3.5 flash)
         in_rate = Decimal("1.50")
         out_rate = Decimal("9.00")
 
@@ -438,7 +435,6 @@ def _call_direct_gemini(
 # prevent 404 errors from stale or mis-typed configurations.
 KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
     {
-        MODEL_GEMINI_FLASH,
         MODEL_GEMINI_FLASH,
         MODEL_GEMINI_FLASH_LITE,
         "gemini-3.1-pro",
@@ -1196,7 +1192,7 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
             else:
                 # Case 4: Standard search fallback
                 yaml_match = re.search(
-                    r"-{3,}[ \t]*\n(.*)\n[ \t]*-{3,}",
+                    r"-{3,}[ \t]*\n(.*?)\n[ \t]*-{3,}",
                     refined_text,
                     re.DOTALL,
                 )
@@ -1231,7 +1227,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
 
         pre_json = refined_text[: json_match.start()].rstrip()
         pre_json = re.sub(
-            r"\n{1,4}(?:#{1,6}[ \t]+|\*{1,2})(?:Curated[ \t]+)?(?:SFT[ \t]+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated)[^\n]*\n.*$",
+            r"\n{1,4}(?:#{1,6}[ \t]+|\*{1,2})(?:Curated[ \t]+)?(?:SFT[ \t]+)?(?:Q[&\s]*A|Question|Dataset|Training|Curated).*$",
             "",
             pre_json,
             flags=re.DOTALL | re.IGNORECASE,
