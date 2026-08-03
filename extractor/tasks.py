@@ -61,7 +61,7 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
 
         pages_pattern = re.compile(rb"/Type\s*/Page\b")
         parent_pattern = re.compile(rb"/Parent\s*\d+\s*\d+\s*R")
-        count_pattern = re.compile(rb"/Type\s*/Pages(?:(?!/Type\s*/Pages).)*?/Count\s*(\d+)", re.DOTALL)
+        count_pattern = re.compile(rb"/Type\s*/Pages[^>]*?/Count\s*(\d+)")
 
         # Check for small or empty/dummy file first
         with open(working_path, "rb") as f:
