@@ -77,9 +77,16 @@ steps:
     args:
       - '-c'
       - |
-        docker pull $_IMAGE:latest || exit 0
     id: 'pull'
     waitFor: ['ensure-repo']
+
+  # 2b. Hadolint Dockerfile Security & Best-Practice Scan (Free Open-Source)
+  - name: 'hadolint/hadolint'
+    entrypoint: 'hadolint'
+    args:
+      - 'Dockerfile'
+    id: 'hadolint-scan'
+    waitFor: ['pull']
 
   # 3. Build the container image with the semantic version as a build arg
   - name: 'gcr.io/cloud-builders/docker'

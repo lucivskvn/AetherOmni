@@ -1,0 +1,10 @@
+# yaml-language-server: =https://coderabbit.ai/integrations/schema.v2.json
+language: en-GB
+tone_instructions: >-
+  Be concise. Prioritize security, type safety, green code (Creedengo eco-design), and data integrity. Highlight breaking changes.
+  Reference AGENTS.md, .kiro/steering/ rules, and SonarQube Quality Gates (0 Blockers).
+early_access: true
+reviews:
+  profile: assertive
+  review_details: true
+  collapse_walkthrough: false
