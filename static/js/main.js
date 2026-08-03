@@ -1,3 +1,19 @@
+function checkNeedsPolling() {
+        // We poll if there are documents processing/pending on dashboard,
+        // or if we are on the document detail screen and the current document is not completed/failed.
+        const activeBadges = document.querySelectorAll('.badge-processing, .badge-pending');
+        const detailTimelineContainer = document.querySelector('.timeline-container');
+
+        let onDetailAndProcessing = false;
+        if (detailTimelineContainer) {
+            // If on details screen, check if timeline has non-completed states active or if we see a processing box
+            const hasCompleted = detailTimelineContainer.querySelectorAll('.timeline-step.completed').length;
+            // There are 4 steps total. If completed steps < 4 and there is no failure, we poll.
+            const isFailed = document.querySelector('.timeline-step.failed') || document.querySelector('[data-doc-status="FAILED"]');
+            if (hasCompleted < 4 && !isFailed) {
+                onDetailAndProcessing = true;
+            }
+
 /**
  * main.js - Core workspace logic, alert dismissals, dialog validations,
  * Chart.js token visualizer, and non-disruptive live status polling.
@@ -109,9 +125,9 @@ function initializeAuditSearch() {
 function initializePasswordMatchFeedback() {
     // Premium feedback checking for matched credentials
     const pairs = [
-        { passwordId: 'id_password', confirmId: 'id_confirm_password' },
-        { passwordId: 'id_new_password1', confirmId: 'id_new_password2' },
-        { passwordId: 'new_password', confirmId: 'confirm_password' }
+        { passwordId: 'id_password', confirmId: 'id_confirm_password' }, // NOSONAR
+        { passwordId: 'id_new_password1', confirmId: 'id_new_password2' }, // NOSONAR
+        { passwordId: 'new_password', confirmId: 'confirm_password' } // NOSONAR
     ];
 
     pairs.forEach(pair => {
@@ -391,7 +407,7 @@ function initializeCapsLockDetector() {
         }
 
         const checkCapsLock = (e) => {
-            if (e.getModifierState && e.getModifierState('CapsLock')) {
+            if (e.getModifierState?.('CapsLock')) {
                 warning.style.display = 'inline-flex';
             } else {
                 warning.style.display = 'none';
@@ -494,7 +510,7 @@ function dismissCard(card) {
             
             // Clean up alert-container if it becomes empty
             const container = document.querySelector('.alert-container');
-            if (container && container.querySelectorAll('.alert-card').length === 0) {
+            if (container?.querySelectorAll('.alert-card').length === 0) {
                 container.remove();
             }
         }
@@ -598,13 +614,13 @@ function initializeDragAndDrop() {
 
     function validateFilesAndSubmit(files) {
         const MAX_SIZE = 31457280; // 30MB
-        const ALLOWED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.csv', '.txt'];
+        const ALLOWED_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.csv', '.txt']);
         const dt = new DataTransfer();
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const ext = '.' + file.name.split('.').pop().toLowerCase();
-            if (!ALLOWED_EXTENSIONS.includes(ext)) {
+            if (!ALLOWED_EXTENSIONS.has(ext)) {
                 showClientSideAlert(`Skipped "${file.name}": Unsupported format. (Use PDF, PNG, JPG, JPEG, CSV, TXT)`);
                 continue;
             }
@@ -775,7 +791,7 @@ function selectAllCheckbox(select) {
     const checkboxes = document.querySelectorAll('.doc-selector');
     checkboxes.forEach(cb => {
         const row = cb.closest('tr');
-        if (select && row && row.style.display === 'none') {
+        if (select && row?.style.display === 'none') {
             // Ignore rows currently hidden by our instant table filter
             return;
         }
@@ -985,8 +1001,8 @@ function initializeTokensChart() {
     if (!tokensChartEl) return;
 
     const ctx = tokensChartEl.getContext('2d');
-    const prompt_tokens = parseInt(tokensChartEl.dataset.prompt || '1', 10);
-    const candidates_tokens = parseInt(tokensChartEl.dataset.candidates || '0', 10);
+    const prompt_tokens = Number.parseInt(tokensChartEl.dataset.prompt || '1', 10);
+    const candidates_tokens = Number.parseInt(tokensChartEl.dataset.candidates || '0', 10);
     
     if (typeof Chart !== 'undefined') {
         tokensChartInstance = new Chart(ctx, {
@@ -1039,23 +1055,7 @@ function initializeStatusPoller() {
     const POLL_INTERVAL = 5000; // 5 seconds
     let activePoll = false;
 
-    // Check if we need to poll immediately
-    function checkNeedsPolling() {
-        // We poll if there are documents processing/pending on dashboard,
-        // or if we are on the document detail screen and the current document is not completed/failed.
-        const activeBadges = document.querySelectorAll('.badge-processing, .badge-pending');
-        const detailTimelineContainer = document.querySelector('.timeline-container');
-        
-        let onDetailAndProcessing = false;
-        if (detailTimelineContainer) {
-            // If on details screen, check if timeline has non-completed states active or if we see a processing box
-            const activeSteps = detailTimelineContainer.querySelectorAll('.timeline-step.active');
-            const hasCompleted = detailTimelineContainer.querySelectorAll('.timeline-step.completed').length;
-            // There are 4 steps total. If completed steps < 4 and there is no failure, we poll.
-            const isFailed = document.querySelector('.timeline-step.failed') || document.querySelector('[data-doc-status="FAILED"]');
-            if (hasCompleted < 4 && !isFailed) {
-                onDetailAndProcessing = true;
-            }
+
         }
 
         return activeBadges.length > 0 || onDetailAndProcessing;
@@ -1103,7 +1103,7 @@ function initializeSupabaseRealtime() {
     const client = supabase.createClient(supabaseUrl, supabaseKey);
 
     // Gap D-7: Subscribe to broadcast events on 'document-updates' channel
-    const channel = client
+    client
         .channel('document-updates')
         .on(
             'broadcast',
@@ -1193,7 +1193,7 @@ function updateDashboardStats(stats) {
 
     // 5. Budget Exceeded Alert card logic (dynamic show/hide)
     const billingAlert = document.querySelector('.alert-error');
-    if (billingAlert && billingAlert.textContent.includes('Monthly API Billing Cap Triggered')) {
+    if (billingAlert?.textContent.includes('Monthly API Billing Cap Triggered')) {
         if (!stats.budget_exceeded) {
             billingAlert.remove();
         }
@@ -1277,7 +1277,7 @@ function updateDocumentDetailScreen(data) {
     // Get document ID from URL /document/ID/
     const match = globalThis.location.pathname.match(/\/document\/(\d+)\//);
     if (!match) return;
-    const docId = parseInt(match[1], 10);
+    const docId = Number.parseInt(match[1], 10);
 
     const currentDoc = data.documents.find(d => d.id === docId);
     if (!currentDoc) return;
@@ -1450,7 +1450,7 @@ function initializeLocalTimezones() {
         
         try {
             const date = new Date(utcStr);
-            if (isNaN(date.getTime())) return;
+            if (Number.isNaN(date.getTime())) return;
             
             // Format using user's system locale and configuration
             const options = {
