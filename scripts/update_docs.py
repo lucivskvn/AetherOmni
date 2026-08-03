@@ -393,7 +393,7 @@ def main() -> int:
     if args.ci:
         print(f"\nChanged: {', '.join(changed) if changed else 'none'}")
 
-    return 0
+    return 0 if changed or not args.ci else 1
 
 
 if __name__ == "__main__":
