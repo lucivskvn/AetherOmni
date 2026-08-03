@@ -47,6 +47,80 @@ def format_datetime(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _count_pages_pass1(working_path, chunk_size, overlap, pages_pattern, parent_pattern):
+    pages_count = 0
+    parent_count = 0
+    with open(working_path, "rb") as f:
+        buffer = b""
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            content = buffer + chunk
+            pages_count += len(pages_pattern.findall(content))
+            parent_count += len(parent_pattern.findall(content))
+            if len(content) > overlap:
+                buffer = content[-overlap:]
+            else:
+                buffer = content
+    return pages_count, parent_count
+
+
+def _count_pages_pass2(working_path, chunk_size, overlap, count_pattern):
+    with open(working_path, "rb") as f:
+        buffer = b""
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            content = buffer + chunk
+            match = count_pattern.search(content)
+            if match:
+                return int(match.group(1))
+            if len(content) > overlap:
+                buffer = content[-overlap:]
+            else:
+                buffer = content
+    return 1
+
+
+def _count_pages_pass1(working_path, chunk_size, overlap, pages_pattern, parent_pattern):
+    pages_count = 0
+    parent_count = 0
+    with open(working_path, "rb") as f:
+        buffer = b""
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            content = buffer + chunk
+            pages_count += len(pages_pattern.findall(content))
+            parent_count += len(parent_pattern.findall(content))
+            if len(content) > overlap:
+                buffer = content[-overlap:]
+            else:
+                buffer = content
+    return pages_count, parent_count
+
+
+def _count_pages_pass2(working_path, chunk_size, overlap, count_pattern):
+    with open(working_path, "rb") as f:
+        buffer = b""
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            content = buffer + chunk
+            match = count_pattern.search(content)
+            if match:
+                return int(match.group(1))
+            if len(content) > overlap:
+                buffer = content[-overlap:]
+            else:
+                buffer = content
+    return 1
+
+
 def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
     """Helper to parse the PDF file structures and extract page count using regex without loading the entire file into memory."""
     if doc_type != "PDF":
@@ -56,69 +130,27 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
 
         chunk_size = 128 * 1024
         overlap = 1024
-        pages_count = 0
-        parent_count = 0
 
         pages_pattern = re.compile(rb"/Type\s*/Page\b")
         parent_pattern = re.compile(rb"/Parent\s*\d+\s*\d+\s*R")
         count_pattern = re.compile(rb"/Type\s*/Pages[^>]*?/Count\s*(\d+)")
 
-        # Check for small or empty/dummy file first
         with open(working_path, "rb") as f:
             header = f.read(1024)
             if b"Dummy PDF Content" in header:
                 return 1
 
-        # We first do a pass to count occurrences of Page and Parent.
-        with open(working_path, "rb") as f:
-            buffer = b""
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                content = buffer + chunk
-                pages_count += len(pages_pattern.findall(content))
-                parent_count += len(parent_pattern.findall(content))
-
-                # Keep overlap in buffer
-                if len(content) > overlap:
-                    buffer = content[-overlap:]
-                else:
-                    buffer = content
+        pages_count, _parent_count = _count_pages_pass1(
+            working_path, chunk_size, overlap, pages_pattern, parent_pattern
+        )
 
         if pages_count > 0:
             return pages_count
 
-        # If no /Type /Page found, search for the count pattern
-        with open(working_path, "rb") as f:
-            buffer = b""
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                content = buffer + chunk
-                match = count_pattern.search(content)
-                if match:
-                    return int(match.group(1))
-                if len(content) > overlap:
-                    buffer = content[-overlap:]
-                else:
-                    buffer = content
-
-        if parent_count > 0:
-            return parent_count
-
-    except Exception as exc:
-        logger.warning("[Worker] Failed to determine PDF page count: %s", exc)
-    return 1
-
-
-# Maximum field lengths — prevents Cloud Run OOM and DB varchar crashes
-_MAX_TITLE_LEN = 255
-_MAX_AUTHOR_LEN = 255
-_MAX_LANGUAGE_LEN = 50
-_MAX_DOCTYPE_LEN = 50
-_MAX_SIG_LEN = 64
+        return _count_pages_pass2(working_path, chunk_size, overlap, count_pattern)
+    except Exception as e:
+        logger.debug("[Worker] Failed to determine real page count for %s: %s", working_path, e)
+        return 1
 
 
 def _truncate(value: str | None, max_len: int) -> str:
@@ -222,66 +254,82 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     return doc
 
 
-def _get_working_path(doc: dict) -> tuple[str, str | None]:
-    """
-    Get a local file path for processing.
-    For GCS-backed files, streams content in chunks to /tmp to avoid RAM spikes.
-    Returns (working_path, temp_path_or_None).
-    """
-    temp_local_path = None
-    if isinstance(doc, dict):
-        file_rel_path = doc.get("file", "")
-        orig_filename = doc.get("original_filename", "")
+def _get_working_path(doc_id: str, download: bool = True) -> tuple[str, str]:
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        p = _get_working_path_offline(doc_id, download)
+        return p, p
     else:
-        file_rel_path = getattr(doc, "file", "")
-        if hasattr(file_rel_path, "name"):
-            file_rel_path = file_rel_path.name
-        elif file_rel_path and not isinstance(file_rel_path, str):
-            file_rel_path = str(file_rel_path)
-        orig_filename = getattr(doc, "original_filename", "")
-    try:
-        working_path = default_storage.path(file_rel_path)
-        if os.path.exists(working_path):
-            return working_path, None
-    except (NotImplementedError, AttributeError):
-        pass
+        p = _get_working_path_surreal(doc_id, download)
+        return p, p
 
-    # GCS-backed storage: stream file to a local temp file.
-    suffix = os.path.splitext(orig_filename)[1]
-    temp_file_obj = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    temp_local_path = temp_file_obj.name
-    temp_file_obj.close()
+
+def _get_working_path_offline(doc_id: str, download: bool) -> str:
+    from extractor.models import SourceDocument
+
     try:
-        # Stream in 64KB chunks to prevent Cloud Run OOM
-        if isinstance(doc, dict):
-            with default_storage.open(file_rel_path, "rb") as in_f:
-                with open(temp_local_path, "wb") as out_f:
-                    for chunk in iter(lambda: in_f.read(65536), b""):
-                        out_f.write(chunk)
-        else:
-            doc.file.open("rb")
-            try:
-                with open(temp_local_path, "wb") as out_f:
-                    for chunk in iter(lambda: doc.file.read(65536), b""):
-                        out_f.write(chunk)
-            finally:
-                doc.file.close()
-    except Exception as gcs_err:
+        import uuid
+
         try:
-            os.unlink(temp_local_path)
-        except OSError:
-            pass
-        raise FileNotFoundError(
-            f"Source file '{file_rel_path}' not found in GCS storage. "
-            f"The file may have been deleted or the upload did not complete. "
-            f"Original error: {gcs_err}"
-        ) from gcs_err
+            uuid.UUID(str(doc_id))
+            doc = SourceDocument.objects.get(uuid=doc_id)
+        except ValueError:
+            doc = SourceDocument.objects.get(id=int(getattr(doc_id, "id", doc_id)))
+    except (SourceDocument.DoesNotExist, ValueError):
+        raise ValueError(f"Document {doc_id} not found in SQLite")
+    if not download:
+        return ""
+    if not doc.file or not doc.file.name:
+        raise ValueError(f"Document {doc_id} has no file attached")
+    try:
+        with doc.file.open("rb") as f:
+            content = f.read()
+    except Exception as e:
+        logger.error("[Worker] Failed to read file from SQLite storage: %s", e)
+        raise
+    import os
 
-    return temp_local_path, temp_local_path
+    ext = os.path.splitext(doc.file.name)[1]
+    fd, temp_path = tempfile.mkstemp(suffix=ext, prefix="offline_worker_")
+    with os.fdopen(fd, "wb") as f_out:
+        f_out.write(content)
+    return temp_path
 
 
-def _run_stage1(working_path: str, document_id: str | int) -> Any:
-    """Stage 1: OCR / local parsing."""
+def _get_working_path_surreal(doc_id: str, download: bool) -> str:
+    import os
+    import urllib.parse
+
+    from extractor.utils import _get_gcs_bucket
+
+    doc = surreal_db.get_document(doc_id)
+    if not doc:
+        raise ValueError(f"Document {doc_id} not found in SurrealDB")
+    if not download:
+        return ""
+    gcs_uri = doc.get("file")
+    if not gcs_uri:
+        raise ValueError(f"Document {doc_id} has no GCS file URI")
+    if not gcs_uri.startswith("gs://"):
+        raise ValueError(f"Document {doc_id} has an invalid GCS URI: {gcs_uri}")
+    parsed = urllib.parse.urlparse(gcs_uri)
+    bucket_name = parsed.netloc
+    blob_name = parsed.path.lstrip("/")
+    bucket = _get_gcs_bucket()
+    if bucket.name != bucket_name:
+        raise ValueError(f"Document {doc_id} is in bucket {bucket_name}, but worker is configured for {bucket.name}")
+    blob = bucket.blob(blob_name)
+    if not blob.exists():
+        raise ValueError(f"Document {doc_id} GCS blob {blob_name} does not exist")
+    ext = os.path.splitext(blob_name)[1]
+    fd, temp_path = tempfile.mkstemp(suffix=ext, prefix="worker_")
+    os.close(fd)
+    blob.download_to_filename(temp_path)
+    return temp_path
+
+
+def _get_doc_info_stage1(document_id):
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -295,17 +343,20 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
                 doc = SourceDocument.objects.get(uuid=document_id)
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(document_id))
-        except (SourceDocument.DoesNotExist, ValueError) as err:
-            logger.error("[Worker] Document ID/UUID %s not found in SQLite: %s", document_id, err)
+        except (SourceDocument.DoesNotExist, ValueError):
+            logger.exception("[Worker] Document ID/UUID %s not found in SQLite", document_id)
             raise
-        lower_name = doc.original_filename.lower()
-        doc_id_display = doc.id
+        return doc, doc.original_filename.lower(), doc.id
     else:
         doc = surreal_db.get_document(str(document_id))
         if not doc:
             raise ValueError(f"Document {document_id} not found in SurrealDB")
-        lower_name = doc.get("original_filename", "").lower()
-        doc_id_display = doc.get("doc_uuid")
+        return doc, doc.get("original_filename", "").lower(), doc.get("doc_uuid")
+
+
+def _run_stage1(working_path: str, document_id: str | int) -> Any:
+    """Stage 1: OCR / local parsing."""
+    doc, lower_name, doc_id_display = _get_doc_info_stage1(document_id)
 
     raw_markdown = ""
     stage1_cost = Decimal("0.0")
@@ -946,7 +997,8 @@ def process_document_task(payload: dict) -> None:
 
         temp_local_path = None
         try:
-            working_path, temp_local_path = _get_working_path(doc)
+            working_path = _get_working_path(doc.id if hasattr(doc, "id") else doc)
+            temp_local_path = working_path[0] if isinstance(working_path, tuple) else working_path
             _run_pipeline_stages(doc, working_path, doc_uuid)
         finally:
             if temp_local_path and os.path.exists(temp_local_path):

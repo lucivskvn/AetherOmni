@@ -468,48 +468,44 @@ def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_blo
     )
 
 
-def _get_allowed_doc_uuids(user: Any, document_ids: list[str] | list[int] | None) -> list[str] | None:
-    """
-    Returns a list of UUID strings the user is allowed to access.
-    Returns None if the user is staff/superuser (no filter).
-    Enforces tenant isolation on semantic cache hits and chunk searches.
-    """
-    from django.conf import settings
+def _get_offline_uuids(user, document_ids):
+    from django.db.models import Q
 
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        from django.db.models import Q
+    from extractor.models import SourceDocument
 
-        from extractor.models import SourceDocument
+    if not user or not user.is_authenticated:
+        qs = SourceDocument.objects.filter(uploaded_by__isnull=True)
+    elif not (user.is_staff or user.is_superuser):
+        qs = SourceDocument.objects.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
+    else:
+        qs = SourceDocument.objects.all()
 
-        if not user or not user.is_authenticated:
-            qs = SourceDocument.objects.filter(uploaded_by__isnull=True)
-        elif not (user.is_staff or user.is_superuser):
-            qs = SourceDocument.objects.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
-        else:
-            qs = SourceDocument.objects.all()
+    if document_ids:
+        import uuid
 
-        if document_ids:
-            uuids = []
-            ids_int = []
-            import uuid
+        uuids = []
+        ids_int = []
 
-            for x in document_ids:
-                x_str = str(x).strip()
-                if x_str:
-                    try:
-                        uuid.UUID(x_str)
-                        uuids.append(x_str)
-                    except ValueError:
-                        if x_str.isdigit():
-                            ids_int.append(int(x_str))
-            q_filter = Q()
-            if uuids:
-                q_filter |= Q(uuid__in=uuids)
-            if ids_int:
-                q_filter |= Q(id__in=ids_int)
+        for x in document_ids:
+            x_str = str(x).strip()
+            if x_str:
+                try:
+                    uuid.UUID(x_str)
+                    uuids.append(x_str)
+                except ValueError:
+                    if x_str.isdigit():
+                        ids_int.append(int(x_str))
+        q_filter = Q()
+        if uuids:
+            q_filter |= Q(uuid__in=uuids)
+        if ids_int:
+            q_filter |= Q(id__in=ids_int)
+        if uuids or ids_int:
             qs = qs.filter(q_filter)
-        return [str(d.uuid) for d in qs]
+    return [str(d.uuid) for d in qs]
 
+
+def _get_surreal_uuids(user, document_ids):
     from extractor import surreal_db
 
     where_clauses = []
@@ -521,7 +517,6 @@ def _get_allowed_doc_uuids(user: Any, document_ids: list[str] | list[int] | None
         params["user_id"] = str(user.id)
 
     if document_ids:
-        # Convert all to string UUIDs
         str_ids = [str(i) for i in document_ids if i]
         if str_ids:
             where_clauses.append("doc_uuid INSIDE $document_ids")
@@ -536,6 +531,20 @@ def _get_allowed_doc_uuids(user: Any, document_ids: list[str] | list[int] | None
 
     rows = surreal_db._first_result(surreal_db._run(sql, params))
     return [r["doc_uuid"] for r in rows]
+
+
+def _get_allowed_doc_uuids(user: Any, document_ids: list[str] | list[int] | None) -> list[str] | None:
+    """
+    Returns a list of UUID strings the user is allowed to access.
+    Returns None if the user is staff/superuser (no filter).
+    Enforces tenant isolation on semantic cache hits and chunk searches.
+    """
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return _get_offline_uuids(user, document_ids)
+
+    return _get_surreal_uuids(user, document_ids)
 
 
 def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:

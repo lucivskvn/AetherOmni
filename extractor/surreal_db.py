@@ -188,14 +188,107 @@ def _get_surreal_auth() -> dict:
     return {"username": user, "password": password}  # NOSONAR  # NOSONAR
 
 
+def _extract_namespaces(root_info_res) -> list[str]:
+    namespaces = []
+    if root_info_res and isinstance(root_info_res, list):
+        first_el = root_info_res[0]
+        if isinstance(first_el, dict):
+            if "result" in first_el and isinstance(first_el["result"], dict):
+                namespaces = list(first_el["result"].get("namespaces", {}).keys())
+            else:
+                namespaces = list(first_el.get("namespaces", {}).keys())
+    elif isinstance(root_info_res, dict):
+        namespaces = list(root_info_res.get("namespaces", {}).keys())
+    return namespaces
+
+
+def _extract_doc_count(count_res) -> int:
+    count = 0
+    if count_res and isinstance(count_res, list):
+        first_el = count_res[0]
+        if isinstance(first_el, dict):
+            if "result" in first_el and isinstance(first_el["result"], list) and len(first_el["result"]) > 0:
+                count = first_el["result"][0].get("count", 0)
+            elif "count" in first_el:
+                count = first_el.get("count", 0)
+        elif isinstance(first_el, list) and len(first_el) > 0:
+            count = first_el[0].get("count", 0)
+    return count
+
+
+async def _probe_namespaces(db, namespaces, db_name):
+    for ns in namespaces:
+        try:
+            await db.use(ns, db_name)
+            count_res = await db.query("SELECT count() FROM documents GROUP ALL;")
+            count = _extract_doc_count(count_res)
+            if count > 0:
+                logger.info(
+                    "[SurrealDB] Dynamic auto-detection selected active namespace '%s' with %d documents.",
+                    ns,
+                    count,
+                )
+                return ns
+        except Exception as ns_err:
+            logger.debug("[SurrealDB] Namespace '%s' probe failed: %s", ns, ns_err)
+            continue
+    return None
+
+
+def _extract_namespaces(root_info_res) -> list[str]:
+    namespaces = []
+    if root_info_res and isinstance(root_info_res, list):
+        first_el = root_info_res[0]
+        if isinstance(first_el, dict):
+            if "result" in first_el and isinstance(first_el["result"], dict):
+                namespaces = list(first_el["result"].get("namespaces", {}).keys())
+            else:
+                namespaces = list(first_el.get("namespaces", {}).keys())
+    elif isinstance(root_info_res, dict):
+        namespaces = list(root_info_res.get("namespaces", {}).keys())
+    return namespaces
+
+
+def _extract_doc_count(count_res) -> int:
+    count = 0
+    if count_res and isinstance(count_res, list):
+        first_el = count_res[0]
+        if isinstance(first_el, dict):
+            if "result" in first_el and isinstance(first_el["result"], list) and len(first_el["result"]) > 0:
+                count = first_el["result"][0].get("count", 0)
+            elif "count" in first_el:
+                count = first_el.get("count", 0)
+        elif isinstance(first_el, list) and len(first_el) > 0:
+            count = first_el[0].get("count", 0)
+    return count
+
+
+async def _probe_namespaces(db, namespaces, db_name):
+    for ns in namespaces:
+        try:
+            await db.use(ns, db_name)
+            count_res = await db.query("SELECT count() FROM documents GROUP ALL;")
+            count = _extract_doc_count(count_res)
+            if count > 0:
+                logger.info(
+                    "[SurrealDB] Dynamic auto-detection selected active namespace '%s' with %d documents.",
+                    ns,
+                    count,
+                )
+                return ns
+        except Exception as ns_err:
+            logger.debug("[SurrealDB] Namespace '%s' probe failed: %s", ns, ns_err)
+            continue
+    return None
+
+
 async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
     global _detected_ns
     if _detected_ns:
         return _detected_ns
 
-    # Check if SURREAL_NS is explicitly set in environment/settings (not default)
     env_ns = os.getenv("SURREAL_NS") or getattr(settings, "SURREAL_NS", None)
-    if env_ns and env_ns not in ("", "aetheromni", "omnirag"):
+    if env_ns and env_ns not in ("", "aetheromni", "omrag", "omnirag"):
         _detected_ns = env_ns
         return _detected_ns
 
@@ -204,65 +297,28 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
         async with AsyncSurreal(url) as db:
             await db.signin(auth)
             root_info_res = await db.query("INFO FOR ROOT;")
-            namespaces = []
-            if root_info_res and isinstance(root_info_res, list):
-                first_el = root_info_res[0]
-                if isinstance(first_el, dict):
-                    if "result" in first_el and isinstance(first_el["result"], dict):
-                        namespaces = list(first_el["result"].get("namespaces", {}).keys())
-                    else:
-                        namespaces = list(first_el.get("namespaces", {}).keys())
-            elif isinstance(root_info_res, dict):
-                namespaces = list(root_info_res.get("namespaces", {}).keys())
+            namespaces = _extract_namespaces(root_info_res)
 
             if not namespaces:
                 _detected_ns = fallback_ns
                 return _detected_ns
 
-            # Prioritize canonical namespaces in scan order
             pref = ["aetheromni", "omnirag"]
             for p in reversed(pref):
                 if p in namespaces:
                     namespaces.remove(p)
                     namespaces.insert(0, p)
 
-            for ns in namespaces:
-                try:
-                    await db.use(ns, db_name)
-                    count_res = await db.query("SELECT count() FROM documents GROUP ALL;")
-                    count = 0
-                    if count_res and isinstance(count_res, list):
-                        first_el = count_res[0]
-                        if isinstance(first_el, dict):
-                            if (
-                                "result" in first_el
-                                and isinstance(first_el["result"], list)
-                                and len(first_el["result"]) > 0
-                            ):
-                                count = first_el["result"][0].get("count", 0)
-                            elif "count" in first_el:
-                                count = first_el.get("count", 0)
-                        elif isinstance(first_el, list) and len(first_el) > 0:
-                            count = first_el[0].get("count", 0)
+            probed_ns = await _probe_namespaces(db, namespaces, db_name)
+            if probed_ns:
+                _detected_ns = probed_ns
+                return _detected_ns
 
-                    if count > 0:
-                        _detected_ns = ns
-                        logger.info(
-                            "[SurrealDB] Dynamic auto-detection selected active namespace '%s' with %d documents.",
-                            ns,
-                            count,
-                        )
-                        return _detected_ns
-                except Exception as ns_err:
-                    logger.debug("[SurrealDB] Namespace '%s' probe failed: %s", ns, ns_err)
-                    continue
-
-            # Default to the first available namespace or fallback
             _detected_ns = namespaces[0] if namespaces else fallback_ns
-            logger.info("[SurrealDB] Dynamic auto-detection fallback selected namespace: %s", _detected_ns)
             return _detected_ns
-    except Exception as err:
-        logger.warning("[SurrealDB] Dynamic namespace detection failed, falling back to '%s': %s", fallback_ns, err)
+
+    except Exception as e:
+        logger.warning("[SurrealDB] Failed to auto-detect namespaces, falling back to '%s': %s", fallback_ns, e)
         _detected_ns = fallback_ns
         return _detected_ns
 
@@ -464,49 +520,46 @@ def create_document(data: dict) -> dict:
     return rows[0] if rows else {}
 
 
-def update_document(doc_uuid: str, data: dict) -> dict:
-    """Update fields on a document record in SurrealDB."""
-    doc_uuid = str(doc_uuid)
-    from django.conf import settings
+def _update_document_offline(doc_uuid, data):
+    from django.contrib.auth import get_user_model
 
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        from django.contrib.auth import get_user_model
+    from extractor.models import SourceDocument
 
-        from extractor.models import SourceDocument
+    User = get_user_model()
+    try:
+        import uuid
 
-        User = get_user_model()
         try:
-            import uuid
+            uuid.UUID(str(doc_uuid))
+            doc = SourceDocument.objects.get(uuid=doc_uuid)
+        except ValueError:
+            doc = SourceDocument.objects.get(id=int(doc_uuid))
+    except (SourceDocument.DoesNotExist, ValueError):
+        return {}
 
-            try:
-                uuid.UUID(str(doc_uuid))
-                doc = SourceDocument.objects.get(uuid=doc_uuid)
-            except ValueError:
-                doc = SourceDocument.objects.get(id=int(doc_uuid))
-        except (SourceDocument.DoesNotExist, ValueError):
-            return {}
+    for k, v in data.items():
+        if k == "uploaded_by_id":
+            if v:
+                try:
+                    doc.uploaded_by = User.objects.get(id=v)
+                except User.DoesNotExist:
+                    pass
+            else:
+                doc.uploaded_by = None
+        elif k == "expires_at":
+            if v:
+                from django.utils.dateparse import parse_datetime as django_parse
 
-        for k, v in data.items():
-            if k == "uploaded_by_id":
-                if v:
-                    try:
-                        doc.uploaded_by = User.objects.get(id=v)
-                    except User.DoesNotExist:
-                        pass
-                else:
-                    doc.uploaded_by = None
-            elif k == "expires_at":
-                if v:
-                    from django.utils.dateparse import parse_datetime as django_parse
+                doc.expires_at = django_parse(v)
+            else:
+                doc.expires_at = None
+        elif hasattr(doc, k):
+            setattr(doc, k, v)
+    doc.save()
+    return _model_to_dict(doc)
 
-                    doc.expires_at = django_parse(v)
-                else:
-                    doc.expires_at = None
-            elif hasattr(doc, k):
-                setattr(doc, k, v)
-        doc.save()
-        return _model_to_dict(doc)
 
+def _update_document_surreal(doc_uuid, data):
     VALID_DOCUMENT_FIELDS = {
         "doc_uuid",
         "file",
@@ -558,6 +611,16 @@ def update_document(doc_uuid: str, data: dict) -> dict:
     sql = f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid;"  # nosec B608 # noqa: S608
     rows = _first_result(_run(sql, params))
     return rows[0] if rows else {}
+
+
+def update_document(doc_uuid: str, data: dict) -> dict:
+    """Update fields on a document record in SurrealDB."""
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return _update_document_offline(doc_uuid, data)
+    return _update_document_surreal(doc_uuid, data)
 
 
 def get_document(doc_uuid: str) -> dict | None:
