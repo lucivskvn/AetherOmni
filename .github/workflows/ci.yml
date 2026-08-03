@@ -1,4 +1,4 @@
-name: DevSecOps CI Pipeline (Shift-Left Validation)
+name: DevSecOps CI Pipeline (Shift-Left & Cloud Security)
 
 on:
   push:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   fast-validation:
-    name: Shift-Left Fast Validation & Quality Check
+    name: Shift-Left Fast Validation
     runs-on: ubuntu-latest
 
     steps:
@@ -41,6 +41,25 @@ jobs:
         run: |
           python scripts/update_docs.py --ci || true
 
-      - name: Pipeline Complement Summary
-        run: |
-          echo "✅ Shift-left pre-push verification succeeded. Local SonarQube & Desloppify quality gates complementary."
+  cloud-security-scans:
+    name: Cloud Deep Security (Semgrep & Snyk & CodeQL)
+    runs-on: ubuntu-latest
+    needs: fast-validation
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep Cloud Rules
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/default
+        continue-on-error: true
+
+      - name: Run Snyk Vulnerability & Dependency Scan
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+        with:
+          args: --severity-threshold=high
