@@ -44,23 +44,23 @@ def extract_knative_scaling(config, default_min, default_max):
     if not config or not isinstance(config, dict):
         return default_min, default_max
 
-    # Gather all possible annotations dictionaries
     annotations_dicts = []
-    spec_dict = config.get("spec")
-    if isinstance(spec_dict, dict):
-        template_dict = spec_dict.get("template")
-        if isinstance(template_dict, dict):
-            metadata_dict = template_dict.get("metadata")
-            if isinstance(metadata_dict, dict):
-                ann_template = metadata_dict.get("annotations")
-                if isinstance(ann_template, dict) and ann_template:
-                    annotations_dicts.append(ann_template)
 
-    metadata_root = config.get("metadata")
-    if isinstance(metadata_root, dict):
-        ann_meta = metadata_root.get("annotations")
-        if isinstance(ann_meta, dict) and ann_meta:
-            annotations_dicts.append(ann_meta)
+    spec = config.get("spec", {})
+    if isinstance(spec, dict):
+        template = spec.get("template", {})
+        if isinstance(template, dict):
+            metadata = template.get("metadata", {})
+            if isinstance(metadata, dict):
+                ann = metadata.get("annotations", {})
+                if isinstance(ann, dict) and ann:
+                    annotations_dicts.append(ann)
+
+    meta = config.get("metadata", {})
+    if isinstance(meta, dict):
+        ann = meta.get("annotations", {})
+        if isinstance(ann, dict) and ann:
+            annotations_dicts.append(ann)
 
     min_keys = [KNATIVE_MIN_SCALE, "run.googleapis.com/minScale"]
     max_keys = ["autoscaling.knative.dev/maxScale", "run.googleapis.com/maxScale"]
