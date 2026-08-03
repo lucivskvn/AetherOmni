@@ -43,8 +43,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN groupadd -g 1000 django-group && \
     useradd -m -u 1000 -g django-group -s /bin/bash django-user
 
-# Copy project assets and code setting ownership on import
-COPY --chown=django-user:django-group . .
+# Copy project assets and application code specifically (OWASP S6470 compliance)
+COPY --chown=django-user:django-group core/ /app/core/
+COPY --chown=django-user:django-group extractor/ /app/extractor/
+COPY --chown=django-user:django-group manage.py init_surreal.py /app/
 
 # Grant write permissions to the WORKDIR itself
 RUN chown django-user:django-group /app
