@@ -14,7 +14,7 @@
         {% if document.status == 'COMPLETED' or document.refined_markdown %}
         <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 12px;">
             <label for="doc-title-input" style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Document Title</label>
-            <input type="text" id="doc-title-input" name="title" value="{{ document.title }}" form="editor-form" style="font-family: var(--font-display); font-size: 20px; font-weight: 700; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: #fff; max-width: 600px; outline: none; transition: border-color 0.2s; margin-bottom: 4px;" required>
+            <input type="text" id="doc-title-input" name="title" value="{{ document.title }}" form="editor-form" style="font-family: var(--font-display); font-size: 20px; font-weight: 700; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: var(--text-main); max-width: 600px; outline: none; transition: border-color 0.2s; margin-bottom: 4px;" required>
             <span class="original-filename">Original Filename: {{ document.original_filename }} (Hash: {{ document.file_hash }})</span>
         </div>
         {% else %}
@@ -94,7 +94,7 @@
                 {% elif document.status != 'COMPLETED' and document.language == 'Unknown' %}
                     <span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>
                 {% elif document.status == 'COMPLETED' or document.refined_markdown %}
-                    <input type="text" id="doc-language-input" name="language" value="{{ document.language }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: #fff; width: 100%; max-width: 180px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
+                    <input type="text" id="doc-language-input" name="language" value="{{ document.language }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: var(--text-main); width: 100%; max-width: 180px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
                 {% else %}
                     {{ document.language|normalize_language }}
                 {% endif %}
@@ -113,7 +113,7 @@
                 {% elif document.status != 'COMPLETED' and document.author == 'Unknown' %}
                     <span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>
                 {% elif document.status == 'COMPLETED' or document.refined_markdown %}
-                    <input type="text" id="doc-author-input" name="author" value="{{ document.author }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: #fff; width: 100%; max-width: 280px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
+                    <input type="text" id="doc-author-input" name="author" value="{{ document.author }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: var(--text-main); width: 100%; max-width: 280px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
                 {% else %}
                     {{ document.author }}
                 {% endif %}
@@ -239,7 +239,7 @@
     {% csrf_token %}
     <div class="editor-grid" id="curation-workspace-grid">
         <!-- Editor Input Panel -->
-        <div class="glass-card pane" role="region" aria-labelledby="editor-title">
+        <section class="glass-card pane" aria-labelledby="editor-title">
             <div class="pane-header" style="padding: 10px 16px;">
                 <div class="pane-title" id="editor-title"><i data-lucide="edit-3"></i> Refined Markdown Editor</div>
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -291,14 +291,14 @@
         </div>
 
         <!-- Rendered Preview Panel -->
-        <div class="glass-card pane" role="region" aria-labelledby="preview-title">
+        <section class="glass-card pane" aria-labelledby="preview-title">
             <div class="pane-header">
                 <div class="pane-title" id="preview-title"><i data-lucide="eye"></i> Live HTML Preview</div>
                 <span class="pane-title-subtext">Updates in real-time</span>
             </div>
             <div class="pane-body">
                 <div id="html-preview" class="preview-window" aria-labelledby="preview-title">
-                    {{ rendered_refined|safe }} {# NOSONAR #}
+                    {{ rendered_refined|safe }} {# NOSONAR #} {# NOSONAR #}
                 </div>
             </div>
         </div>

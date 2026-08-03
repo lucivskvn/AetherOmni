@@ -185,7 +185,7 @@ def _get_surreal_auth() -> dict:
             "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment is forbidden. "
             "Set SURREAL_USER and SURREAL_PASS environment variables to secure credentials."
         )
-    return {"username": user, "password": password}  # NOSONAR
+    return {"username": user, "password": password}  # NOSONAR  # NOSONAR
 
 
 def _extract_namespaces(root_info_res) -> list[str]:
@@ -444,7 +444,7 @@ def create_document(data: dict) -> dict:
             try:
                 uploaded_by = User.objects.get(id=uid)
             except User.DoesNotExist:
-                pass
+                uploaded_by = None
 
         doc = SourceDocument.objects.create(
             uuid=data.get("doc_uuid"),

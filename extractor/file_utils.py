@@ -28,10 +28,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
-from typing import IO, TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import IO, Any
 
 import bleach
 import markdown as md_lib
