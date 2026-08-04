@@ -20,6 +20,12 @@
 
 ---
 
+
+### 3. Fork & Upstream PR Safety Guard:
+   - **DO NOT TRIGGER OR TARGET UPSTREAM ORIGIN PARENT REPOSITORIES ON FORKS**:
+     When working on forked repositories, all PRs, branches, and commits MUST target  directly (e.g., ).
+   - Never submit pull requests to original third-party parent repositories unless explicitly requested by the user.
+
 ## 🛡️ Primary DevSecOps & System Guidelines
 
 1. **Remote Self-Hosted SonarQube Architecture ()**:
