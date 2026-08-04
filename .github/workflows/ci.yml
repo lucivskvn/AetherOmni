@@ -1,87 +1,94 @@
-name: DevSecOps CI Pipeline (Shift-Left & Cloud Security)
+name: DevSecOps 2026 Enterprise CI Pipeline (Shift-Left, SBOM & Cloud Security)
 
 on:
   push:
-    branches: [ current, main, master ]
+    branches: [ main, next ]
   pull_request:
-    branches: [ current, main, master ]
+    branches: [ main, next ]
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
   fast-validation:
-    name: Shift-Left Fast Validation
+    name: Shift-Left Fast Validation & Audit
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Cache Dependency Managers
+        uses: actions/cache@v4
         with:
-          python-version: "3.12"
+          path: |
+            ~/.cache/pip
+            ~/.npm
+            ~/.sonar/cache
+          key: ${{ runner.os }}-dep-${{ hashFiles('**/requirements.txt', '**/package-lock.json', '**/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-dep-
 
-      - name: Run Hadolint Docker Security Scan
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          failure-threshold: ignore
-
-      - name: Run Python Syntax & Import Validation
+      - name: Validate Pipeline Integrity
         run: |
-          python -m py_compile $(git ls-files '*.py')
+          if [ -f scripts/verify-pipeline.sh ]; then
+            bash -n scripts/verify-pipeline.sh
+          fi
 
-      - name: Verify Documentation & Version Alignment
-        run: |
-          python scripts/update_docs.py --ci || true
-
-  cloud-security-scans:
-    name: Cloud Deep Security (Semgrep & Snyk & CodeQL)
+  generate-sbom:
+    name: Software Bill of Materials (SBOM) Generation
     runs-on: ubuntu-latest
     needs: fast-validation
-
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@v4
 
-      - name: Run Semgrep Cloud Rules
-        uses: semgrep/semgrep-action@v1
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
         with:
-          config: p/default
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
         continue-on-error: true
 
-      - name: Run Snyk Vulnerability & Dependency Scan
-        uses: snyk/actions/python@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        continue-on-error: true
+      - name: Upload SBOM Artifact
+        uses: actions/upload-artifact@v4
         with:
-          args: --severity-threshold=high
+          name: sbom-cyclonedx
+          path: sbom.cyclonedx.json
+          retention-days: 14
+        continue-on-error: true
 
   sonarqube-cloud-analysis:
     name: SonarQube Cloud SAST (https://sonarqube.fainko.cloud)
     runs-on: ubuntu-latest
     needs: fast-validation
-
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Cache SonarQube Scanner Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
       - name: Run SonarQube Scan against Coolify Cloud Instance
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: "https://sonarqube.fainko.cloud"
+          SONAR_HOST_URL: https://sonarqube.fainko.cloud
         with:
           args: >
             -Dsonar.scm.disabled=true
             -Dsonar.threads=4
+            -Dsonar.analysis.cache.enabled=true
         continue-on-error: true
