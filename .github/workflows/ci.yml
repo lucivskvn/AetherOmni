@@ -2,7 +2,7 @@
 # GITHUB ACTIONS ENTERPRISE CI PIPELINE (STANDARDIZED: 2026-08-04)
 # ==============================================================================
 # Security & Performance Standards:
-# - Pinning Verified Action Versions (actions/checkout@v4.2.2, actions/cache@v4.2.2)
+# - Pinning Verified Action Versions (actions/checkout@v7, actions/cache@v4)
 # - Least Privilege Permissions Scoping (contents: read)
 # - Timeout Protections (timeout-minutes: 15)
 # - Dual-Layer Caching (Dependency & Sonar Engine)
@@ -34,10 +34,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout Codebase
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7
 
       - name: Cache Package & Engine Dependencies
-        uses: actions/cache@v4.2.2
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pip
@@ -62,12 +62,12 @@ jobs:
     needs: pre-scan-validation
     steps:
       - name: Checkout Codebase
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Cache SonarQube Engine
-        uses: actions/cache@v4.2.2
+        uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
