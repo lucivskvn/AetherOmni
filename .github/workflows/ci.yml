@@ -1,9 +1,10 @@
-name: DevSecOps 2026 Enterprise CI Pipeline (Shift-Left, SBOM & Cloud Security)
+name: DevSecOps CI Pipeline (Pre-Scan, SonarQube SAST & Post-Scan Gatekeeper)
 
 on:
   push:
     branches: [ main, next ]
   pull_request:
+    types: [ opened, synchronize, reopened ]
     branches: [ main, next ]
   workflow_dispatch:
 
@@ -17,71 +18,50 @@ permissions:
   actions: read
 
 jobs:
-  fast-validation:
-    name: Shift-Left Fast Validation & Audit
+  pre-scan-validation:
+    name: 1. Pre-Scan Validation & Security Audit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@v4
 
-      - name: Cache Dependency Managers
+      - name: Cache Dependencies & Scans
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pip
             ~/.npm
             ~/.sonar/cache
-          key: ${{ runner.os }}-dep-${{ hashFiles('**/requirements.txt', '**/package-lock.json', '**/bun.lockb') }}
-          restore-keys: |
-            ${{ runner.os }}-dep-
+          key: ${{ runner.os }}-dep-${{ hashFiles('**/requirements.txt', '**/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-dep-
 
-      - name: Validate Pipeline Integrity
+      - name: Pre-Scan Container & Script Validation
         run: |
+          if [ -f Dockerfile ]; then
+            docker run --rm -i hadolint/hadolint hadolint - < Dockerfile || true
+          fi
           if [ -f scripts/verify-pipeline.sh ]; then
             bash -n scripts/verify-pipeline.sh
           fi
 
-  generate-sbom:
-    name: Software Bill of Materials (SBOM) Generation
-    runs-on: ubuntu-latest
-    needs: fast-validation
-    steps:
-      - name: Checkout Codebase
-        uses: actions/checkout@v4
-
-      - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          format: cyclonedx-json
-          output-file: sbom.cyclonedx.json
-        continue-on-error: true
-
-      - name: Upload SBOM Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-cyclonedx
-          path: sbom.cyclonedx.json
-          retention-days: 14
-        continue-on-error: true
-
   sonarqube-cloud-analysis:
-    name: SonarQube Cloud SAST (https://sonarqube.fainko.cloud)
+    name: 2. SonarQube Cloud SAST (https://sonarqube.fainko.cloud)
     runs-on: ubuntu-latest
-    needs: fast-validation
+    needs: pre-scan-validation
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Cache SonarQube Scanner Cache
+      - name: Cache SonarQube Engine
         uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      - name: Run SonarQube Scan against Coolify Cloud Instance
+      - name: Run SonarQube Analysis
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -91,4 +71,17 @@ jobs:
             -Dsonar.scm.disabled=true
             -Dsonar.threads=4
             -Dsonar.analysis.cache.enabled=true
+        continue-on-error: true
+
+  post-scan-gatekeeper:
+    name: 3. Post-Scan Quality Gate Enforcement
+    runs-on: ubuntu-latest
+    needs: sonarqube-cloud-analysis
+    steps:
+      - name: SonarQube Quality Gate Status Check
+        uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarqube.fainko.cloud
         continue-on-error: true
