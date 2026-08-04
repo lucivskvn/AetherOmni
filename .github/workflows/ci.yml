@@ -63,3 +63,25 @@ jobs:
         continue-on-error: true
         with:
           args: --severity-threshold=high
+
+  sonarqube-cloud-analysis:
+    name: SonarQube Cloud SAST (https://sonarqube.fainko.cloud)
+    runs-on: ubuntu-latest
+    needs: fast-validation
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run SonarQube Scan against Coolify Cloud Instance
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: "https://sonarqube.fainko.cloud"
+        with:
+          args: >
+            -Dsonar.scm.disabled=true
+            -Dsonar.threads=4
+        continue-on-error: true
