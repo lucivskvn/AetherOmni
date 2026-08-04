@@ -227,7 +227,7 @@ echo "📊 [LAYER 6/7] Submitting to SonarQube MQR Server..."
 
 SONAR_HOST="https://sonarqube.fainko.cloud"
 if curl -s -H "User-Agent: Mozilla/5.0" "$SONAR_HOST/api/system/status" | grep -q "UP"; then
-    TOKEN="${SONAR_REMOTE_TOKEN:-${SONAR_TOKEN:-[REDACTED_SONAR_TOKEN]}}"
+    TOKEN="${SONAR_REMOTE_TOKEN:-${SONAR_TOKEN:-}}"
 
     if [ -n "$TOKEN" ]; then
         # Limit worker threads to half CPU count (max 4) to prevent CPU thrashing & OS freeze
