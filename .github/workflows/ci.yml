@@ -74,7 +74,7 @@ jobs:
           restore-keys: ${{ runner.os }}-sonar
 
       - name: Run SonarQube Analysis
-        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        uses: SonarSource/sonarqube-scan-action@v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
