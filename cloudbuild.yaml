@@ -1,32 +1,33 @@
 # ==============================================================================
-# GCP CLOUD BUILD PIPELINE - FREE TIER & HIGH PERFORMANCE HARDEING
+# GCP PRODUCTION BEST PRACTICES CLOUD BUILD PIPELINE (REGION: asia-southeast1)
 # ==============================================================================
-# Free Tier Guarantees:
-# - Cloud Run: 2M requests/mo, 360k GB-sec, 180k vCPU-sec FREE
-# - Cloud Build: 120 build-mins/day FREE
-# - Container CPU: Allocated ONLY during HTTP request processing
+# Compliance & Standards:
+# - OWASP Container Hardening (Non-Root Execution, Minimal Alpine Base)
+# - GCP Cloud Run Production Guidelines (Scale-to-Zero, Health Probes, HTTP/2)
+# - GCP Always-Free Tier Safety Limits
 # ==============================================================================
 steps:
-  # 1. Kaniko Container Build with Remote Layer Caching
+  # 1. Kaniko Container Build with Layer Caching
   - name: 'gcr.io/kaniko-project/executor:latest'
     args:
-      - '--destination=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/:$COMMIT_SHA'
-      - '--destination=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/:latest'
+      - '--destination=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--destination=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/${_SERVICE_NAME}:latest'
       - '--cache=true'
       - '--cache-ttl=24h'
       - '--cache-dir=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/cache'
 
-  # 2. Free-Tier Cost-Optimized Cloud Run Deployment
+  # 2. Production GCP Cloud Run Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - ''
-      - '--image=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/:$COMMIT_SHA'
+      - '${_SERVICE_NAME}'
+      - '--image=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/${_SERVICE_NAME}:$COMMIT_SHA'
       - '--region=asia-southeast1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--port=8080'
       - '--min-instances=0'
       - '--max-instances=5'
       - '--cpu=1'
