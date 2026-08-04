@@ -3,7 +3,6 @@ name: Auto-Update Documentation & Version
 on:
   push:
     branches:
-      - current
       - main
     paths-ignore:
       # Prevent infinite loop — these files are written by this workflow itself
