@@ -1,4 +1,14 @@
-name: DevSecOps CI Pipeline (Pre-Scan, SonarQube SAST & Post-Scan Gatekeeper)
+# ==============================================================================
+# GITHUB ACTIONS ENTERPRISE CI PIPELINE (STANDARDIZED: 2026-08-04)
+# ==============================================================================
+# Security & Performance Standards:
+# - Pinning Verified Action Versions (@v4 / @v5)
+# - Least Privilege Permissions Scoping (contents: read)
+# - Timeout Protections (timeout-minutes: 15)
+# - Dual-Layer Caching (Dependency & Sonar Engine)
+# - 3-Phase Gatekeeper (Pre-Scan -> SonarQube SAST -> Post-Scan Quality Gate)
+# ==============================================================================
+name: DevSecOps CI Pipeline
 
 on:
   push:
@@ -21,18 +31,19 @@ jobs:
   pre-scan-validation:
     name: 1. Pre-Scan Validation & Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@v4
 
-      - name: Cache Dependencies & Scans
+      - name: Cache Package & Engine Dependencies
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/pip
             ~/.npm
             ~/.sonar/cache
-          key: ${{ runner.os }}-dep-${{ hashFiles('**/requirements.txt', '**/package-lock.json') }}
+          key: ${{ runner.os }}-dep-${{ hashFiles('**/requirements.txt', '**/package-lock.json', '**/bun.lockb') }}
           restore-keys: ${{ runner.os }}-dep-
 
       - name: Pre-Scan Container & Script Validation
@@ -47,6 +58,7 @@ jobs:
   sonarqube-cloud-analysis:
     name: 2. SonarQube Cloud SAST (https://sonarqube.fainko.cloud)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: pre-scan-validation
     steps:
       - name: Checkout Codebase
@@ -76,11 +88,11 @@ jobs:
   post-scan-gatekeeper:
     name: 3. Post-Scan Quality Gate Enforcement
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: sonarqube-cloud-analysis
     steps:
       - name: SonarQube Quality Gate Status Check
         uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
-        timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
