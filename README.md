@@ -56,7 +56,7 @@ We use a **7-gate** unified pre-check QA runner to prevent bugs or security leak
 
 ## 📰 Auto-Updated Documentation
 
-README.md and `gcp_deployment_guide.md` are **never stale**. Every push to `current` triggers a GitHub Actions workflow that:
+README.md and `gcp_deployment_guide.md` are **never stale**. Every push to `main` triggers a GitHub Actions workflow that:
 - Bumps the **version badge** from the canonical `VERSION` file
 - Stamps the **last-updated date** and **commit SHA** badge
 - Updates the **RELEASE_VERSION** in `service.yaml` / `service-worker.yaml` with the live build timestamp
