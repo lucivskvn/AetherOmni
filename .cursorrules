@@ -4,22 +4,34 @@
 
 ---
 
-## 🎯 Primary Guidelines & DevSecOps Mandates
+## 🎯 MANDATORY WORKFLOW FOR AI AGENTS (Antigravity & Jules AI)
 
-1. **Shift-Left Local Verification**:
-   - Before submitting changes, execute local quality gate checks via `scripts/verify-pipeline.sh`.
-   - Must achieve **0 Blocker / High Security Vulnerabilities** across Hadolint, Bandit, AST-Grep, and SonarQube MQR.
+### 1. Shift-Left Local Verification FIRST:
+   - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
+     You MUST execute  (or ) locally first after making any code changes.
+   - You MUST ensure the local 7-layer verification passes cleanly with **0 Blocker / High Security Vulnerabilities** (Hadolint, Bandit, AST-Grep, Pytest/Coverage) BEFORE creating or opening a Pull Request.
 
-2. **Remote Self-Hosted SonarQube Architecture (`https://sonarqube.fainko.cloud`)**:
-   - Target Host: `https://sonarqube.fainko.cloud` (Coolify Cloudflare Tunnel).
+### 2. Automated Cloud SAST & Quality Gate (SonarQube & Semgrep):
+   - Once  passes locally, create/push the Pull Request.
+   - The 3-phase GitHub Actions pipeline will automatically trigger:
+     1. Pre-Scan Validation
+     2. Deep SonarQube SAST on  ( rules)
+     3. Post-Scan Quality Gate Gatekeeper
+
+---
+
+## 🛡️ Primary DevSecOps & System Guidelines
+
+1. **Remote Self-Hosted SonarQube Architecture ()**:
+   - Target Host:  (Coolify Cloudflare Tunnel).
    - Zero local server footprint: Reclaims local RAM and CPU cycles.
-   - GitHub Actions Integration: Automated SAST scans trigger on every `push` and `pull_request` using `SONAR_TOKEN`.
+   - GitHub Actions Integration: Automated SAST scans trigger on every  and  using .
 
-3. **Hardware & Operating System Stability**:
-   - Battery-less AC Operation: Disables systemd kernel suspend/hibernate (`disable-suspend.conf`) to prevent ACPI EC deadlocks.
-   - Nvidia Dynamic Power Management: Sets `options nvidia NVreg_DynamicPowerManagement=0x00` to prevent `D3cold` SBIOS power state lockups during IDE and browsing sessions.
-   - Thread Concurrency Cap: Caps SonarScanner CLI workers to `-Dsonar.threads=4` to prevent CPU thrashing.
+2. **Hardware & Operating System Stability**:
+   - Battery-less AC Operation: Disables systemd kernel suspend/hibernate () to prevent ACPI EC deadlocks.
+   - Nvidia Dynamic Power Management: Sets  to prevent  SBIOS power state lockups during IDE and browsing sessions.
+   - Thread Concurrency Cap: Caps SonarScanner CLI workers to  to prevent CPU thrashing.
 
-4. **Code Quality & Eco-Design**:
+3. **Code Quality & Eco-Design**:
    - Adhere to Creedengo Eco-Design rules (low energy consumption, optimal memory management).
    - Zero dead code, unused imports, or non-UTF-8 binary encodings.
