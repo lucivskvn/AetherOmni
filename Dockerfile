@@ -43,13 +43,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN groupadd -g 1000 django-group && \
     useradd -m -u 1000 -g django-group -s /bin/bash django-user
 
-# Copy project assets and application code specifically (OWASP S6470 compliance)
-COPY --chown=django-user:django-group core/ /app/core/
-COPY --chown=django-user:django-group extractor/ /app/extractor/
-COPY --chown=django-user:django-group manage.py init_surreal.py /app/
+# Copy project assets and application code owned by root (read-only for non-root user)
+COPY core/ /app/core/
+COPY extractor/ /app/extractor/
+COPY manage.py init_surreal.py /app/
 
-# Grant write permissions to the WORKDIR itself
-RUN chown django-user:django-group /app
+# Ensure application files are read-only/executable for non-root user
+RUN chmod -R 755 /app
 
 USER django-user
 

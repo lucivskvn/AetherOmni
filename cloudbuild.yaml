@@ -1,5 +1,5 @@
 # ==============================================================================
-# GCP CLOUD BUILD PIPELINE WITH KANIKO LAYER CACHING (REGION: asia-southeast1)
+# GCP CLOUD BUILD PIPELINE WITH KANIKO CACHING & ZERO-COST AUTO-SCALING
 # ==============================================================================
 steps:
   # 1. High-Performance Kaniko Container Build with Remote Layer Caching
@@ -11,7 +11,7 @@ steps:
       - '--cache-ttl=24h'
       - '--cache-dir=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/cache'
 
-  # 2. Serverless Cloud Run Deployment for Django WebApp
+  # 2. Cost-Optimized Cloud Run Deployment (Scale to 0 when idle)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -22,6 +22,9 @@ steps:
       - '--region=asia-southeast1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--min-instances=0'
+      - '--max-instances=10'
+      - '--concurrency=80'
 
 substitutions:
   _SERVICE_NAME: 'aetheromni'
