@@ -41,8 +41,31 @@
     <script defer src="{{ main_js_url|cache_bust }}"></script>
     
     {% block extra_css %}{% endblock %}
+    <style>
+        .skip-to-main {
+            position: absolute;
+            top: -100px;
+            left: 20px;
+            background: var(--primary) !important;
+            color: white !important;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: 700;
+            text-decoration: none;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+            transition: top 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .skip-to-main:focus {
+            top: 20px;
+            outline: 2px solid white;
+            outline-offset: 2px;
+        }
+    </style>
 </head>
 <body data-supabase-url="{{ SUPABASE_URL|default:'' }}" data-supabase-key="{{ SUPABASE_PUBLIC_KEY|default:'' }}">
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
     <header>
         <div class="nav-container">
             <a href="{% url 'dashboard' %}" class="brand-logo">
@@ -106,7 +129,7 @@
     </div>
     {% endif %}
 
-    <main>
+    <main id="main-content" tabindex="-1">
         {% block content %}{% endblock %}
     </main>
 
