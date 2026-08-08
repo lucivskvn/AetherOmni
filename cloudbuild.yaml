@@ -9,7 +9,7 @@
 # NOTE: This cloudbuild.yaml uses _ARTIFACT_REGISTRY and _PROJECT substitutions
 # that must be configured in the Cloud Build trigger settings for the target
 # project. The registry path must match the project used in service.yaml.
-# Current deployed project: esbpcs-lab-un (see service.yaml)
+# Configure target GCP project in Cloud Build trigger settings or .env
 # ==============================================================================
 steps:
   # 1. Kaniko Container Build with Layer Caching
