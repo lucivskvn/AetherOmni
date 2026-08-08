@@ -226,23 +226,6 @@ Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (
 
 ---
 
-## 📊 SonarQube SAST & Quality Gate Findings
-
-Live analysis reports are automatically ingested from [sonarqube.fainko.cloud](https://sonarqube.fainko.cloud/dashboard?id=aetheromni) on every push and Pull Request.
-
-### 🛡️ SonarQube Software Quality & Security Summary
-
-| Category | Status / Count | Severity / Classification | Mitigation & Resolution Details |
-| :--- | :--- | :--- | :--- |
-| **Quality Gate** | **PASSED** | Gatekeeper Status | 0 Blocker / 0 Critical issues required for merge. |
-| **Security Vulnerabilities** | **0** | High / Blocker | 100% clean (Bandit & Semgrep 0-finding gate enforced). |
-| **Security Hotspots** | **4** | Review Required | Hardened with `# nosec B603 / B310` & GCP metadata validation. |
-| **Reliability Bugs** | **1** | Low | Scoped with fallback exception handling. |
-| **Maintainability (Code Smells)** | **48** | Minor | Non-blocking refactoring (e.g., duplicate string constants). |
-| **Unit Test Coverage** | **184 Passing** | Automated Test Suite | Ingested into SonarQube via `coverage.xml` export. |
-
----
-
 ## 🚀 Local Development Setup Guide
 
 ### 1. Prerequisites
