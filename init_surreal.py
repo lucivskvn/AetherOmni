@@ -59,11 +59,11 @@ def apply_schema(client: httpx.Client) -> None:
     # Pre-define namespace and database for SurrealDB 3.x compatibility
     logger.info("Ensuring namespace '%s' and database '%s' exist...", SURREAL_NS, SURREAL_DB)
     try:
-        client.post("/sql", content=f"DEFINE NAMESPACE {SURREAL_NS};".encode(), headers={"Accept": "APPLICATION_JSON"})
+        client.post("/sql", content=f"DEFINE NAMESPACE {SURREAL_NS};".encode(), headers={"Accept": APPLICATION_JSON})
         client.post(
             "/sql",
             content=f"DEFINE DATABASE {SURREAL_DB};".encode(),
-            headers={"surreal-ns": SURREAL_NS, "Accept": "APPLICATION_JSON"},
+            headers={"surreal-ns": SURREAL_NS, "Accept": APPLICATION_JSON},
         )
     except Exception as exc:
         logger.warning("Namespace/database pre-definition warning: %s", exc)
@@ -73,7 +73,7 @@ def apply_schema(client: httpx.Client) -> None:
         "DB": SURREAL_DB,
         "surreal-ns": SURREAL_NS,
         "surreal-db": SURREAL_DB,
-        "Accept": "APPLICATION_JSON",
+        "Accept": APPLICATION_JSON,
         "Content-Type": "text/plain",
     }
 
@@ -210,24 +210,26 @@ def _setup_local_admin(admin_username, admin_email, admin_password, supabase_url
 def _migrate_system_settings():
     from extractor.models import SystemSettings
 
+    # Migrate stale model name in SurrealDB system_settings
     try:
         from extractor.surreal_db import get_system_settings, save_system_settings
 
         db_settings = get_system_settings()
-        if db_settings.get("default_llm_model") == "gemini-1.5-flash":
-            db_settings["default_llm_model"] = "google/gemini-3.5-flash"
+        if db_settings.get("selected_model") in ("gemini-1.5-flash", "gemini-3.1-flash-lite", "default_llm_model"):
+            db_settings["selected_model"] = "gemini-3.6-flash"
             save_system_settings(db_settings)
-            logger.info("System settings migrated: updated db model to 'google/gemini-3.5-flash'")
+            logger.info("System settings migrated: updated SurrealDB model to 'gemini-3.6-flash'")
     except Exception as me:
         logger.warning("Failed to migrate SurrealDB settings: %s", me)
 
+    # Migrate stale model name in SQLite SystemSettings
     try:
         if SystemSettings.objects.exists():
             stg = SystemSettings.objects.first()
-            if stg.default_llm_model == "gemini-1.5-flash":
-                stg.default_llm_model = "google/gemini-3.5-flash"
+            if stg.selected_model in ("gemini-1.5-flash", "google/gemini-1.5-flash", "gemini-3.1-flash-lite"):
+                stg.selected_model = "gemini-3.6-flash"
                 stg.save()
-                logger.info("System settings migrated: updated legacy model to 'google/gemini-3.5-flash'")
+                logger.info("System settings migrated: updated SQLite model to 'gemini-3.6-flash'")
     except Exception as se:
         logger.warning("Failed to migrate SystemSettings model: %s", se)
 
@@ -240,6 +242,12 @@ def init_django_admin():
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
         django.setup()
         from django.conf import settings
+        from django.core.management import call_command
+
+        try:
+            call_command("migrate", interactive=False)
+        except Exception as me:
+            logger.warning("Django migrate warning: %s", me)
 
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")

@@ -3,7 +3,7 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: aether-web
-  namespace: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
+  namespace: "esbpcs-lab-un"
   labels:
     cloud.googleapis.com/location: asia-southeast1
   annotations:
@@ -14,16 +14,16 @@ spec:
       annotations:
         run.googleapis.com/launch-stage: BETA
     spec:
-      serviceAccountName: run-service-account@cs-poc-pfjoxqspipkzqdfmgnqcd3c.iam.gserviceaccount.com
+      serviceAccountName: run-service-account@esbpcs-lab-un.iam.gserviceaccount.com
       timeoutSeconds: 900
       containers:
-      - image: asia-southeast1-docker.pkg.dev/cs-poc-pfjoxqspipkzqdfmgnqcd3c/aether-repo/aether-web:latest
+      - image: asia-southeast1-docker.pkg.dev/esbpcs-lab-un/aether-repo/aether-web:latest
         name: web
         ports:
         - containerPort: 8080
         env:
         - name: RELEASE_VERSION
-          value: "v1.2.331+aa571fa"
+          value: "v1.2.332+3cffd60-dirty"
         - name: DJANGO_DEBUG
           value: "False"
         - name: SECURE_SSL_REDIRECT
@@ -33,13 +33,13 @@ spec:
         - name: CSRF_COOKIE_SECURE
           value: "True"
         - name: GS_BUCKET_NAME
-          value: "cs-poc-pfjoxqspipkzqdfmgnqcd3c-media-data-extractor"
+          value: "esbpcs-lab-un-media-data-extractor"
         - name: DJANGO_ALLOWED_HOSTS
           value: "localhost,127.0.0.1,.run.app"
         - name: DJANGO_CSRF_TRUSTED_ORIGINS
           value: "https://*.run.app"
         - name: GCP_PROJECT_ID
-          value: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
+          value: "esbpcs-lab-un"
         - name: GCP_REGION
           value: "asia-southeast1"
         - name: GCP_QUEUE_LOCATION
@@ -57,7 +57,11 @@ spec:
         - name: SURREALDB_OFFLINE
           value: "False"
         - name: GOOGLE_CLOUD_PROJECT
-          value: "cs-poc-pfjoxqspipkzqdfmgnqcd3c"
+          value: "esbpcs-lab-un"
+        - name: GEMINI_MODEL
+          value: "gemini-3.6-flash"
+        - name: GEMINI_MODEL_BATCH
+          value: "gemini-3.5-flash-lite"
         - name: SURREAL_URL
           valueFrom:
             secretKeyRef:

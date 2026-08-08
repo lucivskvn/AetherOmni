@@ -1,3 +1,11 @@
+[project]
+name = "aetheromni"
+version = "1.2"
+description = "Enterprise Multi-Model RAG & Document Intelligence Platform"
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "AGPL-3.0" }
+
 [tool.ruff]
 # Exclude common directories
 exclude = [
@@ -11,7 +19,7 @@ exclude = [
 ]
 
 line-length = 120
-target-version = "py312"
+target-version = "py313"
 
 [tool.ruff.lint]
 # Enable Pyflakes (F) and Pycodestyle (E, W) by default, alongside Django, Bugbear, and Security checks

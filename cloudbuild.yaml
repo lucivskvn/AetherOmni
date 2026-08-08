@@ -5,16 +5,21 @@
 # - OWASP Container Hardening (Non-Root Execution, Minimal Alpine Base)
 # - GCP Cloud Run Production Guidelines (Scale-to-Zero, Health Probes, HTTP/2)
 # - GCP Always-Free Tier Safety Limits
+#
+# NOTE: This cloudbuild.yaml uses _ARTIFACT_REGISTRY and _PROJECT substitutions
+# that must be configured in the Cloud Build trigger settings for the target
+# project. The registry path must match the project used in service.yaml.
+# Current deployed project: esbpcs-lab-un (see service.yaml)
 # ==============================================================================
 steps:
   # 1. Kaniko Container Build with Layer Caching
   - name: 'gcr.io/kaniko-project/executor:latest'
     args:
-      - '--destination=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/${_SERVICE_NAME}:$COMMIT_SHA'
-      - '--destination=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/${_SERVICE_NAME}:latest'
+      - '--destination=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--destination=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE_NAME}:latest'
       - '--cache=true'
       - '--cache-ttl=24h'
-      - '--cache-dir=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/cache'
+      - '--cache-dir=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/cache'
 
   # 2. Production GCP Cloud Run Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -23,7 +28,7 @@ steps:
       - 'run'
       - 'deploy'
       - '${_SERVICE_NAME}'
-      - '--image=asia-southeast1-docker.pkg.dev/esbpcs-lab-un/cloud-run-source-deploy/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--image=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE_NAME}:$COMMIT_SHA'
       - '--region=asia-southeast1'
       - '--platform=managed'
       - '--allow-unauthenticated'

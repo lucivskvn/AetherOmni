@@ -1,6 +1,11 @@
 -- ============================================================
--- AetherOmni — SurrealDB Schema v2.0
--- Apply with:  surreal import --conn http://localhost:8001 \
+-- AetherOmni — SurrealDB Schema (v3.x compatible)
+-- Apply with:  surreal import --conn wss://surrealdb.fainko.cloud/rpc \
+--              --user <user> --pass <pass> --ns aetheromni --db extractor \
+--              schema.surql
+--
+-- For local dev (docker-compose):
+--              surreal import --conn http://localhost:8001 \
 --              --user root --pass root --ns aetheromni --db extractor \
 --              schema.surql
 -- ============================================================

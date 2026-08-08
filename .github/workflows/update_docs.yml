@@ -10,6 +10,7 @@ on:
       - "gcp_deployment_guide.md"
       - "service.yaml"
       - "service-worker.yaml"
+      - "sonar-project.properties"
       - ".github/workflows/update_docs.yml"
 
   # Allow manual trigger from GitHub UI or API
@@ -37,7 +38,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -82,7 +83,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -125,9 +126,10 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md gcp_deployment_guide.md service.yaml service-worker.yaml .test_count || true
+          git add README.md gcp_deployment_guide.md service.yaml service-worker.yaml sonar-project.properties .test_count || true
           git commit -m "docs: set version ${{ needs.compute-version.outputs.release_ver }} [skip ci]"
-          git push
+          git pull --rebase origin main || true
+          git push origin main
 
       - name: Summary
         run: |

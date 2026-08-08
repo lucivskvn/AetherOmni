@@ -34,8 +34,8 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-MODEL_GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"
-MODEL_GEMINI_FLASH = "gemini-3.5-flash"
+MODEL_GEMINI_FLASH_LITE = "gemini-3.5-flash-lite"
+MODEL_GEMINI_FLASH = "gemini-3.6-flash"
 _NOT_FOUND = "not found"
 PREFIX_GOOGLE = "google/"
 
@@ -259,7 +259,7 @@ def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int
 
     if "embedding" in model_name or "embed" in model_name:
         return Decimal("0.00")
-    elif "3.1" in model_name and "lite" in model_name:
+    elif "lite" in model_name:
         in_rate = Decimal("0.25")
         out_rate = Decimal("1.50")
     else:
@@ -437,6 +437,8 @@ KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
     {
         MODEL_GEMINI_FLASH,
         MODEL_GEMINI_FLASH_LITE,
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
         "gemini-3.1-pro",
         "auto",
     }
@@ -478,14 +480,14 @@ def _determine_api_routing(model_name: str, is_vision: bool, openrouter_api_key:
 
     if model_name == "auto":
         if is_vision:
-            # gemini-3.5-flash: 1M context window, best multimodal balance
-            final_model = MODEL_GEMINI_FLASH  # = gemini-3.5-flash
+            # gemini-3.6-flash: 1M context window, best multimodal accuracy & speed
+            final_model = MODEL_GEMINI_FLASH  # = gemini-3.6-flash
         else:
             if openrouter_api_key:
                 final_model = "meta-llama/llama-3-8b-instruct:free"
                 use_openrouter = True
             else:
-                # gemini-3.5-flash: 1M context, $0.30/$2.50 per 1M — best cost/context balance
+                # gemini-3.6-flash: 1M context — best performance/cost balance
                 final_model = MODEL_GEMINI_FLASH
     else:
         # Check if the requested model is an OpenRouter model (has '/' but is not google/)
@@ -509,8 +511,8 @@ def _call_gemini_with_fallback(
     # Compile fallback chain starting with the chosen model, followed by progressive defaults
     fallback_list = []
     # Fallback priority:
-    # 1. Chosen model  2. gemini-3.5-flash (1M ctx, $0.30/$2.50 — best balance)
-    # 3. gemini-3.1-flash-lite (budget fallback)
+    # 1. Chosen model  2. gemini-3.6-flash (1M ctx — best performance/cost balance)
+    # 3. gemini-3.5-flash-lite (budget fallback)
     for candidate in [gemini_model, MODEL_GEMINI_FLASH, MODEL_GEMINI_FLASH_LITE]:
         if candidate not in fallback_list:
             fallback_list.append(candidate)
@@ -1092,16 +1094,18 @@ def _run_ocr_with_upload(client: Any, file_path: str, model_name: str, ocr_promp
                 logger.warning("[OCR Stage 1] Failed to delete remote file %s: %s", file_ref.name, cleanup_err)
 
 
-def run_stage1_multimodal_ocr(file_path: str, model_name: str = MODEL_GEMINI_FLASH) -> dict[str, Any]:
+def run_stage1_multimodal_ocr(file_path: str, model_name: str = MODEL_GEMINI_FLASH_LITE) -> dict[str, Any]:
     """
     Pass 1 Multimodal OCR. Uploads the target PDF/Image using Gemini Files API
     to handle heavy payloads (up to 170+ pages) without timeouts or memory crashes,
     runs structure-aware optical character recognition, and monitors execution.
+    Defaults to MODEL_GEMINI_FLASH_LITE (gemini-3.5-flash-lite) for high-speed,
+    cost-optimized batch ingestion.
     If Gemini API Key is missing or rate-limited/exhausted, falls back to Vertex AI inline bytes.
     """
     model_name = _resolve_model_name(model_name)
     if model_name == "auto":
-        model_name = MODEL_GEMINI_FLASH
+        model_name = MODEL_GEMINI_FLASH_LITE
 
     client, use_vertex_directly = _init_ocr_client()
 

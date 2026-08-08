@@ -257,7 +257,7 @@ SURREAL_PASS = os.getenv("SURREAL_PASS", "")
 if not SURREAL_PASS and DEBUG:
     SURREAL_PASS = "root"  # nosec B105
 
-if not DEBUG and SURREAL_PASS in ("", "root") and not SURREALDB_OFFLINE:
+if not DEBUG and SURREAL_PASS in ("", "root") and not SURREALDB_OFFLINE and "collectstatic" not in sys.argv:
     raise ImproperlyConfigured(
         "SURREAL_PASS environment variable is not set or is using the default 'root' credential. "
         "Production deployments require an explicit, strong password for SurrealDB."
@@ -359,7 +359,7 @@ if DEBUG:
 
 # In production, enforce SSL and secure cookies (fully configurable via environment variables)
 if not DEBUG:
-    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
+    SECURE_SSL_REDIRECT = False if TESTING else os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
     SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "True").lower() == "true"
     CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", "True").lower() == "true"
 
@@ -376,7 +376,7 @@ else:
 DATA_RETENTION_DAYS = int(os.getenv("DATA_RETENTION_DAYS", "30"))
 MONTHLY_BUDGET_USD = float(os.getenv("MONTHLY_BUDGET_USD", "10.00"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 if not DEBUG and not GEMINI_API_KEY and not os.getenv("GOOGLE_CLOUD_PROJECT") and not os.getenv("GCP_PROJECT"):
     logger.warning(

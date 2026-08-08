@@ -27,11 +27,13 @@ class DeploymentFunctionsTestCase(TestCase):
         self.assertEqual(details["project_id"], "env-project")
         self.assertEqual(details["region"], "us-east1")
 
+    @patch("subprocess.run")
     @patch("os.getenv")
     @patch("urllib.request.urlopen")
-    def test_get_gcp_project_details_metadata(self, mock_urlopen, mock_getenv):
+    def test_get_gcp_project_details_metadata(self, mock_urlopen, mock_getenv, mock_subproc):
         # Env vars don't exist, metadata server returns project and region
         mock_getenv.side_effect = lambda key, default=None: default
+        mock_subproc.return_value = MagicMock(stdout="", returncode=1)
 
         mock_resp_project = MagicMock()
         mock_resp_project.read.return_value = b"metadata-project"
@@ -47,11 +49,13 @@ class DeploymentFunctionsTestCase(TestCase):
         self.assertEqual(details["project_id"], "metadata-project")
         self.assertEqual(details["region"], "us-west2")
 
+    @patch("subprocess.run")
     @patch("os.getenv")
     @patch("urllib.request.urlopen")
-    def test_get_gcp_project_details_fallback(self, mock_urlopen, mock_getenv):
-        # Env vars don't exist, metadata server fails
+    def test_get_gcp_project_details_fallback(self, mock_urlopen, mock_getenv, mock_subproc):
+        # Env vars don't exist, metadata server fails, gcloud fails
         mock_getenv.side_effect = lambda key, default=None: default
+        mock_subproc.return_value = MagicMock(stdout="", returncode=1)
         mock_urlopen.side_effect = Exception("Metadata server offline")
 
         details = get_gcp_project_details()

@@ -234,10 +234,16 @@ static_root/
 # AI code-quality tool state (machine-generated, not source code)
 .desloppify/
 .Jules/
+.kiro/
+.sonar-cache/
+.test_count
 
 # CI/CD generated artifacts
 sbom.json
 coverage.xml
+bandit-report.json
+hadolint-report.json
+ast-grep-report.json
 
 # Ad-hoc scratch / test files at repo root
 /temp*.txt
