@@ -65,12 +65,12 @@ class DeploymentFunctionsTestCase(TestCase):
     @patch("urllib.request.urlopen")
     def test_get_gcp_access_token_success(self, mock_urlopen):
         mock_resp = MagicMock()
-        mock_resp.read.return_value = b'{"access_token": "ya29.mock-token"}'
+        mock_resp.read.return_value = b'{"access_token": "mock-gcp-oauth-test-token"}'
         mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
 
         token = get_gcp_access_token()
-        self.assertEqual(token, "ya29.mock-token")
+        self.assertEqual(token, "mock-gcp-oauth-test-token")
 
     @patch("urllib.request.urlopen")
     def test_get_gcp_access_token_failure(self, mock_urlopen):

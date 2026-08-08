@@ -2,7 +2,7 @@
 # Docker Compose v2 format — 'version' key is obsolete and intentionally omitted.
 #
 # Local development stack — mirrors production architecture.
-# Production uses a remote SurrealDB instance at wss://surrealdb.fainko.cloud/rpc
+# Production uses a remote SurrealDB instance configured via SURREAL_URL in .env
 # Set SURREAL_URL in .env to point at the remote instance instead of the local
 # container if you want to develop against production data.
 services:
@@ -28,8 +28,8 @@ services:
         condition: service_healthy
 
   # 2. SurrealDB v3 — Structured Data, Vector Store & KV Cache
-  # Matches the remote production version (wss://surrealdb.fainko.cloud/rpc)
-  surrealdb: # nosemgrep
+  # Matches the remote production version
+  surrealdb:
     image: surrealdb/surrealdb:v3.2.0
     container_name: aether-surrealdb
     security_opt:

@@ -137,3 +137,9 @@ class FileUtilsTestCase(TestCase):
         self.assertTrue(any("Author/shakespeare" in name for name in namelist))
         self.assertIn("manifest.json", namelist)
         self.assertIn("master_archival_source.md", namelist)
+
+    @patch("extractor.llm_gateway.generate_multimodal_vision_ocr")
+    def test_extract_pdf_diagrams_with_vision(self, mock_ocr):
+        mock_ocr.return_value = "### Diagram Nodes: A -> B"
+        res = file_utils.extract_pdf_diagrams_with_vision("/nonexistent/file.pdf")
+        self.assertIsInstance(res, str)

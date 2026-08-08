@@ -28,7 +28,7 @@ from extractor.deployment import get_gcp_project_details
 try:
     from google.cloud import tasks_v2
 except ImportError:
-    tasks_v2 = None
+    tasks_v2 = None  # type: ignore[assignment]
 
 
 # ── Production: Google Cloud Tasks client (lazy import) ───────────────────────
@@ -113,7 +113,7 @@ def get_gcp_service_account() -> str | None:
             url,
             headers={"Metadata-Flavor": "Google"},
         )
-        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 nosemgrep
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep
             return response.read().decode("utf-8").strip()
     except Exception:
         return None

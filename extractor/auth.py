@@ -28,7 +28,7 @@ def _resolve_target_email(username: str, supabase_url: str) -> tuple[str, bool]:
     if username == admin_username:
         if admin_username == "admin":
             parsed = urlparse(supabase_url)
-            domain = parsed.netloc if parsed.netloc else "example.com"
+            domain = parsed.netloc or "example.com"
             return f"admin@{domain}", True
         else:
             return admin_email, True
@@ -87,7 +87,7 @@ def _sync_supabase_user(
     )
 
     parsed_url = urlparse(supabase_url)
-    domain = parsed_url.netloc if parsed_url.netloc else "example.com"
+    domain = parsed_url.netloc or "example.com"
     expected_admin_email = f"admin@{domain}"
     admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
 

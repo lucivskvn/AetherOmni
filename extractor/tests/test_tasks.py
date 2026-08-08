@@ -127,7 +127,7 @@ class ResilienceAndSafetyTestCase(TestCase):
 
     @patch("extractor.cloud_tasks.enqueue")
     def test_document_retry_view(self, mock_enqueue):
-        _user = User.objects.create_user(username="retrytestuser", password="password123")
+        user = User.objects.create_user(username="retrytestuser", password="password123")
         self.client.login(username="retrytestuser", password="password123")
 
         doc = SourceDocument.objects.create(
@@ -138,7 +138,7 @@ class ResilienceAndSafetyTestCase(TestCase):
             input_tokens=1500,
             output_tokens=750,
             error_message="Stage 2 Failure: rate limit reached",
-            uploaded_by=_user,
+            uploaded_by=user,
             retry_count=0,
         )
 
@@ -161,7 +161,7 @@ class ResilienceAndSafetyTestCase(TestCase):
 
     @patch("extractor.cloud_tasks.enqueue")
     def test_document_retry_limit_exceeded(self, mock_enqueue):
-        _user = User.objects.create_user(username="retrytestuser2", password="password123")
+        user = User.objects.create_user(username="retrytestuser2", password="password123")
         self.client.login(username="retrytestuser2", password="password123")
 
         doc = SourceDocument.objects.create(
@@ -172,7 +172,7 @@ class ResilienceAndSafetyTestCase(TestCase):
             input_tokens=1500,
             output_tokens=750,
             error_message="Stage 2 Failure: rate limit reached",
-            uploaded_by=_user,
+            uploaded_by=user,
             retry_count=3,
         )
 

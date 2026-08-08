@@ -13,10 +13,10 @@ name: DevSecOps CI Pipeline
 
 on:
   push:
-    branches: [ main, next ]
+    branches: [main, next]
   pull_request:
-    types: [ opened, synchronize, reopened ]
-    branches: [ main, next ]
+    types: [opened, synchronize, reopened]
+    branches: [main, next]
   workflow_dispatch:
 
 concurrency:

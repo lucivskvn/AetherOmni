@@ -28,11 +28,22 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
+
+from django.conf import settings
+
+
+def _get_gcs_bucket():
+    from google.cloud import storage
+
+    client = storage.Client()
+    bucket_name = getattr(settings, "GS_BUCKET_NAME", "aetheromni-storage")
+    return client.bucket(bucket_name)
+
+
 from typing import IO, Any
 
-import bleach
-import markdown as md_lib
-from django.conf import settings
+import bleach  # type: ignore[import-untyped]
+import markdown as md_lib  # type: ignore[import-untyped]
 from django.utils.text import slugify
 
 logger = logging.getLogger(__name__)
@@ -80,7 +91,7 @@ def process_csv_local(file_path: str) -> str:
     """
     import csv
 
-    markdown_lines = []
+    markdown_lines: list[str] = []
     try:
         with open(file_path, newline="", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
@@ -94,8 +105,12 @@ def process_csv_local(file_path: str) -> str:
         return "*Empty CSV Document*"
 
     headers = rows[0]
-    markdown_lines.append("| " + " | ".join([h.replace("|", "\\|") for h in headers]) + " |")
-    markdown_lines.append("| " + " | ".join(["---" for _ in headers]) + " |")
+    markdown_lines.extend(
+        (
+            "| " + " | ".join([h.replace("|", "\\|") for h in headers]) + " |",
+            "| " + " | ".join(["---" for _ in headers]) + " |",
+        )
+    )
 
     for row in rows[1:]:
         if len(row) < len(headers):
@@ -343,9 +358,8 @@ def _get_surreal_docs(document_ids, user):
             continue
 
         uploaded_by_id = raw_doc.get("uploaded_by_id")
-        if user and not (user.is_staff or user.is_superuser):
-            if uploaded_by_id and uploaded_by_id != str(user.id):
-                continue
+        if user and not (user.is_staff or user.is_superuser) and uploaded_by_id and uploaded_by_id != str(user.id):
+            continue
 
         doc = _wrap_surreal_doc(raw_doc, users_map)
         docs_list.append(doc)
@@ -546,3 +560,40 @@ def async_task_with_wakeup(task_name: str, payload: dict, countdown: int = 0) ->
     from extractor import cloud_tasks
 
     cloud_tasks.enqueue(task_name, payload, countdown=countdown)
+
+
+def extract_pdf_diagrams_with_vision(pdf_path: str, max_pages: int = 5) -> str:
+    """
+    Extracts embedded diagrams, flowcharts, and architectural schemas from PDF pages
+    using Gemini 3.6 Multi-Modal Vision OCR.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        logger.debug("[Vision OCR] PyMuPDF (fitz) is not installed.")
+        return ""
+
+    from extractor.llm_gateway import generate_multimodal_vision_ocr
+
+    diagram_notes: list[str] = []
+    try:
+        doc = fitz.open(pdf_path)
+        for page_num in range(min(len(doc), max_pages)):
+            page = doc[page_num]
+            image_list = page.get_images(full=True)
+            if image_list:
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("jpeg")
+                ocr_result = generate_multimodal_vision_ocr(
+                    img_bytes,
+                    mime_type="image/jpeg",
+                    prompt=f"Page {page_num + 1} contains a diagram or schema. Describe the structure, nodes, flowchart connections, and text accurately in Markdown.",
+                )
+                if ocr_result:
+                    diagram_notes.append(
+                        f"\n### 📊 Page {page_num + 1} Visual Diagram & Schema Extraction\n{ocr_result}\n"
+                    )
+        doc.close()
+    except Exception as exc:
+        logger.warning("[Vision OCR] Failed to process PDF page diagrams: %s", exc)
+    return "\n".join(diagram_notes)

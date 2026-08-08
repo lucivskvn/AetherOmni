@@ -58,9 +58,9 @@ class SystemSettingsContextProcessorTestCase(TestCase):
         """
         # override_settings() copies settings so they are automatically restored after test.
         if hasattr(settings, "SUPABASE_URL"):
-            delattr(settings, "SUPABASE_URL")
+            del settings.SUPABASE_URL
         if hasattr(settings, "SUPABASE_PUBLIC_KEY"):
-            delattr(settings, "SUPABASE_PUBLIC_KEY")
+            del settings.SUPABASE_PUBLIC_KEY
 
         context = system_settings(self.request)
         self.assertEqual(context["SUPABASE_URL"], "")

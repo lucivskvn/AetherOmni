@@ -42,10 +42,12 @@ GOOGLE_TASKS_IP_CIDRS = [
     "35.191.0.0/16",  # NOSONAR # Google health checks / internal
 ]
 
+from collections.abc import Callable
+
 # ── Task function registry ────────────────────────────────────────────────────
 # Maps task_name strings (URL slug) to callable handler functions.
 # Populated at import time.
-TASK_REGISTRY: dict[str, callable] = {}
+TASK_REGISTRY: dict[str, Callable] = {}
 
 
 def _register():

@@ -50,8 +50,8 @@ try:
     from google.genai import types
     from google.genai.errors import APIError
 except ImportError:
-    # Fallback/Mock for local testing without installation
-    class APIError(Exception):
+
+    class APIError(Exception):  # type: ignore[no-redef]
         pass
 
 
@@ -88,13 +88,9 @@ class UnifiedResponse:
 class BudgetExceededException(Exception):
     """Raised when cumulative extraction costs for the month exceed the set budget."""
 
-    pass
-
 
 class GeminiProcessingError(Exception):
     """Raised when the Gemini API processing or upload fails."""
-
-    pass
 
 
 def check_budget_and_api_limit() -> None:
@@ -267,9 +263,7 @@ def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int
         in_rate = Decimal("1.50")
         out_rate = Decimal("9.00")
 
-    cost = (Decimal(input_tokens) / Decimal("1000000") * in_rate) + (
-        Decimal(output_tokens) / Decimal("1000000") * out_rate
-    )
+    cost = (Decimal(input_tokens) / Decimal(1000000) * in_rate) + (Decimal(output_tokens) / Decimal(1000000) * out_rate)
     return cost
 
 
@@ -292,8 +286,8 @@ def calculate_openrouter_cost(model_name: str, input_tokens: int, output_tokens:
         return (Decimal(input_tokens) * prompt_rate) + (Decimal(output_tokens) * completion_rate)
 
     # Standard rates (e.g. general fallback $0.50 per M tokens)
-    return (Decimal(input_tokens) / Decimal("1000000") * Decimal("0.50")) + (
-        Decimal(output_tokens) / Decimal("1000000") * Decimal("1.50")
+    return (Decimal(input_tokens) / Decimal(1000000) * Decimal("0.50")) + (
+        Decimal(output_tokens) / Decimal(1000000) * Decimal("1.50")
     )
 
 
@@ -333,7 +327,7 @@ def _call_openrouter(prompt: str, system_instruction: str | None, model_name: st
     payload = {"model": model_name, "messages": messages, "temperature": 0.2}
 
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")  # type: ignore[arg-type]
 
     try:
         with urllib.request.urlopen(req, timeout=60) as response:  # nosec B310 nosemgrep
@@ -412,8 +406,7 @@ def _call_direct_gemini(
 
     contents = []
     if files:
-        for f in files:
-            contents.append(f)
+        contents.extend(files)
     contents.append(prompt)
 
     # 1. Try Vertex AI via ADC across regional fallback chain
@@ -562,9 +555,13 @@ def _call_gemini_with_fallback(
             return _call_openrouter(prompt, system_instruction, "meta-llama/llama-3-8b-instruct:free")
         except Exception:
             logger.exception("[Gateway CRITICAL] OpenRouter fallback also failed.")
-            raise last_error
+            if last_error:
+                raise last_error
+            raise RuntimeError("LLM request failed with no specific error.")
 
-    raise last_error
+    if last_error:
+        raise last_error
+    raise RuntimeError("LLM request failed with no specific error.")
 
 
 def generate_llm_content_unified(
@@ -899,8 +896,6 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
 class CascadableModelError(Exception):
     """Internal exception to signal that a model failed with a cascadable error."""
 
-    pass
-
 
 def _attempt_generate_content(
     client: Any, attempt_model: str, contents: list[Any], config: Any
@@ -990,12 +985,14 @@ def execute_generate_content_with_fallback(
             raise exc
 
     # If AI Studio is rate limited or exhausted, try Vertex AI fallback
-    if ai_studio_rate_limited or is_rate_limit_error(last_error):
+    if ai_studio_rate_limited or (isinstance(last_error, Exception) and is_rate_limit_error(last_error)):
         logger.warning("[Gateway] Attempting Vertex AI fallback due to AI Studio rate limits or resource exhaustion...")
         vertex_contents = _prepare_vertex_contents(contents, file_path_for_vertex)
         return _execute_vertex_fallback(fallback_list, config, vertex_contents)
 
-    raise last_error
+    if last_error:
+        raise last_error
+    raise RuntimeError("Multimodal OCR pipeline failed with no specific error.")
 
 
 def _init_ocr_client() -> tuple[Any, bool]:
@@ -1176,19 +1173,19 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
     else:
         # Case 2: Standard YAML frontmatter block starting and ending with ---
         yaml_match = re.search(
-            r"^-{3,}[ \t]*\n(.*)\n[ \t]*-{3,}[ \t]*(?:\n|$)",
+            r"^---+[ \t]*\n(?P<yaml>(?:[^\n]+\n)*?)---+[ \t]*(?:\n|$)",
             refined_text,
-            re.DOTALL | re.MULTILINE,
+            re.MULTILINE,
         )
         if yaml_match:
-            yaml_block = yaml_match.group(1).strip()
+            yaml_block = yaml_match.group("yaml").strip()
             refined_text = refined_text[yaml_match.end() :]
         else:
             # Case 3: YAML block starting directly with key-value pairs at beginning and ending with ---
             direct_match = re.search(
-                r"^(?P<yaml>\w+[ \t]*:.*?)\n[ \t]*-{3,}[ \t]*(?:\n|$)",
+                r"^(?P<yaml>(?:\w+[ \t]*:[^\n]*\n)+)---+[ \t]*(?:\n|$)",
                 refined_text,
-                re.DOTALL | re.MULTILINE,
+                re.MULTILINE,
             )
             if direct_match:
                 yaml_block = direct_match.group("yaml").strip()
@@ -1196,12 +1193,12 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
             else:
                 # Case 4: Standard search fallback
                 yaml_match = re.search(
-                    r"-{3,}[ \t]*\n(.*?)\n[ \t]*-{3,}",
+                    r"^---+[ \t]*\n(?P<yaml>(?:[^\n]+\n)*?)---+",
                     refined_text,
-                    re.DOTALL,
+                    re.MULTILINE,
                 )
                 if yaml_match:
-                    yaml_block = yaml_match.group(1).strip()
+                    yaml_block = yaml_match.group("yaml").strip()
                     refined_text = refined_text[yaml_match.end() :].lstrip("\n")
     return yaml_block, refined_text
 
@@ -1309,3 +1306,26 @@ def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = MODEL_G
         "output_tokens": output_toks,
         "cost_usd": cost,
     }
+
+
+def generate_multimodal_vision_ocr(
+    image_bytes: bytes,
+    mime_type: str = "image/jpeg",
+    prompt: str = "Describe this diagram, schema, or flowchart in detailed structured Markdown.",
+) -> str:
+    """
+    Invokes Gemini 3.6 Flash / Vertex AI Vision to perform Multi-Modal Diagram & Schema OCR.
+    Extracts embedded flowcharts, architectural diagrams, tables, and handwritten notes.
+    """
+    if not image_bytes:
+        return ""
+    try:
+        client, is_vertex = _init_ocr_client()
+        if client:
+            part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+            response, _ = execute_generate_content_with_fallback(client, MODEL_GEMINI_FLASH, contents=[part, prompt])
+            if response and response.text:
+                return response.text.strip()
+    except Exception as exc:
+        logger.warning("[Vision OCR] Multi-Modal Diagram OCR failed: %s", exc)
+    return ""

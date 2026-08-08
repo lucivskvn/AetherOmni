@@ -173,9 +173,8 @@ class DynamicCsrfTrustedOriginsMiddleware:
                 settings.CSRF_TRUSTED_ORIGINS.append(host_origin)
 
     def _trust_origin_if_safe(self, origin):
-        if origin and (settings.DEBUG or self._is_loopback(origin)):
-            if origin not in settings.CSRF_TRUSTED_ORIGINS:
-                settings.CSRF_TRUSTED_ORIGINS.append(origin)
+        if origin and (settings.DEBUG or self._is_loopback(origin)) and origin not in settings.CSRF_TRUSTED_ORIGINS:
+            settings.CSRF_TRUSTED_ORIGINS.append(origin)
 
     def _trust_header_origins_if_safe(self, request):
         # Origin header
@@ -214,10 +213,7 @@ class ForcePasswordChangeMiddleware:
             except NoReverseMatch as rev_err:
                 logger.debug("[Middleware] Could not resolve URL name '%s': %s", name, rev_err)
         return (
-            any(path == p for p in allowed_paths)
-            or path.startswith("/static/")
-            or path.startswith("/media/")
-            or "favicon.ico" in path
+            any(path == p for p in allowed_paths) or path.startswith(("/static/", "/media/")) or "favicon.ico" in path
         )
 
     def __call__(self, request):
