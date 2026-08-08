@@ -1,4 +1,4 @@
-# Google Cloud Run Production Deployment Guide (Version 1.2.351)
+# Google Cloud Run Production Deployment Guide (Version 1.2.352)
 
 This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
 
@@ -340,7 +340,7 @@ gcloud run deploy aether-web \
   --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/aether-web:latest \
   --region=${REGION} \
   --service-account=${SERVICE_ACCOUNT} \
-  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://aether-web-751922320980.asia-southeast1.run.app,WORKER_URL=https://aether-worker-751922320980.asia-southeast1.run.app,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite" \
+  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://aether-web-${PROJECT_NUMBER}.${REGION}.run.app,WORKER_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite" \
   --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
   --allow-unauthenticated
 
@@ -349,7 +349,7 @@ gcloud run deploy aether-worker \
   --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/aether-web:latest \
   --region=${REGION} \
   --service-account=${SERVICE_ACCOUNT} \
-  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://aether-worker-751922320980.asia-southeast1.run.app,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite" \
+  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,WORKER_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite" \
   --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
   --allow-unauthenticated
 ```
