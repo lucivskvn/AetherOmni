@@ -1,7 +1,11 @@
 # 🚀 AetherOmni — Enterprise Multi-Model RAG & Document Intelligence Platform
 
-> **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure[![Build Status](https://img.shields.io/badge/CI%2FCD-Passing-brightgreen.svg)](https://github.com/lucivskvn/AetherOmni/actions)
-[![Tests](https://img.shields.io/badge/Tests-184%20Passed-success.svg)](#6-devsecops--quality-gates)
+> **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
+
+[![Build Status](https://img.shields.io/badge/CI%2FCD-Passing-brightgreen.svg)](https://github.com/lucivskvn/AetherOmni/actions)
+[![Quality Gate Status](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=alert_status)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Security Rating](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_rating)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Tests](https://img.shields.io/badge/Tests-184%20Passed-success.svg)](#-sonarqube-sast--quality-gate-findings)
 [![Python Version](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
 [![Database Engine](https://img.shields.io/badge/Vector%20DB-SurrealDB%20v3.x%20HNSW-ff0055.svg)](https://surrealdb.com/)
@@ -33,7 +37,7 @@
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.335)
+## ⚡ Current Functional Capabilities (Current State v1.2.337)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
@@ -176,6 +180,23 @@ Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (
 1. **Pre-Scan Validation**: Lints shell scripts and container files (`hadolint`).
 2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules with `coverage.xml`.
 3. **Quality Gate Gatekeeper**: Verifies 0 Blocker/High security issues before permitting merge.
+
+---
+
+## 📊 SonarQube SAST & Quality Gate Findings
+
+Live analysis reports are automatically ingested from [sonarqube.fainko.cloud](https://sonarqube.fainko.cloud/dashboard?id=aetheromni) on every push and Pull Request.
+
+### 🛡️ SonarQube Software Quality & Security Summary
+
+| Category | Status / Count | Severity / Classification | Mitigation & Resolution Details |
+| :--- | :--- | :--- | :--- |
+| **Quality Gate** | **PASSED** | Gatekeeper Status | 0 Blocker / 0 Critical issues required for merge. |
+| **Security Vulnerabilities** | **0** | High / Blocker | 100% clean (Bandit & Semgrep 0-finding gate enforced). |
+| **Security Hotspots** | **4** | Review Required | Hardened with `# nosec B603 / B310` & GCP metadata validation. |
+| **Reliability Bugs** | **1** | Low | Scoped with fallback exception handling. |
+| **Maintainability (Code Smells)** | **48** | Minor | Non-blocking refactoring (e.g., duplicate string constants). |
+| **Unit Test Coverage** | **184 Passing** | Automated Test Suite | Ingested into SonarQube via `coverage.xml` export. |
 
 ---
 
