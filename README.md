@@ -2,16 +2,17 @@
 
 > **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
-[![Build Status](https://img.shields.io/badge/CI%2FCD-Passing-brightgreen.svg)](https://github.com/lucivskvn/AetherOmni/actions)
+[![CI/CD Pipeline](https://img.shields.io/github/actions/workflow/status/lucivskvn/AetherOmni/ci.yml?branch=main&label=CI%2FCD%20Pipeline)](https://github.com/lucivskvn/AetherOmni/actions)
+[![Last Commit](https://img.shields.io/github/last-commit/lucivskvn/AetherOmni?label=Last%20Commit)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Top Language](https://img.shields.io/github/languages/top/lucivskvn/AetherOmni?label=Python)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/lucivskvn/AetherOmni?label=License)](LICENSE)
+
 [![Quality gate](https://sonarqube.fainko.cloud/api/project_badges/quality_gate?project=aetheromni&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Security Hotspots](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_hotspots&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Reliability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_issues&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Tests](https://img.shields.io/badge/Tests-184%20Passed-success.svg)](#-sonarqube-sast--quality-gate-findings)
-[![Python Version](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
-[![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
-[![Database Engine](https://img.shields.io/badge/Vector%20DB-SurrealDB%20v3.x%20HNSW-ff0055.svg)](https://surrealdb.com/)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Coverage](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=coverage&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Lines of Code](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=ncloc&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 
 ---
 
@@ -39,7 +40,7 @@
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.338)
+## ⚡ Current Functional Capabilities (Current State v1.2.339)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
