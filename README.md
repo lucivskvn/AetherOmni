@@ -1,9 +1,7 @@
 # 🚀 AetherOmni — Enterprise Multi-Model RAG & Document Intelligence Platform
 
-> **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
-
-[![Build Status](https://img.shields.io/badge/CI%2FCD-Passing-brightgreen.svg)](https://github.com/lucivskvn/AetherOmni/actions)
-[![Tests](https://img.shields.io/badge/Tests-181%20Passed-success.svg)](#6-devsecops--quality-gates)
+> **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure[![Build Status](https://img.shields.io/badge/CI%2FCD-Passing-brightgreen.svg)](https://github.com/lucivskvn/AetherOmni/actions)
+[![Tests](https://img.shields.io/badge/Tests-184%20Passed-success.svg)](#6-devsecops--quality-gates)
 [![Python Version](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
 [![Database Engine](https://img.shields.io/badge/Vector%20DB-SurrealDB%20v3.x%20HNSW-ff0055.svg)](https://surrealdb.com/)
@@ -38,7 +36,7 @@
 ## ⚡ Current Functional Capabilities (Current State v1.2.335)
 
 | Feature Area | Current Production Capability | Implementation & Location |
-| -------------- | -------------------------------- | --------------------------- |
+| -------------- | ---------------- | --------------------------- |
 | **Multi-Format Ingestion** | Ingests PDF, DOCX, CSV, TXT, and recursive ZIP batch archives. | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) |
 | **Arabic & Multilingual RTL** | Automatic Arabic typography detection (`dir="rtl" class="arabic-text"`), Markdown rendering, HTML sanitization. | `parse_arabic_layout` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L48) |
 | **Multi-Model LLM Gateway** | Dynamic provider fallbacks across Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter (Llama 3, Gemma 2, Qwen 2 free tiers). | `generate_llm_content_unified` in [`llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) |
@@ -46,7 +44,7 @@
 | **Persisted Budget Accounting** | Hard monthly USD budget caps; document deletion spend is persisted to `MonthlySpendLog`. | `MonthlySpendLog.add_cost()` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L865) |
 | **Curated ZIP Bundling** | Filtered document subset exports organized into `Language/` and `Author/` taxonomies with `manifest.json`. | `generate_curated_zip_bundle` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L322) |
 | **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
-| **5-Phase DevSecOps Suite** | 181 passing unit tests, Hadolint Docker hardening, Mypy typing, AST-Grep, Semgrep SAST (0 findings), Bandit ReDoS, SonarQube MQR Gate, Desloppify (objective score: 88.7/100, duplication: 99.8%, security: 98.3%). | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
+| **5-Phase DevSecOps Suite** | Automated 13-gate QA pipeline featuring AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy typing, Hadolint container hardening, SonarQube MQR Gatekeeper, and 184 unit tests with coverage reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
 
 ---
 
@@ -89,64 +87,16 @@ flowchart LR
 
 ---
 
-## 🏗️ System Architecture & Data Flow
+## 🏗️ 3-Stage Architectural Pipeline
 
-```mermaid
-flowchart TD
-    subgraph ClientLayer ["Client & Ingestion Layer"]
-        User["Web UI / REST API"]
-        Upload["Document Upload (PDF, DOCX, CSV, TXT, ZIP)"]
-        User --> Upload
-    end
-
-    subgraph WebLayer ["Django Web App (GCP Cloud Run Web)"]
-        DjangoView["Django View Controller (views.py)"]
-        BudgetGate["Budget & Rate Gatekeeper (llm_gateway.py)"]
-        Upload --> DjangoView
-        DjangoView --> BudgetGate
-    end
-
-    subgraph QueueLayer ["Async Dispatcher"]
-        CloudTasks["Google Cloud Tasks (OIDC Auth) / Local Thread"]
-        BudgetGate -->|Dispatch Ingestion| CloudTasks
-    end
-
-    subgraph WorkerLayer ["Async Processing Pipeline (tasks.py)"]
-        Stage1["Stage 1: Layout & RTL Parser (file_utils.py)"]
-        Stage2["Stage 2: LLM Refinement Gateway (llm_gateway.py)"]
-        Stage3["Stage 3: Semantic Chunking & Vector HNSW (rag.py)"]
-        
-        CloudTasks --> Stage1
-        Stage1 --> Stage2
-        Stage2 --> Stage3
-    end
-
-    subgraph DataLayer ["Persistence & Vector Store"]
-        SurrealDB[("SurrealDB v3.x — HNSW Vector Index & Cache")]
-        SQLDB[("Relational Store - PostgreSQL / SQLite")]
-        GCS[("Cloud Storage - GCP Bucket")]
-        
-        Stage3 --> SurrealDB
-        Stage3 --> SQLDB
-        Stage1 --> GCS
-    end
-
-    subgraph LLMProviders ["Multi-Model LLM Gateway Providers"]
-        Gemini["Google Gemini 3.1 Flash Lite / 3.5 Flash (AI Studio)"]
-        Vertex["Google Cloud Vertex AI (multi-region)"]
-        OpenRouter["OpenRouter (Llama 3 free tier fallback)"]
-
-        Stage2 <--> Gemini
-        Stage2 <--> Vertex
-        Stage2 <--> OpenRouter
-    end
+```
+┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐
+│     STAGE 1: LAYOUT     │ ──> │   STAGE 2: REFINEMENT   │ ──> │     STAGE 3: VECTOR     │
+│   Ingestion & Parsing   │     │    Multi-Model LLM     │     │  SurrealDB HNSW Index  │
+└─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘
 ```
 
----
-
-## 🔄 3-Stage Async Ingestion Pipeline Breakdown
-
-| Pipeline Stage | Module Location | Primary Technical Responsibilities |
+| Pipeline Stage | Implementation Module | Architecture & Operations |
 | ---------------- | ----------------- | ----------------------------------- |
 | **Stage 1: Layout & Ingestion** | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) | • Validates document headers, sanitizes HTML, computes SHA-256 hashes.<br>• Parses Arabic RTL typography (`parse_arabic_layout`) and extracts YAML frontmatter.<br>• Unpacks ZIP archives recursively into structured folder taxonomies (`Language/`, `Author/`). |
 | **Stage 2: LLM Refinement & Cost Control** | [`extractor/llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) | • Evaluates `check_budget_and_api_limit()` against `MonthlySpendLog` USD caps.<br>• Dispatches prompts across primary LLM providers with exponential backoff.<br>• Calculates real-time prompt/completion token spend and logs costs. |
@@ -165,7 +115,7 @@ flowchart TD
 | **Cloud Hosting** | GCP Cloud Run | Fully Managed Serverless | Zero-scale web app and worker process containers |
 | **Queue & Dispatcher** | GCP Cloud Tasks | OIDC Authenticated Tasks | Production asynchronous queue with localized thread fallbacks |
 | **Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw and processed documents |
-| **DevSecOps & SAST** | SonarQube / Bandit / Hadolint / Desloppify | Sonar MQR Gate, Hadolint Docker | 7-layer shift-left security verification and code quality gate |
+| **DevSecOps & SAST** | SonarQube / Bandit / Hadolint / Desloppify | Sonar MQR Gate, Hadolint Docker | 5-phase shift-left security verification and code quality gate |
 
 ---
 
@@ -173,50 +123,58 @@ flowchart TD
 
 - 🌐 **Multilingual & RTL Layout Preservation**: Full support for Right-to-Left Arabic text formatting and multi-column document parsing.
 - 📦 **Curated ZIP Archival Export**: Bundles filtered documents into organized folder hierarchies (`Language/English`, `Author/Shakespeare`) complete with `manifest.json` and combined `master_archival_source.md`.
-- 🔎 **Hybrid Semantic RAG Search**: Combines SurrealDB HNSW vector search with document UUID scope filtering and score thresholding.
+- 🔎 **Hybrid Semantic RAG Search**: Combines SurrealDB HNSW vector search with BM25 sparse keyword matching using Reciprocal Rank Fusion (RRF).
 - 💰 **Persisted Monthly Spend Accounting**: Persists deleted document costs via `MonthlySpendLog.add_cost()` to maintain financial audit integrity even after purging records.
 - 🛡️ **SOC 2 & ISO 27001 Audit Logs**: Logs client IP addresses (`get_client_ip`), user IDs, action names, and timestamps in an immutable audit trail (`AuditLogListView`).
 
 ---
 
-## 🛡️ DevSecOps & Quality Gates
+## 🛡️ DevSecOps & 5-Phase Quality Gates
 
-AetherOmni strictly enforces **Shift-Left Local Verification** before code can be merged into production branches.
+AetherOmni strictly enforces **Shift-Left Local Verification** before code can be committed or merged into production branches.
 
-### 🧪 Local 7-Layer Verification Gate
+### 🧪 5-Phase Verification Gate (`run_checks.sh`)
 
 Execute the local verification script to validate all quality gates prior to opening a Pull Request:
 
 ```bash
-bash run_checks.sh
+bash run_checks.sh --autofix
 # OR the full pipeline (includes git pull, Desloppify, and SonarQube submission):
 bash scripts/verify-pipeline.sh
 ```
 
-`run_checks.sh` executes these 7 steps in sequence:
+`run_checks.sh` executes the 5 phase quality gate pipeline in sequence:
 
-1. **Ruff Linting**: `ruff check .`
-2. **Ruff Format Check**: `ruff format --check .`
-3. **Django System Integrity**: `python manage.py check`
-4. **Django Test Suite**: `python manage.py test --keepdb` (caches test count to `.test_count`)
-5. **Bandit SAST**: `python -m bandit -c bandit.yaml -r extractor/` — zero high/blocker issues required
-6. **pip-audit Dependency Scan**: checks for known CVEs in installed packages
-7. **Auto Documentation Update**: `python scripts/update_docs.py` — syncs version badges and service YAMLs
-
-`scripts/verify-pipeline.sh` extends the above with SonarQube remote submission (Layer 6) and GitHub CLI PR status (Layer 7).
+1. **Phase 1: Code Formatting & Syntax**:
+   - Ruff AST Formatter (`ruff format --check .`)
+   - Ruff Cyclomatic Complexity & Linter (`ruff check .`)
+   - Yamllint Configuration Audit & Hadolint Docker Hardening
+2. **Phase 2: Static Analysis & Type Checking**:
+   - Mypy Data Flow & Static Type Checker (`mypy core/ extractor/`)
+   - AST-Grep Structural Pattern Auditor (`ast-grep scan`)
+3. **Phase 3: Deep Security & SAST Audit**:
+   - Semgrep OSS SAST Engine (`semgrep scan --config=auto`) — strict 0 findings gate
+   - Bandit ReDoS & Cryptographic Vulnerability Auditor (`bandit -c bandit.yaml`)
+   - Pip-Audit Supply-Chain CVE Dependency Audit (`pip-audit -r requirements.txt`)
+4. **Phase 4: Runtime Verification & Test Suite**:
+   - Django System Integrity Check (`python manage.py check`)
+   - Django 184 Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`)
+5. **Phase 5: Documentation Governance & SonarQube Gate**:
+   - Markdownlint Syntax Auditor (`markdownlint README.md gcp_deployment_guide.md`)
+   - Automated Version & Metadata Synchronizer (`python scripts/update_docs.py`)
 
 ```text
-Ran 181 tests in 39.913s
+Ran 184 tests in 46.737s
 
 OK
 ```
 
 ### 🔒 Remote 3-Phase CI/CD Pipeline
 
-Every commit pushed to GitHub automatically triggers the remote CI/CD workflow:
+Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (`.github/workflows/ci.yml`):
 
-1. **Pre-Scan Validation**: Lints shell scripts and container files.
-2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules.
+1. **Pre-Scan Validation**: Lints shell scripts and container files (`hadolint`).
+2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules with `coverage.xml`.
 3. **Quality Gate Gatekeeper**: Verifies 0 Blocker/High security issues before permitting merge.
 
 ---
