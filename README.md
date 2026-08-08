@@ -16,27 +16,29 @@
 
 ---
 
-## 📌 Executive Summary & Core Program Goals
+## 📌 Executive Summary, Technical Outputs & Business Use Cases
 
-**AetherOmni** is an enterprise-grade document extraction, layout parsing, and Retrieval-Augmented Generation (RAG) platform designed for high-concurrency document processing across heterogeneous formats (PDF, DOCX, CSV, TXT, and ZIP archives).
+**AetherOmni** is an enterprise multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, TXT, scanned images, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
 
-### 🎯 Primary Program Goals & Target Use Cases
+### 📤 Platform Technical Outputs
 
-1. **Enterprise Document Layout Extraction**:
-   - **Use Case**: Legal, historical, and corporate document archiving.
-   - **Goal**: Preserve multi-column structures, embedded tables, and Right-to-Left (RTL) Arabic typography (`dir="rtl" class="arabic-text"`) with zero structural loss.
+1. **Archival Structured Markdown with Metadata**:
+   - Converts document layouts into clean, sanitized Markdown text preserved with YAML frontmatter headers (title, author, language, SHA-256 hash, export timestamps) and Right-to-Left (RTL) Arabic HTML wrappers (`dir="rtl" class="arabic-text"`).
+2. **Supervised Fine-Tuning (SFT) Q&A Datasets**:
+   - Automatically generates structured JSON Q&A pairs (`[{"question": "...", "answer": "..."}]`) for offline model fine-tuning and domain training.
+3. **High-Dimensional Dense-Sparse Vector Indexes**:
+   - Generates 768-dimensional embeddings stored in SurrealDB HNSW vector indexes alongside BM25 sparse term indexes for sub-100ms hybrid retrieval.
+4. **Multi-Modal Visual Diagram Captions**:
+   - Extracts flowcharts, architectural schemas, and tabular diagrams into structured Markdown text using Gemini 3.6 Vision / Vertex AI Vision.
+5. **Taxonomic Archival ZIP Bundles**:
+   - Bundles document collections into structured directory trees (`Language/` and `Author/`) accompanied by `manifest.json` and a merged `master_archival_source.md`.
 
-2. **Cost-Controlled Multi-Model LLM Routing**:
-   - **Use Case**: Multi-tenant SaaS & high-volume prompt execution.
-   - **Goal**: Automatically dispatch prompt execution across Google Gemini 3.6 Flash / 3.5 Flash-Lite, Google Cloud Vertex AI, and OpenRouter (Llama 3 8B, Gemma 2 9B, Qwen 2 7B free tier fallbacks) while enforcing hard monthly USD spend limits (`MonthlySpendLog`).
+### 🏢 Business Use Cases & Output Consumption
 
-3. **Ultra-Low-Latency Hybrid Vector RAG**:
-   - **Use Case**: Enterprise knowledge bases & automated QA dataset creation.
-   - **Goal**: Deliver sub-100ms vector similarity searches using SurrealDB HNSW indexing combined with TTL-enforced semantic cache layers (`upsert_rag_cache`).
-
-4. **Zero-Trust Cloud Serverless Deployment**:
-   - **Use Case**: Production deployments requiring high security and autoscaling.
-   - **Goal**: Deploy on GCP Cloud Run with OIDC-authenticated Cloud Tasks queues, non-root container isolation (`django-user`), and Knative auto-scaling (`minScale`, `maxScale`).
+- **Conversational Enterprise RAG Knowledge Base**: Internal teams execute semantic search queries over processed document repositories with grounded citation attribution.
+- **Custom LLM Fine-Tuning Pipeline**: ML teams consume generated JSON Q&A datasets to fine-tune domain-specific models.
+- **Legal & Compliance Archiving**: Regulatory teams export structured ZIP bundles with immutable SOC 2 audit trails (`AuditLogListView`) and spend logs (`MonthlySpendLog`).
+- **Visual Diagram & Schema Analysis**: Engineering teams search and retrieve embedded architectural diagrams and flowcharts processed by multi-modal OCR.
 
 ---
 
@@ -51,46 +53,39 @@
 | **Persisted Budget Accounting** | Hard monthly USD budget caps; document deletion spend is persisted to `MonthlySpendLog`. | `MonthlySpendLog.add_cost()` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L865) |
 | **Curated ZIP Bundling** | Filtered document subset exports organized into `Language/` and `Author/` taxonomies with `manifest.json`. | `generate_curated_zip_bundle` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L322) |
 | **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
-| **5-Phase DevSecOps Suite** | Automated 13-gate QA pipeline featuring AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy typing, Hadolint container hardening, SonarQube MQR Gatekeeper, and 184 unit tests with coverage reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
+| **5-Phase DevSecOps Suite** | Automated verification pipeline featuring AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy typing, Hadolint container hardening, SonarQube MQR Gatekeeper, and unit test suite with coverage reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
 
 ---
 
-## 🗺️ Next Milestones & Roadmap (On Progress / Future)
+## 🗺️ Engineering Milestones & Roadmap
 
 ```mermaid
 flowchart LR
-    subgraph M2 ["Milestone 2.0 (Completed)"]
-        M2A["Dual DB Engine<br>SurrealDB HNSW + Relational"]
-        M2B["Multi-Model Gateway<br>Gemini + Vertex AI + OpenRouter"]
-        M2C["5-Phase DevSecOps<br>181 Tests + SonarQube Gate"]
-    end
-
-    subgraph M3 ["Milestone 3.0 (Completed)"]
-        M3A["SurrealDB Native SDK<br>WebSocket Pool Migration"]
-        M3B["Hybrid RAG Search<br>BM25 + HNSW RRF Fusion"]
-        M3C["Multi-Modal OCR<br>Gemini / Vertex Vision"]
-    end
-
-    subgraph M4 ["Milestone 4.0 (Planned Phase)"]
-        M4A["Real-time SSE Streaming<br>Chunked Response Delivery"]
-        M4B["Enterprise RBAC<br>Tenant Scoped Permissions"]
-        M4C["Automated RAG Eval<br>RAGAS & TruLens Pipeline"]
-    end
-
-    M2 --> M3 --> M4
+    M1["Milestone 1.0<br>Layout Ingestion"] --> M2["Milestone 2.0<br>Dual DB & Gateway"]
+    M2 --> M3["Milestone 3.0<br>Hybrid RAG & Vision"]
+    M3 --> M4["Milestone 4.0<br>SSE Stream & RBAC"]
+    M4 --> M5["Milestone 5.0<br>Graph RAG & Agents"]
 ```
 
-### ✅ Milestone 3.0 (Completed)
+### ✅ Milestone 1.0 (Completed — Multi-Format Layout Ingestion)
+- Multi-format parser (PDF, DOCX, CSV, TXT, ZIP) with Arabic RTL typography detection (`dir="rtl" class="arabic-text"`).
 
+### ✅ Milestone 2.0 (Completed — Dual DB Engine & Multi-Model Gateway)
+- SurrealDB HNSW vector indexer, relational metadata store, and multi-provider LLM fallback gateway (Gemini / Vertex / OpenRouter).
+
+### ✅ Milestone 3.0 (Completed — Hybrid RAG & Multi-Modal Vision)
 - [x] **Native SurrealDB Python SDK Connection Pools**: Upgraded SurrealDB client logic to support WebSocket connection pooling (`surrealdb-python`).
 - [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
 - [x] **Multi-Modal Diagram & Schema OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
 
-### 🎯 Milestone 4.0 (Planned — Future Phase)
-
+### 🎯 Milestone 4.0 (Planned — Real-Time Streaming & Enterprise RBAC)
 - [ ] **Real-time Streaming RAG Responses**: Server-Sent Events (SSE) / WebSocket streaming for real-time response rendering in the dashboard.
 - [ ] **Enterprise RBAC & Document ACLs**: Fine-grained role-based access control with organizational tenant scoping.
 - [ ] **Automated RAG Benchmarking Pipeline**: Integration of RAGAS and TruLens for continuous assessment of context precision, answer relevance, and faithfulness.
+
+### 🚀 Milestone 5.0 (Planned — Graph RAG & Autonomous Agentic Tools)
+- [ ] **Multi-Tenant Knowledge Graph RAG**: SurrealDB Graph Relational RAG linking entities, concepts, and document nodes.
+- [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step workflow execution.
 
 ---
 
@@ -165,16 +160,10 @@ bash scripts/verify-pipeline.sh
    - Pip-Audit Supply-Chain CVE Dependency Audit (`pip-audit -r requirements.txt`)
 4. **Phase 4: Runtime Verification & Test Suite**:
    - Django System Integrity Check (`python manage.py check`)
-   - Django 184 Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`)
+   - Django Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`)
 5. **Phase 5: Documentation Governance & SonarQube Gate**:
    - Markdownlint Syntax Auditor (`markdownlint README.md gcp_deployment_guide.md`)
    - Automated Version & Metadata Synchronizer (`python scripts/update_docs.py`)
-
-```text
-Ran 184 tests in 46.737s
-
-OK
-```
 
 ### 🔒 Remote 3-Phase CI/CD Pipeline
 
