@@ -88,7 +88,7 @@
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.362)
+## ⚡ Current Functional Capabilities (Current State v1.2.364)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
@@ -103,37 +103,45 @@
 
 ---
 
-## 🗺️ Engineering Milestones & Roadmap
+## 🗺️ Engineering Milestones & Progressive Roadmap
+
+AetherOmni follows an **MVP-First Engineering Philosophy**, prioritizing solid core extraction, zero-cost caching, hybrid vector search, and clean batch exports before scaling to advanced multi-tenant agentic workflows.
 
 ```mermaid
 flowchart LR
-    M1["Milestone 1.0<br>Layout Ingestion"] --> M2["Milestone 2.0<br>Dual DB & Gateway"]
-    M2 --> M3["Milestone 3.0<br>Hybrid RAG & Vision"]
-    M3 --> M4["Milestone 4.0<br>SSE Stream & RBAC"]
-    M4 --> M5["Milestone 5.0<br>Graph RAG & Agents"]
+    M1["Milestone 1.0 MVP<br>Multi-Format Ingestion & Caching"] --> M2["Milestone 2.0 MVP<br>Dual DB & LLM Gateway"]
+    M2 --> M3["Milestone 3.0 MVP<br>Hybrid RAG & Vision OCR"]
+    M3 --> M4["Milestone 4.0 Enterprise<br>SSE Streaming & RBAC"]
+    M4 --> M5["Milestone 5.0 Enterprise<br>Graph RAG & Agent Tools"]
 ```
 
-### ✅ Milestone 1.0 (Completed — Multi-Format Layout Ingestion)
+### ✅ Milestone 1.0 (MVP Core — Multi-Format Layout Ingestion & Instant Caching)
 
-- Multi-format parser (PDF, DOCX, CSV, TXT, ZIP) with Arabic RTL typography detection (`dir="rtl" class="arabic-text"`).
+- [x] **Multi-Format Document Ingestion**: Ingests PDF, DOCX, CSV, TXT, and recursive ZIP batch archives.
+- [x] **Arabic & Multilingual RTL Typography**: Automatic Arabic layout detection (`dir="rtl" class="arabic-text"`), Markdown rendering, and HTML sanitization.
+- [x] **Instant SHA-256 Hash Caching ($0.00 Cost)**: Deduplicates incoming documents by SHA-256 checksums to instantly reuse extracted metadata without calling LLM APIs.
+- [x] **Standardized Batch Export & Single-Copy Bundles**: Exports single-copy standardized files (`documents/001_title.md`) with optional multi-taxonomy views (`Language/`, `Author/`), `manifest.json`, and `master_archival_source.md`.
+- [x] **Automated Artifact Cleanup Policy**: Enforces DevSecOps file retention (`cleanup_stale_temp_artifacts`) to purge temporary processing scratch files older than 24 hours.
 
-### ✅ Milestone 2.0 (Completed — Dual DB Engine & Multi-Model Gateway)
+### ✅ Milestone 2.0 (MVP Core — Dual Database Engine & Multi-Model LLM Gateway)
 
-- SurrealDB HNSW vector indexer, relational metadata store, and multi-provider LLM fallback gateway (Gemini / Vertex / OpenRouter).
+- [x] **SurrealDB HNSW Vector Storage**: SurrealDB vector indexer (`DIMENSION 768 DIST COSINE`) paired with relational SQLite metadata store.
+- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter free tiers with exponential backoff.
+- [x] **Persisted Budget Accounting**: Hard monthly USD spend limits backed by immutable `MonthlySpendLog` ledgers.
 
-### ✅ Milestone 3.0 (Completed — Hybrid RAG & Multi-Modal Vision)
+### ✅ Milestone 3.0 (MVP Core — Hybrid RAG & Multi-Modal Vision OCR)
 
-- [x] **Native SurrealDB Python SDK Connection Pools**: Upgraded SurrealDB client logic to support WebSocket connection pooling (`surrealdb-python`).
+- [x] **Native SurrealDB WebSocket Connection Pools**: Upgraded SurrealDB client logic for high-concurrency connection handling (`surrealdb-python`).
 - [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
-- [x] **Multi-Modal Diagram & Schema OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
+- [x] **Multi-Modal Diagram & Schema Vision OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
 
-### 🎯 Milestone 4.0 (Planned — Real-Time Streaming & Enterprise RBAC)
+### 🎯 Milestone 4.0 (Enterprise Roadmap — Real-Time Streaming & Access Control)
 
-- [ ] **Real-time Streaming RAG Responses**: Server-Sent Events (SSE) / WebSocket streaming for real-time response rendering in the dashboard.
-- [ ] **Enterprise RBAC & Document ACLs**: Fine-grained role-based access control with organizational tenant scoping.
-- [ ] **Automated RAG Benchmarking Pipeline**: Integration of RAGAS and TruLens for continuous assessment of context precision, answer relevance, and faithfulness.
+- [ ] **Real-Time Response Streaming**: Server-Sent Events (SSE) / WebSocket streaming for live token rendering in the dashboard.
+- [ ] **Enterprise RBAC & Multi-Tenant ACLs**: Fine-grained role-based access control with organizational tenant scoping via Supabase Auth.
+- [ ] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness via RAGAS and TruLens.
 
-### 🚀 Milestone 5.0 (Planned — Graph RAG & Autonomous Agentic Tools)
+### 🚀 Milestone 5.0 (Enterprise Roadmap — Graph RAG & Autonomous Agent Tools)
 
 - [ ] **Multi-Tenant Knowledge Graph RAG**: SurrealDB Graph Relational RAG linking entities, concepts, and document nodes.
 - [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step workflow execution.
