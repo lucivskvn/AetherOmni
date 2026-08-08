@@ -352,8 +352,8 @@ class ZipExportBundleTestCase(TestCase):
             # Verify Unicode preservation
             # slugify("العربية", allow_unicode=True) -> "العربية"
             self.assertTrue(any("العربية" in name for name in namelist))
-            # Verify collision suffixing (e.g. Doc 2 has _2 suffix)
-            self.assertTrue(any("2.md" in name for name in namelist))
+            # Verify sequential batch indexing (e.g. Doc 2 has 002_ prefix)
+            self.assertTrue(any("002_" in name for name in namelist))
 
     def test_zip_bundle_user_isolation(self):
         from django.contrib.auth.models import User

@@ -70,11 +70,11 @@
 
    ```text
    Language/
-   └── Arabic/
-       └── Arabic_Legal_Contract_PDF.md
+   └── arabic/
+       └── 001_enterprise_legal_contract.md
    Author/
-   └── Legal_Team/
-       └── Arabic_Legal_Contract_PDF.md
+   └── legal_team/
+       └── 001_enterprise_legal_contract.md
    manifest.json
    master_archival_source.md
    ```

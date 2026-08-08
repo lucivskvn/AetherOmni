@@ -270,13 +270,16 @@ class ZipExportContext:
     zip_file: zipfile.ZipFile
 
 
-def _process_zip_doc(idx, doc, ctx: ZipExportContext):
+def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
     clean_lang = slugify(doc.language or "unknown", allow_unicode=True) or "unknown"
     clean_author = slugify(doc.author or "unknown", allow_unicode=True) or "unknown"
     doc_type = doc.document_type or "PDF"
 
-    prefix_name = f"{doc.language or 'LANG'}_{doc.author or 'AUTHOR'}_{doc.title or 'TITLE'}_{doc_type}"
-    base_slug = slugify(prefix_name, allow_unicode=True) or f"doc_{doc.id}"
+    # Formal standardized batch filename: [3-DIGIT_INDEX]_[TITLE_SLUG].md
+    index_prefix = f"{idx + 1:03d}"
+    raw_title = doc.title or doc.original_filename or f"document_{doc.id}"
+    doc_title_slug = slugify(raw_title, allow_unicode=True) or f"document_{doc.id}"
+    base_slug = f"{index_prefix}_{doc_title_slug}"
 
     lang_slug = f"{base_slug}.md"
     lang_path = f"Language/{clean_lang}/{lang_slug}"
