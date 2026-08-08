@@ -20,18 +20,60 @@
 
 **AetherOmni** is an enterprise multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, TXT, scanned images, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
 
-### 📤 Platform Technical Outputs
+### 📤 Platform Technical Outputs & Output Artifact Examples
 
 1. **Archival Structured Markdown with Metadata**:
    - Converts document layouts into clean, sanitized Markdown text preserved with YAML frontmatter headers (title, author, language, SHA-256 hash, export timestamps) and Right-to-Left (RTL) Arabic HTML wrappers (`dir="rtl" class="arabic-text"`).
+   ```markdown
+   ---
+   title: "Enterprise Legal Contract"
+   author: "Legal Compliance Team"
+   language: "Arabic"
+   document_type: "PDF"
+   source_hash: "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
+   exported_at: "2026-08-08T22:00:00Z"
+   ---
+
+   <div dir="rtl" class="arabic-text">
+   ### اتفاقية الشروط العامة والتنفيذ
+   تم الاتفاق بين الأطراف الموقعة على الالتزام الكامل بكافة بنود العقد...
+   </div>
+   ```
+
 2. **Supervised Fine-Tuning (SFT) Q&A Datasets**:
-   - Automatically generates structured JSON Q&A pairs (`[{"question": "...", "answer": "..."}]`) for offline model fine-tuning and domain training.
-3. **High-Dimensional Dense-Sparse Vector Indexes**:
-   - Generates 768-dimensional embeddings stored in SurrealDB HNSW vector indexes alongside BM25 sparse term indexes for sub-100ms hybrid retrieval.
-4. **Multi-Modal Visual Diagram Captions**:
+   - Automatically generates structured JSON Q&A pairs for offline model fine-tuning and domain training.
+   ```json
+   [
+     {
+       "question": "How does AetherOmni ensure sub-100ms vector search latency for hybrid RAG queries?",
+       "answer": "AetherOmni uses SurrealDB v3.x HNSW vector indexing combined with BM25 sparse term matching fused via Reciprocal Rank Fusion (RRF)."
+     }
+   ]
+   ```
+
+3. **Multi-Modal Visual Diagram & Schema Captions**:
    - Extracts flowcharts, architectural schemas, and tabular diagrams into structured Markdown text using Gemini 3.6 Vision / Vertex AI Vision.
-5. **Taxonomic Archival ZIP Bundles**:
+   ```markdown
+   ### 📊 Page 2 Visual Diagram & Schema Extraction
+   **Diagram Type**: System Architecture Flowchart
+   **Extracted Components**:
+   - `Client Request` -> Dispatches PDF upload to `GCP Cloud Run`
+   - `Worker Queue` -> `Cloud Tasks` enqueues ingestion job for `tasks.py`
+   - `Vector Store` -> Embeddings written to `SurrealDB HNSW Index`
+   ```
+
+4. **Taxonomic Archival ZIP Bundles**:
    - Bundles document collections into structured directory trees (`Language/` and `Author/`) accompanied by `manifest.json` and a merged `master_archival_source.md`.
+   ```text
+   Language/
+   └── Arabic/
+       └── Arabic_Legal_Contract_PDF.md
+   Author/
+   └── Legal_Team/
+       └── Arabic_Legal_Contract_PDF.md
+   manifest.json
+   master_archival_source.md
+   ```
 
 ### 🏢 Business Use Cases & Output Consumption
 
@@ -42,7 +84,7 @@
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.343)
+## ⚡ Current Functional Capabilities (Current State v1.2.345)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
