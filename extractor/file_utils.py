@@ -268,6 +268,7 @@ class ZipExportContext:
     manifest: dict[str, Any]
     master_content: list[str]
     zip_file: zipfile.ZipFile
+    include_taxonomic_views: bool = True
 
 
 def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
@@ -281,31 +282,35 @@ def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
     doc_title_slug = slugify(raw_title, allow_unicode=True) or f"document_{doc.id}"
     base_slug = f"{index_prefix}_{doc_title_slug}"
 
-    lang_slug = f"{base_slug}.md"
-    lang_path = f"Language/{clean_lang}/{lang_slug}"
-    counter = 1
-    while lang_path in ctx.seen_lang_paths:
-        counter += 1
-        lang_slug = f"{base_slug}_{counter}.md"
-        lang_path = f"Language/{clean_lang}/{lang_slug}"
-    ctx.seen_lang_paths.add(lang_path)
-
-    author_slug = f"{base_slug}.md"
-    author_path = f"Author/{clean_author}/{author_slug}"
-    counter = 1
-    while author_path in ctx.seen_author_paths:
-        counter += 1
-        author_slug = f"{base_slug}_{counter}.md"
-        author_path = f"Author/{clean_author}/{author_slug}"
-    ctx.seen_author_paths.add(author_path)
-
     doc_markdown = doc.refined_markdown or doc.raw_markdown or "*Empty Document Content*"
-    # prepend YAML frontmatter to each exported file
     frontmatter = _build_yaml_frontmatter(doc)
     full_content = frontmatter + doc_markdown
 
-    ctx.zip_file.writestr(lang_path, full_content)
-    ctx.zip_file.writestr(author_path, full_content)
+    # Primary single-copy standardized document output
+    doc_path = f"documents/{base_slug}.md"
+    ctx.zip_file.writestr(doc_path, full_content)
+
+    if ctx.include_taxonomic_views:
+        lang_slug = f"{base_slug}.md"
+        lang_path = f"Language/{clean_lang}/{lang_slug}"
+        counter = 1
+        while lang_path in ctx.seen_lang_paths:
+            counter += 1
+            lang_slug = f"{base_slug}_{counter}.md"
+            lang_path = f"Language/{clean_lang}/{lang_slug}"
+        ctx.seen_lang_paths.add(lang_path)
+
+        author_slug = f"{base_slug}.md"
+        author_path = f"Author/{clean_author}/{author_slug}"
+        counter = 1
+        while author_path in ctx.seen_author_paths:
+            counter += 1
+            author_slug = f"{base_slug}_{counter}.md"
+            author_path = f"Author/{clean_author}/{author_slug}"
+        ctx.seen_author_paths.add(author_path)
+
+        ctx.zip_file.writestr(lang_path, full_content)
+        ctx.zip_file.writestr(author_path, full_content)
 
     ctx.manifest["documents"].append(
         {
@@ -318,6 +323,7 @@ def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
             "page_count": doc.page_count,
             "cost_usd": float(doc.cost_usd),
             "hash": doc.file_hash,
+            "export_path": doc_path,
         }
     )
 
@@ -328,10 +334,8 @@ def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
     ctx.master_content.append(f"**Author:** {doc.author}  ")
     ctx.master_content.append(f"**Language:** {doc.language}  ")
     ctx.master_content.append(f"**Document Type:** {doc_type}\n")
-    ctx.master_content.append("---\n")
     ctx.master_content.append(doc_markdown)
-    ctx.master_content.append("\n\n---\n\n")
-    ctx.master_content.append(f"<!-- SOURCE_END_{idx + 1}: {doc.title} -->\n\n")
+    ctx.master_content.append(f"\n<!-- SOURCE_END_{idx + 1} -->\n\n---\n")
 
 
 def _get_offline_docs(document_ids, user):
@@ -369,10 +373,14 @@ def _get_surreal_docs(document_ids, user):
     return docs_list
 
 
-def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any = None) -> bytes:
+def generate_curated_zip_bundle(
+    document_ids: list[int] | list[str],
+    user: Any = None,
+    include_taxonomic_views: bool = True,
+) -> bytes:
     """
     Aggregates selected documents into an organized directory structure.
-    Saves them by Language/ and Author/.
+    Saves unique copies under documents/ and optionally by Language/ and Author/.
     Prepends YAML frontmatter to each exported markdown file.
     Enforces user boundaries if `user` is provided and is not a staff/superuser.
     """
@@ -412,6 +420,7 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
             manifest=manifest,
             master_content=master_content,
             zip_file=zip_file,
+            include_taxonomic_views=include_taxonomic_views,
         )
         for idx, doc in enumerate(docs_list):
             _process_zip_doc(idx, doc, ctx)
@@ -421,6 +430,38 @@ def generate_curated_zip_bundle(document_ids: list[int] | list[str], user: Any =
 
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
+
+
+def cleanup_stale_temp_artifacts(temp_dir: str = "/tmp", max_age_seconds: int = 86400) -> int:
+    """
+    Automated cleanup policy per DevSecOps best practices.
+    Scans temporary directories for stale processing files older than max_age_seconds (default: 24h).
+    Returns total count of removed temporary artifacts.
+    """
+    import os
+    import time
+
+    if not os.path.exists(temp_dir):
+        return 0
+
+    now = time.time()
+    removed_count = 0
+    prefix_patterns = ("tmpx", "tmp", "aetheromni_", "pdf_export_")
+
+    for filename in os.listdir(temp_dir):
+        if not filename.startswith(prefix_patterns):
+            continue
+        file_path = os.path.join(temp_dir, filename)
+        try:
+            if os.path.isfile(file_path):
+                file_age = now - os.path.getmtime(file_path)
+                if file_age > max_age_seconds:
+                    os.remove(file_path)
+                    removed_count += 1
+        except OSError:
+            pass
+
+    return removed_count
 
 
 def get_client_ip(request: Any) -> str:
