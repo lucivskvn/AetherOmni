@@ -545,12 +545,16 @@ function initializeSettingsModal() {
     if (settingsCloseBtn && settingsModal) {
         settingsCloseBtn.addEventListener('click', () => {
             settingsModal.close();
-            cancelResetConfirmation();
         });
     }
 
-    // Backdrop click handling
     if (settingsModal) {
+        // Ensure state resets when dialog closes (including via Escape key)
+        settingsModal.addEventListener('close', () => {
+            cancelResetConfirmation();
+        });
+
+        // Backdrop click handling
         settingsModal.addEventListener('click', (event) => {
             const rect = settingsModal.getBoundingClientRect();
             const isInDialog = (
@@ -559,7 +563,6 @@ function initializeSettingsModal() {
             );
             if (!isInDialog) {
                 settingsModal.close();
-                cancelResetConfirmation();
             }
         });
     }
