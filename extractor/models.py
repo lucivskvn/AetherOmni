@@ -190,6 +190,16 @@ class AuditLog(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    def save(self, *args, **kwargs):
+        if self.pk and not kwargs.pop("force_update_allowed", False):
+            raise PermissionError("AuditLog records are immutable append-only ledgers and cannot be modified.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if not kwargs.pop("force_delete_allowed", False):
+            raise PermissionError("AuditLog records are immutable append-only ledgers and cannot be deleted.")
+        super().delete(*args, **kwargs)
+
     def __str__(self):
         return f"{self.created_at} - {self.user} - {self.action}"
 
