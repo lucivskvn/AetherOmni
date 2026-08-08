@@ -92,11 +92,9 @@ jobs:
           export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
           coverage run --source='core,extractor' manage.py test --keepdb
           coverage xml -o coverage.xml
-          sed -i 's|<source>.*</source>|<source>.</source>|g' coverage.xml || true
         env:
           SURREALDB_OFFLINE: "True"
           DATABASE_URL: "sqlite:///:memory:"
-        continue-on-error: true
 
       - name: Run SonarQube Analysis
         uses: SonarSource/sonarqube-scan-action@v8.2.1
@@ -109,7 +107,6 @@ jobs:
             -Dsonar.scm.provider=git
             -Dsonar.threads=4
             -Dsonar.analysis.cache.enabled=true
-        continue-on-error: true
 
       - name: SonarQube Quality Gate Status Check
         uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
