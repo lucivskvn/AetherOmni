@@ -1,13 +1,17 @@
 ---
-version: '3.8'
-
+# Docker Compose v2 format — 'version' key is obsolete and intentionally omitted.
+#
+# Local development stack — mirrors production architecture.
+# Production uses a remote SurrealDB instance at wss://surrealdb.fainko.cloud/rpc
+# Set SURREAL_URL in .env to point at the remote instance instead of the local
+# container if you want to develop against production data.
 services:
   # 1. Main Web Application (Gunicorn server)
   web:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: data_extractor_web
+    container_name: aether-web
     restart: always
     ports:
       - "8080:8080"
@@ -23,10 +27,11 @@ services:
       surrealdb:
         condition: service_healthy
 
-  # 2. SurrealDB — Structured Data, Vector Store & KV Cache
+  # 2. SurrealDB v3 — Structured Data, Vector Store & KV Cache
+  # Matches the remote production version (wss://surrealdb.fainko.cloud/rpc)
   surrealdb: # nosemgrep
-    image: surrealdb/surrealdb:latest
-    container_name: data_extractor_surrealdb
+    image: surrealdb/surrealdb:v3.2.0
+    container_name: aether-surrealdb
     security_opt:
       - no-new-privileges:true
     user: root
@@ -43,7 +48,7 @@ services:
       - --pass=root
       - surrealkv://data/aetheromni.db
     volumes:
-      - surreal_data: {}/data
+      - surreal_data:/data
     healthcheck:
       test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:8000"]
       interval: 10s
@@ -51,4 +56,4 @@ services:
       retries: 5
 
 volumes:
-  surreal_data: {}
+  surreal_data:

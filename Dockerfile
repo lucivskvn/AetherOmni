@@ -46,15 +46,18 @@ RUN groupadd -g 1000 django-group && \
 # Copy project assets and application code owned by root (read-only for non-root user)
 COPY core/ /app/core/
 COPY extractor/ /app/extractor/
-COPY manage.py init_surreal.py /app/
+COPY static/ /app/static/
+COPY manage.py init_surreal.py schema.surql /app/
 
-# Ensure application files are read-only/executable for non-root user
-RUN chmod -R 755 /app
+# Ensure application files and static_root are owned by django-user
+RUN mkdir -p /app/static_root && \
+    chown -R django-user:django-group /app && \
+    chmod -R 755 /app
 
 USER django-user
 
-# Collect static files on container boot
-RUN DJANGO_SECRET_KEY=dummy-key-for-collectstatic python manage.py collectstatic --noinput
+# Collect static files during container build
+RUN DJANGO_SECRET_KEY=dummy-key-for-collectstatic SURREALDB_OFFLINE=True python manage.py collectstatic --noinput
 
 EXPOSE 8080
 

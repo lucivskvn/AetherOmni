@@ -167,8 +167,28 @@ if [ -f "package.json" ]; then
     npx -y @ast-grep/cli scan --json > ast-grep-report.json 2>/dev/null || true
 fi
 
-# 3. Local Semgrep SAST Engine if available
-SEMGREP_BIN=$(find /home/elang/.config/Kiro -name "semgrep" -type f 2>/dev/null | head -1)
+# 3. Local Semgrep SAST Engine if available — search common install locations
+SEMGREP_BIN=""
+# Check PATH first
+if command -v semgrep &> /dev/null; then
+    SEMGREP_BIN=$(command -v semgrep)
+else
+    # Search common user-level install directories (cross-machine portable)
+    for candidate in \
+        "$HOME/.local/bin/semgrep" \
+        "$HOME/.venv/bin/semgrep" \
+        "$(python3 -m site --user-base 2>/dev/null)/bin/semgrep" \
+        "/usr/local/bin/semgrep"; do
+        if [ -x "$candidate" ]; then
+            SEMGREP_BIN="$candidate"
+            break
+        fi
+    done
+    # Fallback: scan Kiro config directory for a bundled binary
+    if [ -z "$SEMGREP_BIN" ] && [ -d "$HOME/.config/Kiro" ]; then
+        SEMGREP_BIN=$(find "$HOME/.config/Kiro" -name "semgrep" -type f 2>/dev/null | head -1)
+    fi
+fi
 if [ -n "$SEMGREP_BIN" ] && [ -x "$SEMGREP_BIN" ]; then
     echo "   ► Executing Semgrep SAST Engine..."
     "$SEMGREP_BIN" scan --config=auto --quiet || true
@@ -238,7 +258,7 @@ if curl -s -H "User-Agent: Mozilla/5.0" "$SONAR_HOST/api/system/status" | grep -
           -e SONAR_HOST_URL="$SONAR_HOST" \
           -v "$(pwd):/usr/src" \
           -v "$(pwd)/.sonar-cache:/opt/sonar-scanner/.sonar/cache" \
-          sonarsource/sonar-scanner-cli -Dsonar.scm.disabled=true \
+          sonarsource/sonar-scanner-cli -Dsonar.scm.provider=git \
           -Dsonar.token="$TOKEN" \
           -Dsonar.threads="$LIMITED_THREADS" \
           -Dsonar.userHome="/opt/sonar-scanner/.sonar" || EXIT_CODE=1

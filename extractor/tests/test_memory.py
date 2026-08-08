@@ -51,8 +51,10 @@ class MultiModelMemoryCachingTestCase(TestCase):
         self.assertEqual(result.model_used, "gemini-3.1-flash-lite")
         # Assert direct gemini was called twice (initial failed attempt + fallback successful attempt)
         self.assertEqual(mock_direct_gemini.call_count, 2)
+        from extractor.llm_gateway import MODEL_GEMINI_FLASH
+
         self.assertTrue(
-            any("Model 'gemini-3.5-flash' failed or rate-limited" in message for message in log_capture.output)
+            any(f"Model '{MODEL_GEMINI_FLASH}' failed or rate-limited" in message for message in log_capture.output)
         )
 
     @patch("extractor.llm_gateway._call_openrouter")

@@ -1,8 +1,9 @@
 # ==============================================================================
-# GITHUB ACTIONS ENTERPRISE CI PIPELINE (STANDARDIZED: 2026-08-04)
+# GITHUB ACTIONS ENTERPRISE CI PIPELINE (STANDARDIZED LATEST: 2026-08-04)
 # ==============================================================================
 # Security & Performance Standards:
-# - Pinning Verified Action Versions (actions/checkout@v7, actions/cache@v4)
+# - Latest Verified Action Versions (actions/checkout@v7.0.1, actions/cache@v6.1.0)
+# - Latest SonarSource MQR Scanner (sonarqube-scan-action@v8.2.1)
 # - Least Privilege Permissions Scoping (contents: read)
 # - Timeout Protections (timeout-minutes: 15)
 # - Dual-Layer Caching (Dependency & Sonar Engine)
@@ -26,6 +27,9 @@ permissions:
   contents: read
   security-events: write
   actions: read
+  pull-requests: write
+  checks: write
+  statuses: write
 
 jobs:
   pre-scan-validation:
@@ -34,10 +38,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout Codebase
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Cache Package & Engine Dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/pip
@@ -62,37 +66,53 @@ jobs:
     needs: pre-scan-validation
     steps:
       - name: Checkout Codebase
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Cache SonarQube Engine
-        uses: actions/cache@v4
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies for Coverage
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt coverage --quiet
+
+      - name: Execute Tests & Generate Coverage XML
+        run: |
+          export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
+          coverage run --source='core,extractor' manage.py test --keepdb
+          coverage xml -o coverage.xml
+          sed -i 's|<source>.*</source>|<source>.</source>|g' coverage.xml || true
+        env:
+          SURREALDB_OFFLINE: "True"
+          DATABASE_URL: "sqlite:///:memory:"
+        continue-on-error: true
+
       - name: Run SonarQube Analysis
-        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        uses: SonarSource/sonarqube-scan-action@v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: >
-            -Dsonar.scm.disabled=true
+            -Dsonar.scm.provider=git
             -Dsonar.threads=4
             -Dsonar.analysis.cache.enabled=true
         continue-on-error: true
 
-  post-scan-gatekeeper:
-    name: 3. Post-Scan Quality Gate Enforcement
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: sonarqube-cloud-analysis
-    steps:
       - name: SonarQube Quality Gate Status Check
-        uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+        uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarqube.fainko.cloud

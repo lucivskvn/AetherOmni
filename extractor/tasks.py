@@ -405,8 +405,11 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
         page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
     else:
         logger.info("[Worker] Routing to Gemini Multimodal OCR for Document ID: %s", doc_id_display)
-        doc_type_detected = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
-        ocr_results = run_stage1_multimodal_ocr(working_path, model_name=settings.GEMINI_MODEL)
+        from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
+
+        ocr_results = run_stage1_multimodal_ocr(
+            working_path, model_name=getattr(settings, "GEMINI_MODEL_BATCH", MODEL_GEMINI_FLASH_LITE)
+        )
         raw_markdown = ocr_results["raw_markdown"]
         stage1_cost = ocr_results["cost_usd"]
         stage1_input_tokens = ocr_results["input_tokens"]

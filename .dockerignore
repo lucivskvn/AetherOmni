@@ -20,9 +20,15 @@ media/
 db.sqlite3
 .desloppify/
 .Jules/
+.kiro/
+.sonar-cache/
+.test_count
 .agents/
 scorecard.png
 sbom.json
 service-account*.json
 credentials*.json
 *.json.bak
+bandit-report.json
+hadolint-report.json
+ast-grep-report.json

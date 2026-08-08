@@ -255,6 +255,13 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
             text,
         )
 
+    # Current State heading version
+    text = re.sub(
+        r"(## ⚡ Current Functional Capabilities \(Current State v)[\d\.]+(\))",
+        rf"\g<1>{v['semver']}\g<2>",
+        text,
+    )
+
     # Test count
     if test_count:
         text = re.sub(
@@ -341,6 +348,32 @@ def update_service_yamls(v: dict) -> bool:
     return changed
 
 
+# ── sonar-project.properties update ───────────────────────────────────────────
+
+
+def update_sonar_properties(v: dict) -> bool:
+    """Sync sonar.projectVersion with the current MAJOR.MINOR. Returns True if modified."""
+    sonar_props = ROOT / "sonar-project.properties"
+    if not sonar_props.exists():
+        return False
+
+    original = sonar_props.read_text(encoding="utf-8")
+    text = re.sub(
+        r"^(sonar\.projectVersion=).+$",
+        rf"\g<1>{v['major_minor']}",
+        original,
+        flags=re.MULTILINE,
+    )
+
+    if text == original:
+        print("[INFO] sonar-project.properties — no changes needed.")
+        return False
+
+    sonar_props.write_text(text, encoding="utf-8")
+    print(f"[OK]   sonar-project.properties — sonar.projectVersion → {v['major_minor']}")
+    return True
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 
@@ -389,6 +422,8 @@ def main() -> int:
         changed.append("gcp_deployment_guide.md")
     if update_service_yamls(v):
         changed.extend(["service.yaml", "service-worker.yaml"])
+    if update_sonar_properties(v):
+        changed.append("sonar-project.properties")
 
     if args.ci:
         print(f"\nChanged: {', '.join(changed) if changed else 'none'}")
