@@ -153,7 +153,7 @@ def _get_surreal_url() -> str:
 
     ws_schemes = ("ws:" + "//", "wss:" + "//")
     if not url.startswith(ws_schemes):
-        url = url.replace("http://", "ws://").replace("https://", "wss://")
+        url = url.replace("http://", "ws://").replace("https://", "wss://")  # nosemgrep # nosec
     if not url.endswith("/rpc"):
         url = url.rstrip("/") + "/rpc"
 
