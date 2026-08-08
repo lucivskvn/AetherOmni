@@ -2,11 +2,22 @@
 # ==============================================================================
 # GCP CLOUD DIAGNOSTICS & LIVE LOG TAILING TOOL FOR AI AGENTS & CLI
 # ==============================================================================
-SERVICE_NAME="${1:-aetheromni}"
-REGION="${2:-asia-southeast1}"
-# Project ID — override via 3rd positional arg, GCP_PROJECT env var, or gcloud config
-DEFAULT_PROJECT=$(gcloud config get-value project 2>/dev/null || echo "your-gcp-project-id")
-PROJECT_ID="${3:-${GCP_PROJECT:-$DEFAULT_PROJECT}}"
+if [ -f ".env" ]; then
+    set -o allexport
+    # shellcheck disable=SC1091
+    source .env
+    set +o allexport
+fi
+
+SERVICE_NAME="${1:-${GCP_SERVICE_NAME:-aether-web}}"
+REGION="${2:-${GCP_REGION:-asia-southeast1}}"
+PROJECT_ID="${3:-${GCP_PROJECT_ID:-${GOOGLE_CLOUD_PROJECT:-${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}}}}"
+
+if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" == "(unset)" ]; then
+    echo -e "❌ ERROR: GCP Project ID could not be auto-detected."
+    echo -e "   Please define GCP_PROJECT_ID in .env or run: gcloud config set project <YOUR_PROJECT_ID>"
+    exit 1
+fi
 
 echo "======================================================================"
 echo "🔍 GCP CLOUD DIAGNOSTICS & RUNTIME METRICS AUDIT"
