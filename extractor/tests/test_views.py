@@ -88,15 +88,17 @@ class ViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_document_save_view_post_success(self):
-        with patch("extractor.views.transaction.on_commit", lambda f: f()):
-            with patch("extractor.cloud_tasks.enqueue") as mock_enqueue:
-                response = self.client.post(
-                    reverse("save_document", args=[self.doc.uuid]), {"refined_markdown": "### Highly Refined Markdown"}
-                )
-                self.assertEqual(response.status_code, 302)
-                self.doc.refresh_from_db()
-                self.assertEqual(self.doc.refined_markdown, "### Highly Refined Markdown")
-                mock_enqueue.assert_called_once_with("reembed_document", {"document_id": self.doc.id})
+        with (
+            patch("extractor.views.transaction.on_commit", lambda f: f()),
+            patch("extractor.cloud_tasks.enqueue") as mock_enqueue,
+        ):
+            response = self.client.post(
+                reverse("save_document", args=[self.doc.uuid]), {"refined_markdown": "### Highly Refined Markdown"}
+            )
+            self.assertEqual(response.status_code, 302)
+            self.doc.refresh_from_db()
+            self.assertEqual(self.doc.refined_markdown, "### Highly Refined Markdown")
+            mock_enqueue.assert_called_once_with("reembed_document", {"document_id": self.doc.id})
 
     def test_document_delete_view_post_success(self):
         doc_to_delete = SourceDocument.objects.create(
@@ -406,14 +408,14 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         self.assertEqual(response.status_code, 302)
 
         # - Modifying own doc -> Allowed (302 to detail page)
-        with patch("extractor.views.transaction.on_commit", lambda f: f()):
-            with patch("extractor.cloud_tasks.enqueue"):
-                response = self.client.post(
-                    reverse("save_document", args=[my_doc.uuid]), {"refined_markdown": "edited"}
-                )
-                self.assertEqual(response.status_code, 302)
-                my_doc.refresh_from_db()
-                self.assertEqual(my_doc.refined_markdown, "edited")
+        with (
+            patch("extractor.views.transaction.on_commit", lambda f: f()),
+            patch("extractor.cloud_tasks.enqueue"),
+        ):
+            response = self.client.post(reverse("save_document", args=[my_doc.uuid]), {"refined_markdown": "edited"})
+            self.assertEqual(response.status_code, 302)
+            my_doc.refresh_from_db()
+            self.assertEqual(my_doc.refined_markdown, "edited")
 
         # - Modifying other user's doc -> Redirected / Forbidden (302 to dashboard)
         response = self.client.post(reverse("save_document", args=[other_doc.uuid]), {"refined_markdown": "edited"})
@@ -868,7 +870,6 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
         )
 
         # No pgvector chunks to create (now stored in SurrealDB)
-        pass
 
     def test_dashboard_stats_and_document_list_are_user_isolated(self):
         self.client.login(username="user_a", password="password123")

@@ -7,7 +7,6 @@ readme = "README.md"
 license = { text = "AGPL-3.0" }
 
 [tool.ruff]
-# Exclude common directories
 exclude = [
     ".git",
     ".venv",
@@ -22,9 +21,12 @@ line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]
-# Enable Pyflakes (F) and Pycodestyle (E, W) by default, alongside Django, Bugbear, and Security checks
-select = ["E", "F", "W", "I", "C90", "UP", "B", "S", "DJ", "RUF"]
-ignore = ["S101", "S105", "S106", "E501", "S108", "S603", "E402", "F841", "S310", "B904", "S112", "B905", "W291", "W293", "RUF012", "DJ012", "S110", "S607", "C901", "RUF002", "DJ008", "F821"]
+select = ["E", "F", "W", "I", "C90", "UP", "B", "S", "DJ", "RUF", "A", "ASYNC", "C4", "LOG", "G", "PIE", "PGH", "SIM", "PERF"]
+ignore = [
+    "S101", "S105", "S106", "E501", "S108", "S603", "E402", "F841", "S310", "B904",
+    "S112", "B905", "W291", "W293", "RUF012", "DJ012", "S110", "S607", "RUF002",
+    "DJ008", "F821", "SIM108", "SIM105", "PERF401", "A001", "A002", "A003", "G004", "S404"
+]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15

@@ -1,0 +1,6 @@
+id: no-eval
+message: Avoid using eval() as it poses security risks.
+severity: warning
+language: Python
+rule:
+  pattern: eval($$$)

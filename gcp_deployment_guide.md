@@ -1,4 +1,4 @@
-# Google Cloud Run Production Deployment Guide (Version 1.2.333)
+# Google Cloud Run Production Deployment Guide (Version 1.2.334)
 
 This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
 
@@ -7,6 +7,7 @@ This guide describes how to provision, configure, build, and deploy the **Aether
 ## 1. Production Architecture Overview
 
 The production system consists of:
+
 1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic, serves dashboard/login pages, and houses ephemeral SQLite databases for Django's user sessions.
 2. **Cloud Run Service (`aether-worker`)**: Dedicated worker instance that processes heavy background OCR and RAG ingestion.
 3. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
@@ -22,6 +23,7 @@ The production system consists of:
 Run these commands using the Google Cloud CLI (`gcloud`) or Cloud Shell.
 
 ### A. Set Environment Variables
+
 ```bash
 export PROJECT_ID="your-gcp-project-id"
 export REGION="asia-southeast1" # Choose your preferred region
@@ -33,6 +35,7 @@ export QUEUE_NAME="extractor-tasks"
 ```
 
 ### B. Enable GCP Services
+
 ```bash
 gcloud services enable \
   run.googleapis.com \
@@ -43,6 +46,7 @@ gcloud services enable \
 ```
 
 ### C. Create Artifact Registry
+
 ```bash
 gcloud artifacts repositories create ${ARTIFACT_REGISTRY} \
   --repository-format=docker \
@@ -51,6 +55,7 @@ gcloud artifacts repositories create ${ARTIFACT_REGISTRY} \
 ```
 
 ### D. Create GCS Media Bucket
+
 ```bash
 gcloud storage buckets create gs://${BUCKET_NAME} \
   --location=${REGION} \
@@ -58,7 +63,9 @@ gcloud storage buckets create gs://${BUCKET_NAME} \
 ```
 
 ### E. Create Google Cloud Tasks Queue
+
 Create the Cloud Tasks queue to handle task rates:
+
 ```bash
 gcloud tasks queues create ${QUEUE_NAME} \
   --location=${REGION} \
@@ -73,6 +80,7 @@ gcloud tasks queues create ${QUEUE_NAME} \
 To follow security best practices (OWASP/SOC2 compliance), create a dedicated service account for Cloud Run services.
 
 ### A. Create Service Account
+
 ```bash
 gcloud iam service-accounts create run-service-account \
   --description="Service account for running AetherOmni on Cloud Run" \
@@ -80,6 +88,7 @@ gcloud iam service-accounts create run-service-account \
 ```
 
 ### B. Grant Storage, Tasks, and Invoker Roles
+
 ```bash
 # Grant Cloud Tasks Enqueuer permission (so web container can enqueue tasks)
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
@@ -104,6 +113,7 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
 Store sensitive credentials in Secret Manager.
 
 ### A. Create Secrets
+
 ```bash
 # 1. Django Secret Key
 gcloud secrets create DJANGO_SECRET_KEY --replication-policy="automatic"
@@ -142,6 +152,7 @@ echo -n "YOUR_SUPABASE_PUBLIC_KEY" | gcloud secrets versions add SUPABASE_PUBLIC
 ```
 
 ### B. Grant Secret Access to the Service Account
+
 ```bash
 for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL ADMIN_USERNAME ADMIN_PASSWORD SUPABASE_URL SUPABASE_PUBLIC_KEY; do
   gcloud secrets add-iam-policy-binding ${secret} \
@@ -155,6 +166,7 @@ done
 ## 5. Build Container Images
 
 Use Google Cloud Build to build and push your Docker container:
+
 ```bash
 gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/web-app:latest
 ```
@@ -164,9 +176,11 @@ gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REG
 ## 6. SurrealDB Setup and HNSW Vector Indexes
 
 ### Automated Schema Bootstrap
+
 The database schema is automatically bootstrapped and verified on container boot by `init_surreal.py` (which runs automatically as the Docker `web` container entrypoint). It waits for SurrealDB to become healthy, ensures the namespace and database are pre-defined, and imports the full schema.
 
 ### Manual Schema Initialization
+
 If you need to manually initialize or verify the SurrealDB schema, run the following queries (compatible with SurrealDB v3.x HNSW syntax):
 
 ```surrealql
@@ -282,14 +296,18 @@ DEFINE FIELD IF NOT EXISTS openrouter_api_key ON system_settings TYPE string DEF
 We deploy both the `web` service and the `worker` service. Deployments are managed declaratively using Knative service specifications in `service.yaml` and `service-worker.yaml` (which reference Secret Manager for credentials).
 
 ### Deploy Services Declaratively (Recommended)
+
 Cloud Build handles compiling the image, tagging it with the current `$BUILD_ID`, replacing the image references in the Knative YAMLs, and applying them:
+
 ```bash
 # Run the pipeline to build and deploy web + worker services
 gcloud builds submit --config cloudbuild.yaml
 ```
 
 ### Deploying Services Manually
+
 If you want to deploy manually using the CLI:
+
 ```bash
 # Deploy Web Service
 gcloud run deploy aether-web \

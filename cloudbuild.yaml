@@ -15,33 +15,40 @@ steps:
   # 1. Kaniko Container Build with Layer Caching
   - name: 'gcr.io/kaniko-project/executor:latest'
     args:
-      - '--destination=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE_NAME}:$COMMIT_SHA'
-      - '--destination=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE_NAME}:latest'
+      - '--destination=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
       - '--cache=true'
       - '--cache-ttl=24h'
       - '--cache-dir=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/cache'
 
-  # 2. Production GCP Cloud Run Deployment
+  # 2. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - '${_SERVICE_NAME}'
-      - '--image=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE_NAME}:$COMMIT_SHA'
+      - 'aether-web'
+      - '--image=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
       - '--region=asia-southeast1'
       - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--port=8080'
-      - '--min-instances=0'
-      - '--max-instances=5'
-      - '--cpu=1'
-      - '--memory=512Mi'
-      - '--concurrency=80'
-      - '--no-cpu-throttling'
+      - '--service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com'
+      - '--set-env-vars=DJANGO_DEBUG=False,GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=asia-southeast1,GCP_QUEUE_LOCATION=asia-southeast1,GCP_QUEUE_NAME=extractor-tasks,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite'
+      - '--set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest'
 
-substitutions:
-  _SERVICE_NAME: 'aetheromni'
+  # 3. Production GCP Cloud Run Worker Service Deployment
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'aether-worker'
+      - '--image=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
+      - '--region=asia-southeast1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com'
+      - '--set-env-vars=DJANGO_DEBUG=False,GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=asia-southeast1,GCP_QUEUE_LOCATION=asia-southeast1,GCP_QUEUE_NAME=extractor-tasks,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite'
+      - '--set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

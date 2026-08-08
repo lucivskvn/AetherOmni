@@ -101,7 +101,7 @@ def _fetch_missing_embeddings(
         for embedding_obj in response.embeddings:
             generated_embeddings.append(embedding_obj.values)
 
-    return {idx: emb for idx, emb in zip(missing_indices, generated_embeddings)}
+    return dict(zip(missing_indices, generated_embeddings, strict=False))
 
 
 def _lookup_cached_embeddings(chunks_list, surreal_db):
@@ -311,6 +311,33 @@ def _ensure_chunks_loaded(allowed_uuids):
         ensure_document_chunks_loaded(all_uuids)
 
 
+def reciprocal_rank_fusion(
+    dense_results: list[dict[str, Any]],
+    sparse_results: list[dict[str, Any]],
+    k: int = 60,
+    top_k: int = 5,
+) -> list[dict[str, Any]]:
+    """
+    Fuses dense vector (HNSW) search results with sparse keyword (BM25) search results
+    using Reciprocal Rank Fusion (RRF).
+    """
+    rrf_scores: dict[str, float] = {}
+    chunk_map: dict[str, dict[str, Any]] = {}
+
+    for rank, chunk in enumerate(dense_results):
+        chunk_id = str(chunk.get("id") or (str(chunk.get("doc_uuid", "")) + "_" + str(chunk.get("chunk_index", rank))))
+        chunk_map[chunk_id] = chunk
+        rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + (1.0 / (k + rank + 1))
+
+    for rank, chunk in enumerate(sparse_results):
+        chunk_id = str(chunk.get("id") or (str(chunk.get("doc_uuid", "")) + "_" + str(chunk.get("chunk_index", rank))))
+        chunk_map[chunk_id] = chunk
+        rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + (1.0 / (k + rank + 1))
+
+    sorted_chunk_ids = sorted(rrf_scores.keys(), key=lambda c_id: rrf_scores[c_id], reverse=True)
+    return [chunk_map[c_id] for c_id in sorted_chunk_ids[:top_k]]
+
+
 def query_semantic_knowledge_rag(
     query: str,
     document_ids: list[int] | None = None,
@@ -318,17 +345,8 @@ def query_semantic_knowledge_rag(
     user: Any = None,
 ) -> dict[str, Any]:
     """
-    Encodes the search query, runs SurrealDB HNSW chunk search, and generates a
-    grounded answer via the LLM gateway.
-
-    Improvements in v2.0:
-    - D-1: SurrealDB HNSW chunk search (replaces pgvector).
-    - D-2: SurrealDB semantic cache lookup (replaces pgvector RAGQueryCache).
-    - D-3: SurrealDB KV exact-match cache (replaces Redis).
-    - D-4/D-5: SurrealDB user memories (replaces Mem0 / Django-Q memory tasks).
-    - F-8: tenant isolation — cache hits verified against user's allowed documents.
-    - E-29: sources include doc UUID string for correct frontend URL generation.
-    - H-3: chunk size handled by caller (arabic-aware).
+    Encodes the search query, runs SurrealDB Hybrid Dense-Sparse RAG chunk search (BM25 + HNSW RRF),
+    and generates a grounded answer via the LLM gateway.
     """
     from extractor import cloud_tasks, surreal_db
     from extractor.llm_gateway import execute_embed_content_with_fallback
@@ -363,12 +381,14 @@ def query_semantic_knowledge_rag(
     if cached_res:
         return cached_res
 
-    # ── 6. SurrealDB HNSW chunk search ────────────────────────────────────────
+    # ── 6. SurrealDB Hybrid Dense-Sparse RAG chunk search (HNSW + BM25 RRF) ───
     allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
     _ensure_chunks_loaded(allowed_uuids)
 
     try:
-        matching_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
+        dense_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
+        sparse_chunks = surreal_db.search_chunks_bm25(query_cleaned, limit=top_k, allowed_doc_uuids=allowed_uuids)
+        matching_chunks = reciprocal_rank_fusion(dense_chunks, sparse_chunks, k=60, top_k=top_k)
     except (ConnectionError, OSError, RuntimeError, TimeoutError):
         logger.exception("[RAG Search] Connection error to SurrealDB.")
         matching_chunks = []
@@ -589,7 +609,7 @@ def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db) -> None
         from extractor.rag import generate_surreal_embeddings
         from extractor.tasks import chunk_document_semantically
 
-        chunks = chunk_document_semantically(doc.get("refined_markdown"), max_chunk_size=chunk_size)
+        chunks = chunk_document_semantically(doc.get("refined_markdown") or "", max_chunk_size=chunk_size)
         if chunks:
             embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
             payloads = [

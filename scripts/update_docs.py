@@ -42,6 +42,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess  # nosec B404
 import sys
@@ -94,23 +95,37 @@ def get_major_minor() -> str:
 
 def get_commit_count() -> str:
     """Total number of commits in the current branch (used as PATCH)."""
+    env_count = os.getenv("BUILD_NUMBER") or os.getenv("COMMIT_COUNT")
+    if env_count and env_count.isdigit():
+        return env_count
     count = _git("rev-list", "--count", "HEAD")
     return count if count.isdigit() else "0"
 
 
 def get_short_sha() -> str:
+    env_sha = os.getenv("SHORT_SHA") or os.getenv("COMMIT_SHA", "")[:7]
+    if env_sha:
+        return env_sha
     return _git("rev-parse", "--short", "HEAD") or "unknown"
 
 
 def get_full_sha() -> str:
+    env_sha = os.getenv("COMMIT_SHA")
+    if env_sha:
+        return env_sha
     return _git("rev-parse", "HEAD") or "unknown"
 
 
 def get_branch() -> str:
+    env_branch = os.getenv("BRANCH_NAME") or os.getenv("GIT_BRANCH")
+    if env_branch:
+        return env_branch
     return _git("rev-parse", "--abbrev-ref", "HEAD") or "unknown"
 
 
 def is_dirty() -> bool:
+    if os.getenv("CI") or os.getenv("CLOUD_BUILD"):
+        return False
     return bool(_git("status", "--porcelain"))
 
 

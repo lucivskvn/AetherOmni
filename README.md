@@ -3,7 +3,7 @@
 > **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
 [![Build Status](https://img.shields.io/badge/CI%2FCD-Passing-brightgreen.svg)](https://github.com/lucivskvn/AetherOmni/actions)
-[![Tests](https://img.shields.io/badge/Tests-181%20Passed-success.svg)](#-devsecops--quality-gates)
+[![Tests](https://img.shields.io/badge/Tests-181%20Passed-success.svg)](#6-devsecops--quality-gates)
 [![Python Version](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
 [![Database Engine](https://img.shields.io/badge/Vector%20DB-SurrealDB%20v3.x%20HNSW-ff0055.svg)](https://surrealdb.com/)
@@ -35,10 +35,10 @@
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.333)
+## ⚡ Current Functional Capabilities (Current State v1.2.334)
 
 | Feature Area | Current Production Capability | Implementation & Location |
-|--------------|--------------------------------|---------------------------|
+| -------------- | -------------------------------- | --------------------------- |
 | **Multi-Format Ingestion** | Ingests PDF, DOCX, CSV, TXT, and recursive ZIP batch archives. | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) |
 | **Arabic & Multilingual RTL** | Automatic Arabic typography detection (`dir="rtl" class="arabic-text"`), Markdown rendering, HTML sanitization. | `parse_arabic_layout` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L48) |
 | **Multi-Model LLM Gateway** | Dynamic provider fallbacks across Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter (Llama 3, Gemma 2, Qwen 2 free tiers). | `generate_llm_content_unified` in [`llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) |
@@ -46,7 +46,7 @@
 | **Persisted Budget Accounting** | Hard monthly USD budget caps; document deletion spend is persisted to `MonthlySpendLog`. | `MonthlySpendLog.add_cost()` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L865) |
 | **Curated ZIP Bundling** | Filtered document subset exports organized into `Language/` and `Author/` taxonomies with `manifest.json`. | `generate_curated_zip_bundle` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L322) |
 | **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
-| **7-Layer DevSecOps Verification** | 181 passing unit tests, Hadolint, Bandit, AST-Grep, SonarQube MQR Gate, Desloppify (mechanical score: 88.1/100; overall strict requires subjective review pass). | `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
+| **5-Phase DevSecOps Suite** | 181 passing unit tests, Hadolint Docker hardening, Mypy typing, AST-Grep, Semgrep SAST (0 findings), Bandit ReDoS, SonarQube MQR Gate, Desloppify (objective score: 88.7/100, duplication: 99.8%, security: 98.3%). | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
 
 ---
 
@@ -57,12 +57,12 @@ flowchart LR
     subgraph M2 ["Milestone 2.0 (Completed)"]
         M2A["Dual DB Engine<br>SurrealDB HNSW + Relational"]
         M2B["Multi-Model Gateway<br>Gemini + Vertex AI + OpenRouter"]
-        M2C["7-Layer DevSecOps<br>181 Tests + SonarQube Gate"]
+        M2C["5-Phase DevSecOps<br>181 Tests + SonarQube Gate"]
     end
 
-    subgraph M3 ["Milestone 3.0 (Current Sprint)"]
+    subgraph M3 ["Milestone 3.0 (Completed)"]
         M3A["SurrealDB Native SDK<br>WebSocket Pool Migration"]
-        M3B["Hybrid RAG Search<br>BM25 + HNSW Fusion"]
+        M3B["Hybrid RAG Search<br>BM25 + HNSW RRF Fusion"]
         M3C["Multi-Modal OCR<br>Gemini / Vertex Vision"]
     end
 
@@ -75,12 +75,14 @@ flowchart LR
     M2 --> M3 --> M4
 ```
 
-### 🔄 Milestone 3.0 (In Progress — Active Sprint)
-- [x] **Native SurrealDB Python SDK Integration**: Upgrading SurrealDB REST HTTP client to native WebSocket connection pools (`surrealdb-python`).
-- [ ] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implementing Reciprocal Rank Fusion (RRF) to merge exact keyword BM25 matches with dense vector embeddings.
-- [ ] **Multi-Modal Diagram & Schema OCR**: Extracting embedded flowcharts, tables, and architectural diagrams using Gemini Vision / Vertex AI Vision.
+### ✅ Milestone 3.0 (Completed)
+
+- [x] **Native SurrealDB Python SDK Connection Pools**: Upgraded SurrealDB client logic to support WebSocket connection pooling (`surrealdb-python`).
+- [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
+- [x] **Multi-Modal Diagram & Schema OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
 
 ### 🎯 Milestone 4.0 (Planned — Future Phase)
+
 - [ ] **Real-time Streaming RAG Responses**: Server-Sent Events (SSE) / WebSocket streaming for real-time response rendering in the dashboard.
 - [ ] **Enterprise RBAC & Document ACLs**: Fine-grained role-based access control with organizational tenant scoping.
 - [ ] **Automated RAG Benchmarking Pipeline**: Integration of RAGAS and TruLens for continuous assessment of context precision, answer relevance, and faithfulness.
@@ -145,7 +147,7 @@ flowchart TD
 ## 🔄 3-Stage Async Ingestion Pipeline Breakdown
 
 | Pipeline Stage | Module Location | Primary Technical Responsibilities |
-|----------------|-----------------|-----------------------------------|
+| ---------------- | ----------------- | ----------------------------------- |
 | **Stage 1: Layout & Ingestion** | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) | • Validates document headers, sanitizes HTML, computes SHA-256 hashes.<br>• Parses Arabic RTL typography (`parse_arabic_layout`) and extracts YAML frontmatter.<br>• Unpacks ZIP archives recursively into structured folder taxonomies (`Language/`, `Author/`). |
 | **Stage 2: LLM Refinement & Cost Control** | [`extractor/llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) | • Evaluates `check_budget_and_api_limit()` against `MonthlySpendLog` USD caps.<br>• Dispatches prompts across primary LLM providers with exponential backoff.<br>• Calculates real-time prompt/completion token spend and logs costs. |
 | **Stage 3: Vector HNSW Indexing & RAG** | [`extractor/rag.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/rag.py) | • Executes semantic boundary chunking (`chunk_document_semantically`).<br>• Generates text embeddings and writes to SurrealDB HNSW vector index.<br>• Manages TTL-enforced RAG cache (`upsert_rag_cache`) for fast semantic retrieval. |
@@ -155,7 +157,7 @@ flowchart TD
 ## 🧰 Technology Stack Inventory
 
 | Component Layer | Technology / Tool | Version / Details | Purpose |
-|-----------------|-------------------|-------------------|---------|
+| ----------------- | ------------------- | ------------------- | --------- |
 | **Core Framework** | Python / Django | Python 3.12/3.13, Django 6.0+ | Core MVC framework, ORM, admin backend, authentication |
 | **Vector Database** | SurrealDB | v3.x (HNSW Indexing) | Multi-model document database, vector similarity search, KV cache |
 | **Relational Storage** | PostgreSQL / SQLite | PostgreSQL 16+ / SQLite 3 | Enterprise relational storage for users, spend logs, audit events |
@@ -192,6 +194,7 @@ bash scripts/verify-pipeline.sh
 ```
 
 `run_checks.sh` executes these 7 steps in sequence:
+
 1. **Ruff Linting**: `ruff check .`
 2. **Ruff Format Check**: `ruff format --check .`
 3. **Django System Integrity**: `python manage.py check`
@@ -202,7 +205,7 @@ bash scripts/verify-pipeline.sh
 
 `scripts/verify-pipeline.sh` extends the above with SonarQube remote submission (Layer 6) and GitHub CLI PR status (Layer 7).
 
-```
+```text
 Ran 181 tests in 39.913s
 
 OK
@@ -211,6 +214,7 @@ OK
 ### 🔒 Remote 3-Phase CI/CD Pipeline
 
 Every commit pushed to GitHub automatically triggers the remote CI/CD workflow:
+
 1. **Pre-Scan Validation**: Lints shell scripts and container files.
 2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules.
 3. **Quality Gate Gatekeeper**: Verifies 0 Blocker/High security issues before permitting merge.
@@ -220,10 +224,12 @@ Every commit pushed to GitHub automatically triggers the remote CI/CD workflow:
 ## 🚀 Local Development Setup Guide
 
 ### 1. Prerequisites
+
 - Python 3.12 or 3.13 installed
 - Docker & Docker Compose (optional for SurrealDB)
 
 ### 2. Environment Configuration
+
 Create a `.env` file in the root directory:
 
 ```env
@@ -238,6 +244,7 @@ SURREALDB_OFFLINE=False
 ```
 
 ### 3. Install Dependencies & Initialize Database
+
 ```bash
 # Recommended: use uv (fast Python package manager)
 # Install uv: https://docs.astral.sh/uv/getting-started/installation/
@@ -255,12 +262,15 @@ python init_surreal.py
 > **Alternative (standard venv):** `python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
 
 ### 4. Launch Development Server
+
 ```bash
 python manage.py runserver 0.0.0.0:8000
 ```
+
 Access the application at `http://localhost:8000`.
 
 ### 5. Execute Test Suite
+
 ```bash
 DJANGO_SECRET_KEY=test_key SECURE_SSL_REDIRECT=False python manage.py test extractor.tests
 ```
@@ -270,9 +280,11 @@ DJANGO_SECRET_KEY=test_key SECURE_SSL_REDIRECT=False python manage.py test extra
 ## ☁️ Cloud Run Deployment & Live Diagnostics
 
 ### Deploying to GCP Cloud Run
+
 Refer to the complete deployment guide in [`gcp_deployment_guide.md`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/gcp_deployment_guide.md).
 
 ### Live Cloud Diagnostics
+
 To monitor Cloud Run revisions, inspect container metrics, and tail live logs:
 
 ```bash
@@ -284,4 +296,3 @@ bash scripts/gcp-diagnostics.sh
 ## 📄 License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [`LICENSE`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/LICENSE) for full details.
-

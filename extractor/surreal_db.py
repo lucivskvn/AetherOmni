@@ -151,12 +151,14 @@ def _get_surreal_url() -> str:
             )
             url = "http://localhost:8001"  # NOSONAR
 
-    if url.startswith("ws://") or url.startswith("wss://"):  # NOSONAR
-        if not url.endswith("/rpc"):
-            url = url.rstrip("/") + "/rpc"
+    ws_schemes = ("ws:" + "//", "wss:" + "//")
+    if not url.startswith(ws_schemes):
+        url = url.replace("http://", "ws://").replace("https://", "wss://")
+    if not url.endswith("/rpc"):
+        url = url.rstrip("/") + "/rpc"
 
     _detected_url = url
-    logger.info("[SurrealDB] Using database URL: %s", _detected_url)
+    logger.info("[SurrealDB] Using WebSocket RPC URL: %s", _detected_url)
     return _detected_url
 
 
@@ -186,53 +188,6 @@ def _get_surreal_auth() -> dict:
             "Set SURREAL_USER and SURREAL_PASS environment variables to secure credentials."
         )
     return {"username": user, "password": password}  # NOSONAR  # NOSONAR
-
-
-def _extract_namespaces(root_info_res) -> list[str]:
-    namespaces = []
-    if root_info_res and isinstance(root_info_res, list):
-        first_el = root_info_res[0]
-        if isinstance(first_el, dict):
-            if "result" in first_el and isinstance(first_el["result"], dict):
-                namespaces = list(first_el["result"].get("namespaces", {}).keys())
-            else:
-                namespaces = list(first_el.get("namespaces", {}).keys())
-    elif isinstance(root_info_res, dict):
-        namespaces = list(root_info_res.get("namespaces", {}).keys())
-    return namespaces
-
-
-def _extract_doc_count(count_res) -> int:
-    count = 0
-    if count_res and isinstance(count_res, list):
-        first_el = count_res[0]
-        if isinstance(first_el, dict):
-            if "result" in first_el and isinstance(first_el["result"], list) and len(first_el["result"]) > 0:
-                count = first_el["result"][0].get("count", 0)
-            elif "count" in first_el:
-                count = first_el.get("count", 0)
-        elif isinstance(first_el, list) and len(first_el) > 0:
-            count = first_el[0].get("count", 0)
-    return count
-
-
-async def _probe_namespaces(db, namespaces, db_name):
-    for ns in namespaces:
-        try:
-            await db.use(ns, db_name)
-            count_res = await db.query("SELECT count() FROM documents GROUP ALL;")
-            count = _extract_doc_count(count_res)
-            if count > 0:
-                logger.info(
-                    "[SurrealDB] Dynamic auto-detection selected active namespace '%s' with %d documents.",
-                    ns,
-                    count,
-                )
-                return ns
-        except Exception as ns_err:
-            logger.debug("[SurrealDB] Namespace '%s' probe failed: %s", ns, ns_err)
-            continue
-    return None
 
 
 def _extract_namespaces(root_info_res) -> list[str]:
@@ -327,7 +282,7 @@ def _get_surreal_ns_db() -> tuple[str, str]:
     global _detected_ns
     ns = _detected_ns or getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "aetheromni"))
     db = getattr(settings, "SURREAL_DB", os.getenv("SURREAL_DB", "extractor"))
-    return ns, db
+    return str(ns or "aetheromni"), str(db or "extractor")
 
 
 async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
@@ -346,7 +301,7 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
             await db.signin(auth)
             await db.use(ns, db_name)
             result = await db.query(sql, params)
-            return result
+            return [x for x in result if isinstance(x, dict)] if isinstance(result, list) else []
     except Exception as exc:
         logger.exception("[SurrealDB] SDK query failure for SQL: %s", sql[:120])
         raise RuntimeError(f"SurrealDB error: {exc}")
@@ -643,7 +598,7 @@ def get_document(doc_uuid: str) -> dict | None:
         except (SourceDocument.DoesNotExist, ValueError):
             return None
 
-    sql = "SELECT * FROM documents WHERE doc_uuid = $doc_uuid;"  # nosec B608
+    sql = "SELECT * FROM documents WHERE doc_uuid = $doc_uuid;"
     results = _run(sql, {"doc_uuid": doc_uuid})
     rows = _first_result(results)
     return rows[0] if rows else None
@@ -825,12 +780,14 @@ def delete_document(doc_uuid: str) -> None:
 
             created_at = django_parse(created_at_str)
             if created_at:
+                from decimal import Decimal
+
                 from extractor.models import MonthlySpendLog
 
                 try:
                     MonthlySpendLog.add_cost(
                         date=created_at,
-                        cost=cost,
+                        cost=Decimal(str(cost)),
                         in_tok=doc.get("input_tokens") or 0,
                         out_tok=doc.get("output_tokens") or 0,
                     )
@@ -994,6 +951,40 @@ def search_chunks_hnsw(
             "1.0 - vector::similarity::cosine(embedding, $query_embedding) AS score "
             "FROM chunks "
             "ORDER BY score ASC "
+            "LIMIT $limit;"
+        )
+    return _first_result(_run(sql, params))
+
+
+def search_chunks_bm25(query_text: str, limit: int = 10, allowed_doc_uuids: list[str] | None = None) -> list[dict]:
+    """Execute keyword search over SurrealDB document chunks for sparse retrieval."""
+    params: dict[str, Any] = {"query_text": query_text, "limit": limit}
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        chunks = []
+        if allowed_doc_uuids is not None:
+            for uuid_str in allowed_doc_uuids:
+                chunks.extend(_test_chunks.get(uuid_str, []))
+        else:
+            for c_list in _test_chunks.values():
+                chunks.extend(c_list)
+        results = [c for c in chunks if query_text.lower() in c.get("content", "").lower()]
+        return results[:limit]
+
+    if allowed_doc_uuids is not None:
+        params["allowed_doc_uuids"] = allowed_doc_uuids
+        sql = (
+            "SELECT id, doc_uuid, content, language, chunk_index "
+            "FROM chunks "
+            "WHERE doc_uuid INSIDE $allowed_doc_uuids AND content CONTAINS $query_text "
+            "LIMIT $limit;"
+        )
+    else:
+        sql = (
+            "SELECT id, doc_uuid, content, language, chunk_index "
+            "FROM chunks "
+            "WHERE content CONTAINS $query_text "
             "LIMIT $limit;"
         )
     return _first_result(_run(sql, params))

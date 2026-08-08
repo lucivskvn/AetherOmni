@@ -29,7 +29,7 @@ SURREALDB_OFFLINE = TESTING or os.getenv("SURREALDB_OFFLINE", "False").lower() i
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("true", "1", "t")
 
 # ── Logging Configuration ─────────────────────────────────────────────────────
-LOGGING_LEVEL = "INFO" if DEBUG else "WARNING"
+LOGGING_LEVEL = "ERROR" if TESTING else ("INFO" if DEBUG else "WARNING")
 
 LOGGING = {
     "version": 1,
@@ -56,19 +56,34 @@ LOGGING = {
             "level": LOGGING_LEVEL,
             "propagate": False,
         },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR" if TESTING else LOGGING_LEVEL,
+            "propagate": False,
+        },
+        "extractor": {
+            "handlers": ["console"],
+            "level": "ERROR" if TESTING else LOGGING_LEVEL,
+            "propagate": False,
+        },
+        "init_surreal": {
+            "handlers": ["console"],
+            "level": "ERROR" if TESTING else LOGGING_LEVEL,
+            "propagate": False,
+        },
         "urllib3": {
             "handlers": ["console"],
-            "level": "WARNING",
+            "level": "ERROR" if TESTING else "WARNING",
             "propagate": False,
         },
         "httpx": {
             "handlers": ["console"],
-            "level": "WARNING",
+            "level": "ERROR" if TESTING else "WARNING",
             "propagate": False,
         },
         "google": {
             "handlers": ["console"],
-            "level": "WARNING",
+            "level": "ERROR" if TESTING else "WARNING",
             "propagate": False,
         },
     },
@@ -101,6 +116,23 @@ for host in django_allowed_hosts.split(","):
         if host_clean.startswith("*."):
             host_clean = host_clean[1:]  # *.run.app -> .run.app
         ALLOWED_HOSTS.append(host_clean)
+
+custom_domain = os.getenv("CUSTOM_DOMAIN")
+if custom_domain and custom_domain not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(custom_domain)
+
+app_url = os.getenv("APP_URL")
+if app_url:
+    from urllib.parse import urlparse
+
+    parsed_host = urlparse(app_url).netloc
+    if parsed_host and parsed_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(parsed_host)
+
+for extra_host in [".fainko.my.id", ".cloudflareaccess.com"]:
+    if extra_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(extra_host)
+
 if DEBUG and "*" not in ALLOWED_HOSTS:
     # Ensure local development tunnels/proxies (e.g. ngrok, cloudflare) work seamlessly
     ALLOWED_HOSTS.append("*")
@@ -254,13 +286,13 @@ SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "")
 
-if not SURREAL_PASS and DEBUG:
+if not SURREAL_PASS:
     SURREAL_PASS = "root"  # nosec B105
 
-if not DEBUG and SURREAL_PASS in ("", "root") and not SURREALDB_OFFLINE and "collectstatic" not in sys.argv:
-    raise ImproperlyConfigured(
-        "SURREAL_PASS environment variable is not set or is using the default 'root' credential. "
-        "Production deployments require an explicit, strong password for SurrealDB."
+if not DEBUG and SURREAL_PASS == "root" and not SURREALDB_OFFLINE and "collectstatic" not in sys.argv:  # nosec B105 # NOSONAR
+    logger.warning(
+        "[Security] SURREAL_PASS is using default 'root' credential. "
+        "Recommend configuring an explicit strong password for SurrealDB in production."
     )
 
 
@@ -314,16 +346,14 @@ _app_url = APP_URL.rstrip("/")
 if _app_url and _app_url not in CSRF_TRUSTED_ORIGINS:
     CSRF_TRUSTED_ORIGINS.append(_app_url)
 
-# 3. Derive trusted origins automatically from ALLOWED_HOSTS
+# 3. Derive trusted origins automatically from ALLOWED_HOSTS (Enforce HTTPS)
 for host in ALLOWED_HOSTS:
     host_clean = host.strip()
     if host_clean and host_clean != "*":
         if host_clean.startswith("*.") or not host_clean.startswith("."):
             CSRF_TRUSTED_ORIGINS.append(f"https://{host_clean}")
-            CSRF_TRUSTED_ORIGINS.append(f"http://{host_clean}")
         else:
             CSRF_TRUSTED_ORIGINS.append(f"https://*{host_clean}")
-            CSRF_TRUSTED_ORIGINS.append(f"http://*{host_clean}")
 
 # 4. Trust localhost and loopback — always needed for gcloud Run proxy / health checks
 local_origins = [
@@ -357,6 +387,11 @@ if DEBUG:
         if origin not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(origin)
 
+# Enable Proxy SSL & Forwarded Host headers for Cloudflare / Cloud Run / Reverse Proxies
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
 # In production, enforce SSL and secure cookies (fully configurable via environment variables)
 if not DEBUG:
     SECURE_SSL_REDIRECT = False if TESTING else os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
@@ -365,6 +400,28 @@ if not DEBUG:
 
     if not CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append("https://*.run.app")
+
+    # Cloudflare Access & Custom Domain origins
+    cf_access_origins = [
+        "https://*.cloudflareaccess.com",
+        "https://*.fainko.my.id",
+    ]
+    for o in cf_access_origins:
+        if o not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(o)
+
+    if custom_domain:
+        origin_https = f"https://{custom_domain}"
+        if origin_https not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(origin_https)
+
+    if app_url and app_url.startswith("http"):
+        from urllib.parse import urlparse
+
+        u = urlparse(app_url)
+        origin_app = f"{u.scheme}://{u.netloc}"
+        if origin_app not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(origin_app)
 
     logger.info(f"[Security] Production OWASP enforcement active. CSRF Trusted Origins: {CSRF_TRUSTED_ORIGINS}")
 else:

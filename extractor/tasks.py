@@ -23,6 +23,12 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
+_MAX_TITLE_LEN = 255
+_MAX_AUTHOR_LEN = 255
+_MAX_LANGUAGE_LEN = 100
+_MAX_DOCTYPE_LEN = 100
+_MAX_SIG_LEN = 255
+
 from extractor import surreal_db
 from extractor.models import AuditAction
 from extractor.utils import (
@@ -84,43 +90,6 @@ def _count_pages_pass2(working_path, chunk_size, overlap, count_pattern):
     return 1
 
 
-def _count_pages_pass1(working_path, chunk_size, overlap, pages_pattern, parent_pattern):
-    pages_count = 0
-    parent_count = 0
-    with open(working_path, "rb") as f:
-        buffer = b""
-        while True:
-            chunk = f.read(chunk_size)
-            if not chunk:
-                break
-            content = buffer + chunk
-            pages_count += len(pages_pattern.findall(content))
-            parent_count += len(parent_pattern.findall(content))
-            if len(content) > overlap:
-                buffer = content[-overlap:]
-            else:
-                buffer = content
-    return pages_count, parent_count
-
-
-def _count_pages_pass2(working_path, chunk_size, overlap, count_pattern):
-    with open(working_path, "rb") as f:
-        buffer = b""
-        while True:
-            chunk = f.read(chunk_size)
-            if not chunk:
-                break
-            content = buffer + chunk
-            match = count_pattern.search(content)
-            if match:
-                return int(match.group(1))
-            if len(content) > overlap:
-                buffer = content[-overlap:]
-            else:
-                buffer = content
-    return 1
-
-
 def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
     """Helper to parse the PDF file structures and extract page count using regex without loading the entire file into memory."""
     if doc_type != "PDF":
@@ -133,7 +102,7 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
 
         pages_pattern = re.compile(rb"/Type\s*/Page\b")
         parent_pattern = re.compile(rb"/Parent\s*\d+\s*\d+\s*R")
-        count_pattern = re.compile(rb"/Type\s*/Pages[^>]*?/Count\s*(\d+)")
+        count_pattern = re.compile(rb"/Type\s*/Pages[^>\r\n]{0,256}/Count\s*(\d+)")
 
         with open(working_path, "rb") as f:
             header = f.read(1024)
@@ -301,7 +270,7 @@ def _get_working_path_surreal(doc_id: str, download: bool) -> str:
     import os
     import urllib.parse
 
-    from extractor.utils import _get_gcs_bucket
+    from extractor.file_utils import _get_gcs_bucket
 
     doc = surreal_db.get_document(doc_id)
     if not doc:
@@ -404,6 +373,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
         doc_type_detected = "TXT"
         page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
     else:
+        doc_type_detected = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
         logger.info("[Worker] Routing to Gemini Multimodal OCR for Document ID: %s", doc_id_display)
         from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
 
@@ -540,7 +510,7 @@ def _parse_yaml_metadata(
     default_doc_type: str | None,
 ) -> dict:
     """Parse YAML metadata block, fallback to defaults on error."""
-    import yaml
+    import yaml  # type: ignore[import-untyped]
 
     parsed = {
         "title": default_title,
@@ -667,9 +637,10 @@ def _update_doc_metadata(doc_ref, parsed_meta: dict):
 
     # Quran translation-specific author / publisher corrections
     low_filename = orig_filename.lower()
-    if "sahih" in low_filename:
-        if a_val == "Anonymous" or "divinely" in a_val.lower() or "anonymous" in a_val.lower():
-            a_val = "Sahih International"
+    if "sahih" in low_filename and (
+        a_val == "Anonymous" or "divinely" in a_val.lower() or "anonymous" in a_val.lower()
+    ):
+        a_val = "Sahih International"
 
     _set_val(doc_ref, "author", a_val)
 
@@ -738,8 +709,8 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     try:
         settings_obj = surreal_db.get_system_settings()
         selected_model = settings_obj.get("selected_model", "auto")
-    except Exception as _settings_err:
-        logger.warning("[Stage2] Could not fetch system settings, using default model: %s", _settings_err)
+    except Exception as settings_err:
+        logger.warning("[Stage2] Could not fetch system settings, using default model: %s", settings_err)
         selected_model = "auto"
 
     refined_parts: list[str] = []
@@ -898,7 +869,7 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
 
         expires_at = timezone.now() + timedelta(days=retention_days)
         existing_page_count = _get_val(doc, "page_count") or 0
-        final_page_count = existing_page_count if existing_page_count > 0 else 0
+        final_page_count = max(0, existing_page_count)
         updated = surreal_db.update_document(
             doc_uuid,
             {
@@ -1000,9 +971,10 @@ def process_document_task(payload: dict) -> None:
 
         temp_local_path = None
         try:
-            working_path = _get_working_path(doc.id if hasattr(doc, "id") else doc)
+            doc_id_str = str(getattr(doc, "id", doc))
+            working_path = _get_working_path(doc_id_str)
             temp_local_path = working_path[0] if isinstance(working_path, tuple) else working_path
-            _run_pipeline_stages(doc, working_path, doc_uuid)
+            _run_pipeline_stages(doc, temp_local_path, doc_uuid)
         finally:
             if temp_local_path and os.path.exists(temp_local_path):
                 try:
@@ -1072,7 +1044,7 @@ def reembed_edited_document_task(payload: dict) -> None:
             surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
         else:
             existing_page_count = _get_val(doc, "page_count") or 0
-            final_page_count = existing_page_count if existing_page_count > 0 else 0
+            final_page_count = max(0, existing_page_count)
             surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
 
         logger.info("[Worker] Re-embedding successful for Document UUID: %s!", doc_uuid)
@@ -1111,7 +1083,7 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
                 uuid.UUID(str(doc_uuid))
                 doc_obj = SourceDocument.objects.get(uuid=doc_uuid)
             except ValueError:
-                doc_obj = SourceDocument.objects.get(id=int(doc_uuid))
+                doc_obj = SourceDocument.objects.get(id=int(doc_uuid or 0))
         except (ValueError, SourceDocument.DoesNotExist) as lookup_err:
             logger.debug("[Cron] Could not resolve doc_uuid %s: %s", doc_uuid, lookup_err)
 
@@ -1222,7 +1194,9 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
 def _reap_single_stale_doc(doc: dict) -> bool:
     """Lock and check one stale document; mark FAILED if still stuck. Returns True if reaped."""
-    doc_uuid = doc.get("doc_uuid")
+    doc_uuid = str(doc.get("doc_uuid") or "")
+    if not doc_uuid:
+        return False
 
     surreal_db.update_document(
         doc_uuid,

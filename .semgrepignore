@@ -1,0 +1,10 @@
+# Semgrep Ignore File
+.git/
+.venv/
+static_root/
+media/
+scratch/
+db.sqlite3
+*.min.js
+*.min.css
+.github/workflows/*.yml

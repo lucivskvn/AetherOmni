@@ -146,7 +146,7 @@ def _is_budget_exceeded(user) -> bool:
         monthly_logged = MonthlySpendLog.total_for_month(now.year, now.month)
 
         # Add live spend from active SurrealDB documents if available
-        monthly_live = Decimal("0")
+        monthly_live = Decimal(0)
         try:
             from extractor import surreal_db as _sdb
 
@@ -1774,7 +1774,7 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
         return "Supabase integration is not configured. Local registration is disabled."
 
     parsed = urlparse(supabase_url)
-    domain = parsed.netloc if parsed.netloc else "example.com"
+    domain = parsed.netloc or "example.com"
     email_lower = email.lower()
     if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
         return "Registration of administrative or system email addresses is not permitted."
@@ -1923,149 +1923,3 @@ def reset_password_confirm_view(request):
         "supabase_key": supabase_key,
     }
     return render(request, "extractor/reset_password_confirm.html", context)
-
-
-def _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query):
-    if is_staff_or_superuser:
-        logs_qs = AuditLog.objects.all().select_related("user", "document")
-    else:
-        logs_qs = AuditLog.objects.filter(user=request.user).select_related("user", "document")
-
-    if action_filter:
-        logs_qs = logs_qs.filter(action=action_filter)
-    if is_staff_or_superuser and user_query:
-        logs_qs = logs_qs.filter(user__username__icontains=user_query)
-    if search_query:
-        logs_qs = logs_qs.filter(
-            Q(details__icontains=search_query)
-            | Q(ip_address__icontains=search_query)
-            | Q(document__original_filename__icontains=search_query)
-            | Q(document__title__icontains=search_query)
-            | Q(document__publisher__icontains=search_query)
-            | Q(document__publication_year__icontains=search_query)
-            | Q(document__doi__icontains=search_query)
-        )
-
-    logs = list(logs_qs.distinct().order_by("-created_at")[:200])
-    action_choices = [
-        (AuditAction.LOGIN, "Login"),
-        (AuditAction.LOGOUT, "Logout"),
-        (AuditAction.UPLOAD, "Upload Fresh"),
-        (AuditAction.UPLOAD_CACHED, "Upload Cached"),
-        (AuditAction.EXTRACTION_START, "Pipeline Started"),
-        (AuditAction.EXTRACTION_COMPLETED, "Pipeline Completed"),
-        (AuditAction.EXTRACTION_FAILED, "Pipeline Failed"),
-        (AuditAction.DELETE, "Delete Document"),
-        (AuditAction.PURGE_ALL, "Purge All Records"),
-        (AuditAction.DOCUMENT_EDITED, "Document Edited"),
-        (AuditAction.DOCUMENT_REQUEUED, "Document Requeued"),
-        (AuditAction.SYSTEM_CONTROL, "System Control"),
-    ]
-    return {
-        "logs": logs,
-        "action_choices": action_choices,
-        "selected_action": action_filter,
-        "selected_user": user_query if is_staff_or_superuser else "",
-        "search_query": search_query,
-    }
-
-
-def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query):
-    where_clauses = []
-    params = {}
-    if not is_staff_or_superuser:
-        where_clauses.append("user_id = $user_id")
-        params["user_id"] = str(request.user.id)
-    if action_filter:
-        where_clauses.append("action = $action")
-        params["action"] = action_filter
-
-    sql = "SELECT * FROM audit_logs"
-    if where_clauses:
-        sql += " WHERE " + " AND ".join(where_clauses)
-    sql += " ORDER BY timestamp DESC LIMIT 200;"
-
-    raw_logs = surreal_db._first_result(surreal_db._run(sql, params))
-
-    from django.contrib.auth import get_user_model
-
-    User = get_user_model()
-    users_map = {str(u.id): u for u in User.objects.all()}
-
-    logs = []
-    for rl in raw_logs:
-        if not rl:
-            continue
-        ts = rl.get("timestamp")
-        if ts and isinstance(ts, str):
-            import datetime
-
-            try:
-                ts_parsed = datetime.datetime.strptime(ts, ISO_8601_FORMAT).replace(tzinfo=datetime.UTC)
-            except ValueError:
-                ts_parsed = parse_datetime(ts)
-        else:
-            ts_parsed = parse_datetime(ts)
-
-        uid = rl.get("user_id")
-        u = users_map.get(uid) if uid else None
-
-        doc = None
-        did = rl.get("doc_uuid")
-        if did:
-            d_raw = surreal_db.get_document(did)
-            if d_raw:
-                doc = _wrap_surreal_doc(d_raw, users_map)
-
-        class DummyAuditLog:
-            pass
-
-        a = DummyAuditLog()
-        a.id = rl.get("id", "")
-        a.user = u
-        a.action = rl.get("action", "")
-        a.document = doc
-        a.details = rl.get("details", "")
-        a.ip_address = rl.get("ip_address", "")
-        a.created_at = ts_parsed
-        logs.append(a)
-
-    if is_staff_or_superuser and user_query:
-        logs = [
-            log_item
-            for log_item in logs
-            if log_item.user and user_query.lower() in getattr(log_item.user, "username", "").lower()
-        ]
-
-    if search_query:
-        sq = search_query.lower()
-        logs = [
-            log_item
-            for log_item in logs
-            if sq in log_item.details.lower()
-            or sq in log_item.ip_address.lower()
-            or (log_item.document and sq in getattr(log_item.document, "original_filename", "").lower())
-            or (log_item.document and sq in getattr(log_item.document, "title", "").lower())
-        ]
-
-    action_choices = [
-        ("LOGIN", "Login"),
-        ("LOGOUT", "Logout"),
-        ("UPLOAD", "Upload Fresh"),
-        ("UPLOAD_CACHED", "Upload Cached"),
-        ("EXTRACTION_START", "Pipeline Started"),
-        ("EXTRACTION_COMPLETED", "Pipeline Completed"),
-        ("EXTRACTION_FAILED", "Pipeline Failed"),
-        ("DELETE", "Delete Document"),
-        ("PURGE_ALL", "Purge All Records"),
-        ("DOCUMENT_EDITED", "Document Edited"),
-        ("DOCUMENT_REQUEUED", "Document Requeued"),
-        ("SYSTEM_CONTROL", "System Control"),
-    ]
-    return {
-        "logs": logs,
-        "action_choices": action_choices,
-        "selected_action": action_filter,
-        "selected_user": user_query if is_staff_or_superuser else "",
-        "search_query": search_query,
-    }

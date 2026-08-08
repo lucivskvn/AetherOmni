@@ -1,6 +1,6 @@
 -- ============================================================
 -- AetherOmni — SurrealDB Schema (v3.x compatible)
--- Apply with:  surreal import --conn wss://surrealdb.fainko.cloud/rpc \
+-- Apply with:  surreal import --conn $SURREAL_URL \
 --              --user <user> --pass <pass> --ns aetheromni --db extractor \
 --              schema.surql
 --

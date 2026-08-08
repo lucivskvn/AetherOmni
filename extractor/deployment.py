@@ -82,7 +82,7 @@ def _query_metadata_server(path):
             f"http://metadata.google.internal/computeMetadata/v1/{path}",
             headers={"Metadata-Flavor": "Google"},
         )
-        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             return response.read().decode("utf-8").strip()
     except Exception:
         return None
@@ -158,11 +158,11 @@ def get_gcp_access_token():
         return None
 
     try:
-        req = urllib.request.Request(  # nosemgrep
+        req = urllib.request.Request(  # nosemgrep: python.lang.security.audit.insecure-transport.urllib.insecure-request-object.insecure-request-object
             "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
             headers={"Metadata-Flavor": "Google"},
         )
-        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 nosemgrep
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             data = json.loads(response.read().decode("utf-8"))
             return data["access_token"]
     except Exception as exc:
@@ -189,7 +189,7 @@ def get_service_config(service_name):
         url = f"https://{region}-run.googleapis.com/apis/serving.knative.dev/v1/namespaces/{project_namespace}/services/{service_name}"
         try:
             req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Accept": APPLICATION_JSON})
-            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
+            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
             body = he.read().decode("utf-8") if he.fp else ""
@@ -400,7 +400,7 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
             headers={"Authorization": f"Bearer {token}", "Content-Type": APPLICATION_JSON},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
+        with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             response_data = json.loads(response.read().decode("utf-8"))
             entries = response_data.get("entries", [])
             logs_parsed = []

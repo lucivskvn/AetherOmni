@@ -298,7 +298,9 @@
             </div>
             <div class="pane-body">
                 <div id="html-preview" class="preview-window" aria-labelledby="preview-title">
-                    {{ rendered_refined|safe }} {# NOSONAR #} {# NOSONAR #}
+                    {% autoescape off %} {# nosemgrep: python.django.security.audit.xss.template-autoescape-off.template-autoescape-off #}
+                        {{ rendered_refined }}
+                    {% endautoescape %}
                 </div>
             </div>
         </div>

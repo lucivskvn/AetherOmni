@@ -253,3 +253,5 @@ ast-grep-report.json
 *.json.bak
 service-account*.json
 credentials*.json
+supabase/
+.supabase/
