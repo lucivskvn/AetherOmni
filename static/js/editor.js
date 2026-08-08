@@ -369,7 +369,12 @@ function setupScrollSync(editor, preview) {
             } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
                 e.preventDefault();
                 if (editorForm) {
-                    editorForm.submit();
+                    const submitBtn = editorForm.querySelector('button[type="submit"]');
+                    if (submitBtn) {
+                        submitBtn.click();
+                    } else {
+                        editorForm.submit();
+                    }
                 }
             } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
                 e.preventDefault();
