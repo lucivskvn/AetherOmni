@@ -3,8 +3,10 @@
 > **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
 [![Build Status](https://img.shields.io/badge/CI%2FCD-Passing-brightgreen.svg)](https://github.com/lucivskvn/AetherOmni/actions)
-[![Quality Gate Status](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=alert_status)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Security Rating](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_rating)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Quality gate](https://sonarqube.fainko.cloud/api/project_badges/quality_gate?project=aetheromni&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Security Hotspots](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_hotspots&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Reliability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_issues&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Tests](https://img.shields.io/badge/Tests-184%20Passed-success.svg)](#-sonarqube-sast--quality-gate-findings)
 [![Python Version](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
@@ -37,7 +39,7 @@
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.337)
+## ⚡ Current Functional Capabilities (Current State v1.2.338)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
