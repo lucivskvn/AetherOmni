@@ -5,7 +5,7 @@
 SERVICE_NAME="${1:-aetheromni}"
 REGION="${2:-asia-southeast1}"
 # Project ID — override via 3rd positional arg, GCP_PROJECT env var, or gcloud config
-DEFAULT_PROJECT=$(gcloud config get-value project 2>/dev/null || echo "esbpcs-lab-un")
+DEFAULT_PROJECT=$(gcloud config get-value project 2>/dev/null || echo "your-gcp-project-id")
 PROJECT_ID="${3:-${GCP_PROJECT:-$DEFAULT_PROJECT}}"
 
 echo "======================================================================"
