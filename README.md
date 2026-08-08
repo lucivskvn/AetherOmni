@@ -24,6 +24,7 @@
 
 1. **Archival Structured Markdown with Metadata**:
    - Converts document layouts into clean, sanitized Markdown text preserved with YAML frontmatter headers (title, author, language, SHA-256 hash, export timestamps) and Right-to-Left (RTL) Arabic HTML wrappers (`dir="rtl" class="arabic-text"`).
+
    ```markdown
    ---
    title: "Enterprise Legal Contract"
@@ -42,6 +43,7 @@
 
 2. **Supervised Fine-Tuning (SFT) Q&A Datasets**:
    - Automatically generates structured JSON Q&A pairs for offline model fine-tuning and domain training.
+
    ```json
    [
      {
@@ -53,6 +55,7 @@
 
 3. **Multi-Modal Visual Diagram & Schema Captions**:
    - Extracts flowcharts, architectural schemas, and tabular diagrams into structured Markdown text using Gemini 3.6 Vision / Vertex AI Vision.
+
    ```markdown
    ### 📊 Page 2 Visual Diagram & Schema Extraction
    **Diagram Type**: System Architecture Flowchart
@@ -64,6 +67,7 @@
 
 4. **Taxonomic Archival ZIP Bundles**:
    - Bundles document collections into structured directory trees (`Language/` and `Author/`) accompanied by `manifest.json` and a merged `master_archival_source.md`.
+
    ```text
    Language/
    └── Arabic/
@@ -84,7 +88,7 @@
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.349)
+## ⚡ Current Functional Capabilities (Current State v1.2.350)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
@@ -110,22 +114,27 @@ flowchart LR
 ```
 
 ### ✅ Milestone 1.0 (Completed — Multi-Format Layout Ingestion)
+
 - Multi-format parser (PDF, DOCX, CSV, TXT, ZIP) with Arabic RTL typography detection (`dir="rtl" class="arabic-text"`).
 
 ### ✅ Milestone 2.0 (Completed — Dual DB Engine & Multi-Model Gateway)
+
 - SurrealDB HNSW vector indexer, relational metadata store, and multi-provider LLM fallback gateway (Gemini / Vertex / OpenRouter).
 
 ### ✅ Milestone 3.0 (Completed — Hybrid RAG & Multi-Modal Vision)
+
 - [x] **Native SurrealDB Python SDK Connection Pools**: Upgraded SurrealDB client logic to support WebSocket connection pooling (`surrealdb-python`).
 - [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
 - [x] **Multi-Modal Diagram & Schema OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
 
 ### 🎯 Milestone 4.0 (Planned — Real-Time Streaming & Enterprise RBAC)
+
 - [ ] **Real-time Streaming RAG Responses**: Server-Sent Events (SSE) / WebSocket streaming for real-time response rendering in the dashboard.
 - [ ] **Enterprise RBAC & Document ACLs**: Fine-grained role-based access control with organizational tenant scoping.
 - [ ] **Automated RAG Benchmarking Pipeline**: Integration of RAGAS and TruLens for continuous assessment of context precision, answer relevance, and faithfulness.
 
 ### 🚀 Milestone 5.0 (Planned — Graph RAG & Autonomous Agentic Tools)
+
 - [ ] **Multi-Tenant Knowledge Graph RAG**: SurrealDB Graph Relational RAG linking entities, concepts, and document nodes.
 - [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step workflow execution.
 
@@ -133,7 +142,7 @@ flowchart LR
 
 ## 🏗️ 3-Stage Architectural Pipeline
 
-```
+```text
 ┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐
 │     STAGE 1: LAYOUT     │ ──> │   STAGE 2: REFINEMENT   │ ──> │     STAGE 3: VECTOR     │
 │   Ingestion & Parsing   │     │    Multi-Model LLM     │     │  SurrealDB HNSW Index  │

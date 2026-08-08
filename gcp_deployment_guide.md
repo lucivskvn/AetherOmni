@@ -1,4 +1,4 @@
-# Google Cloud Run Production Deployment Guide (Version 1.2.349)
+# Google Cloud Run Production Deployment Guide (Version 1.2.350)
 
 This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
 
@@ -9,16 +9,42 @@ This guide describes how to provision, configure, build, and deploy the **Aether
 The production system consists of:
 
 1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic, serves dashboard/login pages, and houses ephemeral SQLite databases for Django's user sessions.
-2. **Cloud Run Service (`aether-worker`)**: Dedicated worker instance that processes heavy background OCR and RAG ingestion.
+2. **Cloud Run Service (`aether-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
 3. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
 4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (at `wss://surrealdb.fainko.cloud/rpc`). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
-5. **Cloud Storage (GCS)**: Stores raw, uploaded PDF assets securely.
-6. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely on a self-hosted instance (at `https://supabase.fainko.cloud`).
-7. **Secret Manager**: Securely stores environment credentials (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`).
+5. **Vertex AI & Gemini Multi-Modal Gateway**: Direct Application Default Credentials (ADC) access (`roles/aiplatform.user`) for multi-region Gemini 3.6 Flash / Vertex AI Vision.
+6. **Cloud Storage (GCS)**: Stores raw, uploaded PDF assets securely in GCP bucket (`GS_BUCKET_NAME`).
+7. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely on a self-hosted instance (at `https://supabase.fainko.cloud`).
+8. **Secret Manager**: Securely stores environment credentials (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`).
 
 ---
 
-## 2. Resource Provisioning
+## 2. Automated One-Command Provisioning (`provision_gcp.sh`)
+
+AetherOmni provides an automated infrastructure provisioner in `scripts/provision_gcp.sh` that detects your GCP Project ID from `.env` or `gcloud config`, enables required APIs (including `aiplatform.googleapis.com`), creates Secret Manager entries, binds IAM service account roles, and optionally triggers Cloud Build:
+
+```bash
+# 1. Configure your production variables in .env
+cat <<EOF > .env
+GCP_PROJECT_ID="your-gcp-project-id"
+GCP_REGION="asia-southeast1"
+DJANGO_SECRET_KEY="your-production-secret-key"
+GEMINI_API_KEY="your-gemini-api-key"
+SURREAL_URL="wss://surrealdb.fainko.cloud/rpc"
+SURREAL_USER="admin"
+SURREAL_PASS="your-surreal-password"
+SUPABASE_URL="https://supabase.fainko.cloud"
+SUPABASE_PUBLIC_KEY="your-supabase-key"
+CUSTOM_DOMAIN="aether.yourdomain.com" # Optional custom domain
+EOF
+
+# 2. Execute automated provisioner and submit Cloud Build deployment
+bash scripts/provision_gcp.sh --submit
+```
+
+---
+
+## 3. Manual Provisioning Reference
 
 Run these commands using the Google Cloud CLI (`gcloud`) or Cloud Shell.
 
