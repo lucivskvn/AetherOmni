@@ -231,6 +231,13 @@ flowchart LR
 - [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
 - [x] **Multi-Modal Diagram & Schema Vision OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
 
+### 📦 Milestone 3.5 (MVP Core — Multi-Format Dataset Export Engine & User Provenance)
+
+- [ ] **Multi-Format Export Selector**: Enables downloading extracted datasets in **Markdown (`.zip`)**, **SQLite Mobile Database (`.db`)**, **Apache Parquet (`.parquet`)**, **Hugging Face SFT (`.jsonl`)**, and **CSV (`.csv`)**.
+- [ ] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (e.g., CC-BY-4.0, MIT), DOI, SHA-256 integrity hash, and `validation_status` (`VERIFIED_COMPLETED` vs fallback handling).
+- [ ] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, `uploaded_by_email`, and `exported_by_username` in exported headers and manifest metadata for complete identity auditability.
+- [ ] **Offline Mobile SQLite FTS5 Indexing**: Generates self-contained SQLite `.db` bundles equipped with FTS5 full-text search tables for offline iOS / Android / Flutter app integration.
+
 ### 🎯 Milestone 4.0 (Enterprise Roadmap — Real-Time Streaming & Access Control)
 
 - [ ] **Real-Time Response Streaming**: Server-Sent Events (SSE) / WebSocket streaming for live token rendering in the dashboard.
