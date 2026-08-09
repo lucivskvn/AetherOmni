@@ -1,0 +1,6 @@
+id: py-no-nested-ternary
+message: "Extract nested ternary/conditional expression into explicit if-else statements (S3358)."
+severity: warning
+language: Python
+rule:
+  pattern: $A if $COND1 else ($B if $COND2 else $C)

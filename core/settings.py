@@ -29,7 +29,12 @@ SURREALDB_OFFLINE = TESTING or os.getenv("SURREALDB_OFFLINE", "False").lower() i
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("true", "1", "t")
 
 # ── Logging Configuration ─────────────────────────────────────────────────────
-LOGGING_LEVEL = "ERROR" if TESTING else ("INFO" if DEBUG else "WARNING")
+if TESTING:
+    LOGGING_LEVEL = "ERROR"
+elif DEBUG:
+    LOGGING_LEVEL = "INFO"
+else:
+    LOGGING_LEVEL = "WARNING"
 
 LOGGING = {
     "version": 1,
