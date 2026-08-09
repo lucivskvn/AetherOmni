@@ -323,20 +323,10 @@ def _get_doc_info_stage1(document_id):
         return doc, doc.get("original_filename", "").lower(), doc.get("doc_uuid")
 
 
-def _get_existing_or_cached_markdown(
-    doc: Any, file_hash: str, doc_id_display: str, working_path: str, lower_name: str
+def _extract_existing_raw(
+    doc: Any, doc_id_display: str, working_path: str, lower_name: str
 ) -> tuple[str, str, int, Decimal, int, int] | None:
-    from django.conf import settings
-
-    from extractor import surreal_db
-
     existing_raw = (doc.get("raw_markdown") if isinstance(doc, dict) else getattr(doc, "raw_markdown", None)) or ""
-    cached_ocr = (
-        surreal_db.kv_cache_get(f"ocr:{file_hash}")
-        if (file_hash and not getattr(settings, "SURREALDB_OFFLINE", False))
-        else None
-    )
-
     if len(existing_raw.strip()) > 20:
         logger.info("[Worker/Stage 1] Reusing existing raw_markdown for Document ID: %s", doc_id_display)
         doc_type = (doc.get("document_type") if isinstance(doc, dict) else getattr(doc, "document_type", None)) or (
@@ -346,12 +336,39 @@ def _get_existing_or_cached_markdown(
             doc.get("page_count") if isinstance(doc, dict) else getattr(doc, "page_count", 0)
         ) or _determine_actual_page_count(working_path, doc_type)
         return existing_raw, doc_type, page_cnt, Decimal("0.0"), 0, 0
+    return None
 
+
+def _extract_cached_ocr(
+    file_hash: str, working_path: str, lower_name: str
+) -> tuple[str, str, int, Decimal, int, int] | None:
+    from django.conf import settings
+
+    from extractor import surreal_db
+
+    cached_ocr = (
+        surreal_db.kv_cache_get(f"ocr:{file_hash}")
+        if (file_hash and not getattr(settings, "SURREALDB_OFFLINE", False))
+        else None
+    )
     if isinstance(cached_ocr, dict) and cached_ocr.get("raw_markdown"):
         logger.info("[Worker/Stage 1] Found cached OCR result in KV Cache for file_hash %s", file_hash)
         doc_type = cached_ocr.get("document_type") or ("PDF" if lower_name.endswith(".pdf") else "IMAGE")
         page_cnt = cached_ocr.get("page_count") or _determine_actual_page_count(working_path, doc_type)
         return cached_ocr["raw_markdown"], doc_type, page_cnt, Decimal("0.0"), 0, 0
+    return None
+
+
+def _get_existing_or_cached_markdown(
+    doc: Any, file_hash: str, doc_id_display: str, working_path: str, lower_name: str
+) -> tuple[str, str, int, Decimal, int, int] | None:
+    existing_res = _extract_existing_raw(doc, doc_id_display, working_path, lower_name)
+    if existing_res:
+        return existing_res
+
+    cached_res = _extract_cached_ocr(file_hash, working_path, lower_name)
+    if cached_res:
+        return cached_res
     return None
 
 

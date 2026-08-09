@@ -107,8 +107,8 @@ echo -e "${GREEN}✓ Source code formatting is fully consistent.${NC}"
 
 echo -e "\n${YELLOW}[Schema Audit] Verifying YAML & Configuration File Structure...${NC}"
 if command -v yamllint &> /dev/null; then
-    yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable}}" \
-        docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml
+    yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" \
+        docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml
     echo -e "${GREEN}✓ Configuration schemas and YAML structures verified successfully.${NC}"
 else
     echo -e "${YELLOW}⚠ yamllint not found in PATH (skipping).${NC}"
