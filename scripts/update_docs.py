@@ -367,7 +367,7 @@ def update_service_yamls(v: dict) -> bool:
 
 
 def update_sonar_properties(v: dict) -> bool:
-    """Sync sonar.projectVersion with the current MAJOR.MINOR. Returns True if modified."""
+    """Sync sonar.projectVersion with the current full semver (MAJOR.MINOR.PATCH). Returns True if modified."""
     sonar_props = ROOT / "sonar-project.properties"
     if not sonar_props.exists():
         return False
@@ -375,7 +375,7 @@ def update_sonar_properties(v: dict) -> bool:
     original = sonar_props.read_text(encoding="utf-8")
     text = re.sub(
         r"^(sonar\.projectVersion=).+$",
-        rf"\g<1>{v['major_minor']}",
+        rf"\g<1>{v['semver']}",
         original,
         flags=re.MULTILINE,
     )
@@ -385,7 +385,7 @@ def update_sonar_properties(v: dict) -> bool:
         return False
 
     sonar_props.write_text(text, encoding="utf-8")
-    print(f"[OK]   sonar-project.properties — sonar.projectVersion → {v['major_minor']}")
+    print(f"[OK]   sonar-project.properties — sonar.projectVersion → {v['semver']}")
     return True
 
 
