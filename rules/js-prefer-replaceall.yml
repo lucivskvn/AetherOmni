@@ -1,0 +1,7 @@
+id: js-prefer-replaceall
+message: "Prefer String#replaceAll() over String#replace() with global regex for performance & readability (S7781)."
+severity: warning
+language: JavaScript
+rule:
+  pattern: $STR.replace(/$PAT/g, $REPL)
+fix: $STR.replaceAll('$PAT', $REPL)

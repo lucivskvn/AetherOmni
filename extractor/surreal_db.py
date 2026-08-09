@@ -422,13 +422,13 @@ def create_document(data: dict) -> dict:
 
         from extractor.models import SourceDocument
 
-        User = get_user_model()
+        user_model = get_user_model()
 
         uploaded_by = None
         uid = data.get("uploaded_by_id")
         if uid:
             try:
-                uploaded_by = User.objects.get(id=uid)
+                uploaded_by = user_model.objects.get(id=uid)
             except User.DoesNotExist:
                 uploaded_by = None
 
@@ -511,7 +511,7 @@ def _apply_offline_doc_update(doc, data, User):
         if k == "uploaded_by_id":
             if v:
                 try:
-                    doc.uploaded_by = User.objects.get(id=v)
+                    doc.uploaded_by = user_model.objects.get(id=v)
                 except User.DoesNotExist:
                     pass
             else:
@@ -532,7 +532,7 @@ def _update_document_offline(doc_uuid, data):
 
     from extractor.models import SourceDocument
 
-    User = get_user_model()
+    user_model = get_user_model()
     try:
         import uuid
 

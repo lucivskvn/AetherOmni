@@ -1,0 +1,8 @@
+id: py-naming-convention
+message: "Variable/parameter '$VAR' does not follow snake_case convention ^[_a-z][a-z0-9_]*$ (S117)."
+severity: warning
+language: Python
+rule:
+  any:
+    - pattern: User = $$$
+    - pattern: UserMemory = $$$

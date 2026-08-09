@@ -203,8 +203,8 @@ def _get_dashboard_stats(request):
     # Parse and wrap documents
     from django.contrib.auth import get_user_model
 
-    User = get_user_model()
-    users_map = {str(u.id): u for u in User.objects.all()}
+    user_model = get_user_model()
+    users_map = {str(u.id): u for u in user_model.objects.all()}
 
     docs = [_wrap_surreal_doc(d, users_map) for d in raw_docs]
 
@@ -687,8 +687,8 @@ class DocumentDetailView(LoginRequiredMixin, View):
 
         from django.contrib.auth import get_user_model
 
-        User = get_user_model()
-        users_map = {str(u.id): u for u in User.objects.all()}
+        user_model = get_user_model()
+        users_map = {str(u.id): u for u in user_model.objects.all()}
         doc = _wrap_surreal_doc(raw_doc, users_map)
 
         # Check standard user access boundary (only uploader, staff, or system documents with no uploader can access)
@@ -753,8 +753,8 @@ class DocumentSaveView(LoginRequiredMixin, View):
 
         from django.contrib.auth import get_user_model
 
-        User = get_user_model()
-        users_map = {str(u.id): u for u in User.objects.all()}
+        user_model = get_user_model()
+        users_map = {str(u.id): u for u in user_model.objects.all()}
         doc = _wrap_surreal_doc(raw_doc, users_map)
 
         # Check standard user access boundary (only uploader or staff can edit)
@@ -827,8 +827,8 @@ class DocumentDeleteView(LoginRequiredMixin, View):
 
         from django.contrib.auth import get_user_model
 
-        User = get_user_model()
-        users_map = {str(u.id): u for u in User.objects.all()}
+        user_model = get_user_model()
+        users_map = {str(u.id): u for u in user_model.objects.all()}
         doc = _wrap_surreal_doc(raw_doc, users_map)
 
         # Check standard user access boundary (only uploader or staff can delete)
@@ -1195,8 +1195,8 @@ def _handle_bulk_delete(request, document_ids):
     from django.contrib.auth import get_user_model
     from django.core.files.storage import default_storage
 
-    User = get_user_model()
-    users_map = {str(u.id): u for u in User.objects.all()}
+    user_model = get_user_model()
+    users_map = {str(u.id): u for u in user_model.objects.all()}
 
     docs = _get_docs_for_delete(request, document_ids, users_map)
     file_hashes = {doc.file_hash for doc in docs if doc.file_hash}
@@ -1406,8 +1406,8 @@ class DocumentRetryView(LoginRequiredMixin, View):
 
         from django.contrib.auth import get_user_model
 
-        User = get_user_model()
-        users_map = {str(u.id): u for u in User.objects.all()}
+        user_model = get_user_model()
+        users_map = {str(u.id): u for u in user_model.objects.all()}
         doc = _wrap_surreal_doc(raw_doc, users_map)
 
         err_msg, status_code = self._handle_retry_permissions_and_limits(request, doc)
@@ -1565,8 +1565,8 @@ def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_
 
     from django.contrib.auth import get_user_model
 
-    User = get_user_model()
-    users_map = {str(u.id): u for u in User.objects.all()}
+    user_model = get_user_model()
+    users_map = {str(u.id): u for u in user_model.objects.all()}
 
     logs = []
     for rl in raw_logs:
