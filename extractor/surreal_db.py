@@ -429,7 +429,7 @@ def create_document(data: dict) -> dict:
         if uid:
             try:
                 uploaded_by = user_model.objects.get(id=uid)
-            except User.DoesNotExist:
+            except user_model.DoesNotExist:
                 uploaded_by = None
 
         doc = SourceDocument.objects.create(
@@ -506,13 +506,13 @@ def create_document(data: dict) -> dict:
     return rows[0] if rows else {}
 
 
-def _apply_offline_doc_update(doc, data, User):
+def _apply_offline_doc_update(doc, data, user_model):
     for k, v in data.items():
         if k == "uploaded_by_id":
             if v:
                 try:
                     doc.uploaded_by = user_model.objects.get(id=v)
-                except User.DoesNotExist:
+                except user_model.DoesNotExist:
                     pass
             else:
                 doc.uploaded_by = None
@@ -544,7 +544,7 @@ def _update_document_offline(doc_uuid, data):
     except (SourceDocument.DoesNotExist, ValueError):
         return {}
 
-    _apply_offline_doc_update(doc, data, User)
+    _apply_offline_doc_update(doc, data, user_model)
     doc.save()
     return _model_to_dict(doc)
 

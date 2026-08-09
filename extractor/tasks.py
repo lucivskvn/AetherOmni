@@ -1316,7 +1316,7 @@ def store_user_memory_task(payload: dict) -> None:
     if not user_id or not raw_text:
         return
 
-    from django.contrib.auth.models import User
+    from django.contrib.auth import get_user_model
 
     from extractor import surreal_db
     from extractor.llm_gateway import (
@@ -1326,9 +1326,10 @@ def store_user_memory_task(payload: dict) -> None:
     )
     from extractor.rag import generate_surreal_embeddings
 
+    user_model = get_user_model()
     try:
         user = user_model.objects.get(id=user_id)
-    except User.DoesNotExist:
+    except user_model.DoesNotExist:
         logger.warning("[Memory Task] User with ID %s does not exist. Aborting.", user_id)
         return
 
