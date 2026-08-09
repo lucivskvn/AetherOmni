@@ -2027,7 +2027,6 @@ function compileMarkdown(markdown) {
 
         return t;
     }
-}
 
 /**
  * Copy text content to clipboard with navigator.clipboard and fallback to execCommand.
@@ -2070,3 +2069,4 @@ function copyTextToClipboard(text, onSuccess, onError) {
         fallbackCopy();
     }
 }
+});
