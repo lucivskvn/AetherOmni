@@ -186,8 +186,8 @@ def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-
 generate_pgvector_embeddings = generate_surreal_embeddings
 
 
-def _sync_postgres_memories_to_surreal(user, surreal_db, UserMemory):
-    pg_memories = UserMemory.objects.filter(user=user)
+def _sync_postgres_memories_to_surreal(user, surreal_db, user_memory):
+    pg_memories = user_memory.objects.filter(user=user)
     if pg_memories.exists():
         logger.info(
             "[Memories Sync] Restoring %s memories from PostgreSQL to SurrealDB for user %s...",
