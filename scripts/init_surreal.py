@@ -198,7 +198,7 @@ def _create_local_superuser_full(admin_username, admin_email, admin_password):
         user.set_password(admin_password)  # NOSONAR # nosemgrep
         user.save()
         logger.info("Local Django superuser '%s' created successfully.", admin_username)  # NOSONAR
-        if admin_password == "admin":
+        if admin_password == "admin":  # nosec B105
             from core.middleware import ForcePasswordChangeMiddleware
 
             try:
