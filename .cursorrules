@@ -17,7 +17,7 @@
 ### 2. Mandatory Automatic Documentation & Steering Synchronization
 
 - **STRICT NON-STALE CONTINUITY MANDATE**:
-  - Whenever linters, cognitive complexity rules, Python/JS versions, workflow steps, or architecture patterns are added or modified, you MUST **automatically update all steering and project documents** (`AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md`, `README.md`, `implementation_plan.md`, `task.md`, and `gcp_deployment_guide.md`) in the **exact same session/turn**.
+  - Whenever linters, cognitive complexity rules, Python/JS versions, workflow steps, or architecture patterns are added or modified, you MUST **automatically update all steering and project documents** (`AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md`, `README.md`, `implementation_plan.md`, `task.md`, and `docs/gcp_deployment_guide.md`) in the **exact same session/turn**.
   - **Zero Stale Information Policy**: Never leave design decisions, linter setups, or test counts untracked for next sessions.
 
 ### 3. Desloppify Codebase Health & Sensor Audit
