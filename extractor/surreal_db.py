@@ -379,7 +379,7 @@ async def _async_check_health() -> bool:
     url = _get_surreal_url()
     try:
         async with AsyncSurreal(url):
-            pass
+            logger.debug("[SurrealDB] WebSocket health check ping successful.")
         return True
     except Exception as e:
         logger.warning("[SurrealDB] WebSocket health check failed: %s", e)
