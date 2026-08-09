@@ -3,7 +3,8 @@
 > **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
 [![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)
-[![Python Version](https://img.shields.io/badge/Python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
+[![Python Version](https://img.shields.io/badge/Python-3.13-blue.svg)](https://www.python.org/)
+
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
@@ -181,7 +182,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.373)
+## ⚡ Current Functional Capabilities (Current State v1.2.374)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
