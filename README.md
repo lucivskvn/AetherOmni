@@ -93,7 +93,7 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | **Non-Technical User** | Ease of Use & Automated Ingestion | Drag-and-drop uploads, simple markdown view, instant single-copy ZIP export (`documents/001_title.md`). | Zero technical learning curve; eliminates manual document transcription. |
 | **Software Engineer** | Architecture Rigor & Zero Hallucination | Decoupled 3-stage pipeline, SurrealDB HNSW vector RAG, RRF hybrid search (BM25 + HNSW). | High-precision sub-100ms retrieval with zero prompt context window waste. |
-| **DevSecOps Engineer** | Security, SAST & Pipeline Stability | 5-phase `run_checks.sh` verification gate, Semgrep zero-finding SAST, SonarQube MQR gate. | Prevents broken code, security vulnerabilities, or failing tests from entering main branch. |
+| **DevSecOps Engineer** | Security, SAST & Pipeline Stability | 5-phase `run_checks.sh` gate: Ruff, Mypy, ast-grep, Semgrep SAST, Bandit, Hadolint, **`surreal validate`** SurrealQL schema lint, ShellCheck, SonarQube MQR. | Prevents broken code, security vulnerabilities, or failing tests from entering main branch. |
 | **CFO / Finance Lead** | Cost Control & Budget Predictability | Instant SHA-256 hash caching ($0.00 cost reuse), `MonthlySpendLog` USD caps, Cloud Run scale-to-zero. | Eliminates duplicate LLM API charges; ensures spend stays within strict monthly caps. |
 | **Compliance Officer** | Auditability & SOC 2 Governance | Immutable append-only `AuditLog` with PostgreSQL triggers and client IP logging (`get_client_ip`). | Complete tamper-evident audit trail for regulatory compliance. |
 | **Academic Researcher** | Scientific Rigor & Verifiable Citations | Structural source boundaries (`<!-- SOURCE_START -->`), SFT Q&A JSON dataset export, RTL Arabic layout. | Verifiable peer-reviewed citation attribution and reproducible ML dataset preparation. |
@@ -183,7 +183,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.5.453)
+## ⚡ Current Functional Capabilities (Current State v1.5.454)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
@@ -195,7 +195,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 | **Curated ZIP & Single-Copy Exports** | Single-copy standardized document exports (`documents/001_title.md`) with optional multi-taxonomy views (`Language/`, `Author/`) and `manifest.json`. | `generate_curated_zip_bundle` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L322) |
 | **Automated Artifact Cleanup** | Automated DevSecOps file retention policy (`cleanup_stale_temp_artifacts`) purging temporary processing scratch files older than 24h. | `cleanup_stale_temp_artifacts` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L420) |
 | **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
-| **5-Phase DevSecOps Suite** | Automated verification pipeline featuring AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy typing, Hadolint container hardening, SonarQube MQR Gatekeeper, and unit test suite with coverage reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
+| **5-Phase DevSecOps Suite** | Automated verification pipeline featuring AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy typing, Hadolint container hardening, **SurrealQL schema validation** (`surreal validate`), SonarQube MQR Gatekeeper, and 199-test suite with coverage reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
 
 ---
 
@@ -205,10 +205,11 @@ AetherOmni follows an **MVP-First Engineering Philosophy**, prioritizing solid c
 
 ```mermaid
 flowchart LR
-    M1["Milestone 1.0 MVP<br>Multi-Format Ingestion & Caching"] --> M2["Milestone 2.0 MVP<br>Dual DB & LLM Gateway"]
-    M2 --> M3["Milestone 3.0 MVP<br>Hybrid RAG & Vision OCR"]
-    M3 --> M4["Milestone 4.0 Enterprise<br>SSE Streaming & RBAC"]
-    M4 --> M5["Milestone 5.0 Enterprise<br>Graph RAG & Agent Tools"]
+    M1["✅ Milestone 1.0 MVP<br>Multi-Format Ingestion & Caching"] --> M2["✅ Milestone 2.0 MVP<br>Dual DB & LLM Gateway"]
+    M2 --> M3["✅ Milestone 3.0 MVP<br>Hybrid RAG & Vision OCR"]
+    M3 --> M35["✅ Milestone 3.5 MVP<br>DevSecOps Hardening & SurrealQL"]
+    M35 --> M4["📦 Milestone 4.0 Enterprise<br>SSE Streaming & RBAC"]
+    M4 --> M5["🚀 Milestone 5.0 Enterprise<br>Graph RAG & Agent Tools"]
 ```
 
 ### ✅ Milestone 1.0 (MVP Core — Multi-Format Layout Ingestion & Instant Caching)
@@ -227,19 +228,26 @@ flowchart LR
 
 ### ✅ Milestone 3.0 (MVP Core — Hybrid RAG & Multi-Modal Vision OCR)
 
-- [x] **Native SurrealDB WebSocket Connection Pools**: Upgraded SurrealDB client logic for high-concurrency connection handling (`surrealdb-python`).
+- [x] **Native SurrealDB WebSocket Connection Pools**: Upgraded SurrealDB client logic for high-concurrency connection handling (`surrealdb==2.0.0`).
 - [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
 - [x] **Multi-Modal Diagram & Schema Vision OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
 
-### 📦 Milestone 3.5 (MVP Core — Multi-Format Dataset Export Engine & User Provenance)
+### ✅ Milestone 3.5 (MVP Core — DevSecOps Hardening, SurrealQL Validation & Python 3.13)
 
-- [ ] **Multi-Format Export Selector**: Enables downloading extracted datasets in **Markdown (`.zip`)**, **SQLite Mobile Database (`.db`)**, **Apache Parquet (`.parquet`)**, **Hugging Face SFT (`.jsonl`)**, and **CSV (`.csv`)**.
-- [ ] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (e.g., CC-BY-4.0, MIT), DOI, SHA-256 integrity hash, and `validation_status` (`VERIFIED_COMPLETED` vs fallback handling).
-- [ ] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, `uploaded_by_email`, and `exported_by_username` in exported headers and manifest metadata for complete identity auditability.
-- [ ] **Offline Mobile SQLite FTS5 Indexing**: Generates self-contained SQLite `.db` bundles equipped with FTS5 full-text search tables for offline iOS / Android / Flutter app integration.
+- [x] **Python 3.13 Runtime Upgrade**: Container base image updated to `python:3.13-slim`; `pyproject.toml` and `sonar-project.properties` aligned to `py313` target.
+- [x] **SurrealQL Schema Validation** (`surreal validate`): `schema.surql` is now validated on every pipeline run via the official `surreal` CLI v3.3.0+ (installed via `curl -sSf https://install.surrealdb.com | sh`). Integrated into Phase 2 of `run_checks.sh` and the fast differential `--fast` pass for `.surql` file changes.
+- [x] **Full-Suite Tool Alignment**: All DevSecOps tools verified at latest stable: `ruff==0.16.2`, `mypy==2.3.0`, `bandit==1.9.4`, `pip-audit==2.10.1`, `semgrep==1.172.0`, `yamllint==1.38.0`, `hadolint==2.15.1`, `ast-grep==0.45.1`, `markdownlint-cli==0.49.1`, `eslint==v10.8.1`, `surreal==3.3.0-nightly`.
+- [x] **SonarQube Multi-Language SAST**: Removed `sonar.language=py` single-language lock; SonarQube now scans Python 3.13 (`py313`) **and** JavaScript (ESLint 10 conventions) in the same analysis pass.
+- [x] **`run_checks.sh` Path Consistency**: Fixed autofix `markdownlint` target path from `gcp_deployment_guide.md` to `docs/gcp_deployment_guide.md`.
+- [x] **ShellCheck Integration**: `shellcheck run_checks.sh scripts/*.sh` added to Phase 2 for POSIX shell safety enforcement.
+- [x] **199-Test Suite**: All 199 Django unit tests pass cleanly under `SURREALDB_OFFLINE=True` with `coverage.xml` generated for SonarQube.
 
-### 🎯 Milestone 4.0 (Enterprise Roadmap — Real-Time Streaming & Access Control)
+### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & RBAC)
 
+- [ ] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)**, **SQLite Mobile (`.db`)**, **Apache Parquet (`.parquet`)**, **Hugging Face SFT (`.jsonl`)**, and **CSV (`.csv`)**.
+- [ ] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (CC-BY-4.0, MIT), DOI, SHA-256 hash, and `validation_status`.
+- [ ] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, and `exported_by_username` in exported headers and manifest metadata.
+- [ ] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search for offline iOS / Android / Flutter integration.
 - [ ] **Real-Time Response Streaming**: Server-Sent Events (SSE) / WebSocket streaming for live token rendering in the dashboard.
 - [ ] **Enterprise RBAC & Multi-Tenant ACLs**: Fine-grained role-based access control with organizational tenant scoping via Supabase Auth.
 - [ ] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness via RAGAS and TruLens.
@@ -272,14 +280,16 @@ flowchart LR
 
 | Component Layer | Technology / Tool | Version / Details | Purpose |
 | ----------------- | ------------------- | ------------------- | --------- |
-| **Core Framework** | Python / Django | Python 3.12/3.13, Django 6.0+ | Core MVC framework, ORM, admin backend, authentication |
-| **Vector Database** | SurrealDB | v3.x (HNSW Indexing) | Multi-model document database, vector similarity search, KV cache |
+| **Core Framework** | Python / Django | Python 3.13, Django 6.0+ | Core MVC framework, ORM, admin backend, authentication |
+| **Vector Database** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model document database, vector similarity search, KV cache |
 | **Relational Storage** | PostgreSQL / SQLite | PostgreSQL 16+ / SQLite 3 | Enterprise relational storage for users, spend logs, audit events |
-| **LLM Gateway** | Google Gemini / Vertex AI / OpenRouter | Gemini 3.1 Flash Lite / 3.5 Flash, Llama 3 (OpenRouter free fallback) | Dynamic multi-provider fallback chain for document extraction |
-| **Cloud Hosting** | GCP Cloud Run | Fully Managed Serverless | Zero-scale web app and worker process containers |
+| **LLM Gateway** | Google Gemini / Vertex AI / OpenRouter | Gemini 3.6 Flash / 3.5 Flash-Lite, Llama 3 (OpenRouter free fallback) | Dynamic multi-provider fallback chain for document extraction |
+| **Cloud Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast1` | Zero-scale web app and worker process containers |
 | **Queue & Dispatcher** | GCP Cloud Tasks | OIDC Authenticated Tasks | Production asynchronous queue with localized thread fallbacks |
 | **Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw and processed documents |
-| **DevSecOps & SAST** | SonarQube / Bandit / Hadolint / Desloppify | Sonar MQR Gate, Hadolint Docker | 5-phase shift-left security verification and code quality gate |
+| **Auth** | Supabase Auth Platform (Supabase Cloud) | GoTrue REST API · `SupabaseAuthBackend` | User authentication, login, and registration |
+| **Container Runtime** | Docker · python:3.13-slim | Multi-stage OWASP non-root build | Minimal production container, non-root user `1000` |
+| **DevSecOps & SAST** | SonarQube / Bandit / Hadolint / Semgrep / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | Sonar MQR Gate, SurrealQL syntax validation | 5-phase shift-left security verification and code quality gate |
 
 ---
 
@@ -313,18 +323,20 @@ bash scripts/verify-pipeline.sh
    - Ruff AST Formatter (`ruff format --check .`)
    - Ruff Cyclomatic Complexity & Linter (`ruff check .`)
    - Yamllint Configuration Audit & Hadolint Docker Hardening
-2. **Phase 2: Static Analysis & Type Checking**:
+2. **Phase 2: Infrastructure & Schema Validation**:
    - Mypy Data Flow & Static Type Checker (`mypy core/ extractor/`)
    - AST-Grep Structural Pattern Auditor (`ast-grep scan`)
+   - **SurrealQL Schema Validator** (`surreal validate **/*.surql`) — enforces SurrealQL syntax on all `.surql` files
+   - ShellCheck POSIX Script Safety Auditor (`shellcheck run_checks.sh scripts/*.sh`)
 3. **Phase 3: Deep Security & SAST Audit**:
    - Semgrep OSS SAST Engine (`semgrep scan --config=auto`) — strict 0 findings gate
    - Bandit ReDoS & Cryptographic Vulnerability Auditor (`bandit -c bandit.yaml`)
    - Pip-Audit Supply-Chain CVE Dependency Audit (`pip-audit -r requirements.txt`)
 4. **Phase 4: Runtime Verification & Test Suite**:
    - Django System Integrity Check (`python manage.py check`)
-   - Django Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`)
+   - Django Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`) — 199 tests
 5. **Phase 5: Documentation Governance & SonarQube Gate**:
-   - Markdownlint Syntax Auditor (`markdownlint README.md gcp_deployment_guide.md`)
+   - Markdownlint Syntax Auditor (`markdownlint README.md docs/gcp_deployment_guide.md`)
    - Automated Version & Metadata Synchronizer (`python scripts/update_docs.py`)
 
 ### 🔒 Remote 3-Phase CI/CD Pipeline

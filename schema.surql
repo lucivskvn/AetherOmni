@@ -60,7 +60,7 @@ DEFINE FIELD IF NOT EXISTS embedding       ON chunks TYPE array<float>;
 DEFINE FIELD IF NOT EXISTS created_at      ON chunks TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX IF NOT EXISTS idx_chunks_doc  ON chunks FIELDS doc_uuid;
--- HNSW index (1536 dims = text-embedding-004 output, cosine similarity)
+-- HNSW index (768 dims = embedding model output, cosine similarity)
 DEFINE INDEX IF NOT EXISTS idx_chunks_hnsw ON chunks FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
 
 

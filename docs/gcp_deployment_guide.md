@@ -1,4 +1,4 @@
-# Google Cloud Run Production Deployment Guide (Version 1.5.453)
+# Google Cloud Run Production Deployment Guide (Version 1.5.454)
 
 This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
 
@@ -207,7 +207,18 @@ The database schema is automatically bootstrapped and verified on container boot
 
 ### Manual Schema Initialization
 
-If you need to manually initialize or verify the SurrealDB schema, run the following queries (compatible with SurrealDB v3.x HNSW syntax):
+If you need to manually initialize or verify the SurrealDB schema, run the following queries (compatible with SurrealDB v3.x HNSW syntax).
+
+> **SurrealQL Validation**: Before importing, validate the schema file locally using the official `surreal` CLI:
+>
+> ```bash
+> # Install surreal CLI (Linux/macOS)
+> curl -sSf https://install.surrealdb.com | sh
+> # Validate schema syntax
+> surreal validate schema.surql
+> ```
+>
+> The `surreal validate` command (`surreal` v3.3.0+) enforces SurrealQL syntax correctness and is run automatically in Phase 2 of `run_checks.sh`.
 
 ```surrealql
 -- ── 1. documents ─────────────────────────────────────────────
