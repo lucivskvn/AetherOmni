@@ -99,6 +99,23 @@ class UpdateDocsTestCase(unittest.TestCase):
 
     @patch("scripts.update_docs.ROOT")
     def test_update_service_yamls(self, mock_root):
+        # update_service_yamls validates/restores the ${RELEASE_VERSION} placeholder.
+        # It intentionally always returns False — service YAMLs are deploy-time
+        # templates, not "documentation" in the changed-docs sense.
+        mock_file = MagicMock()
+        mock_file.exists.return_value = True
+        # Placeholder already present — nothing to restore
+        mock_file.read_text.return_value = '- name: RELEASE_VERSION\n  value: "${RELEASE_VERSION}"'
+        mock_root.__truediv__.return_value = mock_file
+
+        info = {"release_ver": "v1.2.3+abc1234"}
+        changed = update_service_yamls(info)
+        self.assertFalse(changed)
+
+    @patch("scripts.update_docs.ROOT")
+    def test_update_service_yamls_restores_placeholder(self, mock_root):
+        # Placeholder replaced with a hardcoded value — function writes it back,
+        # but still returns False (excluded from the docs-changed list by design).
         mock_file = MagicMock()
         mock_file.exists.return_value = True
         mock_file.read_text.return_value = '- name: RELEASE_VERSION\n  value: "old"'
@@ -106,4 +123,4 @@ class UpdateDocsTestCase(unittest.TestCase):
 
         info = {"release_ver": "v1.2.3+abc1234"}
         changed = update_service_yamls(info)
-        self.assertTrue(changed)
+        self.assertFalse(changed)
