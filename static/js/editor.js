@@ -189,12 +189,10 @@ function applyPostRenderFeatures(container) {
 
         if (firstStrong === 'arabic') {
             el.setAttribute('dir', 'rtl');
-            el.classList.add('arabic-text');
-            el.classList.add('rtl');
+            el.classList.add('arabic-text', 'rtl');
         } else {
             el.removeAttribute('dir');
-            el.classList.remove('arabic-text');
-            el.classList.remove('rtl');
+            el.classList.remove('arabic-text', 'rtl');
         }
     });
 
