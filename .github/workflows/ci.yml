@@ -60,8 +60,9 @@ jobs:
           fi
 
   sonarqube-cloud-analysis:
-    name: 2. SonarQube Cloud SAST (https://sonarqube.fainko.cloud)
+    name: 2. SonarQube Cloud SAST (Self-Hosted)
     runs-on: ubuntu-latest
+
     timeout-minutes: 15
     needs: pre-scan-validation
     steps:
@@ -77,10 +78,10 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install Dependencies for Coverage
         run: |

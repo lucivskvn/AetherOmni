@@ -115,6 +115,20 @@ _detected_url: str | None = None
 _detected_ns: str | None = None
 
 
+def _probe_local_surreal_urls(local_urls: list[str]) -> str | None:
+    import httpx
+
+    for l_url in local_urls:
+        try:
+            with httpx.Client(timeout=0.5) as client:
+                r = client.get(l_url.rstrip("/") + "/health")
+                if r.status_code == 200:
+                    return l_url
+        except Exception as probe_err:
+            logger.debug("[SurrealDB] Local probe %s failed: %s", l_url, probe_err)
+    return None
+
+
 def _get_surreal_url() -> str:
     global _detected_url
     if _detected_url:
@@ -123,27 +137,12 @@ def _get_surreal_url() -> str:
     # Check settings/env first
     url = getattr(settings, "SURREAL_URL", None) or os.getenv("SURREAL_URL")
     if not url:
-        # Auto-detect from common local/Docker addresses
-        import httpx
-
         local_urls = ["http://localhost:8001", "http://surrealdb:8000"]  # NOSONAR
-        detected = None
-        for l_url in local_urls:
-            try:
-                with httpx.Client(timeout=0.5) as client:
-                    r = client.get(l_url.rstrip("/") + "/health")
-                    if r.status_code == 200:
-                        detected = l_url
-                        break
-            except Exception as probe_err:
-                logger.debug("[SurrealDB] Local probe %s failed: %s", l_url, probe_err)
-                continue
+        detected = _probe_local_surreal_urls(local_urls)
 
         if detected:
             url = detected
         else:
-            # SURREAL_URL is required in production -- no tenant-specific fallback baked in.
-            # Set the SURREAL_URL environment variable in your Cloud Run service YAML.
             logger.warning(
                 "[SurrealDB] SURREAL_URL is not set and no local SurrealDB instance was found. "
                 "Set the SURREAL_URL environment variable. Defaulting to http://localhost:8001 "
@@ -152,6 +151,7 @@ def _get_surreal_url() -> str:
             url = "http://localhost:8001"  # NOSONAR
 
     ws_schemes = ("ws:" + "//", "wss:" + "//")
+
     if not url.startswith(ws_schemes):
         url = url.replace("http://", "ws://").replace("https://", "wss://")  # nosemgrep # nosec
     if not url.endswith("/rpc"):
@@ -166,12 +166,9 @@ def _get_surreal_auth() -> dict:
     user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
     password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", ""))
 
-    if not password and getattr(settings, "DEBUG", True):
-        password = "root"  # nosec B105
-
-    # In tests or fallback offline modes we might still have root, but for production
-    # settings.py would have already raised ImproperlyConfigured. If we reach here,
-    # we enforce one last check (unless offline mode is detected).
+    # SEC-04 fix: removed the `DEBUG=True` shortcut that defaulted to "root".
+    # Use SURREALDB_OFFLINE=True in test/local environments instead, which bypasses
+    # DB connections entirely. Never fall back to default credentials silently.
 
     # In unittests we might not have a password, skip this check
     import sys
@@ -187,7 +184,16 @@ def _get_surreal_auth() -> dict:
             "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment is forbidden. "
             "Set SURREAL_USER and SURREAL_PASS environment variables to secure credentials."
         )
-    return {"username": user, "password": password}  # NOSONAR  # NOSONAR
+
+    # Also reject empty passwords in DEBUG mode unless explicitly offline or testing
+    if not password and not getattr(settings, "SURREALDB_OFFLINE", False) and not is_testing:
+        raise ImproperlyConfigured(
+            "[SurrealDB] SURREAL_PASS is not set. "
+            "Set SURREAL_PASS via environment variable or GCP Secret Manager. "
+            "For local development without SurrealDB, set SURREALDB_OFFLINE=True."
+        )
+
+    return {"username": user, "password": password}  # NOSONAR
 
 
 def _extract_namespaces(root_info_res) -> list[str]:
@@ -296,15 +302,44 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
 
     ns, _ = _get_surreal_ns_db()
 
-    try:
-        async with AsyncSurreal(url) as db:
-            await db.signin(auth)
-            await db.use(ns, db_name)
-            result = await db.query(sql, params)
-            return [x for x in result if isinstance(x, dict)] if isinstance(result, list) else []
-    except Exception as exc:
-        logger.exception("[SurrealDB] SDK query failure for SQL: %s", sql[:120])
-        raise RuntimeError(f"SurrealDB error: {exc}")
+    # EDGE-04 fix: retry with exponential backoff to handle transient TCP resets,
+    # SurrealDB container restarts, and Cloud Run cold-start connection delays.
+    _max_attempts = 3
+    last_exc: Exception | None = None
+    for attempt in range(_max_attempts):
+        try:
+            async with AsyncSurreal(url) as db:
+                await db.signin(auth)
+                await db.use(ns, db_name)
+                result = await db.query(sql, params)
+                return [x for x in result if isinstance(x, dict)] if isinstance(result, list) else []
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _max_attempts - 1:
+                wait_secs = 2**attempt  # 1s, 2s
+                logger.warning(
+                    "[SurrealDB] Query attempt %d/%d failed (%s). Retrying in %ds...",
+                    attempt + 1,
+                    _max_attempts,
+                    exc,
+                    wait_secs,
+                )
+                await asyncio.sleep(wait_secs)
+            else:
+                logger.exception(
+                    "[SurrealDB] SDK query failure after %d attempts for SQL: %s", _max_attempts, sql[:120]
+                )
+
+    raise RuntimeError(f"SurrealDB error after {_max_attempts} attempts: {last_exc}")
+
+
+def _run_in_thread(coro):
+    """Run an async coroutine synchronously in a separate thread to prevent event loop blocking/corruption."""
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(asyncio.run, coro)
+        return future.result()
 
 
 def _run(sql: str, params: dict | None = None) -> list[dict]:
@@ -319,11 +354,9 @@ def _run(sql: str, params: dict | None = None) -> list[dict]:
         loop = None
 
     if loop and loop.is_running():
-        # Inside async context
-        import nest_asyncio
-
-        nest_asyncio.apply()
-        return loop.run_until_complete(_async_run(sql, params))
+        # SEC-01 fix: Dispatch to a worker thread running a clean event loop
+        # instead of calling nest_asyncio.apply() which corrupts the ASGI loop.
+        return _run_in_thread(_async_run(sql, params))
     else:
         return async_to_sync(_async_run)(sql, params)
 
@@ -365,10 +398,8 @@ def check_health() -> bool:
         loop = None
 
     if loop and loop.is_running():
-        import nest_asyncio
-
-        nest_asyncio.apply()
-        return loop.run_until_complete(_async_check_health())
+        # SEC-01 fix: Safe thread execution without nest_asyncio
+        return _run_in_thread(_async_check_health())
     else:
         return async_to_sync(_async_check_health)()
 

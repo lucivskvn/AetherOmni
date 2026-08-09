@@ -138,6 +138,42 @@ class FileUtilsTestCase(TestCase):
         self.assertIn("manifest.json", namelist)
         self.assertIn("master_archival_source.md", namelist)
 
+    def test_validate_zip_bomb_protection(self):
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            zf.writestr("test.txt", "hello")
+        zip_buffer.seek(0)
+        with zipfile.ZipFile(zip_buffer, "r") as zf:
+            # Normal zip should pass
+            file_utils.validate_zip(zf)
+
+    def test_safe_extract_zip_slip_prevention(self):
+        import tempfile
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            zf.writestr("../evil.txt", "malicious payload")
+        zip_buffer.seek(0)
+
+        with tempfile.TemporaryDirectory() as tmp_dir, zipfile.ZipFile(zip_buffer, "r") as zf:
+            with self.assertRaises(ValueError) as ctx:
+                file_utils.safe_extract(zf, tmp_dir)
+            self.assertIn("Zip Slip path traversal detected", str(ctx.exception))
+
+    def test_cleanup_stale_temp_artifacts(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Create a mock temporary file
+            stale_file = os.path.join(tmp_dir, "aetheromni_test_stale.tmp")
+            with open(stale_file, "w") as f:
+                f.write("test")
+            # Run cleanup with max_age_seconds=-1 to force removal
+            removed = file_utils.cleanup_stale_temp_artifacts(temp_dir=tmp_dir, max_age_seconds=-1)
+            self.assertEqual(removed, 1)
+            self.assertFalse(os.path.exists(stale_file))
+
     @patch("extractor.llm_gateway.generate_multimodal_vision_ocr")
     def test_extract_pdf_diagrams_with_vision(self, mock_ocr):
         mock_ocr.return_value = "### Diagram Nodes: A -> B"

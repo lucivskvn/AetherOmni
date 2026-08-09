@@ -40,7 +40,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.13"
+
 
       - name: Compute version from git
         id: version
@@ -85,7 +86,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.13"
+
 
       # ── Optional: count unit tests ─────────────────────────────────────────
       - name: Count unit tests (best effort)

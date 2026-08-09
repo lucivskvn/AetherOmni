@@ -12,9 +12,13 @@ if [ -d "$PROJECT_DIR" ]; then
 fi
 
 AUTOFIX_ARG=""
+FAST_ARG=""
 for arg in "$@"; do
     if [ "$arg" == "--fix" ] || [ "$arg" == "--autofix" ]; then
         AUTOFIX_ARG="--fix"
+    fi
+    if [ "$arg" == "--docs" ] || [ "$arg" == "--docs-only" ] || [ "$arg" == "--fast" ]; then
+        FAST_ARG="--fast"
     fi
 done
 
@@ -73,7 +77,7 @@ fi
 echo ""
 echo "⚙️ [Step 1] Executing Local Quality & DevSecOps Verification Suite..."
 if [ -f "run_checks.sh" ]; then
-    bash run_checks.sh $AUTOFIX_ARG || EXIT_CODE=1
+    bash run_checks.sh $AUTOFIX_ARG $FAST_ARG || EXIT_CODE=1
 else
     echo "   ❌ run_checks.sh not found!"
     EXIT_CODE=1

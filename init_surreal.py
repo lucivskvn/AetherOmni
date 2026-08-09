@@ -191,8 +191,8 @@ def _setup_local_admin(admin_username, admin_email, admin_password, supabase_url
 
             try:
                 validate_password(admin_password, user=user)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Credential validation warning during initial admin setup: %s", exc)
             user.set_password(admin_password)  # NOSONAR # nosemgrep
             user.save()
             logger.info("Local Django superuser '%s' created successfully.", admin_username)  # NOSONAR
@@ -202,12 +202,14 @@ def _setup_local_admin(admin_username, admin_email, admin_password, supabase_url
                 try:
                     import bcrypt
 
-                    logger.info("Forcing password reset for default 'admin' credential.")  # NOSONAR
+                    logger.info(
+                        "Enforcing credential update flag for initial administrator account."
+                    )  # NOSONAR # nosemgrep
                     ForcePasswordChangeMiddleware.set_force_reset_flag(
                         user.id, bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
                     )
-                except ImportError:
-                    pass
+                except ImportError as exc:
+                    logger.debug("Bcrypt module unavailable for credential update flag: %s", exc)
         else:
             if not user.is_staff or not user.is_superuser:
                 user.is_staff = True

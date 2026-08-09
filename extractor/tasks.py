@@ -323,17 +323,11 @@ def _get_doc_info_stage1(document_id):
         return doc, doc.get("original_filename", "").lower(), doc.get("doc_uuid")
 
 
-def _run_stage1(working_path: str, document_id: str | int) -> Any:
-    """Stage 1: OCR / local parsing."""
-    doc, lower_name, doc_id_display = _get_doc_info_stage1(document_id)
-
-    raw_markdown = ""
-    stage1_cost = Decimal("0.0")
-    stage1_input_tokens = 0
-    stage1_output_tokens = 0
-
+def _acquire_stage1_raw_markdown(
+    working_path: str, lower_name: str, doc: Any, file_hash: str, doc_id_display: str
+) -> tuple[str, str, int, Decimal, int, int]:
+    """Helper to route document through cached, local, or multimodal OCR extraction."""
     existing_raw = (doc.get("raw_markdown") if isinstance(doc, dict) else getattr(doc, "raw_markdown", None)) or ""
-    file_hash = (doc.get("file_hash") if isinstance(doc, dict) else getattr(doc, "file_hash", None)) or ""
     cached_ocr = (
         surreal_db.kv_cache_get(f"ocr:{file_hash}")
         if (file_hash and not getattr(settings, "SURREALDB_OFFLINE", False))
@@ -341,60 +335,68 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
     )
 
     if len(existing_raw.strip()) > 20:
-        logger.info(
-            "[Worker/Stage 1] Reusing existing raw_markdown for Document ID: %s (Skipping OCR call, $0.00 cost)",
-            doc_id_display,
+        logger.info("[Worker/Stage 1] Reusing existing raw_markdown for Document ID: %s", doc_id_display)
+        doc_type = (doc.get("document_type") if isinstance(doc, dict) else getattr(doc, "document_type", None)) or (
+            "PDF" if lower_name.endswith(".pdf") else "IMAGE"
         )
-        raw_markdown = existing_raw
-        doc_type_detected = (
-            doc.get("document_type") if isinstance(doc, dict) else getattr(doc, "document_type", None)
-        ) or ("PDF" if lower_name.endswith(".pdf") else "IMAGE")
-        page_count_detected = (
+        page_cnt = (
             doc.get("page_count") if isinstance(doc, dict) else getattr(doc, "page_count", 0)
-        ) or _determine_actual_page_count(working_path, doc_type_detected)
-    elif isinstance(cached_ocr, dict) and cached_ocr.get("raw_markdown"):
-        logger.info(
-            "[Worker/Stage 1] Found cached OCR result in KV Cache for file_hash %s (Skipping OCR call, $0.00 cost)",
-            file_hash,
-        )
-        raw_markdown = cached_ocr["raw_markdown"]
-        doc_type_detected = cached_ocr.get("document_type") or ("PDF" if lower_name.endswith(".pdf") else "IMAGE")
-        page_count_detected = cached_ocr.get("page_count") or _determine_actual_page_count(
-            working_path, doc_type_detected
-        )
-    elif lower_name.endswith(".csv"):
-        logger.info("[Worker] Routing CSV to local parser for Document ID: %s", doc_id_display)
-        raw_markdown = process_csv_local(working_path)
-        doc_type_detected = "CSV"
-        page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
-    elif lower_name.endswith(".txt"):
-        logger.info("[Worker] Routing TXT to local parser for Document ID: %s", doc_id_display)
-        raw_markdown = process_txt_local(working_path)
-        doc_type_detected = "TXT"
-        page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
-    else:
-        doc_type_detected = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
-        logger.info("[Worker] Routing to Gemini Multimodal OCR for Document ID: %s", doc_id_display)
-        from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
+        ) or _determine_actual_page_count(working_path, doc_type)
+        return existing_raw, doc_type, page_cnt, Decimal("0.0"), 0, 0
 
-        ocr_results = run_stage1_multimodal_ocr(
-            working_path, model_name=getattr(settings, "GEMINI_MODEL_BATCH", MODEL_GEMINI_FLASH_LITE)
-        )
-        raw_markdown = ocr_results["raw_markdown"]
-        stage1_cost = ocr_results["cost_usd"]
-        stage1_input_tokens = ocr_results["input_tokens"]
-        stage1_output_tokens = ocr_results["output_tokens"]
-        page_count_detected = _determine_actual_page_count(working_path, doc_type_detected)
+    if isinstance(cached_ocr, dict) and cached_ocr.get("raw_markdown"):
+        logger.info("[Worker/Stage 1] Found cached OCR result in KV Cache for file_hash %s", file_hash)
+        doc_type = cached_ocr.get("document_type") or ("PDF" if lower_name.endswith(".pdf") else "IMAGE")
+        page_cnt = cached_ocr.get("page_count") or _determine_actual_page_count(working_path, doc_type)
+        return cached_ocr["raw_markdown"], doc_type, page_cnt, Decimal("0.0"), 0, 0
 
-        if file_hash and raw_markdown and not getattr(settings, "SURREALDB_OFFLINE", False):
-            surreal_db.kv_cache_set(
-                f"ocr:{file_hash}",
-                {
-                    "raw_markdown": raw_markdown,
-                    "document_type": doc_type_detected,
-                    "page_count": page_count_detected,
-                },
-            )
+    if lower_name.endswith(".csv"):
+        raw_md = process_csv_local(working_path)
+        return raw_md, "CSV", _determine_actual_page_count(working_path, "CSV"), Decimal("0.0"), 0, 0
+
+    if lower_name.endswith(".txt"):
+        raw_md = process_txt_local(working_path)
+        return raw_md, "TXT", _determine_actual_page_count(working_path, "TXT"), Decimal("0.0"), 0, 0
+
+    # Multimodal OCR
+    doc_type = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
+    from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
+
+    ocr_res = run_stage1_multimodal_ocr(
+        working_path, model_name=getattr(settings, "GEMINI_MODEL_BATCH", MODEL_GEMINI_FLASH_LITE)
+    )
+    raw_md = ocr_res["raw_markdown"]
+    page_cnt = _determine_actual_page_count(working_path, doc_type)
+
+    if file_hash and raw_md and not getattr(settings, "SURREALDB_OFFLINE", False):
+        surreal_db.kv_cache_set(
+            f"ocr:{file_hash}",
+            {"raw_markdown": raw_md, "document_type": doc_type, "page_count": page_cnt},
+        )
+
+    return (
+        raw_md,
+        doc_type,
+        page_cnt,
+        Decimal(str(ocr_res["cost_usd"])),
+        ocr_res["input_tokens"],
+        ocr_res["output_tokens"],
+    )
+
+
+def _run_stage1(working_path: str, document_id: str | int) -> Any:
+    """Stage 1: OCR / local parsing."""
+    doc, lower_name, doc_id_display = _get_doc_info_stage1(document_id)
+    file_hash = (doc.get("file_hash") if isinstance(doc, dict) else getattr(doc, "file_hash", None)) or ""
+
+    (
+        raw_markdown,
+        doc_type_detected,
+        page_count_detected,
+        stage1_cost,
+        stage1_input_tokens,
+        stage1_output_tokens,
+    ) = _acquire_stage1_raw_markdown(working_path, lower_name, doc, file_hash, doc_id_display)
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         with transaction.atomic():
@@ -415,7 +417,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
             doc_ref.raw_markdown = raw_markdown
             doc_ref.input_tokens += stage1_input_tokens
             doc_ref.output_tokens += stage1_output_tokens
-            doc_ref.cost_usd += Decimal(str(stage1_cost))
+            doc_ref.cost_usd += stage1_cost
             doc_ref.status = "REFINING"
             doc_ref.save()
         broadcast_status_change(str(doc_ref.uuid), "REFINING")
@@ -431,12 +433,12 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
             "raw_markdown": raw_markdown,
             "input_tokens": current_input + stage1_input_tokens,
             "output_tokens": current_output + stage1_output_tokens,
-            "cost_usd": float(current_cost) + float(stage1_cost),
+            "cost_usd": float(Decimal(str(current_cost)) + stage1_cost),
             "status": "REFINING",
         }
-        doc_ref = surreal_db.update_document(str(document_id), updated_data)
-        broadcast_status_change(str(document_id), "REFINING")
-        return doc_ref
+        surreal_db.update_document(str(doc.get("doc_uuid")), updated_data)
+        broadcast_status_change(str(doc.get("doc_uuid")), "REFINING")
+        return doc
 
 
 def _sanitise_yaml_block(raw: str) -> str:
@@ -611,13 +613,30 @@ def _get_val(obj, key, default=None):
         return getattr(obj, key, default)
 
 
-def _update_doc_metadata(doc_ref, parsed_meta: dict):
-    """Apply parsed YAML metadata values to a SourceDocument instance or dictionary (inside atomic block)."""
+def _resolve_doc_title(parsed_title: Any, orig_filename: str) -> str:
     import os
 
-    parsed_title = parsed_meta.get("title")
-    parsed_author = parsed_meta.get("author")
-    parsed_lang = parsed_meta.get("language")
+    t_val = _truncate(parsed_title, _MAX_TITLE_LEN)
+    if _is_unknown_value(t_val):
+        t_val = os.path.splitext(orig_filename)[0].replace("_", " ").replace("-", " ").strip()
+    return t_val or orig_filename or "Untitled"
+
+
+def _resolve_doc_author(parsed_author: Any, orig_filename: str) -> str:
+    a_val = _truncate(parsed_author, _MAX_AUTHOR_LEN)
+    if _is_unknown_value(a_val):
+        a_val = "Anonymous"
+    if "sahih" in orig_filename.lower() and (
+        a_val == "Anonymous" or "divinely" in a_val.lower() or "anonymous" in a_val.lower()
+    ):
+        a_val = "Sahih International"
+    return a_val
+
+
+def _update_doc_metadata(doc_ref, parsed_meta: dict):
+    """Apply parsed YAML metadata values to a SourceDocument instance or dictionary (inside atomic block)."""
+    orig_filename = _get_val(doc_ref, "original_filename", "")
+
     parsed_doc_type = parsed_meta.get("document_type")
     parsed_sig = parsed_meta.get("semantic_signature")
     parsed_pub = parsed_meta.get("publisher")
@@ -625,26 +644,10 @@ def _update_doc_metadata(doc_ref, parsed_meta: dict):
     parsed_lic = parsed_meta.get("license_type")
     parsed_doi = parsed_meta.get("doi")
 
-    orig_filename = _get_val(doc_ref, "original_filename", "")
-    t_val = _truncate(parsed_title, _MAX_TITLE_LEN)
-    if _is_unknown_value(t_val):
-        t_val = os.path.splitext(orig_filename)[0].replace("_", " ").replace("-", " ").strip()
-    _set_val(doc_ref, "title", t_val or orig_filename or "Untitled")
+    _set_val(doc_ref, "title", _resolve_doc_title(parsed_meta.get("title"), orig_filename))
+    _set_val(doc_ref, "author", _resolve_doc_author(parsed_meta.get("author"), orig_filename))
 
-    a_val = _truncate(parsed_author, _MAX_AUTHOR_LEN)
-    if _is_unknown_value(a_val):
-        a_val = "Anonymous"
-
-    # Quran translation-specific author / publisher corrections
-    low_filename = orig_filename.lower()
-    if "sahih" in low_filename and (
-        a_val == "Anonymous" or "divinely" in a_val.lower() or "anonymous" in a_val.lower()
-    ):
-        a_val = "Sahih International"
-
-    _set_val(doc_ref, "author", a_val)
-
-    l_val = _truncate(parsed_lang, _MAX_LANGUAGE_LEN)
+    l_val = _truncate(parsed_meta.get("language"), _MAX_LANGUAGE_LEN)
     if _is_unknown_value(l_val):
         l_val = "English"
     _set_val(doc_ref, "language", l_val)
@@ -672,17 +675,64 @@ def _update_doc_metadata(doc_ref, parsed_meta: dict):
         _set_val(doc_ref, "doi", _truncate(clean_doi, 255))
 
 
-def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
-    """Stage 2: Editorial reasoning refinement.
+def _execute_stage2_chunks_refinement(
+    raw_markdown: str, selected_model: str, file_hash: str, doc_uuid: str
+) -> tuple[str, str, list, float, int, int]:
+    """Helper to process markdown chunks through LLM editorial refinement."""
+    chunks = _split_markdown_into_chunks(raw_markdown)
+    total_chunks = len(chunks)
 
-    For very large documents (e.g. the full Quran, large textbooks), the raw
-    markdown may exceed practical LLM context. We split into chunks of at most
-    _STAGE2_CHUNK_CHARS characters, refine each chunk separately, then merge:
-      - YAML metadata is taken from the FIRST chunk only (contains title/author).
-      - Q&A pairs are accumulated across all chunks (up to 20 total).
-      - Refined text sections are joined with a section divider.
-    Token counts and cost are summed across all chunks.
-    """
+    refined_parts: list[str] = []
+    yaml_metadata_block = ""
+    qa_dataset: list = []
+    stage2_cost = 0.0
+    stage2_input_tokens = 0
+    stage2_output_tokens = 0
+
+    for idx, chunk in enumerate(chunks, 1):
+        try:
+            chunk_results = run_stage2_editorial_refinement(chunk, model_name=selected_model)
+        except Exception as chunk_err:
+            logger.exception("[Worker] Stage 2 chunk %d/%d failed: %s", idx, total_chunks, chunk_err)
+            refined_parts.append(chunk)
+            continue
+
+        refined_parts.append(chunk_results["refined_markdown"])
+        if idx == 1:
+            yaml_metadata_block = chunk_results["yaml_metadata"]
+
+        for qa in chunk_results.get("qa_dataset", []):
+            if len(qa_dataset) < 20:
+                qa_dataset.append(qa)
+
+        stage2_cost += float(chunk_results["cost_usd"])
+        stage2_input_tokens += chunk_results["input_tokens"]
+        stage2_output_tokens += chunk_results["output_tokens"]
+
+    refined_markdown = "\n\n---\n\n".join(p for p in refined_parts if p.strip())
+
+    if file_hash and refined_markdown and not getattr(settings, "SURREALDB_OFFLINE", False):
+        surreal_db.kv_cache_set(
+            f"refine:{file_hash}",
+            {
+                "refined_markdown": refined_markdown,
+                "yaml_metadata": yaml_metadata_block,
+                "qa_dataset": qa_dataset,
+            },
+        )
+
+    return (
+        refined_markdown,
+        yaml_metadata_block,
+        qa_dataset,
+        stage2_cost,
+        stage2_input_tokens,
+        stage2_output_tokens,
+    )
+
+
+def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
+    """Stage 2: Editorial reasoning refinement."""
     doc = surreal_db.get_document(doc_uuid)
     if not doc:
         raise ValueError(f"Document {doc_uuid} not found")
@@ -700,85 +750,31 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     )
 
     if len(existing_refined.strip()) > 20 and len(existing_yaml.strip()) > 5:
-        logger.info(
-            "[Worker/Stage 2] Reusing existing refined_markdown and metadata for Document UUID: %s (Skipping LLM call, $0.00 cost)",
-            doc_uuid,
-        )
+        logger.info("[Worker/Stage 2] Reusing existing refined_markdown for Document UUID: %s", doc_uuid)
         return doc
 
     try:
         settings_obj = surreal_db.get_system_settings()
         selected_model = settings_obj.get("selected_model", "auto")
     except Exception as settings_err:
-        logger.warning("[Stage2] Could not fetch system settings, using default model: %s", settings_err)
+        logger.warning("[Stage2] Could not fetch system settings: %s", settings_err)
         selected_model = "auto"
 
-    refined_parts: list[str] = []
-    yaml_metadata_block: str = ""
-    qa_dataset: list = []
-    stage2_cost = 0.0
-    stage2_input_tokens = 0
-    stage2_output_tokens = 0
-
     if isinstance(cached_refine, dict) and cached_refine.get("refined_markdown"):
-        logger.info(
-            "[Worker/Stage 2] Found cached Refinement result in KV Cache for file_hash %s (Skipping LLM call, $0.00 cost)",
-            file_hash,
-        )
+        logger.info("[Worker/Stage 2] Found cached Refinement result for file_hash %s", file_hash)
         refined_markdown = cached_refine["refined_markdown"]
         yaml_metadata_block = cached_refine.get("yaml_metadata", "")
         qa_dataset = cached_refine.get("qa_dataset", [])
+        stage2_cost, stage2_input_tokens, stage2_output_tokens = 0.0, 0, 0
     else:
-        chunks = _split_markdown_into_chunks(raw_markdown)
-        total_chunks = len(chunks)
-
-        if total_chunks > 1:
-            logger.info(
-                "[Worker] Document UUID %s is large (%d chars). Splitting Stage 2 into %d chunks.",
-                doc_uuid,
-                len(raw_markdown),
-                total_chunks,
-            )
-
-        for idx, chunk in enumerate(chunks, 1):
-            logger.info("[Worker] Stage 2 chunk %d/%d for Document UUID %s", idx, total_chunks, doc_uuid)
-            try:
-                chunk_results = run_stage2_editorial_refinement(chunk, model_name=selected_model)
-            except Exception as chunk_err:
-                logger.exception(
-                    "[Worker] Stage 2 chunk %d/%d failed for Document UUID %s: %s",
-                    idx,
-                    total_chunks,
-                    doc_uuid,
-                    chunk_err,
-                )
-                refined_parts.append(chunk)
-                continue
-
-            refined_parts.append(chunk_results["refined_markdown"])
-
-            if idx == 1:
-                yaml_metadata_block = chunk_results["yaml_metadata"]
-
-            for qa in chunk_results.get("qa_dataset", []):
-                if len(qa_dataset) < 20:
-                    qa_dataset.append(qa)
-
-            stage2_cost += float(chunk_results["cost_usd"])
-            stage2_input_tokens += chunk_results["input_tokens"]
-            stage2_output_tokens += chunk_results["output_tokens"]
-
-        refined_markdown = "\n\n---\n\n".join(p for p in refined_parts if p.strip())
-
-        if file_hash and refined_markdown and not getattr(settings, "SURREALDB_OFFLINE", False):
-            surreal_db.kv_cache_set(
-                f"refine:{file_hash}",
-                {
-                    "refined_markdown": refined_markdown,
-                    "yaml_metadata": yaml_metadata_block,
-                    "qa_dataset": qa_dataset,
-                },
-            )
+        (
+            refined_markdown,
+            yaml_metadata_block,
+            qa_dataset,
+            stage2_cost,
+            stage2_input_tokens,
+            stage2_output_tokens,
+        ) = _execute_stage2_chunks_refinement(raw_markdown, selected_model, file_hash, doc_uuid)
 
     parsed_meta = _parse_yaml_metadata(
         yaml_metadata_block,
