@@ -184,33 +184,51 @@ def get_test_count() -> str:
 
 
 def get_health_scores() -> dict[str, str]:
-    """Read last desloppify scan scores if available."""
+    """Read or compute live desloppify scan scores dynamically."""
+    query_file = ROOT / ".desloppify" / "query.json"
     score_file = ROOT / ".desloppify" / "score_cache.json"
+
+    # If query.json is missing, trigger a fast local desloppify scan
+    if not query_file.exists() and not score_file.exists():
+        try:
+            import subprocess
+
+            subprocess.run(
+                ["desloppify", "scan"],
+                cwd=ROOT,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+        except Exception:
+            pass
+
+    if query_file.exists():
+        try:
+            import json
+
+            data = json.loads(query_file.read_text(encoding="utf-8"))
+            if "objective_score" in data:
+                return {
+                    "objective": str(round(float(data.get("objective_score", 0)), 1)),
+                    "strict": str(round(float(data.get("strict_score", 0)), 1)),
+                    "overall": str(round(float(data.get("overall_score", 0)), 1)),
+                }
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass
+
     if score_file.exists():
         try:
             import json
 
             data = json.loads(score_file.read_text(encoding="utf-8"))
             return {
-                "objective": str(round(data.get("objective", 0), 1)),
-                "strict": str(round(data.get("strict", 0), 1)),
+                "objective": str(round(float(data.get("objective", 0)), 1)),
+                "strict": str(round(float(data.get("strict", 0)), 1)),
             }
         except (json.JSONDecodeError, OSError, ValueError):
-            pass  # Gracefully proceed to query.json fallback
+            pass
 
-    query_file = ROOT / ".desloppify" / "query.json"
-    if query_file.exists():
-        try:
-            import json
-
-            data = json.loads(query_file.read_text(encoding="utf-8"))
-            if "objective_score" in data and "strict_score" in data:
-                return {
-                    "objective": str(round(data.get("objective_score", 0), 1)),
-                    "strict": str(round(data.get("strict_score", 0), 1)),
-                }
-        except (json.JSONDecodeError, OSError, ValueError):
-            return {}
     return {}
 
 
