@@ -362,29 +362,38 @@ def update_gcp_guide(v: dict) -> bool:
 
 def update_service_yamls(v: dict) -> bool:
     """
-    Patch RELEASE_VERSION in infra/gcp/service.yaml and infra/gcp/service-worker.yaml.
-    The value written is the full release_ver so the UI shows the exact
-    deployed build (e.g. v1.2.107+08e6f35).
+    Validate that service YAMLs contain the dynamic ${RELEASE_VERSION} placeholder.
+
+    RELEASE_VERSION is intentionally NOT written here — it is computed at deploy
+    time by cloudbuild.yaml (Step 0) from the VERSION file + git commit count +
+    $SHORT_SHA, then injected via --set-env-vars.  This keeps the service YAML
+    files as clean templates (like ${GCP_REGION}, ${GCP_PROJECT_ID}) with no
+    hardcoded build metadata that would create churn on every local run.
+
+    See: infra/gcp/cloudbuild.yaml — Step 0 (compute-version)
     """
-    changed = False
-    # Match any quoted value for RELEASE_VERSION (handles first boot + subsequent updates)
-    pattern = re.compile(
-        r'(- name: RELEASE_VERSION\s+value:\s+")[^"]*(")',
-        re.MULTILINE,
-    )
+    placeholder = "${RELEASE_VERSION}"
     for fname in ("infra/gcp/service.yaml", "infra/gcp/service-worker.yaml"):
         f = ROOT / fname
         if not f.exists():
             continue
-        original = f.read_text(encoding="utf-8")
-        text = pattern.sub(rf"\g<1>{v['release_ver']}\g<2>", original)
-        if text != original:
-            f.write_text(text, encoding="utf-8")
-            print(f"[OK]   {fname} — RELEASE_VERSION → {v['release_ver']}")
-            changed = True
+        content = f.read_text(encoding="utf-8")
+        if placeholder in content:
+            print(f"[INFO] {fname} — RELEASE_VERSION uses dynamic placeholder (resolved by CloudBuild)")
         else:
-            print(f"[INFO] {fname} — RELEASE_VERSION already {v['release_ver']}")
-    return changed
+            # Placeholder was replaced — restore it so the file stays a clean template
+            fixed = re.sub(
+                r'(- name: RELEASE_VERSION\s+value:\s+")[^"]*(")',
+                rf"\g<1>{placeholder}\g<2>",
+                content,
+                flags=re.MULTILINE,
+            )
+            if fixed != content:
+                f.write_text(fixed, encoding="utf-8")
+                print(f"[OK]   {fname} — restored ${{{placeholder}}} dynamic placeholder")
+            else:
+                print(f"[WARN] {fname} — RELEASE_VERSION entry not found; manual check needed")
+    return False  # service YAMLs are never "changed" by this updater
 
 
 # ── sonar-project.properties update ───────────────────────────────────────────

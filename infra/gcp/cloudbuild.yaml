@@ -1,6 +1,6 @@
 ---
 # ==============================================================================
-# GCP PRODUCTION BEST PRACTICES CLOUD BUILD PIPELINE (DYNAMIC REGION)
+# GCP PRODUCTION BEST PRACTICES CLOUD BUILD PIPELINE (DYNAMIC REGION + VERSION)
 # ==============================================================================
 # Compliance & Standards:
 # - OWASP Container Hardening (Non-Root Execution, Minimal Alpine Base)
@@ -12,15 +12,42 @@
 #   _PROJECT         - GCP project ID (overrides $PROJECT_ID if needed)
 #   _PROJECT_NUMBER  - GCP project number for Compute SA
 #
-# NOTE: $PROJECT_ID and $PROJECT_NUMBER are auto-populated by Cloud Build.
-# _REGION must be set in the Cloud Build trigger configuration.
+# Built-in Cloud Build substitutions used:
+#   $PROJECT_ID      - Auto-populated by Cloud Build
+#   $PROJECT_NUMBER  - Auto-populated by Cloud Build
+#   $SHORT_SHA       - Git short commit SHA (auto-populated by Cloud Build trigger)
+#
+# RELEASE_VERSION scheme (matches update_docs.py and sonar-project.properties):
+#   vMAJOR.MINOR.PATCH+SHORT_SHA
+#   MAJOR.MINOR is read from the VERSION file in the repo root.
+#   PATCH is the total git commit count (git rev-list --count HEAD).
+#   SHORT_SHA is the 7-char commit hash injected by Cloud Build.
+#
+# The computed RELEASE_VERSION is written to /workspace/release_version.env and
+# sourced by each deploy step, then injected as a Cloud Run env var. Service YAML
+# files use "${RELEASE_VERSION}" as a placeholder — resolved here at build time.
 # ==============================================================================
 substitutions:
   _REGION: asia-southeast1
 
 steps:
+  # 0. Compute dynamic RELEASE_VERSION from VERSION file + git commit count + SHORT_SHA
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'compute-version'
+    entrypoint: bash
+    args:
+      - '-euc'
+      - >-
+        MAJOR_MINOR=$(cat VERSION | tr -d '[:space:]' | cut -d. -f1-2) &&
+        PATCH=$(git rev-list --count HEAD 2>/dev/null || echo "0") &&
+        RELEASE_VERSION="v${MAJOR_MINOR}.${PATCH}+${SHORT_SHA}" &&
+        echo "RELEASE_VERSION=${RELEASE_VERSION}" > /workspace/release_version.env &&
+        echo "Computed RELEASE_VERSION=${RELEASE_VERSION}"
+
   # 1. Kaniko Container Build with Layer Caching
   - name: 'gcr.io/kaniko-project/executor:latest'
+    id: 'build-image'
+    waitFor: ['compute-version']
     args:
       - '--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
       - '--cache=true'
@@ -29,33 +56,63 @@ steps:
 
   # 2. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
+    id: 'deploy-web'
+    waitFor: ['build-image']
+    entrypoint: bash
     args:
-      - 'run'
-      - 'deploy'
-      - 'aether-web'
-      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
-      - '--region=${_REGION}'
-      - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com'
-      - '--set-env-vars=DJANGO_DEBUG=False,GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite'
-      - '--set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest'
+      - '-euc'
+      - |
+        source /workspace/release_version.env
+        ENV_VARS="RELEASE_VERSION=${RELEASE_VERSION}"
+        ENV_VARS="${ENV_VARS},DJANGO_DEBUG=False"
+        ENV_VARS="${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
+        ENV_VARS="${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID}"
+        ENV_VARS="${ENV_VARS},GCP_REGION=${_REGION}"
+        ENV_VARS="${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION}"
+        ENV_VARS="${ENV_VARS},GCP_QUEUE_NAME=extractor-tasks"
+        ENV_VARS="${ENV_VARS},SURREAL_NS=aetheromni"
+        ENV_VARS="${ENV_VARS},SURREAL_DB=extractor"
+        ENV_VARS="${ENV_VARS},SURREALDB_OFFLINE=False"
+        ENV_VARS="${ENV_VARS},GEMINI_MODEL=gemini-3.6-flash"
+        ENV_VARS="${ENV_VARS},GEMINI_MODEL_BATCH=gemini-3.5-flash-lite"
+        gcloud run deploy aether-web \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
+          --region=${_REGION} \
+          --platform=managed \
+          --allow-unauthenticated \
+          --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+          --set-env-vars="${ENV_VARS}" \
+          --set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest
 
   # 3. Production GCP Cloud Run Worker Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
+    id: 'deploy-worker'
+    waitFor: ['build-image']
+    entrypoint: bash
     args:
-      - 'run'
-      - 'deploy'
-      - 'aether-worker'
-      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
-      - '--region=${_REGION}'
-      - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com'
-      - '--set-env-vars=DJANGO_DEBUG=False,GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite'
-      - '--set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest'
+      - '-euc'
+      - |
+        source /workspace/release_version.env
+        ENV_VARS="RELEASE_VERSION=${RELEASE_VERSION}"
+        ENV_VARS="${ENV_VARS},DJANGO_DEBUG=False"
+        ENV_VARS="${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
+        ENV_VARS="${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID}"
+        ENV_VARS="${ENV_VARS},GCP_REGION=${_REGION}"
+        ENV_VARS="${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION}"
+        ENV_VARS="${ENV_VARS},GCP_QUEUE_NAME=extractor-tasks"
+        ENV_VARS="${ENV_VARS},SURREAL_NS=aetheromni"
+        ENV_VARS="${ENV_VARS},SURREAL_DB=extractor"
+        ENV_VARS="${ENV_VARS},SURREALDB_OFFLINE=False"
+        ENV_VARS="${ENV_VARS},GEMINI_MODEL=gemini-3.6-flash"
+        ENV_VARS="${ENV_VARS},GEMINI_MODEL_BATCH=gemini-3.5-flash-lite"
+        gcloud run deploy aether-worker \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
+          --region=${_REGION} \
+          --platform=managed \
+          --allow-unauthenticated \
+          --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+          --set-env-vars="${ENV_VARS}" \
+          --set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
