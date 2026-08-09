@@ -412,8 +412,8 @@ def _get_surreal_docs(document_ids, user):
     from extractor import surreal_db
     from extractor.views import _wrap_surreal_doc
 
-    User = get_user_model()
-    users_map = {str(u.id): u for u in User.objects.all()}
+    user_model = get_user_model()
+    users_map = {str(u.id): u for u in user_model.objects.all()}
 
     docs_list = []
     raw_docs = surreal_db.get_documents(document_ids)

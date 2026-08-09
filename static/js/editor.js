@@ -341,10 +341,10 @@ function compileMarkdown(markdown) {
 
     // ── Step 1: Escape raw HTML for XSS safety ───────────────────────────────
     let escaped = markdown
-        .replace(/&/g,  '&amp;')
-        .replace(/</g,  '&lt;')
-        .replace(/>/g,  '&gt;')
-        .replace(/"/g,  '&quot;');
+        .replaceAll('&',  '&amp;')
+        .replaceAll('<',  '&lt;')
+        .replaceAll('>',  '&gt;')
+        .replaceAll('"',  '&quot;');
 
     let yamlHtml = '';
     let bodyText = escaped;
@@ -528,7 +528,7 @@ function compileMarkdown(markdown) {
         .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b(.*?)\&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
-                const decodedAttrs = attrs.replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
+                const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
                 const attrRegex = /\b(colspan|rowspan|class|style|dir)\s*=\s*["']([^"']*)["']/gi;
                 let m;
                 while ((m = attrRegex.exec(decodedAttrs)) !== null) {
@@ -540,7 +540,7 @@ function compileMarkdown(markdown) {
         .replace(/&lt;(\/)?(span|div|p)\b(.*?)\&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
-                const decodedAttrs = attrs.replace(/&quot;/g, '"').replace(/&#x27;/g, "'");
+                const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
                 const attrRegex = /\b(class|dir|style)\s*=\s*["']([^"']*)["']/gi;
                 let m;
                 while ((m = attrRegex.exec(decodedAttrs)) !== null) {

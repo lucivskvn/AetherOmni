@@ -144,9 +144,9 @@ def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: b
     if log_audit:
         from django.contrib.auth import get_user_model
 
-        User = get_user_model()
+        user_model = get_user_model()
         uploaded_by_id = doc.get("uploaded_by_id")
-        user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+        user = user_model.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
         log_audit_event(
             AuditEvent(
                 action=AuditAction.EXTRACTION_FAILED,
@@ -206,9 +206,9 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
 
     from django.contrib.auth import get_user_model
 
-    User = get_user_model()
+    user_model = get_user_model()
     uploaded_by_id = doc.get("uploaded_by_id")
-    user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+    user = user_model.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
     log_audit_event(
         AuditEvent(
@@ -945,9 +945,9 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
 
         from django.contrib.auth import get_user_model
 
-        User = get_user_model()
+        user_model = get_user_model()
         uploaded_by_id = doc.get("uploaded_by_id")
-        user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+        user = user_model.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
         log_audit_event(
             AuditEvent(
@@ -1243,9 +1243,9 @@ def _reap_single_stale_doc(doc: dict) -> bool:
 
     from django.contrib.auth import get_user_model
 
-    User = get_user_model()
+    user_model = get_user_model()
     uploaded_by_id = doc.get("uploaded_by_id")
-    user = User.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+    user = user_model.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
 
     # Write audit log for reaped task
     log_audit_event(
@@ -1327,7 +1327,7 @@ def store_user_memory_task(payload: dict) -> None:
     from extractor.rag import generate_surreal_embeddings
 
     try:
-        user = User.objects.get(id=user_id)
+        user = user_model.objects.get(id=user_id)
     except User.DoesNotExist:
         logger.warning("[Memory Task] User with ID %s does not exist. Aborting.", user_id)
         return
