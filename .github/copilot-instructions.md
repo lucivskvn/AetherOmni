@@ -6,11 +6,12 @@
 
 ## 🎯 MANDATORY WORKFLOW FOR AI AGENTS (Antigravity & Jules AI)
 
-### 1. Shift-Left Local Verification FIRST (Multi-Language Stack)
+### 1. Shift-Left Local Verification FIRST (Multi-Language Stack & Dual Git Hooks)
 
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
-  - **Source Code Changes**: Execute `bash run_checks.sh` locally first to run the full 5-phase verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), and Docker (`hadolint`).
-  - **Documentation & Chore Edits Only**: Execute `bash run_checks.sh --fast` (or `--docs`) to verify markdown syntax & sync release metadata in <1s without wasting time running heavy unit tests.
+  - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.git/hooks/pre-commit` which runs `bash run_checks.sh --fast`. This uses a **differential git diff scan engine (<0.3s)** to automatically check only modified files for Ruff, ESLint, yamllint, and markdownlint errors.
+  - **Pre-Push Gatekeeper Hook**: Local pushes are enforced by `.git/hooks/pre-push` running the full verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), Docker (`hadolint`), and AST pattern rules (`ast-grep`).
+  - **Full Suite Run**: Execute `bash run_checks.sh` locally for a full 5-phase verification pass.
   - **Active Linters & Auto-Fixers**: Ensure active auto-fixers (`markdownlint --fix`, `yamllint`, `ruff check --fix`, `ruff format`) are executed so document formatting, JS/Python code standards, and YAML schemas are automatically corrected.
 - You MUST ensure the verification suite passes cleanly with **0 Blocker / High Security Vulnerabilities** and **0 Complexity Errors** BEFORE creating or opening a Pull Request.
 
