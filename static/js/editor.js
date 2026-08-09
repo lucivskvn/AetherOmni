@@ -118,8 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const editor  = document.getElementById('markdown-input');
     const preview = document.getElementById('html-preview');
-    const deleteForm = document.getElementById('delete-document-form');
-    const editorForm = document.getElementById('editor-form');
 
     function updateCounts() {
         if (!editor) return;
@@ -362,7 +360,7 @@ function _parseYamlFrontmatter(escaped) {
                 const colonIdx = line.indexOf(':');
                 if (colonIdx !== -1) {
                     const key = line.substring(0, colonIdx).trim();
-                    const val = line.substring(colonIdx + 1).trim().replace(/^[&quot;&apos;&lt;&gt;]+|[&quot;&apos;&lt;&gt;]+$/g, '');
+                    const val = line.substring(colonIdx + 1).trim().replace(/[&quot;&apos;&lt;&gt;]+/g, '');
                     if (key && val) {
                         rowsHtml += `
                             <div style="display: flex; gap: 8px; font-size: 12px; margin-bottom: 4px; font-family: sans-serif;">
@@ -390,7 +388,7 @@ function _restoreSafeHtml(html) {
     return html
         .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
         .replace(/&lt;hr\s*\/?&gt;/gi, '<hr>')
-        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b(.*?)\&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b(.*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
                 const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
@@ -402,7 +400,7 @@ function _restoreSafeHtml(html) {
             }
             return `<${closeSlash || ''}${tagName}${cleanAttrs}>`;
         })
-        .replace(/&lt;(\/)?(span|div|p)\b(.*?)\&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?(span|div|p)\b(.*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
                 const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
@@ -414,6 +412,27 @@ function _restoreSafeHtml(html) {
             }
             return `<${closeSlash || ''}${tagName}${cleanAttrs}>`;
         });
+}
+
+function _processLine(line, state, htmlBuilder) {
+    if (line.trim().startsWith('```')) {
+        if (state.inCodeBlock) {
+            state.inCodeBlock = false;
+            return '</code></pre>\n';
+        }
+        state.codeLang = line.trim().slice(3).trim();
+        const langAttr = state.codeLang ? ` class="language-${state.codeLang}"` : '';
+        const langLabel = state.codeLang ? `<span class="code-lang-label">${state.codeLang}</span>` : '';
+        state.inCodeBlock = true;
+        return `<pre>${langLabel}<code${langAttr}>`;
+    }
+    if (state.inCodeBlock) {
+        return line + '\n';
+    }
+
+    htmlBuilder.html = '';
+    processBlockElement(line, state, htmlBuilder);
+    return htmlBuilder.html;
 }
 
 function compileMarkdown(markdown) {
@@ -442,27 +461,7 @@ function compileMarkdown(markdown) {
     const htmlBuilder = { html: '' };
 
     for (const line of lines) {
-        if (line.trim().startsWith('```')) {
-            if (state.inCodeBlock) {
-                html += '</code></pre>\n';
-                state.inCodeBlock = false;
-            } else {
-                state.codeLang = line.trim().slice(3).trim();
-                const langAttr = state.codeLang ? ` class="language-${state.codeLang}"` : '';
-                const langLabel = state.codeLang ? `<span class="code-lang-label">${state.codeLang}</span>` : '';
-                html += `<pre>${langLabel}<code${langAttr}>`;
-                state.inCodeBlock = true;
-            }
-            continue;
-        }
-        if (state.inCodeBlock) {
-            html += line + '\n';
-            continue;
-        }
-
-        htmlBuilder.html = '';
-        processBlockElement(line, state, htmlBuilder);
-        html += htmlBuilder.html;
+        html += _processLine(line, state, htmlBuilder);
     }
 
     return _restoreSafeHtml(html);

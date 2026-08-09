@@ -404,7 +404,7 @@ def check_health() -> bool:
         return async_to_sync(_async_check_health)()
 
 
-_IDENTIFIER_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+_IDENTIFIER_REGEX = re.compile(r"^[a-zA-Z_]\w*$")
 
 
 def _validate_field_name(field_name: str) -> None:
@@ -506,23 +506,31 @@ def create_document(data: dict) -> dict:
     return rows[0] if rows else {}
 
 
+def _apply_user_update(doc, v, user_model):
+    if v:
+        try:
+            doc.uploaded_by = user_model.objects.get(id=v)
+        except user_model.DoesNotExist:
+            pass
+    else:
+        doc.uploaded_by = None
+
+
+def _apply_expires_update(doc, v):
+    if v:
+        from django.utils.dateparse import parse_datetime as django_parse
+
+        doc.expires_at = django_parse(v)
+    else:
+        doc.expires_at = None
+
+
 def _apply_offline_doc_update(doc, data, user_model):
     for k, v in data.items():
         if k == "uploaded_by_id":
-            if v:
-                try:
-                    doc.uploaded_by = user_model.objects.get(id=v)
-                except user_model.DoesNotExist:
-                    pass
-            else:
-                doc.uploaded_by = None
+            _apply_user_update(doc, v, user_model)
         elif k == "expires_at":
-            if v:
-                from django.utils.dateparse import parse_datetime as django_parse
-
-                doc.expires_at = django_parse(v)
-            else:
-                doc.expires_at = None
+            _apply_expires_update(doc, v)
         elif hasattr(doc, k):
             setattr(doc, k, v)
 

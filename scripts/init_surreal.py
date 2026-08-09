@@ -306,7 +306,7 @@ def main():
     # Convert WebSocket URL scheme to HTTP scheme for REST requests
     ws_prefix = "ws:" + "//"
     wss_prefix = "wss:" + "//"
-    http_url = SURREAL_URL.replace(ws_prefix, "http://").replace(wss_prefix, "https://")  # nosemgrep
+    http_url = SURREAL_URL.replace(ws_prefix, "http://").replace(wss_prefix, "https://")  # NOSONAR # nosemgrep
     http_url = http_url.removesuffix("/rpc")
     http_url = http_url.rstrip("/")
 
