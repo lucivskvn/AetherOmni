@@ -1,0 +1,7 @@
+id: js-no-window-global
+message: "Prefer `globalThis.$PROP` over `window.$PROP` for cross-environment compatibility (S7764)."
+severity: warning
+language: JavaScript
+rule:
+  pattern: window.$PROP
+fix: globalThis.$PROP

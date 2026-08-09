@@ -1,0 +1,6 @@
+id: js-no-eval
+message: "Avoid eval() - it executes arbitrary code and is a security risk."
+severity: error
+language: JavaScript
+rule:
+  pattern: eval($EXPR)

@@ -1,0 +1,8 @@
+id: js-no-nested-function-decl
+message: "Move function '$FUNC' to the outer scope to avoid hoisting ambiguity (S7721)."
+severity: warning
+language: JavaScript
+rule:
+  pattern: function $FUNC($$$ARGS) { $$$BODY }
+  inside:
+    pattern: $CB(() => { $$$ })
