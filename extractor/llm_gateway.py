@@ -148,14 +148,8 @@ def check_budget_and_api_limit() -> None:
         )
 
 
-def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
-    """
-    Fetches real-time model pricing from OpenRouter API and caches it for 24 hours.
-    Returns a dictionary mapping lowercased model IDs/names to prompt/completion Decimal rates per token.
-    """
-    from django.core.cache import cache
-
-    # Try SurrealDB KV cache first, fallback to Django cache
+def _get_cached_realtime_pricing(cache) -> dict[str, dict[str, Decimal]] | None:
+    """Helper to check SurrealDB or Django cache for realtime pricing."""
     cached_pricing = None
     try:
         from extractor import surreal_db
@@ -179,43 +173,56 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
         except (KeyError, ValueError, TypeError, AttributeError) as e:
             logger.warning("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
 
+    return None
+
+
+def _parse_openrouter_pricing_response(data: dict) -> dict[str, dict[str, str]]:
+    """Helper to extract model prompt and completion rates from OpenRouter API payload."""
+    pricing_map = {}
+    for m in data.get("data", []):
+        m_id = m.get("id", "").lower().strip()
+        pricing = m.get("pricing", {})
+        prompt_val = pricing.get("prompt", "0")
+        completion_val = pricing.get("completion", "0")
+        if m_id:
+            pricing_map[m_id] = {
+                "prompt": str(prompt_val),
+                "completion": str(completion_val),
+            }
+    return pricing_map
+
+
+def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
+    """
+    Fetches real-time model pricing from OpenRouter API and caches it for 24 hours.
+    Returns a dictionary mapping lowercased model IDs/names to prompt/completion Decimal rates per token.
+    """
+    from django.core.cache import cache
+
+    cached = _get_cached_realtime_pricing(cache)
+    if cached:
+        return cached
+
     # SEC-05 fix: Fetch live pricing using httpx with explicit SSL verification
     try:
         response = httpx.get("https://openrouter.ai/api/v1/models", timeout=5.0, verify=True)
         if response.status_code == 200:
-            data = response.json()
-            if "data" in data:
-                pricing_map = {}
-                for m in data["data"]:
-                    m_id = m.get("id", "").lower().strip()
-                    pricing = m.get("pricing", {})
-                    prompt_val = pricing.get("prompt", "0")
-                    completion_val = pricing.get("completion", "0")
-                    try:
-                        pricing_map[m_id] = {
-                            "prompt": str(prompt_val),
-                            "completion": str(completion_val),
-                        }
-                    except (TypeError, ValueError):
-                        continue
+            pricing_map = _parse_openrouter_pricing_response(response.json())
+            try:
+                from extractor import surreal_db
 
-                # Cache for 24 hours in SurrealDB and Django cache
-                try:
-                    from extractor import surreal_db
+                surreal_db.kv_cache_set("realtime_model_pricing", pricing_map, ttl_seconds=86400)
+            except (RuntimeError, ValueError, KeyError, AttributeError) as exc:
+                logger.debug("[Pricing API] Failed to write cache: %s", exc)
 
-                    surreal_db.kv_cache_set("realtime_model_pricing", pricing_map, ttl_seconds=86400)
-                except (RuntimeError, ValueError, KeyError, AttributeError) as exc:
-                    logger.debug("[Pricing API] Failed to write cache: %s", exc)
-
-                cache.set("realtime_model_pricing", pricing_map, 86400)
-
-                return {
-                    k: {
-                        "prompt": Decimal(v["prompt"]),
-                        "completion": Decimal(v["completion"]),
-                    }
-                    for k, v in pricing_map.items()
+            cache.set("realtime_model_pricing", pricing_map, 86400)
+            return {
+                k: {
+                    "prompt": Decimal(v["prompt"]),
+                    "completion": Decimal(v["completion"]),
                 }
+                for k, v in pricing_map.items()
+            }
     except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
         logger.warning("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
 

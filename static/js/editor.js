@@ -728,13 +728,13 @@ function processBlockElement(line, state, htmlBuilder) {
     if (hMatch) {
         if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; }
         const level = hMatch[1].length;
-        pushHtml('<h' + level + '>' + parseInlineMarkdown(hMatch[2]) + '</h' + level + '>');
+        pushHtml('<h' + level + '>' + parseInline(hMatch[2]) + '</h' + level + '>');
         return;
     }
 
     if (line.startsWith('> ')) {
         if (!state.inBlockquote) { pushHtml('<blockquote>'); state.inBlockquote = true; }
-        pushHtml('<p>' + parseInlineMarkdown(line.substring(2)) + '</p>');
+        pushHtml('<p>' + parseInline(line.substring(2)) + '</p>');
         return;
     } else if (state.inBlockquote) {
         pushHtml('</blockquote>'); state.inBlockquote = false;
@@ -753,7 +753,7 @@ function processBlockElement(line, state, htmlBuilder) {
             pushHtml('</' + state.listType + '><' + type + '>');
             state.listType = type;
         }
-        pushHtml('<li>' + parseInlineMarkdown(content) + '</li>');
+        pushHtml('<li>' + parseInline(content) + '</li>');
         return;
     } else if (state.inList && !line.match(/^\s+/)) {
         pushHtml('</' + state.listType + '>'); state.inList = false; state.listType = null;
@@ -773,11 +773,11 @@ function processBlockElement(line, state, htmlBuilder) {
         const cells = line.split('|').map(s => s.trim()).filter((s, i, arr) => !(i === 0 && s === '') && !(i === arr.length - 1 && s === ''));
         if (!state.tableHasHead) {
             pushHtml('<thead><tr>');
-            cells.forEach(c => pushHtml('<th>' + parseInlineMarkdown(c) + '</th>'));
+            cells.forEach(c => pushHtml('<th>' + parseInline(c) + '</th>'));
             pushHtml('</tr>');
         } else {
             pushHtml('<tr>');
-            cells.forEach(c => pushHtml('<td>' + parseInlineMarkdown(c) + '</td>'));
+            cells.forEach(c => pushHtml('<td>' + parseInline(c) + '</td>'));
             pushHtml('</tr>');
         }
         return;
@@ -785,7 +785,7 @@ function processBlockElement(line, state, htmlBuilder) {
         pushHtml('</tbody></table></div>'); state.inTable = false; state.tableHasHead = false;
     }
 
-    pushHtml('<p>' + parseInlineMarkdown(line) + '</p>');
+    pushHtml('<p>' + parseInline(line) + '</p>');
 }
 /**
  * editor.js — Split-pane live Markdown editor with scroll sync, RTL detection,
@@ -2011,22 +2011,10 @@ function compileMarkdown(markdown) {
     function closeAll() {
         return closeLists() + closeBlockquote() + closeTable();
     }
+}
 
 
-        // Italic *text* or _text_
-        t = t.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
-        t = t.replace(/_([^_\n]+)_/g, '<em>$1</em>');
 
-        // Image: ![alt](src)
-        t = t.replace(/!\[([^\]]*)\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g,
-            '<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0;">');
-
-        // Link: [text](href)
-        t = t.replace(/\[([^\]]+)\]\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g,
-            '<a href="$2" target="_blank" rel="noopener" class="preview-link">$1</a>');
-
-        return t;
-    }
 
 /**
  * Copy text content to clipboard with navigator.clipboard and fallback to execCommand.
@@ -2070,3 +2058,4 @@ function copyTextToClipboard(text, onSuccess, onError) {
     }
 }
 });
+

@@ -676,9 +676,10 @@ def _update_doc_metadata(doc_ref, parsed_meta: dict):
 
 
 def _execute_stage2_chunks_refinement(
-    raw_markdown: str, selected_model: str, file_hash: str, doc_uuid: str
+    raw_markdown: str, selected_model: str, file_hash: str
 ) -> tuple[str, str, list, float, int, int]:
     """Helper to process markdown chunks through LLM editorial refinement."""
+
     chunks = _split_markdown_into_chunks(raw_markdown)
     total_chunks = len(chunks)
 
@@ -774,7 +775,7 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
             stage2_cost,
             stage2_input_tokens,
             stage2_output_tokens,
-        ) = _execute_stage2_chunks_refinement(raw_markdown, selected_model, file_hash, doc_uuid)
+        ) = _execute_stage2_chunks_refinement(raw_markdown, selected_model, file_hash)
 
     parsed_meta = _parse_yaml_metadata(
         yaml_metadata_block,
