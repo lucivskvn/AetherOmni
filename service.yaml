@@ -26,7 +26,7 @@ spec:
         - containerPort: 8080
         env:
         - name: RELEASE_VERSION
-          value: "v1.2.395+851eacd"
+          value: "v1.2.397+4dd095f"
         - name: DJANGO_DEBUG
           value: "False"
         - name: SECURE_SSL_REDIRECT
