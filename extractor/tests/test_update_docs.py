@@ -91,7 +91,7 @@ class UpdateDocsTestCase(unittest.TestCase):
         mock_file = MagicMock()
         mock_file.exists.return_value = True
         mock_file.read_text.return_value = "# Google Cloud Run Production Deployment Guide (Version 1.0.0)"
-        mock_root.__truediv__.return_value = mock_file
+        mock_root.__truediv__.return_value.__truediv__.return_value = mock_file
 
         info = {"semver": "1.2.3"}
         changed = update_gcp_guide(info)
