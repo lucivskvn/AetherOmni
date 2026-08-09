@@ -1252,10 +1252,9 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
 
         pre_json = refined_text[: json_match.start()].rstrip()
         pre_json = re.sub(
-            r"\n+#{1,6}\s*(?:Curated\s+)?(?:SFT\s+)?(?:Q&A|Question|Dataset|Training).*",
+            r"\n+#[^\n]*",
             "",
             pre_json,
-            flags=re.IGNORECASE,
         ).rstrip()
         refined_text = pre_json
 
