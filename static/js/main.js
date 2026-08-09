@@ -1245,7 +1245,7 @@ function updateDocumentsTable(documents) {
             const costVal = costTd.querySelector('div');
             if (costVal) costVal.textContent = doc.formatted_cost;
             const costSub = costTd.querySelector('.doc-cost-sub');
-            if (costSub && typeof doc.input_tokens !== 'undefined' && typeof doc.output_tokens !== 'undefined') {
+            if (costSub && doc.input_tokens !== undefined && doc.output_tokens !== undefined) {
                 costSub.textContent = `In: ${formatCompact(doc.input_tokens)} / Out: ${formatCompact(doc.output_tokens)}`;
             }
         }

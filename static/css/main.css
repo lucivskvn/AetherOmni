@@ -1382,7 +1382,7 @@ tr:hover td {
     font-size: 15px;
     line-height: 1.8;
     font-family: var(--font-body, 'Inter', sans-serif);
-    word-break: break-word;
+    overflow-wrap: break-word;
     /* Scrollbar polish */
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.12) transparent;
