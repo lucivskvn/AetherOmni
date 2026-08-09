@@ -1,12 +1,8 @@
-"""Unit tests for ASGI, WSGI, and AppConfig lifecycle coverage."""
-
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.apps import apps
-from django.test import SimpleTestCase, TestCase
-
-from extractor.apps import ExtractorConfig
+from django.test import TestCase
 
 
 class AsgiWsgiAppConfigTest(TestCase):
