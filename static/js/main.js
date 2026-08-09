@@ -1050,32 +1050,31 @@ function formatCompact(num) {
  * Asynchronous Background Status Poller (Fallback).
  * Periodically queries `/api/documents/status/` and updates indicators dynamically.
  */
+function _checkNeedsPolling() {
+    // We poll if there are documents processing/pending on dashboard,
+    // or if we are on the document detail screen and the current document is not completed/failed.
+    const activeBadges = document.querySelectorAll('.badge-processing, .badge-pending');
+    const detailTimelineContainer = document.querySelector('.timeline-container');
+
+    let onDetailAndProcessing = false;
+    if (detailTimelineContainer) {
+        // If on details screen, check if timeline has non-completed states active or if we see a processing box
+        const hasCompleted = detailTimelineContainer.querySelectorAll('.timeline-step.completed').length;
+        // There are 4 steps total. If completed steps < 4 and there is no failure, we poll.
+        const isFailed = document.querySelector('.timeline-step.failed') || document.querySelector('[data-doc-status="FAILED"]');
+        if (hasCompleted < 4 && !isFailed) {
+            onDetailAndProcessing = true;
+        }
+    }
+
+    return (activeBadges.length > 0 || onDetailAndProcessing);
+}
+
 function initializeStatusPoller() {
     const POLL_INTERVAL = 5000; // 5 seconds
     let activePoll = false;
 
-    function checkNeedsPolling() {
-        // We poll if there are documents processing/pending on dashboard,
-        // or if we are on the document detail screen and the current document is not completed/failed.
-        const activeBadges = document.querySelectorAll('.badge-processing, .badge-pending');
-        const detailTimelineContainer = document.querySelector('.timeline-container');
-
-        let onDetailAndProcessing = false;
-        if (detailTimelineContainer) {
-            // If on details screen, check if timeline has non-completed states active or if we see a processing box
-            const hasCompleted = detailTimelineContainer.querySelectorAll('.timeline-step.completed').length;
-            // There are 4 steps total. If completed steps < 4 and there is no failure, we poll.
-            const isFailed = document.querySelector('.timeline-step.failed') || document.querySelector('[data-doc-status="FAILED"]');
-            if (hasCompleted < 4 && !isFailed) {
-                onDetailAndProcessing = true;
-            }
-        }
-
-        return activeBadges.length > 0 || onDetailAndProcessing;
-    }
-
-
-    if (checkNeedsPolling()) {
+    if (_checkNeedsPolling()) {
         runPoller();
         setInterval(runPoller, POLL_INTERVAL);
     }
