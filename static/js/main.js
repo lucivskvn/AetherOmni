@@ -605,8 +605,7 @@ function initializeDragAndDrop() {
         const ALLOWED_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.csv', '.txt']);
         const dt = new DataTransfer();
 
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
+        for (const file of files) {
             const ext = '.' + file.name.split('.').pop().toLowerCase();
             if (!ALLOWED_EXTENSIONS.has(ext)) {
                 showClientSideAlert(`Skipped "${file.name}": Unsupported format. (Use PDF, PNG, JPG, JPEG, CSV, TXT)`);

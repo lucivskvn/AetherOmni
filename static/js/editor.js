@@ -177,8 +177,7 @@ function applyPostRenderFeatures(container) {
     container.querySelectorAll('p, li, td, blockquote, span, div').forEach(el => {
         const text = (el.textContent || '').trim();
         let firstStrong = null;
-        for (let i = 0; i < text.length; i++) {
-            const char = text[i];
+        for (const char of text) {
             if (LATIN_REGEX.test(char)) {
                 firstStrong = 'latin';
                 break;
@@ -444,8 +443,7 @@ function compileMarkdown(markdown) {
 
     const htmlBuilder = { html: '' };
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+    for (const line of lines) {
         if (line.trim().startsWith('```')) {
             if (state.inCodeBlock) {
                 html += '</code></pre>\n';
