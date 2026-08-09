@@ -49,7 +49,8 @@ RUN groupadd -g 1000 django-group && \
 COPY core/ /app/core/
 COPY extractor/ /app/extractor/
 COPY static/ /app/static/
-COPY manage.py init_surreal.py schema.surql /app/
+COPY manage.py schema.surql /app/
+COPY scripts/init_surreal.py /app/init_surreal.py
 
 # Ensure application files and static_root are owned by django-user
 RUN mkdir -p /app/static_root && \
