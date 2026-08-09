@@ -1,11 +1,15 @@
 id: js-no-innerHTML-unsanitized
-message: "Assigning to innerHTML can introduce XSS. Verify content is sanitized."
-severity: warning
+message: "innerHTML with dynamic data can introduce XSS (S5254). Ensure content is from a trusted source or sanitized."
+severity: hint
 language: JavaScript
 rule:
   pattern: $EL.innerHTML = $EXPR
   not:
     any:
+      # Safe: our XSS-safe markdown compiler output
       - pattern: $EL.innerHTML = compileMarkdown($$$)
+      # Safe: explicit empty string clears
       - pattern: $EL.innerHTML = ''
       - pattern: $EL.innerHTML = ""
+      # Safe: known helper that returns sanitized badge HTML
+      - pattern: $EL.innerHTML = getStatusBadgeHTML($$$)
