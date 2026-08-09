@@ -193,7 +193,7 @@ echo -e "${GREEN}✓ Automated unit test suite executed successfully with covera
 
 echo -e "\n${YELLOW}[Documentation] Auditing Markdown Formatting & Structure...${NC}"
 if command -v markdownlint &> /dev/null; then
-    markdownlint README.md gcp_deployment_guide.md
+    markdownlint README.md docs/gcp_deployment_guide.md
     echo -e "${GREEN}✓ Documentation syntax & markdown standards verified.${NC}"
 else
     echo -e "${YELLOW}⚠ markdownlint not found in PATH (skipping).${NC}"

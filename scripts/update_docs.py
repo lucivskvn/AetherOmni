@@ -312,8 +312,8 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
 
 
 def update_gcp_guide(v: dict) -> bool:
-    """Update gcp_deployment_guide.md heading. Returns True if modified."""
-    guide = ROOT / "gcp_deployment_guide.md"
+    """Update docs/gcp_deployment_guide.md heading. Returns True if modified."""
+    guide = ROOT / "docs" / "gcp_deployment_guide.md"
     if not guide.exists():
         return False
 
@@ -325,11 +325,11 @@ def update_gcp_guide(v: dict) -> bool:
     )
 
     if text == original:
-        print("[INFO] gcp_deployment_guide.md — no changes needed.")
+        print("[INFO] docs/gcp_deployment_guide.md — no changes needed.")
         return False
 
     guide.write_text(text, encoding="utf-8")
-    print(f"[OK]   gcp_deployment_guide.md — heading updated to v{v['semver']}")
+    print(f"[OK]   docs/gcp_deployment_guide.md — heading updated to v{v['semver']}")
     return True
 
 
@@ -338,7 +338,7 @@ def update_gcp_guide(v: dict) -> bool:
 
 def update_service_yamls(v: dict) -> bool:
     """
-    Patch RELEASE_VERSION in service.yaml and service-worker.yaml.
+    Patch RELEASE_VERSION in infra/gcp/service.yaml and infra/gcp/service-worker.yaml.
     The value written is the full release_ver so the UI shows the exact
     deployed build (e.g. v1.2.107+08e6f35).
     """
@@ -348,7 +348,7 @@ def update_service_yamls(v: dict) -> bool:
         r'(- name: RELEASE_VERSION\s+value:\s+")[^"]*(")',
         re.MULTILINE,
     )
-    for fname in ("service.yaml", "service-worker.yaml"):
+    for fname in ("infra/gcp/service.yaml", "infra/gcp/service-worker.yaml"):
         f = ROOT / fname
         if not f.exists():
             continue
