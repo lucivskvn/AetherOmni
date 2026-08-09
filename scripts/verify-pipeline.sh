@@ -33,6 +33,7 @@ EXIT_CODE=0
 # Load .env file if available
 if [ -f ".env" ]; then
     set -a
+    # shellcheck disable=SC1091  # .env is optional and not available at static analysis time
     source .env 2>/dev/null || true
     set +a
 fi

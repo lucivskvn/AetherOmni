@@ -1,25 +1,31 @@
 ---
 # ==============================================================================
-# GCP PRODUCTION BEST PRACTICES CLOUD BUILD PIPELINE (REGION: asia-southeast1)
+# GCP PRODUCTION BEST PRACTICES CLOUD BUILD PIPELINE (DYNAMIC REGION)
 # ==============================================================================
 # Compliance & Standards:
 # - OWASP Container Hardening (Non-Root Execution, Minimal Alpine Base)
 # - GCP Cloud Run Production Guidelines (Scale-to-Zero, Health Probes, HTTP/2)
 # - GCP Always-Free Tier Safety Limits
 #
-# NOTE: This cloudbuild.yaml uses _ARTIFACT_REGISTRY and _PROJECT substitutions
-# that must be configured in the Cloud Build trigger settings for the target
-# project. The registry path must match the project used in service.yaml.
-# Configure target GCP project in Cloud Build trigger settings or .env
+# Substitution Variables (configure in Cloud Build trigger):
+#   _REGION          - GCP region (default: asia-southeast1)
+#   _PROJECT         - GCP project ID (overrides $PROJECT_ID if needed)
+#   _PROJECT_NUMBER  - GCP project number for Compute SA
+#
+# NOTE: $PROJECT_ID and $PROJECT_NUMBER are auto-populated by Cloud Build.
+# _REGION must be set in the Cloud Build trigger configuration.
 # ==============================================================================
+substitutions:
+  _REGION: asia-southeast1
+
 steps:
   # 1. Kaniko Container Build with Layer Caching
   - name: 'gcr.io/kaniko-project/executor:latest'
     args:
-      - '--destination=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
+      - '--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
       - '--cache=true'
       - '--cache-ttl=24h'
-      - '--cache-dir=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/cache'
+      - '--cache-dir=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/cache'
 
   # 2. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -28,12 +34,12 @@ steps:
       - 'run'
       - 'deploy'
       - 'aether-web'
-      - '--image=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
-      - '--region=asia-southeast1'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
+      - '--region=${_REGION}'
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com'
-      - '--set-env-vars=DJANGO_DEBUG=False,GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=asia-southeast1,GCP_QUEUE_LOCATION=asia-southeast1,GCP_QUEUE_NAME=extractor-tasks,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite'
+      - '--set-env-vars=DJANGO_DEBUG=False,GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite'
       - '--set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest'
 
   # 3. Production GCP Cloud Run Worker Service Deployment
@@ -43,12 +49,12 @@ steps:
       - 'run'
       - 'deploy'
       - 'aether-worker'
-      - '--image=asia-southeast1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
-      - '--region=asia-southeast1'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
+      - '--region=${_REGION}'
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com'
-      - '--set-env-vars=DJANGO_DEBUG=False,GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=asia-southeast1,GCP_QUEUE_LOCATION=asia-southeast1,GCP_QUEUE_NAME=extractor-tasks,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite'
+      - '--set-env-vars=DJANGO_DEBUG=False,GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite'
       - '--set-secrets=DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest'
 
 options:

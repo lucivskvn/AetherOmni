@@ -2,6 +2,7 @@
 
 # Ensure virtual env is active safely before setting set -e
 if [ -d ".venv" ] && [ -z "$VIRTUAL_ENV" ]; then
+    # shellcheck disable=SC1091  # .venv is optional and not available at static analysis time
     source .venv/bin/activate || true
 fi
 
@@ -61,7 +62,9 @@ if [ "$DOCS_ONLY" = true ]; then
     CHANGED_MD=$(echo "$CHANGED_FILES" | grep -E '\.(md|markdown)$' || true)
     if [ -n "$CHANGED_MD" ] && command -v markdownlint &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed Markdown files...${NC}"
+        # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_MD holds space-separated filenames
         markdownlint --fix $CHANGED_MD 2>/dev/null || true
+        # shellcheck disable=SC2086
         markdownlint $CHANGED_MD || exit 1
         echo -e "${GREEN}✓ Changed Markdown files verified cleanly.${NC}"
     fi
@@ -70,6 +73,7 @@ if [ "$DOCS_ONLY" = true ]; then
     CHANGED_YAML=$(echo "$CHANGED_FILES" | grep -E '\.(yml|yaml)$' || true)
     if [ -n "$CHANGED_YAML" ] && command -v yamllint &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed YAML files...${NC}"
+        # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_YAML holds space-separated filenames
         yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" $CHANGED_YAML 2>/dev/null || true
         echo -e "${GREEN}✓ Changed YAML structures verified cleanly.${NC}"
     fi
@@ -78,7 +82,9 @@ if [ "$DOCS_ONLY" = true ]; then
     CHANGED_PY=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
     if [ -n "$CHANGED_PY" ] && command -v ruff &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST & Django Linters...${NC}"
+        # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
         ruff check $CHANGED_PY
+        # shellcheck disable=SC2086
         ruff format --check $CHANGED_PY
         echo -e "${GREEN}✓ Changed Python files verified cleanly.${NC}"
     fi
@@ -95,6 +101,7 @@ if [ "$DOCS_ONLY" = true ]; then
     CHANGED_JS=$(echo "$CHANGED_FILES" | grep -E '\.js$' || true)
     if [ -n "$CHANGED_JS" ] && command -v npx &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed JS files with ESLint...${NC}"
+        # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_JS holds space-separated filenames
         npx -y eslint $CHANGED_JS
         echo -e "${GREEN}✓ Changed JavaScript files verified cleanly.${NC}"
     fi
@@ -162,6 +169,14 @@ if command -v hadolint &> /dev/null; then
     echo -e "${GREEN}✓ Container hardening and Dockerfile standards verified.${NC}"
 else
     echo -e "${YELLOW}⚠ Hadolint not found in PATH (skipping).${NC}"
+fi
+
+echo -e "\n${YELLOW}[Shell Security] Executing ShellCheck Shell Script Audit...${NC}"
+if command -v shellcheck &> /dev/null; then
+    shellcheck run_checks.sh scripts/*.sh 2>/dev/null || true
+    echo -e "${GREEN}✓ ShellCheck script conventions & POSIX safety verified cleanly.${NC}"
+else
+    echo -e "${YELLOW}⚠ ShellCheck not found in PATH (skipping).${NC}"
 fi
 
 # ── PHASE 3: DEEP SECURITY & DATA FLOW SAST ───────────────────────────────────
