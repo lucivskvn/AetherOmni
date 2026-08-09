@@ -14,6 +14,7 @@
 [![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Coverage](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=coverage&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Lines of Code](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=ncloc&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Desloppify Codebase Health](https://img.shields.io/badge/Desloppify--Health-17%20Sensors%20Audited-emerald.svg)](AGENTS.md)
 
 ---
 
@@ -182,7 +183,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.374)
+## ⚡ Current Functional Capabilities (Current State v1.2.377)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
