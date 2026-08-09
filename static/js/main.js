@@ -153,7 +153,6 @@ function initializePasswordMatchFeedback() {
         const checkMatch = () => {
             const pVal = passwordInput.value;
             const cVal = confirmInput.value;
-            console.log(`[PwdMatch] checking match for ${pair.passwordId} (${pVal}) and ${pair.confirmId} (${cVal})`);
 
             if (pVal === '' || cVal === '') {
                 feedback.style.display = 'none';
@@ -1110,12 +1109,12 @@ function initializeSupabaseRealtime() {
     const supabaseKey = document.body.dataset.supabaseKey;
 
     if (!supabaseUrl || !supabaseKey || typeof supabase === 'undefined') {
-        console.log("[Realtime] Supabase Realtime credentials not detected or SDK not loaded. Falling back to background AJAX polling.");
+        console.debug("[Realtime] Supabase Realtime credentials not detected or SDK not loaded. Falling back to background AJAX polling.");
         initializeStatusPoller();
         return;
     }
 
-    console.log("[Realtime] Upgrading to Supabase Realtime WebSockets...");
+    console.debug("[Realtime] Upgrading to Supabase Realtime WebSockets...");
     const client = supabase.createClient(supabaseUrl, supabaseKey);
 
     // Gap D-7: Subscribe to broadcast events on 'document-updates' channel
@@ -1125,12 +1124,12 @@ function initializeSupabaseRealtime() {
             'broadcast',
             { event: 'status-changed' },
             (payload) => {
-                console.log('[Realtime] Received document update broadcast:', payload);
+                console.debug('[Realtime] Received document update broadcast:', payload);
                 triggerUpdate();
             }
         )
         .subscribe((status) => {
-            console.log('[Realtime] Subscription status:', status);
+            console.debug('[Realtime] Subscription status:', status);
         });
 
     let activeFetch = false;
