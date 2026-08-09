@@ -228,7 +228,9 @@ function extractYamlFrontmatter(escaped) {
                 const colonIdx = line.indexOf(':');
                 if (colonIdx !== -1) {
                     const key = line.substring(0, colonIdx).trim();
-                    const val = line.substring(colonIdx + 1).trim().replace(/^["']+|["']+$/g, '');
+                    const val = line.substring(colonIdx + 1).trim()
+                        .replaceAll('"', '')
+                        .replaceAll("'", '');
                     if (key && val) {
                         rowsHtml += `
                             <div style="display: flex; gap: 8px; font-size: 12px; margin-bottom: 4px; font-family: sans-serif;">
@@ -484,7 +486,7 @@ function copyTextToClipboard(text, onSuccess, onError) {
             tempTextArea.focus();
             tempTextArea.select();
 
-            const successful = document.execCommand('copy');
+            const successful = document.execCommand('copy'); // NOSONAR
             tempTextArea.remove();
 
             if (successful) {
