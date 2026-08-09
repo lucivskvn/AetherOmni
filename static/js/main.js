@@ -1275,7 +1275,7 @@ function updateDocumentDetailScreen(data) {
     const detailTimelineContainer = document.querySelector('.timeline-container');
     if (!detailTimelineContainer) return;
 
-    const match = globalThis.location.pathname.match(/\/document\/(\d+)\//);
+    const match = /\/document\/(\d+)\//.exec(globalThis.location.pathname);
     if (!match) return;
 
     const currentDoc = data.documents.find(d => d.id === Number.parseInt(match[1], 10));
