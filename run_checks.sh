@@ -77,10 +77,18 @@ if [ "$DOCS_ONLY" = true ]; then
     # Filter changed Python files
     CHANGED_PY=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
     if [ -n "$CHANGED_PY" ] && command -v ruff &> /dev/null; then
-        echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST Linter...${NC}"
+        echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST & Django Linters...${NC}"
         ruff check $CHANGED_PY
         ruff format --check $CHANGED_PY
         echo -e "${GREEN}✓ Changed Python files verified cleanly.${NC}"
+    fi
+
+    # Perform fast Django system integrity & template check if Python or HTML files changed
+    CHANGED_TEMPLATES=$(echo "$CHANGED_FILES" | grep -E '\.(py|html)$' || true)
+    if [ -n "$CHANGED_TEMPLATES" ]; then
+        echo -e "${YELLOW}[Diff Audit] Verifying Django System Integrity & Template Configuration...${NC}"
+        $PYTHON_BIN manage.py check --deploy --fail-level=ERROR || exit 1
+        echo -e "${GREEN}✓ Django system check & deployment readiness passed cleanly (0 errors).${NC}"
     fi
 
     # Filter changed JS files
