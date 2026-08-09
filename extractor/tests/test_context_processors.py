@@ -68,12 +68,13 @@ class SystemSettingsContextProcessorTestCase(TestCase):
 
     def test_missing_env_release_version(self):
         """
-        Edge case: verify that when RELEASE_VERSION is missing from os.environ,
-        it falls back to 'Local Dev'.
+        Edge case: verify that when RELEASE_VERSION is missing from os.environ AND
+        the VERSION file is not readable, the processor falls back to the hardcoded
+        '1.5' sentinel string.
         """
-        with patch_environ_deleted("RELEASE_VERSION"):
+        with patch_environ_deleted("RELEASE_VERSION"), override_settings(BASE_DIR="/nonexistent-path-for-test"):
             context = system_settings(self.request)
-            self.assertEqual(context["RELEASE_VERSION"], "Local Dev")
+            self.assertEqual(context["RELEASE_VERSION"], "1.5")
 
 
 class patch_environ:
