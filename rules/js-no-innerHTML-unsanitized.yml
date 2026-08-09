@@ -1,0 +1,11 @@
+id: js-no-innerHTML-unsanitized
+message: "Assigning to innerHTML can introduce XSS. Verify content is sanitized."
+severity: warning
+language: JavaScript
+rule:
+  pattern: $EL.innerHTML = $EXPR
+  not:
+    any:
+      - pattern: $EL.innerHTML = compileMarkdown($$$)
+      - pattern: $EL.innerHTML = ''
+      - pattern: $EL.innerHTML = ""

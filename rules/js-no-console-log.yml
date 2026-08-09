@@ -1,0 +1,6 @@
+id: js-no-console-log
+message: "Remove console.log() before merging to production."
+severity: warning
+language: JavaScript
+rule:
+  pattern: console.log($$$)

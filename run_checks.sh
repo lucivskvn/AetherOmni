@@ -134,8 +134,15 @@ fi
 
 echo -e "\n${YELLOW}[AST Security] Executing AST-Grep Code Pattern Auditor...${NC}"
 if command -v ast-grep &> /dev/null; then
-    ast-grep scan
-    echo -e "${GREEN}✓ AST pattern security scan completed successfully.${NC}"
+    AST_OUTPUT=$(ast-grep scan --color never 2>&1)
+    AST_ERRORS=$(echo "$AST_OUTPUT" | grep -c '^error' || true)
+    AST_WARNS=$(echo "$AST_OUTPUT" | grep -c '^warning' || true)
+    if [ "$AST_ERRORS" -gt 0 ]; then
+        echo "$AST_OUTPUT"
+        echo -e "${RED}✗ AST pattern scan found $AST_ERRORS error(s). Fix before committing.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ AST pattern scan completed: 0 errors, $AST_WARNS warning(s).${NC}"
 else
     echo -e "${YELLOW}⚠ ast-grep not found in PATH (skipping).${NC}"
 fi
