@@ -9,7 +9,7 @@
             if (savedTheme) {
                 document.documentElement.dataset.theme = savedTheme;
             } else {
-                const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const systemPrefersDark = globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
                 document.documentElement.dataset.theme = systemPrefersDark ? 'dark' : 'light';
             }
         })();

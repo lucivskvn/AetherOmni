@@ -527,6 +527,27 @@ def _is_cascadable_error(err: Exception) -> bool:
     return any(term in err_msg for term in _CASCADABLE_TERMS)
 
 
+def _try_direct_gemini_models(
+    prompt: str, system_instruction: str | None, files: list[Any] | None, fallback_list: list[str]
+) -> tuple[Any | None, Exception | None]:
+    last_error = None
+    for attempt_model in fallback_list:
+        try:
+            logger.info("[Gateway] Attempting direct Gemini call using model: %s", attempt_model)
+            return _call_direct_gemini(prompt, system_instruction, attempt_model, files), None
+        except Exception as e:
+            last_error = e
+            if _is_cascadable_error(e):
+                logger.warning(
+                    "[Gateway WARNING] Model '%s' failed or rate-limited: %s. Cascading to next available stable model...",
+                    attempt_model,
+                    e,
+                )
+                continue
+            raise e
+    return None, last_error
+
+
 def _call_gemini_with_fallback(
     prompt: str,
     system_instruction: str | None,
@@ -543,21 +564,9 @@ def _call_gemini_with_fallback(
         if candidate not in fallback_list:
             fallback_list.append(candidate)
 
-    last_error = None
-    for attempt_model in fallback_list:
-        try:
-            logger.info("[Gateway] Attempting direct Gemini call using model: %s", attempt_model)
-            return _call_direct_gemini(prompt, system_instruction, attempt_model, files)
-        except Exception as e:
-            last_error = e
-            if _is_cascadable_error(e):
-                logger.warning(
-                    "[Gateway WARNING] Model '%s' failed or rate-limited: %s. Cascading to next available stable model...",
-                    attempt_model,
-                    e,
-                )
-                continue
-            raise e
+    response, last_error = _try_direct_gemini_models(prompt, system_instruction, files, fallback_list)
+    if response:
+        return response
 
     # If we reach here, all direct Gemini options failed.
     # Fall back to OpenRouter free models if the key is configured to maintain 100% service uptime

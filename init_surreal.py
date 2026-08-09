@@ -155,68 +155,77 @@ def _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_usernam
         _register_supabase_admin(signup_url, payload, headers, admin_email)
 
 
-def _setup_local_admin(admin_username, admin_email, admin_password, supabase_url):
+def _create_local_superuser_stub(admin_username, admin_email):
     from django.contrib.auth.models import User
 
-    if supabase_url:
-        user, created = User.objects.get_or_create(
-            username=admin_username,
-            defaults={
-                "email": admin_email,
-                "is_staff": True,
-                "is_superuser": True,
-                "is_active": True,
-            },
-        )
-        if created:
-            user.set_unusable_password()
-        if created:
-            user.set_unusable_password()
-            user.save()
-            logger.info(
-                "Local Django superuser stub '%s' created (password managed by Supabase).", admin_username
-            )  # NOSONAR
-    else:
-        user, created = User.objects.get_or_create(
-            username=admin_username,
-            defaults={
-                "email": admin_email,
-                "is_staff": True,
-                "is_superuser": True,
-                "is_active": True,
-            },
-        )
-        if created:
-            from django.contrib.auth.password_validation import validate_password
+    user, created = User.objects.get_or_create(
+        username=admin_username,
+        defaults={
+            "email": admin_email,
+            "is_staff": True,
+            "is_superuser": True,
+            "is_active": True,
+        },
+    )
+    if created:
+        user.set_unusable_password()
+        user.save()
+        logger.info(
+            "Local Django superuser stub '%s' created (password managed by Supabase).", admin_username
+        )  # NOSONAR
+    return user
+
+
+def _create_local_superuser_full(admin_username, admin_email, admin_password):
+    from django.contrib.auth.models import User
+
+    user, created = User.objects.get_or_create(
+        username=admin_username,
+        defaults={
+            "email": admin_email,
+            "is_staff": True,
+            "is_superuser": True,
+            "is_active": True,
+        },
+    )
+    if created:
+        from django.contrib.auth.password_validation import validate_password
+
+        try:
+            validate_password(admin_password, user=user)
+        except Exception as exc:
+            logger.warning("Credential validation warning during initial admin setup: %s", exc)
+        user.set_password(admin_password)  # NOSONAR # nosemgrep
+        user.save()
+        logger.info("Local Django superuser '%s' created successfully.", admin_username)  # NOSONAR
+        if admin_password == "admin":
+            from core.middleware import ForcePasswordChangeMiddleware
 
             try:
-                validate_password(admin_password, user=user)
-            except Exception as exc:
-                logger.warning("Credential validation warning during initial admin setup: %s", exc)
-            user.set_password(admin_password)  # NOSONAR # nosemgrep
+                import bcrypt
+
+                logger.info(
+                    "Enforcing credential update flag for initial administrator account."
+                )  # NOSONAR # nosemgrep
+                ForcePasswordChangeMiddleware.set_force_reset_flag(
+                    user.id, bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
+                )
+            except ImportError as exc:
+                logger.debug("Bcrypt module unavailable for credential update flag: %s", exc)
+    else:
+        if not user.is_staff or not user.is_superuser:
+            user.is_staff = True
+            user.is_superuser = True
             user.save()
-            logger.info("Local Django superuser '%s' created successfully.", admin_username)  # NOSONAR
-            if admin_password == "admin":
-                from core.middleware import ForcePasswordChangeMiddleware
-
-                try:
-                    import bcrypt
-
-                    logger.info(
-                        "Enforcing credential update flag for initial administrator account."
-                    )  # NOSONAR # nosemgrep
-                    ForcePasswordChangeMiddleware.set_force_reset_flag(
-                        user.id, bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
-                    )
-                except ImportError as exc:
-                    logger.debug("Bcrypt module unavailable for credential update flag: %s", exc)
-        else:
-            if not user.is_staff or not user.is_superuser:
-                user.is_staff = True
-                user.is_superuser = True
-                user.save()
-                logger.info("Updated existing user '%s' to superuser status.", admin_username)
+            logger.info("Updated existing user '%s' to superuser status.", admin_username)
     return user
+
+
+def _setup_local_admin(admin_username, admin_email, admin_password, supabase_url):
+    if supabase_url:
+        return _create_local_superuser_stub(admin_username, admin_email)
+    else:
+        return _create_local_superuser_full(admin_username, admin_email, admin_password)
 
 
 def _migrate_system_settings():

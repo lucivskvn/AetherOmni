@@ -323,10 +323,13 @@ def _get_doc_info_stage1(document_id):
         return doc, doc.get("original_filename", "").lower(), doc.get("doc_uuid")
 
 
-def _acquire_stage1_raw_markdown(
-    working_path: str, lower_name: str, doc: Any, file_hash: str, doc_id_display: str
-) -> tuple[str, str, int, Decimal, int, int]:
-    """Helper to route document through cached, local, or multimodal OCR extraction."""
+def _get_existing_or_cached_markdown(
+    doc: Any, file_hash: str, doc_id_display: str, working_path: str, lower_name: str
+) -> tuple[str, str, int, Decimal, int, int] | None:
+    from django.conf import settings
+
+    from extractor import surreal_db
+
     existing_raw = (doc.get("raw_markdown") if isinstance(doc, dict) else getattr(doc, "raw_markdown", None)) or ""
     cached_ocr = (
         surreal_db.kv_cache_get(f"ocr:{file_hash}")
@@ -349,6 +352,20 @@ def _acquire_stage1_raw_markdown(
         doc_type = cached_ocr.get("document_type") or ("PDF" if lower_name.endswith(".pdf") else "IMAGE")
         page_cnt = cached_ocr.get("page_count") or _determine_actual_page_count(working_path, doc_type)
         return cached_ocr["raw_markdown"], doc_type, page_cnt, Decimal("0.0"), 0, 0
+    return None
+
+
+def _acquire_stage1_raw_markdown(
+    working_path: str, lower_name: str, doc: Any, file_hash: str, doc_id_display: str
+) -> tuple[str, str, int, Decimal, int, int]:
+    """Helper to route document through cached, local, or multimodal OCR extraction."""
+    from django.conf import settings
+
+    from extractor import surreal_db
+
+    cached_result = _get_existing_or_cached_markdown(doc, file_hash, doc_id_display, working_path, lower_name)
+    if cached_result:
+        return cached_result
 
     if lower_name.endswith(".csv"):
         raw_md = process_csv_local(working_path)
@@ -1058,6 +1075,36 @@ def reembed_edited_document_task(payload: dict) -> None:
         )
 
 
+def _resolve_local_doc_obj(doc_uuid):
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            import uuid
+
+            try:
+                uuid.UUID(str(doc_uuid))
+                return SourceDocument.objects.get(uuid=doc_uuid)
+            except ValueError:
+                return SourceDocument.objects.get(id=int(doc_uuid or 0))
+        except (ValueError, SourceDocument.DoesNotExist) as lookup_err:
+            logger.debug("[Cron] Could not resolve doc_uuid %s: %s", doc_uuid, lookup_err)
+    return None
+
+
+def _delete_physical_file(doc_obj, file_rel_path, file_hash):
+    try:
+        if doc_obj:
+            doc_obj.file.delete(save=False)
+        else:
+            if default_storage.exists(file_rel_path):
+                default_storage.delete(file_rel_path)
+    except Exception as exc:
+        logger.warning("[Cron] Failed to delete physical file for hash %s: %s", file_hash, exc)
+
+
 def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
     """Purge one expired document: physical file, SurrealDB chunks, storage JSON, audit log."""
     file_hash = doc.get("file_hash")
@@ -1067,33 +1114,11 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
     total_refs = hash_counts.get(file_hash, 0)
     shared_references = max(0, total_refs - 1)
 
-    from django.conf import settings
-
-    doc_obj = None
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        from extractor.models import SourceDocument
-
-        try:
-            import uuid
-
-            try:
-                uuid.UUID(str(doc_uuid))
-                doc_obj = SourceDocument.objects.get(uuid=doc_uuid)
-            except ValueError:
-                doc_obj = SourceDocument.objects.get(id=int(doc_uuid or 0))
-        except (ValueError, SourceDocument.DoesNotExist) as lookup_err:
-            logger.debug("[Cron] Could not resolve doc_uuid %s: %s", doc_uuid, lookup_err)
+    doc_obj = _resolve_local_doc_obj(doc_uuid)
 
     if shared_references == 0:
         logger.info("[Cron] Purging file hash %s from storage.", file_hash)
-        try:
-            if doc_obj:
-                doc_obj.file.delete(save=False)
-            else:
-                if default_storage.exists(file_rel_path):
-                    default_storage.delete(file_rel_path)
-        except Exception as exc:
-            logger.warning("[Cron] Failed to delete physical file for hash %s: %s", file_hash, exc)
+        _delete_physical_file(doc_obj, file_rel_path, file_hash)
     else:
         logger.info(
             "[Cron] Skipping physical delete for hash %s (referenced by %s records).", file_hash, shared_references
@@ -1121,6 +1146,47 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
     surreal_db.delete_document(doc_uuid)
 
 
+def _fetch_expired_docs_offline(now, surreal_db):
+    from django.db.models import Count
+
+    from extractor.models import SourceDocument
+
+    expired_qs = SourceDocument.objects.filter(expires_at__lte=now)
+    expired_docs = [surreal_db._model_to_dict(d) for d in expired_qs]
+    if not expired_docs:
+        return [], {}
+
+    expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
+    hash_counts = dict.fromkeys(expired_hashes, 0)
+    if expired_hashes:
+        counts = (
+            SourceDocument.objects.filter(file_hash__in=expired_hashes).values("file_hash").annotate(count=Count("id"))
+        )
+        for item in counts:
+            hash_counts[item["file_hash"]] = item["count"]
+    return expired_docs, hash_counts
+
+
+def _fetch_expired_docs_surreal(now_str, surreal_db):
+    expired_sql = "SELECT * FROM documents WHERE expires_at <= <datetime> $now;"
+    expired_docs = surreal_db._first_result(surreal_db._run(expired_sql, {"now": now_str}))
+
+    if not expired_docs:
+        return [], {}
+
+    expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
+    hash_counts = dict.fromkeys(expired_hashes, 0)
+    if expired_hashes:
+        count_sql = (
+            "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $expired_hashes GROUP BY file_hash;"
+        )
+        res = surreal_db._first_result(surreal_db._run(count_sql, {"expired_hashes": list(expired_hashes)}))
+        if res:
+            for row in res:
+                hash_counts[row.get("file_hash")] = row.get("n", 0)
+    return expired_docs, hash_counts
+
+
 def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     """
     Reference-counted document garbage disposal.
@@ -1128,50 +1194,18 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     Purges expired SurrealDB RAG cache entries.
     Writes audit entries for each purged document.
     """
+    from django.conf import settings
+
     from extractor import surreal_db
 
     logger.info("[Cron] Starting reference-counted expired document cleanup...")
     now = timezone.now()
     now_str = format_datetime(now)
 
-    from django.conf import settings
-
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        from django.db.models import Count
-
-        from extractor.models import SourceDocument
-
-        expired_qs = SourceDocument.objects.filter(expires_at__lte=now)
-        expired_docs = [surreal_db._model_to_dict(d) for d in expired_qs]
-        if expired_docs:
-            expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
-            hash_counts = dict.fromkeys(expired_hashes, 0)
-            if expired_hashes:
-                counts = (
-                    SourceDocument.objects.filter(file_hash__in=expired_hashes)
-                    .values("file_hash")
-                    .annotate(count=Count("id"))
-                )
-                for item in counts:
-                    hash_counts[item["file_hash"]] = item["count"]
-        else:
-            hash_counts = {}
+        expired_docs, hash_counts = _fetch_expired_docs_offline(now, surreal_db)
     else:
-        expired_sql = "SELECT * FROM documents WHERE expires_at <= <datetime> $now;"
-        expired_docs = surreal_db._first_result(surreal_db._run(expired_sql, {"now": now_str}))
-        purged_count = 0
-
-        if expired_docs:
-            expired_hashes = {doc.get("file_hash") for doc in expired_docs if doc.get("file_hash")}
-            hash_counts = dict.fromkeys(expired_hashes, 0)
-            if expired_hashes:
-                count_sql = "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $expired_hashes GROUP BY file_hash;"
-                res = surreal_db._first_result(surreal_db._run(count_sql, {"expired_hashes": list(expired_hashes)}))
-                if res:
-                    for row in res:
-                        hash_counts[row.get("file_hash")] = row.get("n", 0)
-        else:
-            hash_counts = {}
+        expired_docs, hash_counts = _fetch_expired_docs_surreal(now_str, surreal_db)
 
     purged_count = 0
     for doc in expired_docs:

@@ -101,6 +101,13 @@ def _detect_gcloud_project_id() -> str | None:
     return None
 
 
+def _fetch_gcp_region():
+    region_full = _query_metadata_server("instance/region")
+    if region_full:
+        return region_full.split("/")[-1]
+    return None
+
+
 def get_gcp_project_details():
     """Retrieves the GCP project ID and region from environment variables
 
@@ -126,9 +133,7 @@ def get_gcp_project_details():
                 logger.debug("[Deployment] Metadata server unreachable (not on GCP)")
 
         if not os.getenv("GCP_REGION"):
-            region_full = _query_metadata_server("instance/region")
-            if region_full:
-                region = region_full.split("/")[-1]
+            region = _fetch_gcp_region() or region
 
         project_number = _query_metadata_server("project/numeric-project-id")
 

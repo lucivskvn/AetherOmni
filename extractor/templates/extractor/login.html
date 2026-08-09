@@ -246,7 +246,7 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const hash = window.location.hash;
+        const hash = globalThis.location.hash;
         if (hash) {
             const params = new URLSearchParams(hash.substring(1));
             const accessToken = params.get('access_token');
@@ -254,8 +254,8 @@
             
             if (accessToken && type === 'recovery') {
                 sessionStorage.setItem('supabase_recovery_token', accessToken);
-                window.history.replaceState(null, null, window.location.pathname);
-                window.location.href = "{% url 'reset_password_confirm' %}";
+                globalThis.history.replaceState(null, null, globalThis.location.pathname);
+                globalThis.location.href = "{% url 'reset_password_confirm' %}";
             }
         }
     });

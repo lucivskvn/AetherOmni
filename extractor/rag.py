@@ -508,6 +508,24 @@ def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_blo
     )
 
 
+def _parse_offline_document_ids(document_ids):
+    import uuid
+
+    uuids = []
+    ids_int = []
+
+    for x in document_ids:
+        x_str = str(x).strip()
+        if x_str:
+            try:
+                uuid.UUID(x_str)
+                uuids.append(x_str)
+            except ValueError:
+                if x_str.isdigit():
+                    ids_int.append(int(x_str))
+    return uuids, ids_int
+
+
 def _get_offline_uuids(user, document_ids):
     from django.db.models import Q
 
@@ -521,20 +539,7 @@ def _get_offline_uuids(user, document_ids):
         qs = SourceDocument.objects.all()
 
     if document_ids:
-        import uuid
-
-        uuids = []
-        ids_int = []
-
-        for x in document_ids:
-            x_str = str(x).strip()
-            if x_str:
-                try:
-                    uuid.UUID(x_str)
-                    uuids.append(x_str)
-                except ValueError:
-                    if x_str.isdigit():
-                        ids_int.append(int(x_str))
+        uuids, ids_int = _parse_offline_document_ids(document_ids)
         q_filter = Q()
         if uuids:
             q_filter |= Q(uuid__in=uuids)
