@@ -41,7 +41,7 @@ export default [
 
     },
     rules: {
-      "complexity": ["warn", { max: 15 }],
+      "complexity": ["error", { max: 15 }],
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "no-undef": "error",
       "no-eval": "error",
