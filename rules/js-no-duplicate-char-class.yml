@@ -1,0 +1,6 @@
+id: js-no-duplicate-char-class
+message: "Simplify regular expression character class - remove duplicate characters (S5869)."
+severity: warning
+language: JavaScript
+rule:
+  pattern: /$REGEX/

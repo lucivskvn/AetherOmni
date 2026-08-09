@@ -1,0 +1,6 @@
+id: js-for-of
+message: "Prefer for-of loop over traditional indexed for loop for array iteration (S4138)."
+severity: warning
+language: JavaScript
+rule:
+  pattern: for (let $I = 0; $I < $ARR.length; $I++) { $$$BODY }

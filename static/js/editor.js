@@ -233,7 +233,7 @@ function extractYamlFrontmatter(escaped) {
                 const colonIdx = line.indexOf(':');
                 if (colonIdx !== -1) {
                     const key = line.substring(0, colonIdx).trim();
-                    const val = line.substring(colonIdx + 1).trim().replace(/^[&quot;&apos;&lt;&gt;]*|[&quot;&apos;&lt;&gt;]*$/g, '');
+                    const val = line.substring(colonIdx + 1).trim().replace(/^["']+|["']+$/g, '');
                     if (key && val) {
                         rowsHtml += `
                             <div style="display: flex; gap: 8px; font-size: 12px; margin-bottom: 4px; font-family: sans-serif;">
