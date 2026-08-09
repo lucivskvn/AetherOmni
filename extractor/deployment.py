@@ -108,6 +108,20 @@ def _fetch_gcp_region():
     return None
 
 
+def _detect_production_gcp_project(project_id, region):
+    project_number = None
+    if not project_id:
+        project_id = _query_metadata_server("project/project-id") or ""
+        if not project_id:
+            logger.debug("[Deployment] Metadata server unreachable (not on GCP)")
+
+    if not os.getenv("GCP_REGION"):
+        region = _fetch_gcp_region() or region
+
+    project_number = _query_metadata_server("project/numeric-project-id")
+    return project_id, region, project_number
+
+
 def get_gcp_project_details():
     """Retrieves the GCP project ID and region from environment variables
 
@@ -127,15 +141,7 @@ def get_gcp_project_details():
         project_id = _detect_gcloud_project_id() or ""
 
     if not django_settings.DEBUG:
-        if not project_id:
-            project_id = _query_metadata_server("project/project-id") or ""
-            if not project_id:
-                logger.debug("[Deployment] Metadata server unreachable (not on GCP)")
-
-        if not os.getenv("GCP_REGION"):
-            region = _fetch_gcp_region() or region
-
-        project_number = _query_metadata_server("project/numeric-project-id")
+        project_id, region, project_number = _detect_production_gcp_project(project_id, region)
 
     return {
         "project_id": project_id or None,
