@@ -522,8 +522,8 @@ def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: i
                 if file_age > max_age_seconds:
                     os.remove(file_path)
                     removed_count += 1
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("[File Cleanup] Could not remove temporary file %s: %s", file_path, exc)
 
     return removed_count
 
