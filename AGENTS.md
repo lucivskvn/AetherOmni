@@ -23,7 +23,7 @@
 
 ### 3. Desloppify Codebase Health & Sensor Audit
 
-- Run `desloppify scan` to audit structural complexity, responsibility cohesion, dependency cycles, duplicate logic, and code health metrics across all 17 sensors.
+- Run `desloppify scan` to audit structural complexity, responsibility cohesion, dependency cycles, duplicate logic, and code health metrics.
 - Maintain objective mechanical health score >= 85.0. Target runtime: Python 3.13 (`py313`).
 
 ### 4. Automated Cloud SAST & Quality Gate (SonarQube & Semgrep)
