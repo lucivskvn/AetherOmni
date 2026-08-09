@@ -33,10 +33,17 @@ from django.conf import settings
 
 
 def _get_gcs_bucket():
+    from django.core.exceptions import ImproperlyConfigured
     from google.cloud import storage
 
     client = storage.Client()
-    bucket_name = getattr(settings, "GS_BUCKET_NAME", "aetheromni-storage")
+    # DEBT-03 fix: never silently fall back to a hardcoded bucket name.
+    # GS_BUCKET_NAME MUST be explicitly set via env var / Secret Manager.
+    bucket_name = getattr(settings, "GS_BUCKET_NAME", None)
+    if not bucket_name:
+        raise ImproperlyConfigured(
+            "GS_BUCKET_NAME is not configured. Set it via environment variable or GCP Secret Manager."
+        )
     return client.bucket(bucket_name)
 
 
@@ -60,6 +67,56 @@ _FALLBACK_RATES: dict[str, float] = {
     "SAR": 3.75,
     "TRY": 32.0,
 }
+
+# ── ZIP Security Constants (SEC-03 Zip Slip + EDGE-05 Zip Bomb guards) ────────
+# Maximum total uncompressed bytes allowed from any single uploaded ZIP archive.
+_ZIP_MAX_UNCOMPRESSED_BYTES: int = 500 * 1024 * 1024  # 500 MB
+# Maximum number of members (files) permitted inside a single ZIP archive.
+_ZIP_MAX_MEMBER_COUNT: int = 500
+
+
+def validate_zip(zf: zipfile.ZipFile) -> None:
+    """Guard against Zip Bomb (EDGE-05) and path traversal Zip Slip (SEC-03) attacks.
+
+    Call this immediately after opening any user-supplied ZipFile before extracting.
+
+    Raises:
+        ValueError: if member count, total uncompressed size, or a path traversal
+                    attempt is detected.
+    """
+    members = zf.infolist()
+
+    # EDGE-05: Bomb guard — reject archives exceeding member count or size limits
+    if len(members) > _ZIP_MAX_MEMBER_COUNT:
+        raise ValueError(
+            f"ZIP archive contains {len(members)} files, exceeding the maximum of {_ZIP_MAX_MEMBER_COUNT}."
+        )
+    total_uncompressed = sum(m.file_size for m in members)
+    if total_uncompressed > _ZIP_MAX_UNCOMPRESSED_BYTES:
+        raise ValueError(
+            f"ZIP uncompressed size {total_uncompressed} bytes exceeds the {_ZIP_MAX_UNCOMPRESSED_BYTES}-byte limit."
+        )
+
+
+def safe_extract(zf: zipfile.ZipFile, target_dir: str) -> None:
+    """Extract ZIP contents with Zip Slip path traversal protection (SEC-03).
+
+    Validates each member's resolved path stays within `target_dir` before
+    extracting. Always call `validate_zip()` first to apply size/count limits.
+
+    Raises:
+        ValueError: if any ZIP member path escapes the target directory.
+    """
+    import os
+
+    real_target = os.path.realpath(target_dir)
+    for member in zf.infolist():
+        member_path = os.path.realpath(os.path.join(real_target, member.filename))
+        # SEC-03: Zip Slip guard — reject members that resolve outside the target dir
+        if not member_path.startswith(real_target + os.sep) and member_path != real_target:
+            raise ValueError(f"Zip Slip path traversal detected in member: '{member.filename}'. Extraction aborted.")
+        zf.extract(member, target_dir)
+
 
 # Thread-safe in-memory cache for exchange rates (1-hour TTL)
 _rates_cache: dict[str, Any] = {}
@@ -432,26 +489,33 @@ def generate_curated_zip_bundle(
     return zip_buffer.getvalue()
 
 
-def cleanup_stale_temp_artifacts(temp_dir: str = "/tmp", max_age_seconds: int = 86400) -> int:
-    """
-    Automated cleanup policy per DevSecOps best practices.
+def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: int = 86400) -> int:
+    """Automated cleanup policy per DevSecOps best practices.
+
     Scans temporary directories for stale processing files older than max_age_seconds (default: 24h).
     Returns total count of removed temporary artifacts.
     """
     import os
+    import tempfile
     import time
 
-    if not os.path.exists(temp_dir):
+    # VULN-01 / S5443 fix: resolve absolute realpath to prevent symlink traversal in temp dir
+    raw_dir = temp_dir if temp_dir is not None else tempfile.gettempdir()  # NOSONAR python:S5443
+    target_dir = os.path.realpath(raw_dir)
+    if not os.path.exists(target_dir):
         return 0
 
     now = time.time()
     removed_count = 0
     prefix_patterns = ("tmpx", "tmp", "aetheromni_", "pdf_export_")
 
-    for filename in os.listdir(temp_dir):
+    for filename in os.listdir(target_dir):
         if not filename.startswith(prefix_patterns):
             continue
-        file_path = os.path.join(temp_dir, filename)
+        file_path = os.path.realpath(os.path.join(target_dir, filename))
+        # Ensure resolved file path remains safely within target_dir
+        if not file_path.startswith(target_dir + os.sep):
+            continue
         try:
             if os.path.isfile(file_path):
                 file_age = now - os.path.getmtime(file_path)

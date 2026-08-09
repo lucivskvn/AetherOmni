@@ -35,32 +35,28 @@ def _get_ann_value(annotations_dicts, keys):
     return None
 
 
+def _collect_annotations(config: dict) -> list[dict]:
+    """Helper to cleanly extract annotation dicts from spec and metadata without deep nesting."""
+    ann_dicts = []
+    spec_ann = config.get("spec", {}).get("template", {}).get("metadata", {}).get("annotations", {})
+    if isinstance(spec_ann, dict) and spec_ann:
+        ann_dicts.append(spec_ann)
+    meta_ann = config.get("metadata", {}).get("annotations", {})
+    if isinstance(meta_ann, dict) and meta_ann:
+        ann_dicts.append(meta_ann)
+    return ann_dicts
+
+
 def extract_knative_scaling(config, default_min, default_max):
-    """
-    Safely extracts min and max scaling values from Knative configuration.
+    """Safely extracts min and max scaling values from Knative configuration.
+
     Supports both Knative standards and GCP-native (run.googleapis.com) annotations
     at both the service metadata level and the revision template metadata level.
     """
     if not config or not isinstance(config, dict):
         return default_min, default_max
 
-    annotations_dicts = []
-
-    spec = config.get("spec", {})
-    if isinstance(spec, dict):
-        template = spec.get("template", {})
-        if isinstance(template, dict):
-            metadata = template.get("metadata", {})
-            if isinstance(metadata, dict):
-                ann = metadata.get("annotations", {})
-                if isinstance(ann, dict) and ann:
-                    annotations_dicts.append(ann)
-
-    meta = config.get("metadata", {})
-    if isinstance(meta, dict):
-        ann = meta.get("annotations", {})
-        if isinstance(ann, dict) and ann:
-            annotations_dicts.append(ann)
+    annotations_dicts = _collect_annotations(config)
 
     min_keys = [KNATIVE_MIN_SCALE, "run.googleapis.com/minScale"]
     max_keys = ["autoscaling.knative.dev/maxScale", "run.googleapis.com/maxScale"]
@@ -88,9 +84,26 @@ def _query_metadata_server(path):
         return None
 
 
+def _detect_gcloud_project_id() -> str | None:
+    try:
+        res = subprocess.run(
+            ["gcloud", "config", "get-value", "project"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )  # nosec B603 B607
+        if res.returncode == 0 and res.stdout.strip():
+            logger.info("[Deployment] Auto-detected local gcloud project ID: %s", res.stdout.strip())
+            return res.stdout.strip()
+    except (subprocess.SubprocessError, OSError, FileNotFoundError) as proc_err:
+        logger.debug("[Deployment] gcloud CLI project lookup skipped: %s", proc_err)
+    return None
+
+
 def get_gcp_project_details():
-    """
-    Retrieves the GCP project ID and region from environment variables
+    """Retrieves the GCP project ID and region from environment variables
+
     or the local GCP Metadata Server.
     Returns None for project_id if not configured (no hardcoded fallback).
     Skips metadata server in DEBUG mode to avoid blocking local developers.
@@ -102,27 +115,13 @@ def get_gcp_project_details():
     region = os.getenv("GCP_REGION", "asia-southeast1")
     project_number = None
 
-    # Fallback to local gcloud config if not set in environment (both in debug/non-debug)
+    # Fallback to local gcloud config if not set in environment
     if not project_id:
-        try:
-            import subprocess  # nosec B404
-
-            res = subprocess.run(
-                ["gcloud", "config", "get-value", "project"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-                check=False,
-            )  # nosec B603 B607
-            if res.returncode == 0 and res.stdout.strip():
-                project_id = res.stdout.strip()
-                logger.info("[Deployment] Auto-detected local gcloud project ID: %s", project_id)
-        except (subprocess.SubprocessError, OSError, FileNotFoundError) as proc_err:
-            logger.debug("[Deployment] gcloud CLI project lookup skipped: %s", proc_err)
+        project_id = _detect_gcloud_project_id() or ""
 
     if not django_settings.DEBUG:
         if not project_id:
-            project_id = _query_metadata_server("project/project-id")
+            project_id = _query_metadata_server("project/project-id") or ""
             if not project_id:
                 logger.debug("[Deployment] Metadata server unreachable (not on GCP)")
 

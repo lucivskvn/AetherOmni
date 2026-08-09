@@ -190,6 +190,13 @@ class AuditLog(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    # SEC-06 fix: expose `timestamp` as a property alias for `created_at` so that
+    # _audit_log_to_dict() serialising key "timestamp" does not cause AttributeError
+    # in consumers. The underlying DB column remains `created_at`.
+    @property
+    def timestamp(self):
+        return self.created_at
+
     def save(self, *args, **kwargs):
         if self.pk and not kwargs.pop("force_update_allowed", False):
             raise PermissionError("AuditLog records are immutable append-only ledgers and cannot be modified.")

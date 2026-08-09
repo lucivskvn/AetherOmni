@@ -67,7 +67,11 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
 
 
 def _chunk_long_paragraph(paragraph: str, max_chunk_size: int, chunks: list[str]) -> tuple[list[str], int]:
-    """Split a very long paragraph into sentence-level sub-chunks."""
+    """Split a very long paragraph into sentence-level sub-chunks.
+
+    Fix EDGE-02: Flush any remaining sub_chunk sentences before returning so
+    the final segment of an oversized paragraph is never silently dropped.
+    """
     sentences = re.split(r"(?<=[.!?])\s+", paragraph)
     sub_chunk: list[str] = []
     sub_size = 0
@@ -81,7 +85,10 @@ def _chunk_long_paragraph(paragraph: str, max_chunk_size: int, chunks: list[str]
                 chunks.append(" ".join(sub_chunk))
             sub_chunk = [s]
             sub_size = s_len
-    return sub_chunk, sub_size
+    # EDGE-02 fix: flush the final pending sub-chunk so no sentences are lost
+    if sub_chunk:
+        chunks.append(" ".join(sub_chunk))
+    return [], 0
 
 
 def _fetch_missing_embeddings(
@@ -126,6 +133,11 @@ def _lookup_cached_embeddings(chunks_list, surreal_db):
     return final_embeddings, missing_indices, missing_texts
 
 
+# Sentinel value stored in place of a failed embedding so HNSW queries can
+# exclude it rather than silently returning the wrong results (EDGE-01 fix).
+_EMBEDDING_FAILED_SENTINEL = None
+
+
 def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
     from extractor.llm_gateway import execute_embed_content_with_fallback
 
@@ -135,7 +147,15 @@ def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
                 response = execute_embed_content_with_fallback(model_name=model_name, contents=[chunks_list[idx]])
                 final_embeddings[idx] = response.embeddings[0].values
             except (RuntimeError, ValueError, AttributeError):
-                final_embeddings[idx] = [0.0] * 768
+                # EDGE-01 fix: do NOT store a zero-vector — it has cosine similarity 0
+                # against all real vectors and would corrupt HNSW search results.
+                # Mark as None so the caller can tag the SurrealDB chunk for retry.
+                logger.warning(
+                    "[Embeddings] Failed to embed chunk %s ('%s...') — marking for retry.",
+                    idx,
+                    chunks_list[idx][:60] if chunks_list[idx] else "",
+                )
+                final_embeddings[idx] = _EMBEDDING_FAILED_SENTINEL
 
 
 def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-embedding-004") -> list[list[float]]:
@@ -416,37 +436,37 @@ def query_semantic_knowledge_rag(
     return result
 
 
+def _format_doc_info_parts(doc_meta: dict[str, Any]) -> str:
+    """Format academic metadata header for a grounded RAG context block."""
+    info_parts = [
+        f"Source: {doc_meta.get('title', 'Unknown')}",
+        f"Lang: {doc_meta.get('language', 'Unknown')}",
+        f"Author: {doc_meta.get('author', 'Unknown')}",
+    ]
+    if doc_meta.get("publisher") and doc_meta["publisher"] not in ("Unknown", ""):
+        info_parts.append(f"Publisher: {doc_meta['publisher']}")
+    if doc_meta.get("publication_year") and doc_meta["publication_year"] != "":
+        info_parts.append(f"Year: {doc_meta['publication_year']}")
+    if doc_meta.get("license_type") and doc_meta["license_type"] not in ("Unknown", ""):
+        info_parts.append(f"License: {doc_meta['license_type']}")
+    if doc_meta.get("doi") and doc_meta["doi"] != "":
+        info_parts.append(f"DOI: {doc_meta['doi']}")
+    return info_parts[0] + " (" + ", ".join(info_parts[1:]) + ")"
+
+
 def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
     context_blocks = []
     sources = []
     for idx, chunk in enumerate(matching_chunks):
         doc_uuid_str = chunk.get("doc_uuid", "")
-        # Look up SQLite doc for title/author/language (UUID is the join key)
         doc_meta = _get_doc_metadata(doc_uuid_str)
-
-        info_parts = [
-            f"Source: {doc_meta.get('title', 'Unknown')}",
-            f"Lang: {doc_meta.get('language', 'Unknown')}",
-            f"Author: {doc_meta.get('author', 'Unknown')}",
-        ]
-
-        if doc_meta.get("publisher") and doc_meta["publisher"] not in ("Unknown", ""):
-            info_parts.append(f"Publisher: {doc_meta['publisher']}")
-        if doc_meta.get("publication_year") and doc_meta["publication_year"] != "":
-            info_parts.append(f"Year: {doc_meta['publication_year']}")
-        if doc_meta.get("license_type") and doc_meta["license_type"] not in ("Unknown", ""):
-            info_parts.append(f"License: {doc_meta['license_type']}")
-        if doc_meta.get("doi") and doc_meta["doi"] != "":
-            info_parts.append(f"DOI: {doc_meta['doi']}")
-
-        doc_info = " (" + ", ".join(info_parts[1:]) + ")"
-        doc_info = info_parts[0] + doc_info
+        doc_info = _format_doc_info_parts(doc_meta)
 
         context_blocks.append(f"--- BLOCK {idx + 1} [{doc_info}] ---\n{chunk.get('content', '')}")
         sources.append(
             {
-                "id": doc_meta["id"],  # For test compatibility (SQLite integer ID)
-                "uuid": doc_uuid_str,  # use UUID for correct frontend URL routing
+                "id": doc_meta["id"],
+                "uuid": doc_uuid_str,
                 "title": doc_meta["title"],
                 "author": doc_meta["author"],
                 "language": doc_meta["language"],

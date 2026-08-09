@@ -23,12 +23,12 @@ import logging
 import os
 import re
 import time
-import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+import httpx
 from django.conf import settings
 from django.utils import timezone
 
@@ -107,7 +107,9 @@ def check_budget_and_api_limit() -> None:
     now = timezone.now()
     first_of_month = datetime(now.year, now.month, 1, tzinfo=UTC)
 
-    # Live documents created this month
+    # EDGE-03 / Q2 fix: Deleted documents (flushed to log before removal)
+    logged_spent = MonthlySpendLog.total_for_month(now.year, now.month)
+
     if getattr(settings, "SURREALDB_OFFLINE", False):
         live_spent = SourceDocument.objects.filter(created_at__gte=first_of_month).aggregate(
             total=models.Sum("cost_usd")
@@ -118,14 +120,26 @@ def check_budget_and_api_limit() -> None:
         from extractor import surreal_db
         from extractor.tasks import format_datetime
 
-        sql = "SELECT math::sum(cost_usd) AS total FROM documents WHERE created_at >= <datetime> $first_of_month GROUP ALL;"
-        res = surreal_db._first_result(surreal_db._run(sql, {"first_of_month": format_datetime(first_of_month)}))
-        live_spent = Decimal(str(res[0].get("total", 0.0))) if res else Decimal("0.0")
-        settings_data = surreal_db.get_system_settings()
-        monthly_cap = Decimal(str(settings_data.get("monthly_budget_usd", 10.00)))
+        # EDGE-03 / Q2 decision: SurrealDB BEGIN TRANSACTION block for atomic budget evaluation
+        transaction_sql = """
+        BEGIN TRANSACTION;
+        LET $live = (SELECT math::sum(cost_usd) AS total FROM documents WHERE created_at >= <datetime> $first_of_month GROUP ALL);
+        LET $spent = IF array::len($live) > 0 THEN $live[0].total ELSE 0.0 END;
+        LET $settings = (SELECT monthly_budget_usd FROM system_settings:global);
+        LET $cap = IF array::len($settings) > 0 THEN $settings[0].monthly_budget_usd ELSE 10.0 END;
+        RETURN { live_spent: $spent, cap: $cap };
+        COMMIT TRANSACTION;
+        """
+        res = surreal_db._first_result(
+            surreal_db._run(transaction_sql, {"first_of_month": format_datetime(first_of_month)})
+        )
+        if res and isinstance(res, dict):
+            live_spent = Decimal(str(res.get("live_spent", 0.0)))
+            monthly_cap = Decimal(str(res.get("cap", 10.0)))
+        else:
+            live_spent = Decimal("0.0")
+            monthly_cap = Decimal("10.0")
 
-    # Deleted documents (flushed to log before removal)
-    logged_spent = MonthlySpendLog.total_for_month(now.year, now.month)
     total_spent = live_spent + logged_spent
 
     if total_spent >= monthly_cap:
@@ -165,14 +179,11 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
         except (KeyError, ValueError, TypeError, AttributeError) as e:
             logger.warning("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
 
-    # Fetch live from OpenRouter public API
+    # SEC-05 fix: Fetch live pricing using httpx with explicit SSL verification
     try:
-        import json
-        import urllib.request
-        from urllib.error import URLError
-
-        with urllib.request.urlopen("https://openrouter.ai/api/v1/models", timeout=5) as response:  # nosec B310 nosemgrep
-            data = json.loads(response.read().decode())
+        response = httpx.get("https://openrouter.ai/api/v1/models", timeout=5.0, verify=True)
+        if response.status_code == 200:
+            data = response.json()
             if "data" in data:
                 pricing_map = {}
                 for m in data["data"]:
@@ -205,7 +216,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                     }
                     for k, v in pricing_map.items()
                 }
-    except (URLError, ValueError, TypeError, KeyError, OSError) as exc:
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
         logger.warning("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
 
     return None
@@ -292,15 +303,11 @@ def calculate_openrouter_cost(model_name: str, input_tokens: int, output_tokens:
 
 
 def _get_openrouter_api_key() -> str:
-    key = os.getenv("OPENROUTER_API_KEY", "").strip()
-    if not key:
-        try:
-            from extractor.models import SystemSettings
+    """SEC-02 fix: Resolve OPENROUTER_API_KEY strictly from environment variable / GCP Secret Manager.
 
-            key = SystemSettings.get_settings().openrouter_api_key.strip()
-        except Exception:
-            key = ""
-    return key
+    Database storage is disabled per Q1 DevSecOps policy to prevent CWE-312 plaintext credential leaks.
+    """
+    return os.getenv("OPENROUTER_API_KEY", "").strip()
 
 
 def _call_openrouter(prompt: str, system_instruction: str | None, model_name: str) -> UnifiedResponse:
@@ -316,8 +323,8 @@ def _call_openrouter(prompt: str, system_instruction: str | None, model_name: st
     messages.append({"role": "user", "content": prompt})
 
     # Use APP_URL from settings (no hardcoded localhost referer in production)
-    app_url = getattr(settings, "APP_URL", None) or os.getenv("APP_URL", "http://localhost:8080")
-    headers = {
+    app_url = str(getattr(settings, "APP_URL", None) or os.getenv("APP_URL", "http://localhost:8080"))
+    headers: dict[str, str] = {
         "Authorization": f"Bearer {api_key}",
         "HTTP-Referer": app_url,
         "X-Title": "Knowledge Desk",
@@ -326,28 +333,26 @@ def _call_openrouter(prompt: str, system_instruction: str | None, model_name: st
 
     payload = {"model": model_name, "messages": messages, "temperature": 0.2}
 
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")  # type: ignore[arg-type]
-
+    # SEC-05 fix: Execute POST request using httpx with explicit SSL verification
     try:
-        with urllib.request.urlopen(req, timeout=60) as response:  # nosec B310 nosemgrep
-            res_data = response.read().decode("utf-8")
-            result = json.loads(res_data)
+        response = httpx.post(url, json=payload, headers=headers, timeout=60.0, verify=True)
+        response.raise_for_status()
+        result = response.json()
 
-            choice = result["choices"][0]["message"]
-            text_content = choice.get("content", "")
+        choice = result["choices"][0]["message"]
+        text_content = choice.get("content", "")
 
-            # Parse token usage
-            usage = result.get("usage", {})
-            input_tokens = usage.get("prompt_tokens", 0)
-            output_tokens = usage.get("completion_tokens", 0)
+        # Parse token usage
+        usage = result.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
 
-            cost = calculate_openrouter_cost(model_name, input_tokens, output_tokens)
+        cost = calculate_openrouter_cost(model_name, input_tokens, output_tokens)
 
-            return UnifiedResponse(text_content, input_tokens, output_tokens, cost, model_name)
+        return UnifiedResponse(text_content, input_tokens, output_tokens, cost, model_name)
 
     except Exception as e:
-        logger.exception(f"[Gateway Error] OpenRouter request failed for {model_name}.")
+        logger.exception("[Gateway Error] OpenRouter request failed for %s.", model_name)
         raise GeminiProcessingError(f"OpenRouter routing error: {e!s}")
 
 
@@ -356,7 +361,11 @@ def _try_vertex_fallback_chain(model_name, contents, config):
         vertex_client = get_vertex_client_for_location(region)
         if vertex_client:
             try:
-                logger.info(f"[Gateway] Attempting generation on Vertex AI in {region} using model {model_name}...")
+                logger.info(
+                    "[Gateway] Attempting generation on Vertex AI in %s using model %s...",
+                    region,
+                    model_name,
+                )
                 response = execute_with_backoff(
                     vertex_client.models.generate_content, model=model_name, contents=contents, config=config
                 )
@@ -365,7 +374,7 @@ def _try_vertex_fallback_chain(model_name, contents, config):
                 cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
                 return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
             except Exception as e:
-                logger.warning(f"[Gateway] Vertex AI generation in region {region} failed: {e}.")
+                logger.warning("[Gateway] Vertex AI generation in region %s failed: %s.", region, e)
     return None
 
 
@@ -376,7 +385,7 @@ def _try_ai_studio_fallback(model_name, contents, config):
 
     if api_key:
         try:
-            logger.info(f"[Gateway] Attempting generation on AI Studio fallback using model {model_name}...")
+            logger.info("[Gateway] Attempting generation on AI Studio fallback using model %s...", model_name)
             client = genai.Client(api_key=api_key)
             response = execute_with_backoff(
                 client.models.generate_content, model=model_name, contents=contents, config=config
@@ -386,7 +395,7 @@ def _try_ai_studio_fallback(model_name, contents, config):
             cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
             return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
         except Exception as e:
-            logger.warning(f"[Gateway] AI Studio generation failed: {e}.")
+            logger.warning("[Gateway] AI Studio generation failed: %s.", e)
     return None
 
 
@@ -490,6 +499,27 @@ def _determine_api_routing(model_name: str, is_vision: bool, openrouter_api_key:
     return final_model, use_openrouter
 
 
+_CASCADABLE_TERMS = (
+    _NOT_FOUND,
+    "not_found",
+    "invalid",
+    "deprecated",
+    "retired",
+    "permission",
+    "404",
+    "400",
+    "429",
+    "resource_exhausted",
+    "rate limit",
+    "quota",
+)
+
+
+def _is_cascadable_error(err: Exception) -> bool:
+    err_msg = str(err).lower()
+    return any(term in err_msg for term in _CASCADABLE_TERMS)
+
+
 def _call_gemini_with_fallback(
     prompt: str,
     system_instruction: str | None,
@@ -501,11 +531,7 @@ def _call_gemini_with_fallback(
     if gemini_model.startswith(PREFIX_GOOGLE):
         gemini_model = gemini_model.replace(PREFIX_GOOGLE, "")
 
-    # Compile fallback chain starting with the chosen model, followed by progressive defaults
     fallback_list = []
-    # Fallback priority:
-    # 1. Chosen model  2. gemini-3.6-flash (1M ctx — best performance/cost balance)
-    # 3. gemini-3.5-flash-lite (budget fallback)
     for candidate in [gemini_model, MODEL_GEMINI_FLASH, MODEL_GEMINI_FLASH_LITE]:
         if candidate not in fallback_list:
             fallback_list.append(candidate)
@@ -513,36 +539,18 @@ def _call_gemini_with_fallback(
     last_error = None
     for attempt_model in fallback_list:
         try:
-            logger.info(f"[Gateway] Attempting direct Gemini call using model: {attempt_model}")
+            logger.info("[Gateway] Attempting direct Gemini call using model: %s", attempt_model)
             return _call_direct_gemini(prompt, system_instruction, attempt_model, files)
         except Exception as e:
             last_error = e
-            err_msg = str(e).lower()
-            # Classify rate-limiting or model-specific errors as cascade opportunities
-            is_cascadable_error = any(
-                term in err_msg
-                for term in [
-                    _NOT_FOUND,
-                    "not_found",
-                    "invalid",
-                    "deprecated",
-                    "retired",
-                    "permission",
-                    "404",
-                    "400",
-                    "429",
-                    "resource_exhausted",
-                    "rate limit",
-                    "quota",
-                ]
-            )
-            if is_cascadable_error:
+            if _is_cascadable_error(e):
                 logger.warning(
-                    f"[Gateway WARNING] Model '{attempt_model}' failed or rate-limited: {e}. Cascading to next available stable model..."
+                    "[Gateway WARNING] Model '%s' failed or rate-limited: %s. Cascading to next available stable model...",
+                    attempt_model,
+                    e,
                 )
                 continue
-            else:
-                raise e
+            raise e
 
     # If we reach here, all direct Gemini options failed.
     # Fall back to OpenRouter free models if the key is configured to maintain 100% service uptime
@@ -1320,7 +1328,7 @@ def generate_multimodal_vision_ocr(
     if not image_bytes:
         return ""
     try:
-        client, is_vertex = _init_ocr_client()
+        client, _is_vertex = _init_ocr_client()
         if client:
             part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
             response, _ = execute_generate_content_with_fallback(client, MODEL_GEMINI_FLASH, contents=[part, prompt])

@@ -74,7 +74,9 @@ def _wrap_surreal_doc(d, users_map):
         try:
             return SourceDocument.objects.get(uuid=d.get("doc_uuid"))
         except SourceDocument.DoesNotExist:
-            pass
+            logger.warning(
+                "[SurrealDB Wrapper] SourceDocument with doc_uuid=%s not found in database.", d.get("doc_uuid")
+            )
 
     doc_obj = SimpleNamespace()
     doc_obj.id = d.get("doc_uuid")
@@ -693,9 +695,11 @@ class DocumentDetailView(LoginRequiredMixin, View):
 
         currency_details = get_locale_currency_details(request)
 
-        # Render markdown to HTML for presentation
-        rendered_raw = render_markdown_to_html(doc.raw_markdown) if doc.raw_markdown else ""
-        rendered_refined = render_markdown_to_html(doc.refined_markdown) if doc.refined_markdown else ""
+        from django.utils.safestring import mark_safe
+
+        # Render markdown to HTML for presentation (sanitized via Bleach inside render_markdown_to_html)
+        rendered_raw = mark_safe(render_markdown_to_html(doc.raw_markdown)) if doc.raw_markdown else ""  # nosec S308
+        rendered_refined = mark_safe(render_markdown_to_html(doc.refined_markdown)) if doc.refined_markdown else ""  # nosec S308
 
         # Live cost localization formatting
         formatted_cost = format_localized_cost(doc.cost_usd, currency_details)
@@ -703,7 +707,7 @@ class DocumentDetailView(LoginRequiredMixin, View):
         parsed_yaml = {}
         if doc.yaml_metadata:
             try:
-                import yaml
+                import yaml  # type: ignore[import-untyped]
 
                 from extractor.tasks import _sanitise_yaml_block
 
