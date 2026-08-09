@@ -1,8 +1,0 @@
-id: yaml-document-start
-message: "YAML document should start with '---' (yamllint document-start)."
-severity: warning
-language: YAML
-rule:
-  pattern: $FIRST
-  not:
-    pattern: ---

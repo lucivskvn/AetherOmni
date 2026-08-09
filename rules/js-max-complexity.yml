@@ -1,8 +1,0 @@
-id: js-max-complexity
-message: "Function complexity exceeds maximum threshold of 15 (SonarQube S3776 / MQR Maintainability)."
-severity: warning
-language: JavaScript
-rule:
-  any:
-    - pattern: function $FUNC($$$ARGS) { $$$BODY }
-    - pattern: const $FUNC = ($$$ARGS) => { $$$BODY }
