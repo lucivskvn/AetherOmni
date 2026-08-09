@@ -24,7 +24,7 @@ spec:
         - containerPort: 8080
         env:
         - name: RELEASE_VERSION
-          value: "v1.5.431+58e3ead"
+          value: "v1.5.433+a79d5ed"
         - name: DJANGO_DEBUG
           value: "False"
         - name: GS_BUCKET_NAME
