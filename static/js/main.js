@@ -1159,64 +1159,63 @@ function initializeSupabaseRealtime() {
  * Shared DOM Update Helpers for Polling and Realtime Channels.
  */
 
-function updateDashboardStats(stats) {
-    if (!stats) return;
-
-    // 1. Monthly AI compute spend
-    const spendVal = document.querySelector('.metrics-row .metric-card:first-child .metric-value');
-    if (spendVal) {
-        spendVal.textContent = stats.formatted_monthly_spent;
-    }
-
-    const budgetSub = document.querySelector('.metrics-row .metric-card:first-child .metric-sub');
-    if (budgetSub) {
-        // Find progress fill bar and update style
-        const fillBar = budgetSub.querySelector('.budget-bar-fill');
-        if (fillBar) {
-            fillBar.style.width = stats.percent_spent + '%';
-        }
-    }
-
-    // 2. Extracted Pages count
-    const pagesVal = document.querySelector('.metrics-row .metric-card:nth-child(2) .metric-value');
-    if (pagesVal) {
-        pagesVal.textContent = stats.total_pages;
-    }
-
-    // 3. Active pipelines
-    const activeCount = document.getElementById('active-tasks-count');
-    if (activeCount) {
-        activeCount.textContent = stats.PENDING + stats.EXTRACTING + stats.REFINING + stats.EMBEDDING;
-    }
-
-    // 4. Token usage text & Chart
+function _updateTokenMetricCard(stats) {
     const tokenContainer = document.querySelector('.metrics-row .metric-card:nth-child(4)');
     if (tokenContainer) {
         const tokenValue = tokenContainer.querySelector('.token-value-text');
-        if (tokenValue) {
-            tokenValue.textContent = formatCompact(stats.total_tokens);
-        }
+        if (tokenValue) tokenValue.textContent = formatCompact(stats.total_tokens);
         const tokenSub = tokenContainer.querySelector('.token-sub-text');
         if (tokenSub) {
             tokenSub.innerHTML = `In: ${formatCompact(stats.prompt_tokens)}<br>Out: ${formatCompact(stats.candidates_tokens)}`;
         }
     }
-
     if (tokensChartInstance && stats.total_tokens > 0) {
         tokensChartInstance.data.datasets[0].data = [stats.prompt_tokens, stats.candidates_tokens];
         tokensChartInstance.update();
     }
+}
 
-    // 5. Budget Exceeded Alert card logic (dynamic show/hide)
+function updateDashboardStats(stats) {
+    if (!stats) return;
+
+    const spendVal = document.querySelector('.metrics-row .metric-card:first-child .metric-value');
+    if (spendVal) spendVal.textContent = stats.formatted_monthly_spent;
+
+    const budgetSub = document.querySelector('.metrics-row .metric-card:first-child .metric-sub');
+    if (budgetSub) {
+        const fillBar = budgetSub.querySelector('.budget-bar-fill');
+        if (fillBar) fillBar.style.width = stats.percent_spent + '%';
+    }
+
+    const pagesVal = document.querySelector('.metrics-row .metric-card:nth-child(2) .metric-value');
+    if (pagesVal) pagesVal.textContent = stats.total_pages;
+
+    const activeCount = document.getElementById('active-tasks-count');
+    if (activeCount) {
+        activeCount.textContent = stats.PENDING + stats.EXTRACTING + stats.REFINING + stats.EMBEDDING;
+    }
+
+    _updateTokenMetricCard(stats);
+
     const billingAlert = document.querySelector('.alert-error');
     if (billingAlert?.textContent.includes('Monthly API Billing Cap Triggered')) {
-        if (!stats.budget_exceeded) {
-            billingAlert.remove();
-        }
+        if (!stats.budget_exceeded) billingAlert.remove();
     } else if (stats.budget_exceeded && !billingAlert) {
-        // Reload page once to let Django render the warning beautifully
         location.reload();
     }
+}
+
+
+function _findTableRowForDoc(tbody, doc) {
+    let row = tbody.querySelector(`tr[data-doc-id="${doc.id}"]`);
+    if (row) return row;
+
+    const chk = document.getElementById(`chk-doc-${doc.id}`);
+    if (chk) return chk.closest('tr');
+
+    const hrefKey = doc.uuid ? `/document/${doc.uuid}/` : `/document/${doc.id}/`;
+    const link = tbody.querySelector(`a[href*="${hrefKey}"]`);
+    return link ? link.closest('tr') : null;
 }
 
 function updateDocumentsTable(documents) {
@@ -1225,112 +1224,70 @@ function updateDocumentsTable(documents) {
     if (!tbody) return;
 
     documents.forEach(doc => {
-        // Find existing row
-        let row = tbody.querySelector(`tr[data-doc-id="${doc.id}"]`);
-        
-        // If rows don't have data-doc-id, try searching by href or checkbox selector ID
-        if (!row) {
-            const chk = document.getElementById(`chk-doc-${doc.id}`);
-            if (chk) {
-                row = chk.closest('tr');
-            } else if (doc.uuid) {
-                // Search by link matching /document/UUID/
-                const link = tbody.querySelector(`a[href*="/document/${doc.uuid}/"]`);
-                if (link) {
-                    row = link.closest('tr');
-                }
-            } else {
-                // Search by link matching /document/ID/
-                const link = tbody.querySelector(`a[href*="/document/${doc.id}/"]`);
-                if (link) {
-                    row = link.closest('tr');
-                }
-            }
+        const row = _findTableRowForDoc(tbody, doc);
+        if (!row) return;
+
+        const previousStatus = row.dataset.status;
+        row.dataset.docId = doc.id;
+        row.dataset.status = doc.status;
+
+        if (previousStatus && previousStatus !== doc.status && (doc.status === 'COMPLETED' || doc.status === 'FAILED')) {
+            globalThis.location.reload();
+            return;
         }
 
-        if (row) {
-            // Keep a record of current status on row
-            const previousStatus = row.dataset.status;
-            row.dataset.docId = doc.id;
-            row.dataset.status = doc.status;
+        const badgeTd = row.querySelector('td:nth-child(5)');
+        if (badgeTd) {
+            badgeTd.innerHTML = getStatusBadgeHTML(doc.status, doc.status_display);
+        }
 
-            // If status changed to completed/failed, trigger reload once to get fresh links & checkboxes,
-            // or update columns beautifully
-            if (previousStatus && previousStatus !== doc.status) {
-                if (doc.status === 'COMPLETED' || doc.status === 'FAILED') {
-                    // Reloading is safest when transition concludes to let Django render permissions/downloads
-                    globalThis.location.reload();
-                    return;
-                }
-            }
-
-            // Update Status Column
-            const badgeTd = row.querySelector('td:nth-child(5)');
-            if (badgeTd) {
-                badgeTd.innerHTML = getStatusBadgeHTML(doc.status, doc.status_display);
-            }
-
-            // Update Cost & Token details column
-            const costTd = row.querySelector('td:nth-child(4)');
-            if (costTd) {
-                const costVal = costTd.querySelector('div');
-                if (costVal) {
-                    costVal.textContent = doc.formatted_cost;
-                }
-                const costSub = costTd.querySelector('.doc-cost-sub');
-                if (costSub && typeof doc.input_tokens !== 'undefined' && typeof doc.output_tokens !== 'undefined') {
-                    costSub.textContent = `In: ${formatCompact(doc.input_tokens)} / Out: ${formatCompact(doc.output_tokens)}`;
-                }
+        const costTd = row.querySelector('td:nth-child(4)');
+        if (costTd) {
+            const costVal = costTd.querySelector('div');
+            if (costVal) costVal.textContent = doc.formatted_cost;
+            const costSub = costTd.querySelector('.doc-cost-sub');
+            if (costSub && typeof doc.input_tokens !== 'undefined' && typeof doc.output_tokens !== 'undefined') {
+                costSub.textContent = `In: ${formatCompact(doc.input_tokens)} / Out: ${formatCompact(doc.output_tokens)}`;
             }
         }
     });
+}
+
+function _updateDetailMetaFields(currentDoc, currentStatus) {
+    const detailCost = document.getElementById('detail-cost');
+    if (detailCost) detailCost.textContent = currentDoc.formatted_cost;
+
+    const detailLang = document.getElementById('detail-lang');
+    if (detailLang) {
+        if (currentStatus === 'FAILED') detailLang.innerHTML = '<span class="text-danger">Failed</span>';
+        else if (currentStatus === 'PENDING') detailLang.innerHTML = '<span class="text-muted">Queued...</span>';
+        else if (currentDoc.language === 'Unknown') detailLang.innerHTML = '<span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>';
+        else detailLang.textContent = currentDoc.language;
+    }
+
+    const detailAuthor = document.getElementById('detail-author');
+    if (detailAuthor) {
+        if (currentStatus === 'FAILED') detailAuthor.innerHTML = '<span class="text-danger">Failed</span>';
+        else if (currentStatus === 'PENDING') detailAuthor.innerHTML = '<span class="text-muted">Queued...</span>';
+        else if (currentDoc.author === 'Unknown') detailAuthor.innerHTML = '<span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>';
+        else detailAuthor.textContent = currentDoc.author;
+    }
 }
 
 function updateDocumentDetailScreen(data) {
     const detailTimelineContainer = document.querySelector('.timeline-container');
     if (!detailTimelineContainer) return;
 
-    // Get document ID from URL /document/ID/
     const match = globalThis.location.pathname.match(/\/document\/(\d+)\//);
     if (!match) return;
-    const docId = Number.parseInt(match[1], 10);
 
-    const currentDoc = data.documents.find(d => d.id === docId);
+    const currentDoc = data.documents.find(d => d.id === Number.parseInt(match[1], 10));
     if (!currentDoc) return;
 
+    _updateDetailMetaFields(currentDoc, currentDoc.status);
+
     const currentStatus = currentDoc.status;
-    
-    // Update meta values
-    const detailCost = document.getElementById('detail-cost');
-    if (detailCost) {
-        detailCost.textContent = currentDoc.formatted_cost;
-    }
 
-    const detailLang = document.getElementById('detail-lang');
-    if (detailLang) {
-        if (currentStatus === 'FAILED') {
-            detailLang.innerHTML = '<span class="text-danger">Failed</span>';
-        } else if (currentStatus === 'PENDING') {
-            detailLang.innerHTML = '<span class="text-muted">Queued...</span>';
-        } else if (currentDoc.language === 'Unknown') {
-            detailLang.innerHTML = '<span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>';
-        } else {
-            detailLang.textContent = currentDoc.language;
-        }
-    }
-
-    const detailAuthor = document.getElementById('detail-author');
-    if (detailAuthor) {
-        if (currentStatus === 'FAILED') {
-            detailAuthor.innerHTML = '<span class="text-danger">Failed</span>';
-        } else if (currentStatus === 'PENDING') {
-            detailAuthor.innerHTML = '<span class="text-muted">Queued...</span>';
-        } else if (currentDoc.author === 'Unknown') {
-            detailAuthor.innerHTML = '<span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>';
-        } else {
-            detailAuthor.textContent = currentDoc.author;
-        }
-    }
 
     // Update active timeline steps
     const steps = detailTimelineContainer.querySelectorAll('.timeline-step');

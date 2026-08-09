@@ -59,8 +59,8 @@ flowchart TD
 - **Hybrid Dense-Sparse RAG (Reciprocal Rank Fusion)**: Combines sparse BM25 keyword matching with dense SurrealDB HNSW vector embeddings (`DIMENSION 768 DIST COSINE`) to eliminate search hallucination and optimize context window precision.
 - **Resilient Multi-Provider Gateway**: Implements exponential backoff and circuit-breaking across Google Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter free fallbacks (Llama 3, Gemma 2, Qwen 2).
 - **DevSecOps & Code Health Rigor**:
-  - **Shift-Left Local Verification**: 5-phase `run_checks.sh` pipeline enforcing AST pattern auditing (`ast-grep`), Semgrep zero-finding SAST, Bandit ReDoS checks, Hadolint container hardening, Mypy typing, and 100% passing Django unit tests (184/184 tests).
-  - **Desloppify Codebase Health**: Monitored across all 17 sensors with an objective mechanical health score of **88.6 / 100** and security score of **98.0 / 100**.
+  - **Shift-Left Local Verification**: 5-phase `run_checks.sh` pipeline enforcing Python AST auditing (`ruff`, `mypy`, `bandit`), JavaScript quality & SonarQube conventions (`eslint` 10), YAML validation (`yamllint`), Hadolint container hardening, and 100% passing Django unit tests (187/187 tests). Standardized on **Python 3.13** (`py313`).
+  - **Desloppify Codebase Health**: Monitored across all 17 sensors with an objective mechanical health score of **89.0 / 100** and security score of **100.0 / 100**.
   - **Cloud SAST & Quality Gate**: Automated GitHub Actions integration submitting coverage metrics to remote SonarQube MQR gatekeeper (`https://sonarqube.fainko.cloud`).
 
 ---

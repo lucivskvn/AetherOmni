@@ -81,20 +81,27 @@ if [ "$AUTOFIX" = true ]; then
     echo -e "${GREEN}✓ Automated code formatting and lint fixes applied across entire codebase.${NC}"
 fi
 
-# ── PHASE 1: CODE QUALITY & STATIC FORMATTING ────────────────────────────────
-
 echo -e "\n${YELLOW}[Code Quality] Executing Ruff AST Linter & Cyclomatic Complexity Check...${NC}"
 if command -v ruff &> /dev/null; then
     ruff check .
-    echo -e "${GREEN}✓ Code quality & cyclomatic complexity checks passed cleanly.${NC}"
+    echo -e "${GREEN}✓ Python code quality & cyclomatic complexity checks passed cleanly.${NC}"
 else
     echo -e "${RED}✗ Ruff is not installed! Please execute 'pip install ruff'.${NC}"
     exit 1
 fi
 
+echo -e "\n${YELLOW}[Code Quality] Executing JavaScript ESLint & SonarQube JS Convention Check...${NC}"
+if command -v npx &> /dev/null; then
+    npx -y eslint static/js/**/*.js
+    echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
+else
+    echo -e "${YELLOW}⚠ npx not found in PATH (skipping JS lint).${NC}"
+fi
+
 echo -e "\n${YELLOW}[Code Quality] Verifying Source Code Formatting Consistency...${NC}"
 ruff format --check .
 echo -e "${GREEN}✓ Source code formatting is fully consistent.${NC}"
+
 
 # ── PHASE 2: INFRASTRUCTURE & SCHEMA VALIDATION ──────────────────────────────
 

@@ -6,33 +6,39 @@
 
 ## 🎯 MANDATORY WORKFLOW FOR AI AGENTS (Antigravity & Jules AI)
 
-### 1. Shift-Left Local Verification FIRST
+### 1. Shift-Left Local Verification FIRST (Multi-Language Stack)
 
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
-  - **Source Code Changes**: Execute `bash run_checks.sh` locally first to run the full 5-phase verification suite.
+  - **Source Code Changes**: Execute `bash run_checks.sh` locally first to run the full 5-phase verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), and Docker (`hadolint`).
   - **Documentation & Chore Edits Only**: Execute `bash run_checks.sh --fast` (or `--docs`) to verify markdown syntax & sync release metadata in <1s without wasting time running heavy unit tests.
-  - **Active Linter & Auto-Fixers**: Ensure active auto-fixers (`markdownlint --fix`, `yamllint`, `ruff check --fix`, `ruff format`) are executed so document formatting and YAML schemas are automatically corrected.
-- You MUST ensure the verification suite passes cleanly with **0 Blocker / High Security Vulnerabilities** BEFORE creating or opening a Pull Request.
+  - **Active Linters & Auto-Fixers**: Ensure active auto-fixers (`markdownlint --fix`, `yamllint`, `ruff check --fix`, `ruff format`) are executed so document formatting, JS/Python code standards, and YAML schemas are automatically corrected.
+- You MUST ensure the verification suite passes cleanly with **0 Blocker / High Security Vulnerabilities** and **0 Complexity Errors** BEFORE creating or opening a Pull Request.
 
-### 2. Desloppify Codebase Health & Sensor Audit
+### 2. Mandatory Automatic Documentation & Steering Synchronization
+
+- **STRICT NON-STALE CONTINUITY MANDATE**:
+  - Whenever linters, cognitive complexity rules, Python/JS versions, workflow steps, or architecture patterns are added or modified, you MUST **automatically update all steering and project documents** (`AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md`, `README.md`, `implementation_plan.md`, `task.md`, and `gcp_deployment_guide.md`) in the **exact same session/turn**.
+  - **Zero Stale Information Policy**: Never leave design decisions, linter setups, or test counts untracked for next sessions.
+
+### 3. Desloppify Codebase Health & Sensor Audit
 
 - Run `desloppify scan` to audit structural complexity, responsibility cohesion, dependency cycles, duplicate logic, and code health metrics across all 17 sensors.
 - Maintain objective mechanical health score >= 85.0. Target runtime: Python 3.13 (`py313`).
 
-### 3. Automated Cloud SAST & Quality Gate (SonarQube & Semgrep)
+### 4. Automated Cloud SAST & Quality Gate (SonarQube & Semgrep)
 
 - Once `run_checks.sh` passes locally and the user approves remote pushing, push to `origin main` or open a PR.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
      1. Pre-Scan Validation
-     2. 1. SonarQube Cloud SAST (Self-Hosted) on `https://sonarqube.fainko.cloud` (Sonar agentic AI rules with Python 3.13 `coverage.xml`)
+     2. SonarQube Cloud SAST (Self-Hosted) on `https://sonarqube.fainko.cloud` (Sonar agentic AI rules with Python 3.13 `coverage.xml`)
      3. Post-Scan Quality Gate Gatekeeper
 
-### 4. Local-First Review & No Unsolicited Remote Pushing
+### 5. Local-First Review & No Unsolicited Remote Pushing
 
 - **DO NOT AUTOMATICALLY PUSH INCREMENTAL EDITS TO REMOTE GITHUB**:
      Keep all commits and code modifications local for explicit user review (`git status`, `git diff`). Never execute `git push` unless specifically requested by the user.
 
-### 5. Fork & Upstream PR Safety Guard
+### 6. Fork & Upstream PR Safety Guard
 
 - **DO NOT TRIGGER OR TARGET UPSTREAM ORIGIN PARENT REPOSITORIES ON FORKS**:
      All PRs, branches, and commits MUST target `origin` directly.
@@ -58,9 +64,11 @@
    - Execute budget caps and atomic counters using SurrealDB native `BEGIN TRANSACTION ... COMMIT TRANSACTION;` blocks.
    - Use `concurrent.futures.ThreadPoolExecutor` worker dispatch in sync/async boundaries instead of monkeypatching event loops with `nest_asyncio`.
 
-6. **Code Quality & Eco-Design**:
+6. **Multi-Language Code Quality & Eco-Design**:
+   - Python: Target runtime Python 3.13 (`py313`) with `ruff`, `mypy`, `bandit`.
+   - JavaScript: ESLint 10 with SonarQube JS conventions (`?.` optional chaining, global scope checks, complexity ≤ 15).
    - Adhere to Creedengo Eco-Design rules (low energy consumption, optimal memory management).
-   - Zero dead code, unused imports, or non-UTF-8 binary encodings. Target runtime: Python 3.13 (`py313`).
+   - Zero dead code, unused imports, or non-UTF-8 binary encodings.
 
 ---
 
@@ -70,10 +78,11 @@ When issuing tasks to AI coding assistants (Antigravity, Jules, Codex, Claude, K
 
 ```text
 As an AI coding assistant, execute the requested task following these strict repository rules:
-1. Shift-Left Local Verification FIRST: Execute `bash run_checks.sh` locally for source code changes, or `bash run_checks.sh --fast` for documentation/chore edits (<1s execution).
-2. Local-First Review: Keep all commits and code modifications strictly local on the working branch. NEVER execute `git push` unless explicitly commanded by the user.
-3. Desloppify Health & Security: Maintain objective mechanical health score >= 85.0 and security score = 100%. Target runtime: Python 3.13 (py313).
-4. Active Linters & Auto-Fixers: Ensure `markdownlint --fix`, `yamllint`, `ruff check --fix`, and `ruff format` are actively executed across all files without exception.
-5. Dynamic Documentation: Avoid static version/score numbers in Markdown text or tables; use dynamic scorecard images (scorecard.png) and badges.
-6. Standardized Model & Auth Naming: Always reference Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
+1. Shift-Left Local Verification FIRST: Execute `bash run_checks.sh` locally for source code changes (runs Python ruff/mypy/bandit, JS eslint, YAML yamllint, Hadolint), or `bash run_checks.sh --fast` for documentation/chore edits (<1s execution).
+2. Automatic Documentation Sync: Automatically update all steering docs (AGENTS.md, .cursorrules, copilot-instructions.md, README.md, implementation_plan.md, task.md) whenever linter configurations, runtime rules, or architectural decisions change.
+3. Local-First Review: Keep all commits and code modifications strictly local on the working branch. NEVER execute `git push` unless explicitly commanded by the user.
+4. Desloppify Health & Security: Maintain objective mechanical health score >= 85.0 and security score = 100%. Target runtime: Python 3.13 (py313).
+5. Active Linters & Auto-Fixers: Ensure `markdownlint --fix`, `yamllint`, `npx eslint`, `ruff check --fix`, and `ruff format` are actively executed across all files without exception.
+6. Dynamic Documentation: Avoid static version/score numbers in Markdown text or tables; use dynamic scorecard images (scorecard.png) and badges.
+7. Standardized Model & Auth Naming: Always reference Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
 ```
