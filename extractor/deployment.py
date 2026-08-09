@@ -507,7 +507,7 @@ def run_qa_checks():
     except subprocess.CalledProcessError as e:
         results.append(f"✗ [Ruff Formatter] Code has formatting inconsistencies:\n{e.output.decode('utf-8')}\n")
     except FileNotFoundError:
-        pass
+        logger.debug("[Audits] Ruff formatter binary not found during automated check pass.")
 
     # 3. Django system check
     try:

@@ -823,13 +823,13 @@ def _is_file_ref(item: Any) -> bool:
     try:
         if hasattr(item, "uri") or (hasattr(item, "name") and isinstance(item, types.File)):
             return True
-    except (AttributeError, TypeError):
-        pass
+    except (AttributeError, TypeError) as exc:
+        logger.debug("[LLM Gateway] Item is not a standard File reference: %s", exc)
     try:
         if type(item).__name__ == "File" or hasattr(item, "state"):
             return True
-    except (AttributeError, TypeError):
-        pass
+    except (AttributeError, TypeError) as exc:
+        logger.debug("[LLM Gateway] Item state check failed: %s", exc)
     return False
 
 
