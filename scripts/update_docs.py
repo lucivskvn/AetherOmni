@@ -21,9 +21,9 @@ WHAT IS UPDATED
 ---------------
   README.md              — version badge, last-updated badge, commit SHA badge,
                            test count, desloppify scores
-  gcp_deployment_guide.md — guide version heading
-  service.yaml           — RELEASE_VERSION env var
-  service-worker.yaml    — RELEASE_VERSION env var
+  docs/gcp_deployment_guide.md — guide version heading
+  infra/gcp/service.yaml           — RELEASE_VERSION env var
+  infra/gcp/service-worker.yaml    — RELEASE_VERSION env var
 
 HOW IT IS TRIGGERED
 -------------------

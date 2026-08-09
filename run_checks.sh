@@ -27,7 +27,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0;m'
 
-APP_VERSION="1.2.3"
+APP_VERSION="1.5.0"
 if [ -f "VERSION" ]; then
     APP_VERSION=$(cat VERSION)
 fi
@@ -46,6 +46,11 @@ elif [ -f ".venv/bin/python" ]; then
 fi
 
 export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-django-insecure-ci-test-key-50-chars-long-for-local-testing}"
+
+# Ensure SurrealDB CLI is in PATH (installed via https://install.surrealdb.com)
+if [ -d "${HOME}/.surrealdb" ]; then
+    export PATH="${HOME}/.surrealdb:${PATH}"
+fi
 
 if [ "$DOCS_ONLY" = true ]; then
     echo -e "\n${CYAN}⚡ Executing Fast Differential Verification Pass (Targeting Changed Files Only)...${NC}"
@@ -97,6 +102,15 @@ if [ "$DOCS_ONLY" = true ]; then
         echo -e "${GREEN}✓ Django system check & deployment readiness passed cleanly (0 errors).${NC}"
     fi
 
+    # Filter changed SurrealQL files
+    CHANGED_SURQL=$(echo "$CHANGED_FILES" | grep -E '\.surql$' || true)
+    if [ -n "$CHANGED_SURQL" ] && command -v surreal &> /dev/null; then
+        echo -e "${YELLOW}[Diff Audit] Validating changed SurrealQL files...${NC}"
+        # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_SURQL holds space-separated filenames
+        surreal validate $CHANGED_SURQL 2>&1 || exit 1
+        echo -e "${GREEN}✓ Changed SurrealQL files validated cleanly.${NC}"
+    fi
+
     # Filter changed JS files
     CHANGED_JS=$(echo "$CHANGED_FILES" | grep -E '\.js$' || true)
     if [ -n "$CHANGED_JS" ] && command -v npx &> /dev/null; then
@@ -122,7 +136,7 @@ if [ "$AUTOFIX" = true ]; then
         ruff format . || true
     fi
     if command -v markdownlint &> /dev/null; then
-        markdownlint --fix README.md gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md .kiro/steering/*.md 2>/dev/null || true
+        markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md .kiro/steering/*.md 2>/dev/null || true
     fi
     if command -v yamllint &> /dev/null; then
         yamllint service.yaml service-worker.yaml cloudbuild.yaml bandit.yaml .coderabbit.yaml .github/workflows/*.yml .github/dependabot.yml 2>/dev/null || true
@@ -169,6 +183,24 @@ if command -v hadolint &> /dev/null; then
     echo -e "${GREEN}✓ Container hardening and Dockerfile standards verified.${NC}"
 else
     echo -e "${YELLOW}⚠ Hadolint not found in PATH (skipping).${NC}"
+fi
+
+echo -e "\n${YELLOW}[SurrealQL] Validating SurrealQL schema syntax (surreal validate)...${NC}"
+if command -v surreal &> /dev/null; then
+    SURQL_FILES=$(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" 2>/dev/null | tr '\n' ' ')
+    if [ -n "$SURQL_FILES" ]; then
+        # shellcheck disable=SC2086  # intentional word-splitting: SURQL_FILES holds space-separated filenames
+        if surreal validate $SURQL_FILES 2>&1; then
+            echo -e "${GREEN}✓ SurrealQL schema syntax verified cleanly (0 errors).${NC}"
+        else
+            echo -e "${RED}✗ SurrealQL validation found schema errors! Fix before committing.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✓ No .surql files found (skipping).${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ surreal CLI not found (install: curl -sSf https://install.surrealdb.com | sh). Skipping SurrealQL validation.${NC}"
 fi
 
 echo -e "\n${YELLOW}[Shell Security] Executing ShellCheck Shell Script Audit...${NC}"

@@ -1,7 +1,7 @@
 # ==========================================
 # 1. Base Builder and Dependency Stage
 # ==========================================
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r re
 # ==========================================
 # 2. Production Non-Root Runtime Stage
 # ==========================================
-FROM python:3.12-slim AS runner
+FROM python:3.13-slim AS runner
 
 WORKDIR /app
 
@@ -56,7 +56,7 @@ RUN mkdir -p /app/static_root && \
     chown -R django-user:django-group /app && \
     chmod -R 755 /app
 
-USER django-user
+USER 1000
 
 # Collect static files during container build
 RUN DJANGO_SECRET_KEY=dummy-key-for-collectstatic SURREALDB_OFFLINE=True python manage.py collectstatic --noinput

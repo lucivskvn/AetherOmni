@@ -1,6 +1,6 @@
 [project]
 name = "aetheromni"
-version = "1.2"
+version = "1.5"
 description = "Enterprise Multi-Model RAG & Document Intelligence Platform"
 requires-python = ">=3.13"
 readme = "README.md"
