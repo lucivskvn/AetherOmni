@@ -162,23 +162,26 @@ flowchart TD
 AetherOmni serves three core application tiers: Business Enterprise, Academic & Scholarly Research, and AI/ML Engineering & Developer Ecosystems.
 
 #### 1. 💼 Enterprise & Business Use Cases
+
 - **Conversational RAG Knowledge Base**: Internal teams execute semantic search queries over processed document repositories with grounded citation attribution.
 - **Legal & Compliance Archiving**: Regulatory teams export structured single-copy ZIP bundles with immutable SOC 2 audit trails (`AuditLogListView`) and spend logs (`MonthlySpendLog`).
 - **Visual Diagram & Schema Analysis**: Engineering teams search and retrieve embedded architectural diagrams and flowcharts processed by multi-modal OCR.
 
 #### 2. 🎓 Academic & Scholarly Research Use Cases
+
 - **Multilingual Corpus Ingestion**: Digital humanists and researchers ingest multi-lingual texts (including Arabic RTL typography, ancient manuscripts, and legal codices) with structural frontmatter retention.
 - **Verifiable Citation & Grounding**: Generates exact page-level and block-level citations (`<!-- SOURCE_START_1 -->`) for peer-reviewed academic synthesis.
 - **Domain-Specific SFT Dataset Generation**: Formats complex academic papers into standardized JSON Q&A pairs for training specialized research models.
 
 #### 3. 🛠️ Developer & AI Engineering Use Cases
+
 - **Zero-Cost SHA-256 Deduplication Caching**: Developers prevent duplicate API charges during iterative dataset processing via instant SHA-256 hash lookups.
 - **Multi-Provider Resilient LLM Gateway**: Fallback chain automatically switches between Gemini 3.6 Flash, Vertex AI, and OpenRouter free tiers to ensure 99.99% uptime.
 - **Air-Gapped Local Verification**: Supports offline development (`SURREALDB_OFFLINE=True`) and complete 5-phase DevSecOps pipeline testing (`run_checks.sh`).
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.2.369)
+## ⚡ Current Functional Capabilities (Current State v1.2.371)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
