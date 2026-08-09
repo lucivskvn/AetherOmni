@@ -288,6 +288,12 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     # Desloppify scores
     if scores.get("objective"):
         text = re.sub(
+            r"\[!\[Desloppify Health Score\]\(https://img\.shields\.io/badge/Desloppify--Health-[^\)]+\)\]\([^\)]*\)",
+            f"[![Desloppify Health Score](https://img.shields.io/badge/Desloppify--Health-"
+            f"{scores['objective']}%2F100-emerald.svg)](AGENTS.md)",
+            text,
+        )
+        text = re.sub(
             r"(Current Objective/Mechanical Score:\s+\*\*)[\\d.]+?(/100\*\*)",
             rf"\g<1>{scores['objective']}\g<2>",
             text,
