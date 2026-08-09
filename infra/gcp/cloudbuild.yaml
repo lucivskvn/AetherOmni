@@ -38,12 +38,12 @@ steps:
     args:
       - '-euc'
       - >-
-        MAJOR_MINOR=$(cat VERSION | tr -d '[:space:]' | cut -d. -f1-2) &&
-        PATCH=$(git rev-list --count HEAD 2>/dev/null || echo "0") &&
-        SHA="${SHORT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo 'local')}" &&
-        RELEASE_VERSION="v${MAJOR_MINOR}.${PATCH}+${SHA}" &&
-        echo "RELEASE_VERSION=${RELEASE_VERSION}" > /workspace/release_version.env &&
-        echo "Computed RELEASE_VERSION=${RELEASE_VERSION}"
+        MAJOR_MINOR=$$(cat VERSION | tr -d '[:space:]' | cut -d. -f1-2) &&
+        PATCH=$$(git rev-list --count HEAD 2>/dev/null || echo "0") &&
+        SHA="${SHORT_SHA:-$$(git rev-parse --short HEAD 2>/dev/null || echo 'local')}" &&
+        RELEASE_VERSION="v$${MAJOR_MINOR}.$${PATCH}+$${SHA}" &&
+        echo "RELEASE_VERSION=$${RELEASE_VERSION}" > /workspace/release_version.env &&
+        echo "Computed RELEASE_VERSION=$${RELEASE_VERSION}"
 
   # 1. Kaniko Container Build with Layer Caching
   - name: 'gcr.io/kaniko-project/executor:latest'
