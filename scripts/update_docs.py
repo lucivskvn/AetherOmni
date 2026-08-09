@@ -191,17 +191,17 @@ def get_health_scores() -> dict[str, str]:
     # If query.json is missing, trigger a fast local desloppify scan
     if not query_file.exists() and not score_file.exists():
         try:
-            import subprocess
+            import subprocess  # nosec B404
 
-            subprocess.run(
+            subprocess.run(  # nosec B607 B603
                 ["desloppify", "scan"],
                 cwd=ROOT,
                 capture_output=True,
                 timeout=30,
                 check=False,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[WARN] Dynamic desloppify scan execution warning: {exc}")
 
     if query_file.exists():
         try:
