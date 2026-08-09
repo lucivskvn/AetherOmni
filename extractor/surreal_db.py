@@ -506,23 +506,7 @@ def create_document(data: dict) -> dict:
     return rows[0] if rows else {}
 
 
-def _update_document_offline(doc_uuid, data):
-    from django.contrib.auth import get_user_model
-
-    from extractor.models import SourceDocument
-
-    User = get_user_model()
-    try:
-        import uuid
-
-        try:
-            uuid.UUID(str(doc_uuid))
-            doc = SourceDocument.objects.get(uuid=doc_uuid)
-        except ValueError:
-            doc = SourceDocument.objects.get(id=int(doc_uuid))
-    except (SourceDocument.DoesNotExist, ValueError):
-        return {}
-
+def _apply_offline_doc_update(doc, data, User):
     for k, v in data.items():
         if k == "uploaded_by_id":
             if v:
@@ -541,6 +525,26 @@ def _update_document_offline(doc_uuid, data):
                 doc.expires_at = None
         elif hasattr(doc, k):
             setattr(doc, k, v)
+
+
+def _update_document_offline(doc_uuid, data):
+    from django.contrib.auth import get_user_model
+
+    from extractor.models import SourceDocument
+
+    User = get_user_model()
+    try:
+        import uuid
+
+        try:
+            uuid.UUID(str(doc_uuid))
+            doc = SourceDocument.objects.get(uuid=doc_uuid)
+        except ValueError:
+            doc = SourceDocument.objects.get(id=int(doc_uuid))
+    except (SourceDocument.DoesNotExist, ValueError):
+        return {}
+
+    _apply_offline_doc_update(doc, data, User)
     doc.save()
     return _model_to_dict(doc)
 
@@ -780,50 +784,58 @@ def count_audit_logs() -> int:
     return rows[0].get("n", 0) if rows else 0
 
 
+def _flush_document_cost(doc):
+    cost = doc.get("cost_usd") or 0.0
+    created_at_str = doc.get("created_at")
+    if cost > 0 and created_at_str:
+        from django.utils.dateparse import parse_datetime as django_parse
+
+        created_at = django_parse(created_at_str)
+        if created_at:
+            from decimal import Decimal
+
+            from extractor.models import MonthlySpendLog
+
+            try:
+                MonthlySpendLog.add_cost(
+                    date=created_at,
+                    cost=Decimal(str(cost)),
+                    in_tok=doc.get("input_tokens") or 0,
+                    out_tok=doc.get("output_tokens") or 0,
+                )
+            except Exception as exc:
+                logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
+
+
+def _delete_offline_document(doc_uuid: str) -> None:
+    from extractor.models import SourceDocument
+
+    try:
+        import uuid
+
+        try:
+            uuid.UUID(str(doc_uuid))
+            doc = SourceDocument.objects.get(uuid=doc_uuid)
+        except ValueError:
+            doc = SourceDocument.objects.get(id=int(doc_uuid))
+        doc.delete()
+    except (SourceDocument.DoesNotExist, ValueError):
+        pass
+
+
 def delete_document(doc_uuid: str) -> None:
     """Delete document record and all associated chunks/cache entries."""
     doc_uuid = str(doc_uuid)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        from extractor.models import SourceDocument
-
-        try:
-            import uuid
-
-            try:
-                uuid.UUID(str(doc_uuid))
-                doc = SourceDocument.objects.get(uuid=doc_uuid)
-            except ValueError:
-                doc = SourceDocument.objects.get(id=int(doc_uuid))
-            doc.delete()
-        except (SourceDocument.DoesNotExist, ValueError):
-            pass
+        _delete_offline_document(doc_uuid)
         return
 
     # Flush cost to MonthlySpendLog before deleting from SurrealDB
     doc = get_document(doc_uuid)
     if doc:
-        cost = doc.get("cost_usd") or 0.0
-        created_at_str = doc.get("created_at")
-        if cost > 0 and created_at_str:
-            from django.utils.dateparse import parse_datetime as django_parse
-
-            created_at = django_parse(created_at_str)
-            if created_at:
-                from decimal import Decimal
-
-                from extractor.models import MonthlySpendLog
-
-                try:
-                    MonthlySpendLog.add_cost(
-                        date=created_at,
-                        cost=Decimal(str(cost)),
-                        in_tok=doc.get("input_tokens") or 0,
-                        out_tok=doc.get("output_tokens") or 0,
-                    )
-                except Exception as exc:
-                    logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
+        _flush_document_cost(doc)
 
     sql = (  # nosec B608
         "DELETE FROM documents WHERE doc_uuid = $doc_uuid;"
@@ -897,6 +909,15 @@ def count_document_chunks(doc_uuid: str) -> int:
     return 0
 
 
+def _parse_chunk_counts(results, doc_uuids):
+    counts = dict.fromkeys(doc_uuids, 0)
+    for row in results:
+        uuid = row.get("doc_uuid")
+        if uuid:
+            counts[uuid] = row.get("n", 0)
+    return counts
+
+
 def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
     """
     Returns a dictionary mapping doc_uuid to the number of chunks stored in SurrealDB
@@ -909,25 +930,16 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
         sql = "SELECT count() AS n, doc_uuid FROM chunks WHERE doc_uuid INSIDE $doc_uuids GROUP BY doc_uuid;"
         results = _first_result(_run(sql, {"doc_uuids": doc_uuids}))
         if results:
-            counts = dict.fromkeys(doc_uuids, 0)
-            for row in results:
-                uuid = row.get("doc_uuid")
-                if uuid:
-                    counts[uuid] = row.get("n", 0)
-            return counts
+            return _parse_chunk_counts(results, doc_uuids)
         return {u: len(_test_chunks.get(u, [])) for u in doc_uuids}
 
     if not doc_uuids:
         return {}
     sql = "SELECT count() AS n, doc_uuid FROM chunks WHERE doc_uuid INSIDE $doc_uuids GROUP BY doc_uuid;"
     results = _first_result(_run(sql, {"doc_uuids": doc_uuids}))
-    counts = dict.fromkeys(doc_uuids, 0)
     if results:
-        for row in results:
-            uuid = row.get("doc_uuid")
-            if uuid:
-                counts[uuid] = row.get("n", 0)
-    return counts
+        return _parse_chunk_counts(results, doc_uuids)
+    return dict.fromkeys(doc_uuids, 0)
 
 
 def clone_chunks(source_uuid: str, target_uuid: str) -> None:

@@ -535,10 +535,7 @@ class UploadView(LoginRequiredMixin, View):
             cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
         return {"status": "success", "name": orig_name}
 
-    def _process_single_file(self, request, uploaded_file, processed_hashes):
-        orig_name = uploaded_file.name
-
-        # Validate file extension to prevent uploading scripts, web shells, or executables
+    def _validate_uploaded_file(self, orig_name, size):
         import os
 
         ext = os.path.splitext(orig_name)[1].lower().replace(".", "")
@@ -569,8 +566,29 @@ class UploadView(LoginRequiredMixin, View):
                 "error": f"Unsupported file type. Supported types: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
             }
 
-        if uploaded_file.size > 31457280:
+        if size > 31457280:
             return {"status": "error", "name": orig_name, "error": f"'{orig_name}' exceeds maximum 30MB constraint."}
+        return None
+
+    def _find_existing_doc(self, file_hash, user_id):
+        existing_doc = surreal_db.get_document_by_hash(file_hash, str(user_id))
+        if not existing_doc:
+            # Check COMPLETED ones from anyone
+            sql = "SELECT * FROM documents WHERE file_hash = $file_hash AND status = 'COMPLETED' LIMIT 1;"
+            rows = surreal_db._first_result(surreal_db._run(sql, {"file_hash": file_hash}))
+            if rows:
+                existing_doc = rows[0]
+            else:
+                # Get any document matching hash
+                existing_doc = surreal_db.get_document_by_hash(file_hash)
+        return existing_doc
+
+    def _process_single_file(self, request, uploaded_file, processed_hashes):
+        orig_name = uploaded_file.name
+
+        validation_error = self._validate_uploaded_file(orig_name, uploaded_file.size)
+        if validation_error:
+            return validation_error
 
         file_hash = calculate_file_sha256(uploaded_file)
 
@@ -583,17 +601,7 @@ class UploadView(LoginRequiredMixin, View):
 
         processed_hashes.add(file_hash)
 
-        # Prioritize matching an existing document in SurrealDB owned by the current user
-        existing_doc = surreal_db.get_document_by_hash(file_hash, str(request.user.id))
-        if not existing_doc:
-            # Check COMPLETED ones from anyone
-            sql = "SELECT * FROM documents WHERE file_hash = $file_hash AND status = 'COMPLETED' LIMIT 1;"
-            rows = surreal_db._first_result(surreal_db._run(sql, {"file_hash": file_hash}))
-            if rows:
-                existing_doc = rows[0]
-            else:
-                # Get any document matching hash
-                existing_doc = surreal_db.get_document_by_hash(file_hash)
+        existing_doc = self._find_existing_doc(file_hash, request.user.id)
 
         try:
             if existing_doc:
@@ -950,14 +958,9 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
     Embeds query, searches SurrealDB, and generates answers.
     """
 
-    def get(self, request):
+    def _check_rag_limits(self, request):
         from django.core.cache import cache
 
-        query = request.GET.get("q", "").strip()
-        if not query:
-            return JsonResponse({"error": "Empty search query."}, status=400)
-
-        # Per-user rate limiting: max 10 RAG queries per minute to prevent runaway LLM spend
         rl_key = f"rag_ratelimit_{request.user.id}"
         rl_count = cache.get(rl_key, 0)
         if rl_count >= 10:
@@ -967,24 +970,36 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
             )
         cache.set(rl_key, rl_count + 1, 60)  # Rolling 60-second window
 
-        # Budget gate: block LLM calls when monthly budget is exhausted
         if _is_budget_exceeded(request.user):
             return JsonResponse(
                 {"error": "Monthly AI budget has been reached. Intelligent search is paused until the budget resets."},
                 status=402,
             )
+        return None
 
-        document_ids_str = request.GET.get("document_ids", "").strip()
-        document_ids = None
-        if document_ids_str:
-            document_ids = []
-            for i in document_ids_str.split(","):
-                i_clean = i.strip()
-                if i_clean:
-                    try:
-                        document_ids.append(int(i_clean))
-                    except ValueError:
-                        document_ids.append(i_clean)
+    def _parse_document_ids(self, document_ids_str):
+        if not document_ids_str:
+            return None
+        document_ids = []
+        for i in document_ids_str.split(","):
+            i_clean = i.strip()
+            if i_clean:
+                try:
+                    document_ids.append(int(i_clean))
+                except ValueError:
+                    document_ids.append(i_clean)
+        return document_ids
+
+    def get(self, request):
+        query = request.GET.get("q", "").strip()
+        if not query:
+            return JsonResponse({"error": "Empty search query."}, status=400)
+
+        limit_response = self._check_rag_limits(request)
+        if limit_response:
+            return limit_response
+
+        document_ids = self._parse_document_ids(request.GET.get("document_ids", "").strip())
 
         from django.utils.functional import SimpleLazyObject
 
@@ -1048,37 +1063,43 @@ class ExportZipView(LoginRequiredMixin, View):
             return redirect("dashboard")
 
 
+def _restart_single_document(doc, request, cloud_tasks):
+    doc_uuid_val = doc.get("doc_uuid") or doc.get("uuid") or str(doc.get("id"))
+    if isinstance(doc_uuid_val, str) and ":" in doc_uuid_val:
+        doc_uuid_val = doc_uuid_val.split(":", 1)[1]
+    doc_uuid = str(doc_uuid_val)
+    uploaded_by_id = doc.get("uploaded_by_id")
+    if not (request.user.is_staff or request.user.is_superuser or str(uploaded_by_id) == str(request.user.id)):
+        return False
+
+    status = doc.get("status")
+    if status in ["FAILED", "COMPLETED"]:
+        surreal_db.update_document(
+            doc_uuid,
+            {
+                "status": "PENDING",
+                "retry_count": 0,
+                "error_message": "",
+            },
+        )
+        from django.conf import settings
+
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
+            cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+        else:
+            cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+        return True
+    return False
+
+
 def _handle_bulk_restart(request, document_ids):
     from extractor import cloud_tasks
 
     restarted_count = 0
     docs = surreal_db.get_documents(document_ids)
     for doc in docs:
-        doc_uuid_val = doc.get("doc_uuid") or doc.get("uuid") or str(doc.get("id"))
-        if isinstance(doc_uuid_val, str) and ":" in doc_uuid_val:
-            doc_uuid_val = doc_uuid_val.split(":", 1)[1]
-        doc_uuid = str(doc_uuid_val)
-        uploaded_by_id = doc.get("uploaded_by_id")
-        if not (request.user.is_staff or request.user.is_superuser or str(uploaded_by_id) == str(request.user.id)):
-            continue
-
-        status = doc.get("status")
-        if status in ["FAILED", "COMPLETED"]:
-            surreal_db.update_document(
-                doc_uuid,
-                {
-                    "status": "PENDING",
-                    "retry_count": 0,
-                    "error_message": "",
-                },
-            )
-            from django.conf import settings
-
-            if getattr(settings, "SURREALDB_OFFLINE", False):
-                doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
-                cloud_tasks.enqueue("process_document", {"document_id": doc_id})
-            else:
-                cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+        if _restart_single_document(doc, request, cloud_tasks):
             restarted_count += 1
     messages.success(request, f"Successfully queued {restarted_count} tasks for reprocessing.")
 
@@ -1120,13 +1141,7 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
     surreal_db.delete_document(doc_uuid)
 
 
-def _handle_bulk_delete(request, document_ids):
-    from django.contrib.auth import get_user_model
-    from django.core.files.storage import default_storage
-
-    User = get_user_model()
-    users_map = {str(u.id): u for u in User.objects.all()}
-
+def _get_docs_for_delete(request, document_ids, users_map):
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -1134,9 +1149,9 @@ def _handle_bulk_delete(request, document_ids):
 
         # Optimization: retrieve all records in a single SELECT query during tests
         if request.user.is_staff or request.user.is_superuser:
-            docs = list(SourceDocument.objects.filter(id__in=document_ids))
+            return list(SourceDocument.objects.filter(id__in=document_ids))
         else:
-            docs = list(SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user))
+            return list(SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user))
     else:
         raw_docs = surreal_db.get_documents(document_ids)
         docs = []
@@ -1145,10 +1160,16 @@ def _handle_bulk_delete(request, document_ids):
             if not (request.user.is_staff or request.user.is_superuser or uploaded_by_id == str(request.user.id)):
                 continue
             docs.append(_wrap_surreal_doc(raw_doc, users_map))
+        return docs
 
-    file_hashes = {doc.file_hash for doc in docs if doc.file_hash}
+
+def _get_hash_ref_counts(file_hashes):
+    from django.conf import settings
 
     hash_ref_counts = {}
+    if not file_hashes:
+        return hash_ref_counts
+
     if getattr(settings, "SURREALDB_OFFLINE", False):
         from django.db.models import Count
 
@@ -1158,19 +1179,28 @@ def _handle_bulk_delete(request, document_ids):
             SourceDocument.objects.filter(file_hash__in=file_hashes).values("file_hash").annotate(n=Count("file_hash"))
         )
         hash_ref_counts = {item["file_hash"]: item["n"] for item in counts}
-        for file_hash in file_hashes:
-            if file_hash not in hash_ref_counts:
-                hash_ref_counts[file_hash] = 0
     else:
-        if file_hashes:
-            count_sql = (
-                "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $file_hashes GROUP BY file_hash;"
-            )
-            res = surreal_db._first_result(surreal_db._run(count_sql, {"file_hashes": list(file_hashes)}))
-            hash_ref_counts = {r["file_hash"]: r.get("n", 0) for r in res if "file_hash" in r}
-        for file_hash in file_hashes:
-            if file_hash not in hash_ref_counts:
-                hash_ref_counts[file_hash] = 0
+        count_sql = "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $file_hashes GROUP BY file_hash;"
+        res = surreal_db._first_result(surreal_db._run(count_sql, {"file_hashes": list(file_hashes)}))
+        hash_ref_counts = {r["file_hash"]: r.get("n", 0) for r in res if "file_hash" in r}
+
+    for file_hash in file_hashes:
+        if file_hash not in hash_ref_counts:
+            hash_ref_counts[file_hash] = 0
+
+    return hash_ref_counts
+
+
+def _handle_bulk_delete(request, document_ids):
+    from django.contrib.auth import get_user_model
+    from django.core.files.storage import default_storage
+
+    User = get_user_model()
+    users_map = {str(u.id): u for u in User.objects.all()}
+
+    docs = _get_docs_for_delete(request, document_ids, users_map)
+    file_hashes = {doc.file_hash for doc in docs if doc.file_hash}
+    hash_ref_counts = _get_hash_ref_counts(file_hashes)
 
     deleted_count = 0
     for doc in docs:
@@ -1326,60 +1356,20 @@ class DocumentRetryView(LoginRequiredMixin, View):
     - Standard form POST requests receive a HTTP redirect to the dashboard view.
     """
 
-    def post(self, request, doc_uuid):
-        raw_doc = surreal_db.get_document(doc_uuid)
-        if not raw_doc:
-            if (
-                request.headers.get("x-requested-with") == "XMLHttpRequest"
-                or request.headers.get("accept") == APPLICATION_JSON
-            ):
-                return JsonResponse({"error": DOCUMENT_NOT_FOUND_MSG}, status=404)
-            messages.error(request, DOCUMENT_NOT_FOUND_MSG)
-            return redirect("dashboard")
-
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-        users_map = {str(u.id): u for u in User.objects.all()}
-        doc = _wrap_surreal_doc(raw_doc, users_map)
-
-        # Check standard user access boundary (only uploader or staff can retry)
+    def _handle_retry_permissions_and_limits(self, request, doc):
         if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
-            if (
-                request.headers.get("x-requested-with") == "XMLHttpRequest"
-                or request.headers.get("accept") == APPLICATION_JSON
-            ):
-                return JsonResponse({"error": "Permission denied to retry this document."}, status=403)
-            messages.error(request, "Permission denied to retry this document.")
-            return redirect("dashboard")
+            return "Permission denied to retry this document.", 403
 
         is_restart = doc.status == "COMPLETED"
         retry_cnt = doc.retry_count
 
         if not is_restart and retry_cnt >= 3:
-            if (
-                request.headers.get("x-requested-with") == "XMLHttpRequest"
-                or request.headers.get("accept") == APPLICATION_JSON
-            ):
-                return JsonResponse({"error": "Maximum retry limit of 3 exceeded for this document."}, status=400)
-            messages.error(request, f"Maximum retry limit of 3 exceeded for document: {doc.original_filename}")
-            return redirect("dashboard")
+            return "Maximum retry limit of 3 exceeded for this document.", 400
 
-        doc_ref = surreal_db.update_document(
-            doc_uuid,
-            {
-                "status": "PENDING",
-                "cost_usd": 0.0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "error_message": "",
-                "retry_count": 0 if is_restart else retry_cnt + 1,
-            },
-        )
-        doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
+        return None, None
 
-        # Re-dispatch the background task via Cloud Tasks
-        from extractor.utils import AuditEvent, log_audit_event
+    def _requeue_document_task(self, doc_wrapped, doc_uuid, request):
+        from extractor.utils import AuditEvent, get_client_ip, log_audit_event
 
         log_audit_event(
             AuditEvent(
@@ -1401,10 +1391,51 @@ class DocumentRetryView(LoginRequiredMixin, View):
         else:
             cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
 
-        if (
+    def post(self, request, doc_uuid):
+        raw_doc = surreal_db.get_document(doc_uuid)
+        is_ajax = (
             request.headers.get("x-requested-with") == "XMLHttpRequest"
             or request.headers.get("accept") == APPLICATION_JSON
-        ):
+        )
+
+        if not raw_doc:
+            if is_ajax:
+                return JsonResponse({"error": DOCUMENT_NOT_FOUND_MSG}, status=404)
+            messages.error(request, DOCUMENT_NOT_FOUND_MSG)
+            return redirect("dashboard")
+
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        users_map = {str(u.id): u for u in User.objects.all()}
+        doc = _wrap_surreal_doc(raw_doc, users_map)
+
+        err_msg, status_code = self._handle_retry_permissions_and_limits(request, doc)
+        if err_msg:
+            if is_ajax:
+                return JsonResponse({"error": err_msg}, status=status_code)
+            messages.error(request, err_msg)
+            return redirect("dashboard")
+
+        is_restart = doc.status == "COMPLETED"
+        retry_cnt = doc.retry_count
+
+        doc_ref = surreal_db.update_document(
+            doc_uuid,
+            {
+                "status": "PENDING",
+                "cost_usd": 0.0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "error_message": "",
+                "retry_count": 0 if is_restart else retry_cnt + 1,
+            },
+        )
+        doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
+
+        self._requeue_document_task(doc_wrapped, doc_uuid, request)
+
+        if is_ajax:
             return JsonResponse({"status": "success", "message": "Curation pipeline re-enqueued."})
 
         messages.success(request, f"Re-enqueued curation pipeline for document: {doc.title or doc.original_filename}")
@@ -1456,6 +1487,65 @@ def _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_
     }
 
 
+def _parse_surreal_audit_log(rl, users_map):
+    if not rl:
+        return None
+    ts = rl.get("timestamp")
+    if ts and isinstance(ts, str):
+        import datetime
+
+        try:
+            ts_parsed = datetime.datetime.strptime(ts, ISO_8601_FORMAT).replace(tzinfo=datetime.UTC)
+        except ValueError:
+            ts_parsed = parse_datetime(ts)
+    else:
+        ts_parsed = parse_datetime(ts)
+
+    uid = rl.get("user_id")
+    u = users_map.get(uid) if uid else None
+
+    doc = None
+    did = rl.get("doc_uuid")
+    if did:
+        d_raw = surreal_db.get_document(did)
+        if d_raw:
+            doc = _wrap_surreal_doc(d_raw, users_map)
+
+    class DummyAuditLog:
+        pass
+
+    a = DummyAuditLog()
+    a.id = rl.get("id", "")
+    a.user = u
+    a.action = rl.get("action", "")
+    a.document = doc
+    a.details = rl.get("details", "")
+    a.ip_address = rl.get("ip_address", "")
+    a.created_at = ts_parsed
+    return a
+
+
+def _filter_audit_logs(logs, is_staff_or_superuser, user_query, search_query):
+    if is_staff_or_superuser and user_query:
+        logs = [
+            log_item
+            for log_item in logs
+            if log_item.user and user_query.lower() in getattr(log_item.user, "username", "").lower()
+        ]
+
+    if search_query:
+        sq = search_query.lower()
+        logs = [
+            log_item
+            for log_item in logs
+            if sq in log_item.details.lower()
+            or sq in log_item.ip_address.lower()
+            or (log_item.document and sq in getattr(log_item.document, "original_filename", "").lower())
+            or (log_item.document and sq in getattr(log_item.document, "title", "").lower())
+        ]
+    return logs
+
+
 def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query):
     where_clauses = []
     params = {}
@@ -1480,59 +1570,11 @@ def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_
 
     logs = []
     for rl in raw_logs:
-        if not rl:
-            continue
-        ts = rl.get("timestamp")
-        if ts and isinstance(ts, str):
-            import datetime
+        a = _parse_surreal_audit_log(rl, users_map)
+        if a:
+            logs.append(a)
 
-            try:
-                ts_parsed = datetime.datetime.strptime(ts, ISO_8601_FORMAT).replace(tzinfo=datetime.UTC)
-            except ValueError:
-                ts_parsed = parse_datetime(ts)
-        else:
-            ts_parsed = parse_datetime(ts)
-
-        uid = rl.get("user_id")
-        u = users_map.get(uid) if uid else None
-
-        doc = None
-        did = rl.get("doc_uuid")
-        if did:
-            d_raw = surreal_db.get_document(did)
-            if d_raw:
-                doc = _wrap_surreal_doc(d_raw, users_map)
-
-        class DummyAuditLog:
-            pass
-
-        a = DummyAuditLog()
-        a.id = rl.get("id", "")
-        a.user = u
-        a.action = rl.get("action", "")
-        a.document = doc
-        a.details = rl.get("details", "")
-        a.ip_address = rl.get("ip_address", "")
-        a.created_at = ts_parsed
-        logs.append(a)
-
-    if is_staff_or_superuser and user_query:
-        logs = [
-            log_item
-            for log_item in logs
-            if log_item.user and user_query.lower() in getattr(log_item.user, "username", "").lower()
-        ]
-
-    if search_query:
-        sq = search_query.lower()
-        logs = [
-            log_item
-            for log_item in logs
-            if sq in log_item.details.lower()
-            or sq in log_item.ip_address.lower()
-            or (log_item.document and sq in getattr(log_item.document, "original_filename", "").lower())
-            or (log_item.document and sq in getattr(log_item.document, "title", "").lower())
-        ]
+    logs = _filter_audit_logs(logs, is_staff_or_superuser, user_query, search_query)
 
     action_choices = [
         ("LOGIN", "Login"),

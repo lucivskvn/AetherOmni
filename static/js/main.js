@@ -341,7 +341,7 @@ function initializePasswordToggles() {
 
         const wrapper = document.createElement('div');
         wrapper.className = 'password-toggle-wrapper';
-        wrapper.style.display = window.getComputedStyle(input).display === 'block' ? 'block' : 'inline-block';
+        wrapper.style.display = globalThis.getComputedStyle(input).display === 'block' ? 'block' : 'inline-block';
         input.parentNode.insertBefore(wrapper, input).appendChild(input);
 
         const btn = document.createElement('button');
@@ -484,7 +484,7 @@ function showClientSideAlert(message, type = 'error') {
         }, 5000);
     });
 }
-window.showClientSideAlert = showClientSideAlert;
+globalThis.showClientSideAlert = showClientSideAlert;
 
 function dismissCard(card) {
     if (!card || card.classList.contains('fade-out')) return;
@@ -941,8 +941,8 @@ function initializeRAGSearch() {
         const query = ragQuery.value.trim();
         if (!query) {
             ragQuery.focus();
-            if (typeof window.showClientSideAlert === 'function') {
-                window.showClientSideAlert('Please enter a search query first.', 'error');
+            if (typeof globalThis.showClientSideAlert === 'function') {
+                globalThis.showClientSideAlert('Please enter a search query first.', 'error');
             }
             return;
         }
@@ -1390,7 +1390,7 @@ function initializeRetryActions() {
         .then(data => {
             if (data.status === 'success') {
                 // Instantly reload to transition to PENDING/processing state
-                window.location.reload();
+                globalThis.location.reload();
             } else {
                 showClientSideAlert(data.message || 'Failed to re-enqueue booklet.');
                 if (icon) {
