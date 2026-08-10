@@ -12,6 +12,24 @@ def _resolve_release_version() -> str:
     env_ver = os.environ.get("RELEASE_VERSION")
     if env_ver:
         return env_ver
+    # Prefer sonar-project.properties version when present so UI matches SonarQube
+    sonar_file = os.path.join(settings.BASE_DIR, "sonar-project.properties")
+    if os.path.isfile(sonar_file):
+        try:
+            with open(sonar_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if line.startswith("sonar.projectVersion"):
+                        parts = line.split("=", 1)
+                        if len(parts) == 2:
+                            val = parts[1].strip()
+                            if val:
+                                return val
+        except OSError as exc:  # nosec B110 - non-critical fallback
+            _log.warning("Could not read sonar-project.properties: %s", exc)
+
     version_file = os.path.join(settings.BASE_DIR, "VERSION")
     if os.path.isfile(version_file):
         try:
@@ -19,6 +37,7 @@ def _resolve_release_version() -> str:
                 return f.read().strip()
         except OSError as exc:  # nosec B110 - non-critical fallback
             _log.warning("Could not read VERSION file: %s", exc)
+
     return "1.5"
 
 
