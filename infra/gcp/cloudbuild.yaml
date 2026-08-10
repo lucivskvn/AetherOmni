@@ -28,6 +28,12 @@
 # ==============================================================================
 substitutions:
   _REGION: asia-southeast1
+  # When true, attempt to read the latest GitHub release tag for the repository
+  # and use it as the RELEASE_VERSION. Defaults to false to preserve existing behavior.
+  _USE_GITHUB_RELEASE: "false"
+  # Optional GitHub owner/repo to query for releases when _USE_GITHUB_RELEASE is true
+  _GITHUB_OWNER: lucivskvn
+  _GITHUB_REPO: AetherOmni
 
 steps:
   # 0. Compute dynamic RELEASE_VERSION from VERSION file + git commit count + SHA
@@ -37,10 +43,32 @@ steps:
     args:
       - '-euc'
       - |
+        # Compute MAJOR.MINOR from VERSION file
         MAJOR_MINOR=$$(cat VERSION | tr -d '[:space:]' | cut -d. -f1-2)
+
+        # Optionally attempt to read latest GitHub release tag and use it as the
+        # canonical release version. This is disabled by default to preserve
+        # manual/legacy behavior.
+        if [ "$${_USE_GITHUB_RELEASE}" = "true" ]; then
+          echo "Attempting to fetch latest GitHub release for $${_GITHUB_OWNER}/$${_GITHUB_REPO}"
+          # Query GitHub Releases API (unauthenticated). If this environment
+          # requires auth, configure a GITHUB_TOKEN as a secret and export it
+          # into Cloud Build substitutions in the trigger.
+          GH_API_URL="https://api.github.com/repos/$${_GITHUB_OWNER}/$${_GITHUB_REPO}/releases/latest"
+          TAG=$$(curl -sSf --connect-timeout 5 "$${GH_API_URL}" 2>/dev/null | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' || true)
+          if [ -n "$${TAG}" ]; then
+            # Normalize to the vMAJOR.MINOR.PATCH+meta scheme if tag looks like a semantic tag
+            RELEASE_VERSION="$${TAG}"
+            echo "Using GitHub release tag as RELEASE_VERSION=$${RELEASE_VERSION}"
+            echo "RELEASE_VERSION=$${RELEASE_VERSION}" > /workspace/release_version.env
+            exit 0
+          fi
+          echo "No GitHub release tag found or fetch failed; falling back to local computation"
+        fi
+
         PATCH=$$(git rev-list --count HEAD 2>/dev/null || echo "0")
         SHA="${SHORT_SHA}"
-        if [ -z "$$SHA" ]; then
+        if [ -z "$"SHA" ]; then
           SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo "local")
         fi
         RELEASE_VERSION="v$${MAJOR_MINOR}.$${PATCH}+$${SHA}"
@@ -51,11 +79,21 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
     waitFor: ['compute-version']
+    entrypoint: bash
     args:
-      - '--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
-      - '--cache=true'
-      - '--cache-ttl=24h'
-      - '--cache-dir=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/cache'
+      - '-euc'
+      - |
+        # Source computed release version (written by compute-version)
+        if [ -f /workspace/release_version.env ]; then
+          source /workspace/release_version.env
+        fi
+        # Default to :latest and also push a tag using the computed RELEASE_VERSION
+        /kaniko/executor \
+          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
+          $$( [ -n "$${RELEASE_VERSION}" ] && echo "--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:${RELEASE_VERSION}" ) \
+          --cache=true \
+          --cache-ttl=24h \
+          --cache-dir=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/cache
 
   # 2. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -78,8 +116,10 @@ steps:
         SECRETS="$${SECRETS},ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest"
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
+        source /workspace/release_version.env || true
+        IMAGE_TAG=${RELEASE_VERSION:-latest}
         gcloud run deploy aether-web \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:${IMAGE_TAG} \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
@@ -108,8 +148,10 @@ steps:
         SECRETS="$${SECRETS},ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest"
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
+        source /workspace/release_version.env || true
+        IMAGE_TAG=${RELEASE_VERSION:-latest}
         gcloud run deploy aether-worker \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:${IMAGE_TAG} \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
