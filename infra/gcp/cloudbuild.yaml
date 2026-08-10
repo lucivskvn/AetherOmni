@@ -117,9 +117,9 @@ steps:
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
         source /workspace/release_version.env || true
-        IMAGE_TAG=${RELEASE_VERSION:-latest}
+        IMAGE_TAG=$${RELEASE_VERSION:-latest}
         gcloud run deploy aether-web \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:${IMAGE_TAG} \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
@@ -149,9 +149,9 @@ steps:
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
         source /workspace/release_version.env || true
-        IMAGE_TAG=${RELEASE_VERSION:-latest}
+        IMAGE_TAG=$${RELEASE_VERSION:-latest}
         gcloud run deploy aether-worker \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:${IMAGE_TAG} \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
