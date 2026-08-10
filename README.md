@@ -338,6 +338,8 @@ bash scripts/verify-pipeline.sh
 5. **Phase 5: Documentation Governance & SonarQube Gate**:
    - Markdownlint Syntax Auditor (`markdownlint README.md docs/gcp_deployment_guide.md`)
    - Automated Version & Metadata Synchronizer (`python scripts/update_docs.py`)
+   - GitHub workflow updates are manual-only to avoid auto-commits on `main`
+     that can create merge/rebase churn.
 
 ### 🔒 Remote 3-Phase CI/CD Pipeline
 
