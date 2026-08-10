@@ -94,26 +94,16 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
     waitFor: ['compute-version']
-    entrypoint: /busybox/sh
+    entrypoint: /kaniko/executor
     args:
-      - '-euc'
-      - |
-        if [ -f /workspace/release_version.env ]; then
-          . /workspace/release_version.env
-        else
-          RELEASE_VERSION="latest"
-          IMAGE_TAG="latest"
-        fi
-        IMAGE_TAG="${IMAGE_TAG:-${RELEASE_VERSION:-latest}}"
-        /kaniko/executor \
-          --context=dir:///workspace \
-          --dockerfile=/workspace/Dockerfile \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$SHORT_SHA \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
-          --cache=true \
-          --cache-ttl=24h \
-          --cache-dir=/cache
+      - '--context=dir:///workspace'
+      - '--dockerfile=/workspace/Dockerfile'
+      - '--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
+      - '--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$SHORT_SHA'
+      - '--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:${_RELEASE_VERSION}'
+      - '--cache=true'
+      - '--cache-ttl=24h'
+      - '--cache-dir=/cache'
 
   # 2. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
