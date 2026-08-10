@@ -183,7 +183,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.5.489)
+## ⚡ Current Functional Capabilities (Current State v1.5.490)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
@@ -365,11 +365,13 @@ DJANGO_SECRET_KEY="your-secure-development-secret-key"
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
 GEMINI_API_KEY="your-gemini-api-key"
-SURREAL_URL="http://localhost:8001"
+SURREAL_URL="ws://localhost:8001/rpc"
 SURREAL_USER="root"
 SURREAL_PASS="root"
 SURREALDB_OFFLINE=False
 ```
+
+> Note: production and remote SurrealDB connections must use a WebSocket RPC URL such as `wss://surrealdb.fainko.cloud/rpc`.
 
 ### 3. Install Dependencies & Initialize Database
 
