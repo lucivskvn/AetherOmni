@@ -84,21 +84,27 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
     waitFor: ['compute-version']
-    entrypoint: bash
+    entrypoint: /busybox/sh
     args:
       - '-euc'
       - |
-        # Source computed release version (written by compute-version)
+        # Source computed release version (written by compute-version) when present.
         if [ -f /workspace/release_version.env ]; then
-          source /workspace/release_version.env
+          . /workspace/release_version.env
+        else
+          RELEASE_VERSION="latest"
         fi
-        # Default to :latest and also push a tag using the computed RELEASE_VERSION
+
+        # Kaniko does not ship bash; use a local cache dir instead of a remote registry path.
+        # We also explicitly set the Docker context/file to avoid surprises in Cloud Build workspaces.
         /kaniko/executor \
+          --context=dir:///workspace \
+          --dockerfile=/workspace/Dockerfile \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
           $$( [ -n "$${RELEASE_VERSION}" ] && echo "--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${RELEASE_VERSION}" ) \
           --cache=true \
           --cache-ttl=24h \
-          --cache-dir=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/cache
+          --cache-dir=/cache
 
   # 2. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -108,7 +114,11 @@ steps:
     args:
       - '-euc'
       - |
-        source /workspace/release_version.env
+        if [ -f /workspace/release_version.env ]; then
+          . /workspace/release_version.env
+        else
+          RELEASE_VERSION="latest"
+        fi
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION}"
@@ -121,7 +131,6 @@ steps:
         SECRETS="$${SECRETS},ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest"
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
-        source /workspace/release_version.env || true
         IMAGE_TAG=$${RELEASE_VERSION:-latest}
         gcloud run deploy aether-web \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
@@ -140,7 +149,11 @@ steps:
     args:
       - '-euc'
       - |
-        source /workspace/release_version.env
+        if [ -f /workspace/release_version.env ]; then
+          . /workspace/release_version.env
+        else
+          RELEASE_VERSION="latest"
+        fi
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION}"
@@ -153,7 +166,6 @@ steps:
         SECRETS="$${SECRETS},ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest"
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
-        source /workspace/release_version.env || true
         IMAGE_TAG=$${RELEASE_VERSION:-latest}
         gcloud run deploy aether-worker \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
