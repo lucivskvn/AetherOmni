@@ -90,7 +90,7 @@ steps:
         # Default to :latest and also push a tag using the computed RELEASE_VERSION
         /kaniko/executor \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
-          $$( [ -n "$${RELEASE_VERSION}" ] && echo "--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:${RELEASE_VERSION}" ) \
+          $$( [ -n "$${RELEASE_VERSION}" ] && echo "--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${RELEASE_VERSION}" ) \
           --cache=true \
           --cache-ttl=24h \
           --cache-dir=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/cache
