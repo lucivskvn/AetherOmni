@@ -1197,9 +1197,9 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
     else:
         # Case 2: Standard YAML frontmatter block starting and ending with ---
         yaml_match = re.search(
-            r"^---+[ \t]*\n(?P<yaml>(?:[^\n]+\n)*?)---+[ \t]*(?:\n|$)",
+            r"^---+[ \t]*\n(?P<yaml>.*?)---+[ \t]*(?:\n|$)",
             refined_text,
-            re.MULTILINE,
+            re.MULTILINE | re.DOTALL,
         )
         if yaml_match:
             yaml_block = yaml_match.group("yaml").strip()
@@ -1217,9 +1217,9 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
             else:
                 # Case 4: Standard search fallback
                 yaml_match = re.search(
-                    r"^---+[ \t]*\n(?P<yaml>(?:[^\n]+\n)*?)---+",
+                    r"^---+[ \t]*\n(?P<yaml>.*?)---+",
                     refined_text,
-                    re.MULTILINE,
+                    re.MULTILINE | re.DOTALL,
                 )
                 if yaml_match:
                     yaml_block = yaml_match.group("yaml").strip()
