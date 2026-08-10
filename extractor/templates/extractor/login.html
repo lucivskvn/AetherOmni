@@ -225,6 +225,12 @@
                 <input type="password" id="id_password" name="password" class="login-input" autocomplete="current-password" required placeholder="Enter password" aria-required="true">
             </div>
 
+            {% if CF_TURNSTILE_SITE_KEY %}
+            <div class="form-group">
+                <div class="cf-turnstile" data-sitekey="{{ CF_TURNSTILE_SITE_KEY }}"></div>
+            </div>
+            {% endif %}
+
             <button type="submit" class="btn-login-submit">
                 <i data-lucide="shield-check"></i> Unlock Dashboard
             </button>

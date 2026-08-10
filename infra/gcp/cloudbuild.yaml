@@ -77,6 +77,7 @@ steps:
         SECRETS="$${SECRETS},SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
         SECRETS="$${SECRETS},ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest"
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
+        SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
         gcloud run deploy aether-web \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
           --region=${_REGION} \
@@ -106,6 +107,7 @@ steps:
         SECRETS="$${SECRETS},SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
         SECRETS="$${SECRETS},ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest"
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
+        SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
         gcloud run deploy aether-worker \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
           --region=${_REGION} \

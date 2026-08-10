@@ -317,6 +317,11 @@ WORKER_URL = os.getenv("WORKER_URL", "")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_PUBLIC_KEY = os.getenv("SUPABASE_PUBLIC_KEY", "")
+# Service role key for server-side auth calls (bypasses CAPTCHA — never expose to clients)
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+
+# Cloudflare Turnstile — site key is public (safe to render in templates)
+CF_TURNSTILE_SITE_KEY = os.getenv("CF_TURNSTILE_SITE_KEY", "")
 
 
 # ── Cloud Run / Upload RAM Safeguards ─────────────────────────────────────────

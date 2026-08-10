@@ -130,6 +130,9 @@ class SupabaseAuthBackend(ModelBackend):
     ) -> User | None:
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
+        # Use service role key for server-side calls — it bypasses CAPTCHA enforcement.
+        # Falls back to the public anon key if service key is not configured.
+        supabase_server_key = getattr(settings, "SUPABASE_SERVICE_KEY", "") or supabase_key
 
         # 1. If Supabase is unconfigured, fall back immediately to local Django Database auth
         if not supabase_url or not supabase_key:
@@ -159,11 +162,16 @@ class SupabaseAuthBackend(ModelBackend):
 
         url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
         headers = {
-            "apikey": supabase_key,
+            "apikey": supabase_server_key,
             "Content-Type": APPLICATION_JSON,
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
-        payload = json.dumps({"email": target_email, "password": password}).encode("utf-8")
+        body: dict = {"email": target_email, "password": password}
+        # Forward Turnstile captcha token when present (required if Supabase CAPTCHA is enabled)
+        captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
+        if captcha_token:
+            body["captcha_token"] = captcha_token
+        payload = json.dumps(body).encode("utf-8")
 
         try:
             from extractor.utils import validate_url_scheme

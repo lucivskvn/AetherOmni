@@ -202,6 +202,12 @@
                 <input type="password" id="id_confirm_password" name="confirm_password" class="register-input" autocomplete="new-password" required placeholder="Re-enter password" aria-required="true">
             </div>
 
+            {% if CF_TURNSTILE_SITE_KEY %}
+            <div class="form-group">
+                <div class="cf-turnstile" data-sitekey="{{ CF_TURNSTILE_SITE_KEY }}"></div>
+            </div>
+            {% endif %}
+
             <button type="submit" class="btn-register-submit">
                 <i data-lucide="user-plus"></i> Sign Up
             </button>

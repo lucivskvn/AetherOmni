@@ -1831,7 +1831,7 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
     return None
 
 
-def _register_supabase_user(supabase_url, supabase_key, email, password, app_url):
+def _register_supabase_user(supabase_url, supabase_key, email, password, app_url, captcha_token=""):
     """Make the Supabase signup API call. Returns (success: bool, error_msg: str | None)."""
     import json
     import urllib.parse
@@ -1847,16 +1847,19 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
-        payload = json.dumps({"email": email, "password": password}).encode("utf-8")
+        body: dict = {"email": email, "password": password}
+        if captcha_token:
+            body["captcha_token"] = captcha_token
+        payload = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
             return True, None
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8")
+        body_bytes = e.read().decode("utf-8")
         try:
-            err_msg = json.loads(body).get("msg") or json.loads(body).get("error_description") or body
+            err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
         except (json.JSONDecodeError, KeyError, AttributeError):
-            err_msg = body
+            err_msg = body_bytes
         return False, f"Supabase Signup Failed: {err_msg}"
     except Exception as e:
         return False, f"Network error during registration: {e!s}"
@@ -1880,7 +1883,10 @@ def register_view(request):
             return render(request, TEMPLATE_REGISTER)
 
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
-        success, error_msg = _register_supabase_user(supabase_url, supabase_key, email, password, app_url)
+        captcha_token = request.POST.get("cf-turnstile-response", "")
+        success, error_msg = _register_supabase_user(
+            supabase_url, supabase_key, email, password, app_url, captcha_token
+        )
         if success:
             messages.success(request, "Registration successful! Please check your email for the activation link.")
             return redirect("login")
@@ -1890,7 +1896,7 @@ def register_view(request):
     return render(request, TEMPLATE_REGISTER)
 
 
-def _send_supabase_recovery(email, supabase_url, supabase_key, app_url):
+def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_token=""):
     import json
     import urllib.parse
     import urllib.request
@@ -1905,16 +1911,19 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url):
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
-        payload = json.dumps({"email": email}).encode("utf-8")
+        body: dict = {"email": email}
+        if captcha_token:
+            body["captcha_token"] = captcha_token
+        payload = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
             return True, None
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8")
+        body_bytes = e.read().decode("utf-8")
         try:
-            err_msg = json.loads(body).get("msg") or json.loads(body).get("error_description") or body
+            err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
         except (json.JSONDecodeError, KeyError, AttributeError):
-            err_msg = body
+            err_msg = body_bytes
         return False, f"Supabase Recovery Failed: {err_msg}"
     except Exception as e:
         return False, f"Network error: {e!s}"
@@ -1945,7 +1954,8 @@ def forgot_password_view(request):
             return render(request, TEMPLATE_FORGOT_PASSWORD)
 
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
-        success, error_msg = _send_supabase_recovery(email, supabase_url, supabase_key, app_url)
+        captcha_token = request.POST.get("cf-turnstile-response", "")
+        success, error_msg = _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_token)
         if success:
             messages.success(request, "Password recovery link has been sent! Please check your email inbox.")
             return redirect("login")

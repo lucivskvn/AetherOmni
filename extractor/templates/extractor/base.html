@@ -36,6 +36,10 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js" integrity="sha384-H6N0+i9QWJgqFzI+F67E8/R6y8E5S0w6/FvQ92mP94f0S6N5J+34hK5Y1m1R5S9R" crossorigin="anonymous"></script>
     {% endif %}
 
+    {% if CF_TURNSTILE_SITE_KEY %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    {% endif %}
+
     <!-- Centralized Deferred JS -->
     {% static 'js/main.js' as main_js_url %}
     <script defer src="{{ main_js_url|cache_bust }}"></script>

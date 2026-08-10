@@ -33,4 +33,5 @@ def system_settings(request):
         "SUPABASE_URL": getattr(settings, "SUPABASE_URL", ""),
         "SUPABASE_PUBLIC_KEY": getattr(settings, "SUPABASE_PUBLIC_KEY", ""),
         "RELEASE_VERSION": _resolve_release_version(),
+        "CF_TURNSTILE_SITE_KEY": getattr(settings, "CF_TURNSTILE_SITE_KEY", ""),
     }
