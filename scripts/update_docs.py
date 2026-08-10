@@ -10,11 +10,11 @@ VERSION SCHEME
   Full version : MAJOR.MINOR.PATCH
   MAJOR.MINOR  : human-controlled; stored in VERSION file (e.g. "1.2")
   PATCH        : last Git release tag patch value, not the current commit count
-  Build tag    : +SHORT_SHA appended for traceability
+  Release tag  : stable semver only; no SHA suffix because Docker/Cloud Run tags
+                 reject '+' and we want a predictable deployment image tag.
 
   Examples:
-    1.2.107          — last deployed release tag
-    1.2.107+08e6f35  — release metadata for the current build
+    1.2.107          — stable release tag
     1.2.107-dirty    — local uncommitted changes
 
 WHAT IS UPDATED
@@ -159,8 +159,8 @@ def compute_version() -> dict:
       major_minor   : "1.2"
       patch         : "107"
       semver        : "1.2.107"          — clean semantic version
-      release_ver   : "v1.2.107+08e6f35" — full version for UI / env var
-      badge_ver     : "v1.2.107"         — clean badge (no + in URLs)
+      release_ver   : "v1.2.107"         — stable deployment version
+      badge_ver     : "v1.2.107"         — clean badge
       sha           : "08e6f35"
       branch        : "current"
       today         : "2026-07-19"
@@ -175,7 +175,7 @@ def compute_version() -> dict:
 
     semver = f"{major_minor}.{patch}"
     dirty_suffix = "-dirty" if dirty else ""
-    release_ver = f"v{semver}+{sha}{dirty_suffix}"
+    release_ver = f"v{semver}{dirty_suffix}"
     badge_ver = f"v{semver}"
 
     return {
@@ -448,7 +448,7 @@ def main() -> int:
     parser.add_argument("--ci", action="store_true", help="CI mode: compact output.")
     parser.add_argument("--dry-run", action="store_true", help="Show changes without writing.")
     parser.add_argument("--print-version", action="store_true", help="Print semver only (machine-readable) and exit.")
-    parser.add_argument("--print-release", action="store_true", help="Print full release_ver (v1.2.107+sha) and exit.")
+    parser.add_argument("--print-release", action="store_true", help="Print stable release_ver (v1.2.107) and exit.")
     args = parser.parse_args()
 
     v = compute_version()

@@ -47,6 +47,7 @@ class UpdateDocsTestCase(unittest.TestCase):
         info = compute_version()
         self.assertEqual(info["patch"], "107")
         self.assertEqual(info["semver"], "1.5.107")
+        self.assertEqual(info["release_ver"], "v1.5.107")
         self.assertEqual(info["sha"], "abc1234")
         self.assertFalse(info["dirty"])
 
@@ -78,7 +79,7 @@ class UpdateDocsTestCase(unittest.TestCase):
         mock_root.__truediv__.return_value = mock_file
 
         info = {
-            "release_ver": "v1.2.3+abc1234",
+            "release_ver": "v1.2.3",
             "semver": "1.2.3",
             "badge_ver": "v1.2.3",
             "today": "2026-07-20",
@@ -109,7 +110,7 @@ class UpdateDocsTestCase(unittest.TestCase):
         mock_file.read_text.return_value = '- name: RELEASE_VERSION\n  value: "${RELEASE_VERSION}"'
         mock_root.__truediv__.return_value = mock_file
 
-        info = {"release_ver": "v1.2.3+abc1234"}
+        info = {"release_ver": "v1.2.3"}
         changed = update_service_yamls(info)
         self.assertFalse(changed)
 
@@ -122,6 +123,6 @@ class UpdateDocsTestCase(unittest.TestCase):
         mock_file.read_text.return_value = '- name: RELEASE_VERSION\n  value: "old"'
         mock_root.__truediv__.return_value = mock_file
 
-        info = {"release_ver": "v1.2.3+abc1234"}
+        info = {"release_ver": "v1.2.3"}
         changed = update_service_yamls(info)
         self.assertFalse(changed)
