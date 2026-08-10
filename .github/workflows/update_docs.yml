@@ -1,20 +1,16 @@
+---
 name: Auto-Update Documentation & Version
 
-on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      # Prevent infinite loop — these files are written by this workflow itself
-      - "README.md"
-      - "gcp_deployment_guide.md"
-      - "service.yaml"
-      - "service-worker.yaml"
-      - "sonar-project.properties"
-      - ".github/workflows/update_docs.yml"
-
-  # Allow manual trigger from GitHub UI or API
+'on':
   workflow_dispatch:
+    # Manual run only to avoid automatic docs-version auto-commits on main.
+    # This prevents repeated merge/rebase churn when the workflow updates
+    # dynamic badges and metadata on the default branch.
+    inputs:
+      run_description:
+        description: 'Optional note for manual docs sync run'
+        required: false
+        default: 'Manual docs sync'
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────────
@@ -102,7 +98,7 @@ jobs:
           fi
         env:
           DATABASE_URL: "sqlite:///:memory:"
-          SURREALDB_OFFLINE: "True"
+          SURREALDB_OFFLINE: true
           DJANGO_SECRET_KEY: "ci-dummy-key"
           DJANGO_SETTINGS_MODULE: "core.settings"
         continue-on-error: true
@@ -123,24 +119,23 @@ jobs:
             git diff --name-only
           fi
 
-      - name: Commit updated docs back to branch
-        if: steps.diff.outputs.changed == 'true'
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md docs/gcp_deployment_guide.md infra/gcp/service.yaml infra/gcp/service-worker.yaml sonar-project.properties .test_count || true
-          git commit -m "docs: set version ${{ needs.compute-version.outputs.release_ver }} [skip ci]"
-          git pull --rebase origin main || true
-          git push origin main
-
       - name: Summary
         run: |
-          echo "### 📦 Version: ${{ needs.compute-version.outputs.release_ver }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| Semver | \`${{ needs.compute-version.outputs.semver }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Release Version | \`${{ needs.compute-version.outputs.release_ver }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit SHA | \`${{ needs.compute-version.outputs.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Date | ${{ needs.compute-version.outputs.today }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Docs updated | ${{ steps.diff.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+          release_ver='${{ needs.compute-version.outputs.release_ver }}'
+          semver='${{ needs.compute-version.outputs.semver }}'
+          commit_sha='${{ needs.compute-version.outputs.sha }}'
+          today='${{ needs.compute-version.outputs.today }}'
+          docs_updated='${{ steps.diff.outputs.changed }}'
+
+          echo "### 📦 Version: ${release_ver}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          semver_line="| Semver | \\`${semver}\\` |"
+          echo "$semver_line" >> "$GITHUB_STEP_SUMMARY"
+          release_line="| Release Version | \\`${release_ver}\\` |"
+          echo "$release_line" >> "$GITHUB_STEP_SUMMARY"
+          sha_line="| Commit SHA | \\`${commit_sha}\\` |"
+          echo "$sha_line" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Date | ${today} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Docs updated | ${docs_updated} |" >> "$GITHUB_STEP_SUMMARY"

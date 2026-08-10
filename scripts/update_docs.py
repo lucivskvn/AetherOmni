@@ -9,12 +9,12 @@ VERSION SCHEME
 --------------
   Full version : MAJOR.MINOR.PATCH
   MAJOR.MINOR  : human-controlled; stored in VERSION file (e.g. "1.2")
-  PATCH        : git commit count — auto-increments on every merged commit
+  PATCH        : last Git release tag patch value, not the current commit count
   Build tag    : +SHORT_SHA appended for traceability
 
   Examples:
-    1.2.107          — clean release tag
-    1.2.107+08e6f35  — with build metadata (RELEASE_VERSION in env / UI)
+    1.2.107          — last deployed release tag
+    1.2.107+08e6f35  — release metadata for the current build
     1.2.107-dirty    — local uncommitted changes
 
 WHAT IS UPDATED
@@ -29,8 +29,8 @@ HOW IT IS TRIGGERED
 -------------------
   1. Locally: python scripts/update_docs.py
   2. After run_checks.sh passes (step 7)
-  3. GitHub Actions: on every push to current/main (.github/workflows/update_docs.yml)
-     — the Action commits updated docs back with "[skip ci]"
+  3. GitHub Actions: manual workflow dispatch only (.github/workflows/update_docs.yml)
+     — this workflow no longer auto-commits to main to prevent branch churn.
   4. Cloud Build: computes RELEASE_VERSION using the same VERSION file +
      $SHORT_SHA substitution, injects it into service YAMLs before deploy
 
@@ -93,13 +93,35 @@ def get_major_minor() -> str:
     return "0.1"
 
 
+def get_last_release_tag() -> str:
+    """Return the newest semantic release tag in the repo, if one exists."""
+    tag = _git("describe", "--tags", "--abbrev=0")
+    if tag:
+        return tag.strip()
+
+    tags = _git("tag", "--sort=-v:refname")
+    if tags:
+        for line in tags.splitlines():
+            candidate = line.strip()
+            if re.fullmatch(r"v?\d+\.\d+\.\d+", candidate):
+                return candidate
+    return ""
+
+
 def get_commit_count() -> str:
-    """Total number of commits in the current branch (used as PATCH)."""
+    """Return the patch number from the latest release tag, not commit count."""
     env_count = os.getenv("BUILD_NUMBER") or os.getenv("COMMIT_COUNT")
     if env_count and env_count.isdigit():
         return env_count
-    count = _git("rev-list", "--count", "HEAD")
-    return count if count.isdigit() else "0"
+
+    tag = get_last_release_tag()
+    if tag:
+        base = tag.lstrip("v")
+        parts = base.split(".")
+        if len(parts) == 3 and all(part.isdigit() for part in parts):
+            return parts[2]
+
+    return "0"
 
 
 def get_short_sha() -> str:
@@ -356,7 +378,7 @@ def update_gcp_guide(v: dict) -> bool:
 # ── service.yaml / service-worker.yaml update ─────────────────────────────────
 
 
-def update_service_yamls(v: dict) -> bool:
+def update_service_yamls(_v: dict) -> bool:
     """
     Validate that service YAMLs contain the dynamic ${RELEASE_VERSION} placeholder.
 

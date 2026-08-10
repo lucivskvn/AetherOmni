@@ -38,14 +38,15 @@ class UpdateDocsTestCase(unittest.TestCase):
     @patch("scripts.update_docs._git")
     def test_compute_version(self, mock_git):
         mock_git.side_effect = lambda *args: {
-            ("rev-list", "--count", "HEAD"): "100",
+            ("describe", "--tags", "--abbrev=0"): "v1.2.107",
             ("rev-parse", "--short", "HEAD"): "abc1234",
             ("rev-parse", "HEAD"): "abc123456789",
             ("rev-parse", "--abbrev-ref", "HEAD"): "main",
             ("status", "--porcelain"): "",
         }.get(args, "")
         info = compute_version()
-        self.assertEqual(info["patch"], "100")
+        self.assertEqual(info["patch"], "107")
+        self.assertEqual(info["semver"], "1.5.107")
         self.assertEqual(info["sha"], "abc1234")
         self.assertFalse(info["dirty"])
 
