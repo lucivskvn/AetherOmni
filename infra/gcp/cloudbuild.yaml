@@ -81,30 +81,22 @@ steps:
         echo "Computed RELEASE_VERSION=$${RELEASE_VERSION}"
 
   # 1. Kaniko Container Build with Layer Caching
+  # NOTE: Kaniko images do not ship bash; the executor must be invoked directly
+  # as the entrypoint. The build uses Cloud Build's built-in SHORT_SHA for a
+  # stable image tag, while the deployment steps still read the release version
+  # file generated earlier in the pipeline.
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
     waitFor: ['compute-version']
-    entrypoint: /busybox/sh
+    entrypoint: /kaniko/executor
     args:
-      - '-euc'
-      - |
-        # Source computed release version (written by compute-version) when present.
-        if [ -f /workspace/release_version.env ]; then
-          . /workspace/release_version.env
-        else
-          RELEASE_VERSION="latest"
-        fi
-
-        # Kaniko does not ship bash; use a local cache dir instead of a remote registry path.
-        # We also explicitly set the Docker context/file to avoid surprises in Cloud Build workspaces.
-        /kaniko/executor \
-          --context=dir:///workspace \
-          --dockerfile=/workspace/Dockerfile \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
-          $$( [ -n "$${RELEASE_VERSION}" ] && echo "--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${RELEASE_VERSION}" ) \
-          --cache=true \
-          --cache-ttl=24h \
-          --cache-dir=/cache
+      - '--context=dir:///workspace'
+      - '--dockerfile=/workspace/Dockerfile'
+      - '--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest'
+      - '--destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$SHORT_SHA'
+      - '--cache=true'
+      - '--cache-ttl=24h'
+      - '--cache-dir=/cache'
 
   # 2. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
