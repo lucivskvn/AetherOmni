@@ -184,7 +184,7 @@
             <p>Sign up to access Knowledge Desk</p>
         </div>
 
-        <form method="post" action="{% url 'register' %}">
+        <form method="post" action="{% url 'register' %}" id="register-form">
             {% csrf_token %}
 
             <div class="form-group">

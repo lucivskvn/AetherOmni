@@ -312,8 +312,12 @@
                         waited += 100;
                         if (waited >= 1200) {
                             clearInterval(interval);
-                            // submit anyway; server will handle missing token.
-                            form.submit();
+                            const widget = form.querySelector('.cf-turnstile-widget');
+                            if (widget) {
+                                alert('Please complete the CAPTCHA verification before submitting.');
+                            } else {
+                                form.submit();
+                            }
                         }
                     }, 100);
                 });
