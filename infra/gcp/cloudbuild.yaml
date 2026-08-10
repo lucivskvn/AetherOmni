@@ -68,11 +68,11 @@ steps:
         fi
 
         PATCH=$$(git rev-list --count HEAD 2>/dev/null || echo "0")
-        SHA="${SHORT_SHA}"
-        if [ -z "$SHA" ]; then
-          SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo "local")
+        BUILD_SHA="${SHORT_SHA}"
+        if [ -z "$${BUILD_SHA}" ]; then
+          BUILD_SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo "local")
         fi
-        RELEASE_VERSION="v$${MAJOR_MINOR}.$${PATCH}+$${SHA}"
+        RELEASE_VERSION="v$${MAJOR_MINOR}.$${PATCH}+$${BUILD_SHA}"
         echo "RELEASE_VERSION=$${RELEASE_VERSION}" > /workspace/release_version.env
         echo "Computed RELEASE_VERSION=$${RELEASE_VERSION}"
 
