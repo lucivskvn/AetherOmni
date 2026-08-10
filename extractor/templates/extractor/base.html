@@ -30,6 +30,21 @@
     <!-- Centralized Stylesheet -->
     {% static 'css/main.css' as main_css_url %}
     <link rel="stylesheet" href="{{ main_css_url|cache_bust }}">
+    <style>
+        /* Center Turnstile widget within form groups to align with inputs */
+        .cf-turnstile-widget {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 8px 0;
+            width: 100%;
+        }
+        /* Ensure the widget does not push layout on small screens */
+        .cf-turnstile-widget .cf-turnstile {
+            display: inline-block;
+            max-width: 100%;
+        }
+    </style>
     
     <!-- Conditionally load Supabase Realtime client if credentials exist -->
     {% if SUPABASE_URL and SUPABASE_PUBLIC_KEY %}
@@ -249,6 +264,63 @@
     </dialog>
     {% endif %}
     {% block extra_js %}{% endblock %}
+    {% if CF_TURNSTILE_SITE_KEY %}
+    <script>
+        // Global Turnstile callbacks used by forms to copy the token into hidden inputs
+        function onTurnstileSuccess(token) {
+            try {
+                const el = document.getElementById('cf-turnstile-response');
+                if (el) el.value = token;
+            } catch (e) { /* no-op */ }
+        }
+        function onTurnstileSuccessRegister(token) {
+            try {
+                const el = document.getElementById('cf-turnstile-response-register');
+                if (el) el.value = token;
+            } catch (e) { /* no-op */ }
+        }
+        function onTurnstileSuccessForgot(token) {
+            try {
+                const el = document.getElementById('cf-turnstile-response-forgot');
+                if (el) el.value = token;
+            } catch (e) { /* no-op */ }
+        }
+        // Ensure forms submit even if Turnstile fires after user clicks submit by
+        // adding submit handlers that wait briefly for token population.
+        document.addEventListener('DOMContentLoaded', function() {
+            const formsToPatch = [
+                { id: 'login-form', tokenField: 'cf-turnstile-response' },
+                { id: 'register-form', tokenField: 'cf-turnstile-response-register' },
+                { id: 'forgot-form', tokenField: 'cf-turnstile-response-forgot' }
+            ];
+            formsToPatch.forEach(cfg => {
+                const form = document.getElementById(cfg.id) || document.querySelector(`form#${cfg.id}`) || document.querySelector(`form[name='${cfg.id}']`);
+                if (!form) return;
+                form.addEventListener('submit', function (e) {
+                    // If token already present, nothing to do.
+                    const tf = document.getElementById(cfg.tokenField);
+                    if (tf && tf.value) return;
+                    // Otherwise, briefly wait for Turnstile to set token (max 1200ms)
+                    e.preventDefault();
+                    let waited = 0;
+                    const interval = setInterval(() => {
+                        if (tf && tf.value) {
+                            clearInterval(interval);
+                            form.submit();
+                            return;
+                        }
+                        waited += 100;
+                        if (waited >= 1200) {
+                            clearInterval(interval);
+                            // submit anyway; server will handle missing token.
+                            form.submit();
+                        }
+                    }, 100);
+                });
+            });
+        });
+    </script>
+    {% endif %}
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const themeToggleBtn = document.getElementById('theme-toggle-btn');
