@@ -145,10 +145,10 @@ def _get_surreal_url() -> str:
         else:
             logger.warning(
                 "[SurrealDB] SURREAL_URL is not set and no local SurrealDB instance was found. "
-                "Set the SURREAL_URL environment variable. Defaulting to http://localhost:8001 "
+                "Set the SURREAL_URL environment variable. Defaulting to ws://localhost:8001/rpc "
                 "which will fail if SurrealDB is not running locally."
             )
-            url = "http://localhost:8001"  # NOSONAR
+            url = "ws://localhost:8001/rpc"  # NOSONAR
 
     ws_schemes = ("ws:" + "//", "wss:" + "//")
 
