@@ -69,7 +69,7 @@ steps:
 
         PATCH=$$(git rev-list --count HEAD 2>/dev/null || echo "0")
         SHA="${SHORT_SHA}"
-        if [ -z "$"SHA" ]; then
+        if [ -z "$SHA" ]; then
           SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo "local")
         fi
         RELEASE_VERSION="v$${MAJOR_MINOR}.$${PATCH}+$${SHA}"
