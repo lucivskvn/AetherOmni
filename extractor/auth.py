@@ -13,28 +13,6 @@ from extractor.utils import APPLICATION_JSON
 logger = logging.getLogger(__name__)
 
 
-def _resolve_target_email(username: str, supabase_url: str) -> tuple[str, bool]:
-    """
-    Map a non-email username to a full email address.
-    Returns (target_email, is_admin_check). Returns ("", False) if no mapping exists.
-    """
-    from urllib.parse import urlparse
-
-    from django.conf import settings
-
-    admin_username = getattr(settings, "ADMIN_USERNAME", "admin")
-    admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
-
-    if username == admin_username:
-        if admin_username == "admin":
-            parsed = urlparse(supabase_url)
-            domain = parsed.netloc or "example.com"
-            return f"admin@{domain}", True
-        else:
-            return admin_email, True
-    return "", False
-
-
 def _generate_unique_username(user_email: str) -> str:
     import hashlib
 
@@ -65,15 +43,12 @@ def _sync_supabase_user(
     resp_data: dict,
     supabase_url: str,
     username: str | None,
-    is_admin_check: bool,
 ) -> User:
     """
     Retrieve or create a Django User from a successful Supabase auth response.
-    Promotes to superuser/staff if the email matches the Supabase admin address.
+    Promotes to superuser/staff if the email matches the ADMIN_EMAIL.
     Stores the Supabase user_id in the session.
     """
-    from urllib.parse import urlparse
-
     from django.conf import settings
 
     user_info = resp_data.get("user", {})
@@ -86,14 +61,9 @@ def _sync_supabase_user(
         email=user_email, defaults={"username": django_username, "is_active": True}
     )
 
-    parsed_url = urlparse(supabase_url)
-    domain = parsed_url.netloc or "example.com"
-    expected_admin_email = f"admin@{domain}"
     admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
+    is_promoted_admin = user_email.lower() == admin_email.lower()
 
-    is_promoted_admin = (is_admin_check and user_email.lower() == expected_admin_email.lower()) or (
-        user_email.lower() == admin_email.lower()
-    )
     if is_promoted_admin:
         user.is_superuser = True
         user.is_staff = True
@@ -134,23 +104,29 @@ class SupabaseAuthBackend(ModelBackend):
         # Falls back to the public anon key if service key is not configured.
         supabase_server_key = getattr(settings, "SUPABASE_SERVICE_KEY", "") or supabase_key
 
+        target_email = (username or "").strip()
+        is_email = "@" in target_email
+
+        def _fallback_local_auth():
+            # If the input is an email, try to find the actual username to authenticate locally
+            if is_email:
+                user = User.objects.filter(email=target_email).first()
+                if user:
+                    return super(SupabaseAuthBackend, self).authenticate(request, username=user.username, password=password, **kwargs)
+            return super(SupabaseAuthBackend, self).authenticate(request, username, password, **kwargs)
+
         # 1. If Supabase is unconfigured, fall back immediately to local Django Database auth
         if not supabase_url or not supabase_key:
-            return super().authenticate(request, username, password, **kwargs)
+            return _fallback_local_auth()
 
         # 2. Supabase Auth requires email addresses for authentication.
-        # If the input is 'admin', map it to 'admin@<supabase_domain>' to authenticate via Supabase.
-        # Otherwise, if it's another non-email username, fall back to local Django DB.
-        target_email = (username or "").strip()
-        is_admin_check = False
-        if "@" not in target_email:
-            target_email, is_admin_check = _resolve_target_email(target_email, supabase_url)
-            if not target_email:
-                local_user = super().authenticate(request, username, password, **kwargs)
-                if local_user:
-                    logger.info(f"[Auth] Local user authenticated: {username}")
-                    return local_user
-                return None
+        if not is_email:
+            # If it's a non-email username, fall back to local Django DB immediately.
+            local_user = _fallback_local_auth()
+            if local_user:
+                logger.info(f"[Auth] Local user authenticated: {username}")
+                return local_user
+            return None
 
         # 3. Securely dispatch HTTPS POST to Supabase GoTrue Auth REST endpoint
         # Validate email format to prevent auth bypass via crafted usernames
@@ -180,16 +156,16 @@ class SupabaseAuthBackend(ModelBackend):
             req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
                 resp_data = json.loads(response.read().decode("utf-8"))
-                return _sync_supabase_user(request, resp_data, supabase_url, username, is_admin_check)
+                return _sync_supabase_user(request, resp_data, supabase_url, username)
 
         except urllib.error.HTTPError as e:
             # Handle standard login credential mismatches (400 Bad Request) from Supabase GoTrue
             error_body = e.read().decode("utf-8")
             logger.warning(f"[Auth] Supabase authentication rejected: HTTP {e.code} - {error_body}")
             # Fall back to local Django DB
-            return super().authenticate(request, username, password, **kwargs)
+            return _fallback_local_auth()
         except Exception as e:
             # Handle connection timeouts, DNS resolve issues, or unconfigured network sockets
             logger.exception(f"[Auth] Supabase API network connectivity exception: {e}")
             # Fall back to local Django DB
-            return super().authenticate(request, username, password, **kwargs)
+            return _fallback_local_auth()

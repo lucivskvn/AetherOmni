@@ -1029,8 +1029,8 @@ class SecurityAuthTestCase(TestCase):
         with self.settings(
             SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key", DEBUG=False
         ):
-            # Pass "admin" as username but Supabase returns "normal_user@example.com"
-            user = backend.authenticate(None, username="admin", password="password123")
+            # Pass email as username
+            user = backend.authenticate(None, username="normal_user@example.com", password="password123")
 
             self.assertIsNotNone(user)
             # Normal user should NOT be promoted to superuser/staff
