@@ -14,7 +14,7 @@
 [![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Coverage](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=coverage&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Lines of Code](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=ncloc&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Desloppify Codebase Health](https://img.shields.io/badge/Desloppify--Health-90.2%2F100-emerald.svg)](docs/scorecard.png)
+[![Desloppify Codebase Health](docs/scorecard.png)](docs/scorecard.png)
 
 ---
 
@@ -183,7 +183,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.5.465)
+## ⚡ Current Functional Capabilities (Current State v1.5.466)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
@@ -195,7 +195,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 | **Curated ZIP & Single-Copy Exports** | Single-copy standardized document exports (`documents/001_title.md`) with optional multi-taxonomy views (`Language/`, `Author/`) and `manifest.json`. | `generate_curated_zip_bundle` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L322) |
 | **Automated Artifact Cleanup** | Automated DevSecOps file retention policy (`cleanup_stale_temp_artifacts`) purging temporary processing scratch files older than 24h. | `cleanup_stale_temp_artifacts` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L420) |
 | **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
-| **5-Phase DevSecOps Suite** | Automated verification pipeline featuring AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy typing, Hadolint container hardening, **SurrealQL schema validation** (`surreal validate`), SonarQube MQR Gatekeeper, and 199-test suite with coverage reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
+| **5-Phase DevSecOps Suite** | Automated verification pipeline: AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy static typing, Hadolint container hardening, **SurrealQL schema validation** (`surreal validate`), ShellCheck POSIX safety, SonarQube MQR Gatekeeper, and a comprehensive unit test suite with `coverage.xml` reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
 
 ---
 
@@ -235,12 +235,12 @@ flowchart LR
 ### ✅ Milestone 3.5 (MVP Core — DevSecOps Hardening, SurrealQL Validation & Python 3.13)
 
 - [x] **Python 3.13 Runtime Upgrade**: Container base image updated to `python:3.13-slim`; `pyproject.toml` and `sonar-project.properties` aligned to `py313` target.
-- [x] **SurrealQL Schema Validation** (`surreal validate`): `schema.surql` is now validated on every pipeline run via the official `surreal` CLI v3.3.0+ (installed via `curl -sSf https://install.surrealdb.com | sh`). Integrated into Phase 2 of `run_checks.sh` and the fast differential `--fast` pass for `.surql` file changes.
-- [x] **Full-Suite Tool Alignment**: All DevSecOps tools verified at latest stable: `ruff==0.16.2`, `mypy==2.3.0`, `bandit==1.9.4`, `pip-audit==2.10.1`, `semgrep==1.172.0`, `yamllint==1.38.0`, `hadolint==2.15.1`, `ast-grep==0.45.1`, `markdownlint-cli==0.49.1`, `eslint==v10.8.1`, `surreal==3.3.0-nightly`.
+- [x] **SurrealQL Schema Validation** (`surreal validate`): `schema.surql` is validated on every pipeline run via the official `surreal` CLI (install: `curl -sSf https://install.surrealdb.com | sh`). Integrated into Phase 2 of `run_checks.sh` and the fast differential `--fast` pass for `.surql` file changes.
+- [x] **Full-Suite Tool Alignment**: All DevSecOps tools verified at latest stable — `ruff`, `mypy`, `bandit`, `pip-audit`, `semgrep`, `yamllint`, `hadolint`, `ast-grep`, `markdownlint-cli`, `eslint`, `surreal`. Pinned versions tracked in `requirements.txt` and `package.json`; managed via LinuxBrew and pip.
 - [x] **SonarQube Multi-Language SAST**: Removed `sonar.language=py` single-language lock; SonarQube now scans Python 3.13 (`py313`) **and** JavaScript (ESLint 10 conventions) in the same analysis pass.
 - [x] **`run_checks.sh` Path Consistency**: Fixed autofix `markdownlint` target path from `gcp_deployment_guide.md` to `docs/gcp_deployment_guide.md`.
 - [x] **ShellCheck Integration**: `shellcheck run_checks.sh scripts/*.sh` added to Phase 2 for POSIX shell safety enforcement.
-- [x] **199-Test Suite**: All 199 Django unit tests pass cleanly under `SURREALDB_OFFLINE=True` with `coverage.xml` generated for SonarQube.
+- [x] **Full Test Suite**: All Django unit tests pass cleanly under `SURREALDB_OFFLINE=True` with `coverage.xml` generated for SonarQube ingestion.
 
 ### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & RBAC)
 
@@ -334,7 +334,7 @@ bash scripts/verify-pipeline.sh
    - Pip-Audit Supply-Chain CVE Dependency Audit (`pip-audit -r requirements.txt`)
 4. **Phase 4: Runtime Verification & Test Suite**:
    - Django System Integrity Check (`python manage.py check`)
-   - Django Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`) — 199 tests
+   - Django Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`)
 5. **Phase 5: Documentation Governance & SonarQube Gate**:
    - Markdownlint Syntax Auditor (`markdownlint README.md docs/gcp_deployment_guide.md`)
    - Automated Version & Metadata Synchronizer (`python scripts/update_docs.py`)
