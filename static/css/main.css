@@ -1268,6 +1268,11 @@ tr:hover td {
     transition: all 0.2s ease-in-out;
 }
 
+.tb-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    border-radius: 4px;
+}
+
 .tb-btn:hover {
     background: rgba(255, 255, 255, 0.08) !important;
     color: var(--accent) !important;
