@@ -28,6 +28,16 @@ logger = logging.getLogger(__name__)
 TEMPLATE_REGISTER = "extractor/register.html"
 TEMPLATE_FORGOT_PASSWORD = "extractor/forgot_password.html"  # nosec B105
 
+
+def _turnstile_token_error(request) -> str | None:
+    """Return a user-facing error when Turnstile is configured but the token is missing."""
+    if not getattr(settings, "CF_TURNSTILE_SITE_KEY", ""):
+        return None
+    captcha_token = request.POST.get("cf-turnstile-response", "").strip()
+    if captcha_token:
+        return None
+    return "CAPTCHA verification is required. Please complete the security check and try again."
+
 from types import SimpleNamespace
 
 from extractor import surreal_db
@@ -1882,6 +1892,11 @@ def register_view(request):
             messages.error(request, error_msg)
             return render(request, TEMPLATE_REGISTER)
 
+        turnstile_error = _turnstile_token_error(request)
+        if turnstile_error:
+            messages.error(request, turnstile_error)
+            return render(request, TEMPLATE_REGISTER)
+
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
         captcha_token = request.POST.get("cf-turnstile-response", "")
         success, error_msg = _register_supabase_user(
@@ -1951,6 +1966,11 @@ def forgot_password_view(request):
 
         if not supabase_url or not supabase_key:
             messages.error(request, "Supabase integration is not configured.")
+            return render(request, TEMPLATE_FORGOT_PASSWORD)
+
+        turnstile_error = _turnstile_token_error(request)
+        if turnstile_error:
+            messages.error(request, turnstile_error)
             return render(request, TEMPLATE_FORGOT_PASSWORD)
 
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
