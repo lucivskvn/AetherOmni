@@ -107,6 +107,11 @@ spec:
             secretKeyRef:
               name: SUPABASE_PUBLIC_KEY
               key: "latest"
+        - name: CF_TURNSTILE_SITE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: CF_TURNSTILE_SITE_KEY
+              key: "latest"
         resources:
           limits:
             cpu: 1000m

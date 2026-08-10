@@ -989,6 +989,27 @@ class SecurityAuthTestCase(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, "Insecure URL scheme. Production environments require https.")
 
+    def test_login_page_renders_turnstile_widget_when_configured(self):
+        with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):
+            response = self.client.get(reverse("login"))
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "https://challenges.cloudflare.com/turnstile/v0/api.js")
+            self.assertContains(response, 'data-sitekey="test-site-key"')
+
+    def test_register_page_renders_turnstile_widget_when_configured(self):
+        with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):
+            response = self.client.get(reverse("register"))
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "https://challenges.cloudflare.com/turnstile/v0/api.js")
+            self.assertContains(response, 'data-sitekey="test-site-key"')
+
+    def test_forgot_password_page_renders_turnstile_widget_when_configured(self):
+        with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):
+            response = self.client.get(reverse("forgot_password"))
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "https://challenges.cloudflare.com/turnstile/v0/api.js")
+            self.assertContains(response, 'data-sitekey="test-site-key"')
+
     @patch("urllib.request.urlopen")
     def test_supabase_admin_promotion_security(self, mock_urlopen):
         # Mock successful login response from Supabase for a normal user email but trying to log in as "admin"
