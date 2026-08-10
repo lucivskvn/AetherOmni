@@ -1,2 +1,6 @@
 {
+    "sonarlint.connectedMode.project": {
+        "connectionId": "Fainko-SonarQube",
+        "projectKey": "aetheromni"
+    }
 }
