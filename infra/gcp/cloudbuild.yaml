@@ -34,6 +34,7 @@ substitutions:
   # Optional GitHub owner/repo to query for releases when _USE_GITHUB_RELEASE is true
   _GITHUB_OWNER: lucivskvn
   _GITHUB_REPO: AetherOmni
+  _RELEASE_VERSION: "manual"
 
 steps:
   # 0. Compute dynamic RELEASE_VERSION from VERSION file + git commit count + SHA
