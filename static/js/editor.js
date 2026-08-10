@@ -394,7 +394,7 @@ function _restoreSafeHtml(html) {
     return html
         .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
         .replace(/&lt;hr\s*\/?&gt;/gi, '<hr>')
-        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b(.*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b((?:(?!&gt;)[\s\S])*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
                 const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
@@ -406,7 +406,7 @@ function _restoreSafeHtml(html) {
             }
             return `<${closeSlash || ''}${tagName}${cleanAttrs}>`;
         })
-        .replace(/&lt;(\/)?(span|div|p)\b(.*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?(span|div|p)\b((?:(?!&gt;)[\s\S])*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
                 const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
