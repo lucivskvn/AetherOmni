@@ -50,12 +50,16 @@ steps:
         # Optionally attempt to read latest GitHub release tag and use it as the
         # canonical release version. This is disabled by default to preserve
         # manual/legacy behavior.
-        if [ "$${_USE_GITHUB_RELEASE}" = "true" ]; then
-          echo "Attempting to fetch latest GitHub release for $${_GITHUB_OWNER}/$${_GITHUB_REPO}"
+        USE_GITHUB_RELEASE="${_USE_GITHUB_RELEASE:-false}"
+        GITHUB_OWNER="${_GITHUB_OWNER:-lucivskvn}"
+        GITHUB_REPO="${_GITHUB_REPO:-AetherOmni}"
+
+        if [ "$${USE_GITHUB_RELEASE}" = "true" ]; then
+          echo "Attempting to fetch latest GitHub release for $${GITHUB_OWNER}/$${GITHUB_REPO}"
           # Query GitHub Releases API (unauthenticated). If this environment
           # requires auth, configure a GITHUB_TOKEN as a secret and export it
           # into Cloud Build substitutions in the trigger.
-          GH_API_URL="https://api.github.com/repos/$${_GITHUB_OWNER}/$${_GITHUB_REPO}/releases/latest"
+          GH_API_URL="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/releases/latest"
           TAG=$$(curl -sSf --connect-timeout 5 "$${GH_API_URL}" 2>/dev/null | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' || true)
           if [ -n "$${TAG}" ]; then
             # Normalize to the vMAJOR.MINOR.PATCH+meta scheme if tag looks like a semantic tag
@@ -68,7 +72,7 @@ steps:
         fi
 
         PATCH=$$(git rev-list --count HEAD 2>/dev/null || echo "0")
-        BUILD_SHA="${SHORT_SHA}"
+        BUILD_SHA="${SHORT_SHA:-}"
         if [ -z "$${BUILD_SHA}" ]; then
           BUILD_SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo "local")
         fi
