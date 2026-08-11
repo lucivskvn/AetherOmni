@@ -38,6 +38,7 @@ def _turnstile_token_error(request) -> str | None:
         return None
     return "CAPTCHA verification is required. Please complete the security check and try again."
 
+
 from types import SimpleNamespace
 
 from extractor import surreal_db
