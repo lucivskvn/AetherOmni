@@ -319,7 +319,7 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" integrity="sha384-N/qS5v5lH3o9O+X5X2wOqS2oOQ+T8M9i8cE2Z7G+p6G9qXvJz6JkH7pE4w+FwQ/w" crossorigin="anonymous"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const hash = globalThis.location.hash;
@@ -342,8 +342,8 @@
                 const supabaseKey = '{{ SUPABASE_PUBLIC_KEY|default:"" }}';
 
                 if (!supabaseUrl || !supabaseKey) {
-                    if (typeof window.showClientSideAlert === 'function') {
-                        window.showClientSideAlert('Supabase integration is not configured for OAuth.', 'error');
+                    if (typeof globalThis.showClientSideAlert === 'function') {
+                        globalThis.showClientSideAlert('Supabase integration is not configured for OAuth.', 'error');
                     } else {
                         alert('Supabase integration is not configured for OAuth.');
                     }
@@ -351,7 +351,7 @@
                 }
 
                 const supabase = supabase.createClient(supabaseUrl, supabaseKey);
-                const { data, error } = await supabase.auth.signInWithOAuth({
+                const { error } = await supabase.auth.signInWithOAuth({
                     provider: 'github',
                     options: {
                         redirectTo: globalThis.location.origin + "{% url 'dashboard' %}"
@@ -359,9 +359,9 @@
                 });
 
                 if (error) {
-                    console.error('GitHub OAuth error:', error.message);
-                    if (typeof window.showClientSideAlert === 'function') {
-                        window.showClientSideAlert(error.message, 'error');
+
+                    if (typeof globalThis.showClientSideAlert === 'function') {
+                        globalThis.showClientSideAlert(error.message, 'error');
                     }
                 }
             });
