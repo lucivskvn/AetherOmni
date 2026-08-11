@@ -1,8 +1,8 @@
 #!/bin/bash
 # ==============================================================================
-# AETHEROMNI ADMIN CREDENTIALS & SUPABASE AUTH RETRIEVER
+# AETHEROMNI ADMIN EMAIL & SUPABASE AUTH CONFIGURATION RETRIEVER
 # ==============================================================================
-# Usage: bash scripts/get_admin_creds.sh [--show-password]
+# Usage: bash scripts/get_admin_creds.sh
 # ==============================================================================
 
 set -eo pipefail
@@ -29,7 +29,7 @@ if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" == "(unset)" ]; then
 fi
 
 echo -e "${CYAN}======================================================================${NC}"
-echo -e "${CYAN}🔐 AETHEROMNI ADMIN & SUPABASE CREDENTIAL RETRIEVER${NC}"
+echo -e "${CYAN}🔐 AETHEROMNI ADMIN EMAIL & SUPABASE AUTH CONFIGURATION${NC}"
 echo -e "   Target GCP Project: ${GREEN}${PROJECT_ID}${NC}"
 echo -e "${CYAN}======================================================================${NC}"
 
@@ -45,18 +45,11 @@ fetch_secret() {
 }
 
 ADMIN_MAIL=$(fetch_secret "ADMIN_EMAIL")
-ADMIN_PASS=$(fetch_secret "ADMIN_PASSWORD")
 SUPABASE_URL_VAL=$(fetch_secret "SUPABASE_URL")
 SUPABASE_KEY_VAL=$(fetch_secret "SUPABASE_PUBLIC_KEY")
 
 echo -e "\n${YELLOW}📋 Administrative Account Details:${NC}"
 echo -e "  • Email        : ${GREEN}${ADMIN_MAIL}${NC}"
-
-if [[ "$1" == "--show-password" ]]; then
-    echo -e "  • Password     : ${RED}${ADMIN_PASS}${NC}"
-else
-    echo -e "  • Password     : ${YELLOW}******** (pass --show-password to reveal)${NC}"
-fi
 
 echo -e "\n${YELLOW}⚡ Supabase Auth Integration:${NC}"
 echo -e "  • Supabase URL : ${GREEN}${SUPABASE_URL_VAL}${NC}"

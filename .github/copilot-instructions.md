@@ -9,7 +9,7 @@
 ### 1. Shift-Left Local Verification FIRST (Multi-Language Stack & Dual Git Hooks)
 
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
-  - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.git/hooks/pre-commit` which runs `bash run_checks.sh --fast`. This uses a **differential git diff scan engine** to automatically check only modified files for Ruff, ESLint, yamllint, markdownlint, and SurrealQL errors.
+  - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.git/hooks/pre-commit` which runs `bash run_checks.sh --fast`. This differential gate checks modified files with Ruff, ESLint, yamllint, markdownlint, SurrealQL validation, Bandit, Semgrep, AST-Grep, and ShellCheck where applicable; new suppressions require a precise rule ID, with Semgrep and SonarQube suppressions also requiring a reason.
   - **Pre-Push Gatekeeper Hook**: Local pushes are enforced by `.git/hooks/pre-push` running the full verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), Docker (`hadolint`), SurrealQL (`surreal validate`), and AST pattern rules (`ast-grep`).
   - **Full Suite Run**: Execute `bash run_checks.sh` locally for a full 5-phase verification pass.
   - **Active Linters & Auto-Fixers**: Ensure active auto-fixers (`markdownlint --fix`, `yamllint`, `ruff check --fix`, `ruff format`) are executed so document formatting, JS/Python code standards, and YAML schemas are automatically corrected.
