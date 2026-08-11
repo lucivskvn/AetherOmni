@@ -19,28 +19,17 @@ The production system consists of:
 
 ---
 
-## 2. Automated One-Command Provisioning (`provision_gcp.sh`)
+## 2. Provisioning and Deployment Policy
 
-AetherOmni provides an automated infrastructure provisioner in `scripts/provision_gcp.sh` that detects your GCP Project ID from `.env` or `gcloud config`, enables required APIs (including `aiplatform.googleapis.com`), creates Secret Manager entries, binds IAM service account roles, and optionally triggers Cloud Build:
+The legacy imperative provisioning script has been retired. It mixed local
+`.env` secrets, broad IAM changes, infrastructure creation, and deployment in a
+single command, making its results difficult to review and reproduce.
 
-```bash
-# 1. Configure your production variables in .env
-cat <<EOF > .env
-GCP_PROJECT_ID="your-gcp-project-id"
-GCP_REGION="asia-southeast1"
-DJANGO_SECRET_KEY="your-production-secret-key"
-GEMINI_API_KEY="your-gemini-api-key"
-SURREAL_URL="wss://surrealdb.fainko.cloud/rpc"
-SURREAL_USER="admin"
-SURREAL_PASS="your-surreal-password"
-SUPABASE_URL="https://supabase.fainko.cloud"
-SUPABASE_PUBLIC_KEY="your-supabase-key"
-CUSTOM_DOMAIN="aether.yourdomain.com" # Optional custom domain
-EOF
-
-# 2. Execute automated provisioner and submit Cloud Build deployment
-bash scripts/provision_gcp.sh --submit
-```
+For the existing project, manage deployment through the reviewed Cloud Build
+configuration in `infra/gcp/cloudbuild.yaml`. Infrastructure provisioning will
+move to Pulumi before any new environment is created or an existing environment
+is rebuilt. Until then, use the manual reference below and make narrowly scoped,
+reviewed GCP changes.
 
 ---
 
