@@ -422,10 +422,11 @@ Refer to the complete deployment guide in [`gcp_deployment_guide.md`](file:///me
 
 ### Live Cloud Diagnostics
 
-To monitor Cloud Run revisions, inspect container metrics, and tail live logs:
+To inspect readiness, recent revisions, and recent runtime errors without reading
+secrets or changing cloud resources:
 
 ```bash
-bash scripts/gcp-diagnostics.sh
+bash scripts/gcp-diagnostics.sh --service all
 ```
 
 ---
