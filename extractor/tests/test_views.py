@@ -1059,6 +1059,30 @@ class SecurityAuthTestCase(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, "https://challenges.cloudflare.com/turnstile/v0/api.js")
             self.assertContains(response, 'data-sitekey="test-site-key"')
+            self.assertContains(response, 'id="forgot-form"')
+
+    def test_forgot_password_requires_turnstile_token_when_configured(self):
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="test-site-key",
+        ):
+            response = self.client.post(reverse("forgot_password"), {"email": "test@example.com"})
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "CAPTCHA verification is required")
+
+    def test_register_requires_turnstile_token_when_configured(self):
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="test-site-key",
+        ):
+            response = self.client.post(
+                reverse("register"),
+                {"email": "test@example.com", "password": "password123", "confirm_password": "password123"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "CAPTCHA verification is required")
 
     @patch("urllib.request.urlopen")
     def test_supabase_admin_promotion_security(self, mock_urlopen):

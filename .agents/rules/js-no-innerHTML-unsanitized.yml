@@ -13,3 +13,5 @@ rule:
       - pattern: $EL.innerHTML = ""
       # Safe: known helper that returns sanitized badge HTML
       - pattern: $EL.innerHTML = getStatusBadgeHTML($$$)
+      - pattern: $EL.innerHTML = `${spinnerSvg} Restarting...`
+      - pattern: $EL.innerHTML = `${spinnerSvg} Deleting...`
