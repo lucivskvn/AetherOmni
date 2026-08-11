@@ -163,11 +163,6 @@ echo -n "YOUR_SURREALDB_PASSWORD" | gcloud secrets versions add SURREAL_PASS --d
 gcloud secrets create ADMIN_EMAIL --replication-policy="automatic"
 echo -n "admin@example.com" | gcloud secrets versions add ADMIN_EMAIL --data-file=-
 
-gcloud secrets create ADMIN_USERNAME --replication-policy="automatic"
-echo -n "admin" | gcloud secrets versions add ADMIN_USERNAME --data-file=-
-
-gcloud secrets create ADMIN_PASSWORD --replication-policy="automatic"
-echo -n "AdminPass123!" | gcloud secrets versions add ADMIN_PASSWORD --data-file=-
 
 # 5. Supabase Auth Configuration (for user authentication)
 gcloud secrets create SUPABASE_URL --replication-policy="automatic"
@@ -180,7 +175,7 @@ echo -n "YOUR_SUPABASE_PUBLIC_KEY" | gcloud secrets versions add SUPABASE_PUBLIC
 ### B. Grant Secret Access to the Service Account
 
 ```bash
-for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL ADMIN_USERNAME ADMIN_PASSWORD SUPABASE_URL SUPABASE_PUBLIC_KEY; do
+for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY; do
   gcloud secrets add-iam-policy-binding ${secret} \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/secretmanager.secretAccessor"
@@ -352,7 +347,7 @@ gcloud run deploy aether-web \
   --region=${REGION} \
   --service-account=${SERVICE_ACCOUNT} \
   --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://aether-web-${PROJECT_NUMBER}.${REGION}.run.app,WORKER_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite" \
-  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
+  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
   --allow-unauthenticated
 
 # Deploy Worker Service
@@ -361,7 +356,7 @@ gcloud run deploy aether-worker \
   --region=${REGION} \
   --service-account=${SERVICE_ACCOUNT} \
   --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,WORKER_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite" \
-  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,ADMIN_USERNAME=ADMIN_USERNAME:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
+  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
   --allow-unauthenticated
 ```
 

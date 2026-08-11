@@ -44,14 +44,12 @@ fetch_secret() {
     fi
 }
 
-ADMIN_USER=$(fetch_secret "ADMIN_USERNAME")
 ADMIN_MAIL=$(fetch_secret "ADMIN_EMAIL")
 ADMIN_PASS=$(fetch_secret "ADMIN_PASSWORD")
 SUPABASE_URL_VAL=$(fetch_secret "SUPABASE_URL")
 SUPABASE_KEY_VAL=$(fetch_secret "SUPABASE_PUBLIC_KEY")
 
 echo -e "\n${YELLOW}📋 Administrative Account Details:${NC}"
-echo -e "  • Username     : ${GREEN}${ADMIN_USER}${NC}"
 echo -e "  • Email        : ${GREEN}${ADMIN_MAIL}${NC}"
 
 if [[ "$1" == "--show-password" ]]; then
