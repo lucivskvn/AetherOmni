@@ -27,10 +27,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0;m'
 
-APP_VERSION="1.5.0"
-if [ -f "VERSION" ]; then
-    APP_VERSION=$(cat VERSION)
-fi
+APP_VERSION=$(python3 scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${CYAN} 🚀 AetherOmni Pre-Production Quality & DevSecOps Verification Suite   ${NC}"
