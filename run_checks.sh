@@ -238,7 +238,7 @@ fi
 
 echo -e "\n${YELLOW}[SAST Engine] Executing Semgrep Static Application Security Testing...${NC}"
 if command -v semgrep &> /dev/null; then
-    if semgrep scan --config=auto --quiet; then
+    if semgrep scan --config=auto --quiet --error; then
         echo -e "${GREEN}✓ Semgrep SAST security scan completed successfully (0 findings).${NC}"
     else
         echo -e "${RED}✗ Semgrep SAST security scan detected security findings!${NC}"

@@ -52,6 +52,7 @@
     {% endif %}
 
     {% if CF_TURNSTILE_SITE_KEY %}
+    <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Turnstile's versionless loader is vendor-managed and cannot use a stable SRI hash. -->
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     {% endif %}
 

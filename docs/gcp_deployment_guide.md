@@ -1,4 +1,4 @@
-# Google Cloud Run Production Deployment Guide (Version 1.5.493)
+# Google Cloud Run Production Deployment Guide (Version 1.5.0)
 
 This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
 
@@ -364,7 +364,7 @@ gcloud run deploy aether-worker \
 
 ## 8. Continuous Updates & Redeployment
 
-Whenever you update your code, run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
+Whenever you update your code, run the local verification suite first. The remote CI pipeline blocks container-lint and SonarQube quality-gate failures before a deployment change should be promoted. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
 
 ```bash
 gcloud builds submit --config cloudbuild.yaml

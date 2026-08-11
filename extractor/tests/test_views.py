@@ -1003,10 +1003,10 @@ class SecurityAuthTestCase(TestCase):
             self.assertContains(response, "https://challenges.cloudflare.com/turnstile/v0/api.js")
             self.assertContains(response, 'data-sitekey="test-site-key"')
 
-
     @patch("urllib.request.urlopen")
     def test_supabase_app_metadata_admin_promotion(self, mock_urlopen):
         import json
+
         from extractor.auth import SupabaseAuthBackend
 
         # User has app_metadata.is_admin = True
@@ -1030,7 +1030,9 @@ class SecurityAuthTestCase(TestCase):
     @patch("urllib.request.urlopen")
     def test_first_user_auto_bootstrap(self, mock_urlopen):
         import json
+
         from django.contrib.auth.models import User
+
         from extractor.auth import SupabaseAuthBackend
 
         # Ensure database has no superusers to trigger bootstrap
@@ -1090,6 +1092,7 @@ class SecurityAuthTestCase(TestCase):
         import json
 
         from django.contrib.auth.models import User
+
         from extractor.auth import SupabaseAuthBackend
 
         # Create an initial superuser so that the auto-admin bootstrapping does not trigger for the normal user

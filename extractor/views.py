@@ -14,6 +14,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.utils.safestring import mark_safe
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
@@ -132,6 +133,11 @@ from extractor.utils import (
     query_semantic_knowledge_rag,
     render_markdown_to_html,
 )
+
+
+def _render_sanitized_markdown(markdown_text: str) -> str:
+    """Render Markdown only after render_markdown_to_html applies HTML sanitization."""
+    return mark_safe(render_markdown_to_html(markdown_text))  # nosec B308 B703 # nosem
 
 
 def _is_budget_exceeded(user) -> bool:
@@ -714,11 +720,9 @@ class DocumentDetailView(LoginRequiredMixin, View):
 
         currency_details = get_locale_currency_details(request)
 
-        from django.utils.safestring import mark_safe
-
         # Render markdown to HTML for presentation (sanitized via Bleach inside render_markdown_to_html)
-        rendered_raw = mark_safe(render_markdown_to_html(doc.raw_markdown)) if doc.raw_markdown else ""  # nosec S308
-        rendered_refined = mark_safe(render_markdown_to_html(doc.refined_markdown)) if doc.refined_markdown else ""  # nosec S308
+        rendered_raw = _render_sanitized_markdown(doc.raw_markdown) if doc.raw_markdown else ""
+        rendered_refined = _render_sanitized_markdown(doc.refined_markdown) if doc.refined_markdown else ""
 
         # Live cost localization formatting
         formatted_cost = format_localized_cost(doc.cost_usd, currency_details)
@@ -1842,7 +1846,7 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
     return None
 
 
-def _register_supabase_user(supabase_url, supabase_key, email, password, app_url, captcha_token=""):
+def _register_supabase_user(supabase_url, supabase_key, email, password, app_url, captcha_token=None):
     """Make the Supabase signup API call. Returns (success: bool, error_msg: str | None)."""
     import json
     import urllib.parse
@@ -1912,7 +1916,7 @@ def register_view(request):
     return render(request, TEMPLATE_REGISTER)
 
 
-def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_token=""):
+def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_token=None):
     import json
     import urllib.parse
     import urllib.request

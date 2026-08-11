@@ -31,9 +31,9 @@
 
 - Once `run_checks.sh` passes locally and the user approves remote pushing, push to `origin main` or open a PR.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
-     1. Pre-Scan Validation — Hadolint + shell script syntax check
+     1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
      2. SonarQube Cloud SAST (Self-Hosted) on `https://sonarqube.fainko.cloud` — multi-language Python 3.13 + JavaScript, Sonar agentic AI quality profiles, with `coverage.xml`
-     3. Post-Scan Quality Gate Gatekeeper — enforces 0 new violations
+     3. Post-Scan Quality Gate Gatekeeper — blocks failures and enforces 0 new violations
 
 ### 5. Local-First Review & No Unsolicited Remote Pushing
 

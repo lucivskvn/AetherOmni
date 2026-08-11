@@ -1,11 +1,10 @@
 # ==============================================================================
-# GITHUB ACTIONS ENTERPRISE CI PIPELINE (STANDARDIZED LATEST: 2026-08-04)
+# GITHUB ACTIONS ENTERPRISE CI PIPELINE
 # ==============================================================================
 # Security & Performance Standards:
-# - Latest Verified Action Versions (actions/checkout@v7.0.1, actions/cache@v6.1.0)
-# - Latest SonarSource MQR Scanner (sonarqube-scan-action@v8.2.1)
-# - Least Privilege Permissions Scoping (contents: read)
-# - Timeout Protections (timeout-minutes: 15)
+# - Pinned action releases maintained by Dependabot
+# - Least-privilege repository token (contents: read)
+# - Bounded job execution time
 # - Dual-Layer Caching (Dependency & Sonar Engine)
 # - 3-Phase Gatekeeper (Pre-Scan -> SonarQube SAST -> Post-Scan Quality Gate)
 # ==============================================================================
@@ -25,11 +24,6 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write
-  actions: read
-  pull-requests: write
-  checks: write
-  statuses: write
 
 jobs:
   pre-scan-validation:
@@ -53,7 +47,7 @@ jobs:
       - name: Pre-Scan Container & Script Validation
         run: |
           if [ -f Dockerfile ]; then
-            docker run --rm -i hadolint/hadolint hadolint - < Dockerfile || true
+            docker run --rm -i hadolint/hadolint hadolint - < Dockerfile
           fi
           if [ -f scripts/verify-pipeline.sh ]; then
             bash -n scripts/verify-pipeline.sh
@@ -110,8 +104,7 @@ jobs:
             -Dsonar.analysis.cache.enabled=true
 
       - name: SonarQube Quality Gate Status Check
-        uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
+        uses: SonarSource/sonarqube-quality-gate-action@v1.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
-        continue-on-error: true

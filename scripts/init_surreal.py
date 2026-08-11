@@ -199,8 +199,8 @@ def _create_local_superuser_full(admin_email, admin_password):
 
         try:
             validate_password(admin_password, user=user)
-        except Exception as exc:
-            logger.warning("Credential validation warning during initial admin setup: %s", exc)
+        except Exception:
+            logger.warning("Credential validation warning during initial admin setup.")
         user.set_password(admin_password)  # NOSONAR # nosemgrep
         user.save()
         logger.info("Local Django superuser '%s' created successfully.", admin_email)  # NOSONAR
@@ -216,8 +216,8 @@ def _create_local_superuser_full(admin_email, admin_password):
                 ForcePasswordChangeMiddleware.set_force_reset_flag(
                     user.id, bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
                 )
-            except ImportError as exc:
-                logger.debug("Bcrypt module unavailable for credential update flag: %s", exc)
+            except ImportError:
+                logger.debug("Bcrypt module unavailable for credential update flag.")
     else:
         if not user.is_staff or not user.is_superuser:
             user.is_staff = True

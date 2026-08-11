@@ -21,6 +21,7 @@ def _read_sonar_version(file_path: str) -> str | None:
         _log.warning("Could not read sonar-project.properties: %s", exc)
     return None
 
+
 def _read_file_version(file_path: str) -> str | None:
     try:
         with open(file_path, encoding="utf-8") as f:
@@ -28,6 +29,7 @@ def _read_file_version(file_path: str) -> str | None:
     except OSError as exc:
         _log.warning("Could not read VERSION file: %s", exc)
     return None
+
 
 def _resolve_release_version() -> str:
     if env_ver := os.environ.get("RELEASE_VERSION"):
