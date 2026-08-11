@@ -6,6 +6,9 @@
 
 ## 🎯 MANDATORY WORKFLOW FOR AI AGENTS
 
+Use `.agents/skills/aetheromni-delivery/SKILL.md` as the concise operational
+runbook. This file remains the authoritative cross-agent policy.
+
 ### 1. Shift-Left Local Verification FIRST (Multi-Language Stack & Dual Git Hooks)
 
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
@@ -45,6 +48,17 @@
 
 - **DO NOT TRIGGER OR TARGET UPSTREAM ORIGIN PARENT REPOSITORIES ON FORKS**:
      All PRs, branches, and commits MUST target `origin` directly.
+
+### 7. Release, GCP, and Agent Hand-off
+
+- Compute the release version before SonarQube analysis and Cloud Build; never
+  manually edit a release version or deploy a `latest` fallback.
+- Treat the GitHub Actions summary as the actionable SonarQube hand-off. Keep
+  failures blocking so Jules can address scoped issues from PR checks or issues.
+- Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do
+  not reintroduce secret-retrieval or imperative provisioning scripts.
+- Use Pulumi for new or rebuilt GCP environments. Import and preview existing
+  infrastructure before applying changes.
 
 ---
 
