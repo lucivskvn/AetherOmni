@@ -64,6 +64,18 @@ def _sync_supabase_user(
     admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
     is_promoted_admin = user_email.lower() == admin_email.lower()
 
+    # 1. Supabase App Metadata Role Syncing
+    app_metadata = user_info.get("app_metadata", {})
+    if app_metadata.get("is_admin") is True:
+        is_promoted_admin = True
+
+    # 2. First-User Auto-Admin Bootstrapping
+    if not is_promoted_admin:
+        # Check if any active superuser exists in the system
+        if not User.objects.filter(is_superuser=True, is_active=True).exists():
+            logger.info("[Auth] No active admins found. Bootstrapping first-user admin privileges for: %s", user_email)
+            is_promoted_admin = True
+
     if is_promoted_admin:
         user.is_superuser = True
         user.is_staff = True

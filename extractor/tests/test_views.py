@@ -1015,7 +1015,11 @@ class SecurityAuthTestCase(TestCase):
         # Mock successful login response from Supabase for a normal user email but trying to log in as "admin"
         import json
 
+        from django.contrib.auth.models import User
         from extractor.auth import SupabaseAuthBackend
+
+        # Create an initial superuser so that the auto-admin bootstrapping does not trigger for the normal user
+        User.objects.create_superuser(username="existing_admin", email="existing_admin@example.com", password="pwd")
 
         # User email is not admin@<domain>
         mock_resp = MagicMock()
