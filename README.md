@@ -349,6 +349,11 @@ Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (
 2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules with `coverage.xml`.
 3. **Quality Gate Gatekeeper**: Blocks failed quality gates before permitting merge.
 
+Cloud Build uses Kaniko's BusyBox-enabled debug image, pinned by immutable
+digest, when a build step must source computed release metadata. The standard
+executor image is shell-less. It uses a registry-backed cache and bounded pull,
+extraction, and push retries.
+
 ---
 
 ## 🚀 Local Development Setup Guide
