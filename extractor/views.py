@@ -1868,7 +1868,7 @@ def _execute_supabase_auth_request(url_path, supabase_url, supabase_key, body_da
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
             return True, None
     except urllib.error.HTTPError as e:
-        body_bytes = e.read().decode("utf-8")
+        body_bytes = e.read().decode("utf-8", errors="replace")
         try:
             err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
         except (json.JSONDecodeError, KeyError, AttributeError):

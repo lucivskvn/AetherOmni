@@ -20,7 +20,7 @@ function parseInline(text) {
         t = t.replace(/_([^_\n]+)_/g, '<em>$1</em>');
 
         // Image: ![alt](src)
-        t = t.replace(/!\[([^\]]*)\]\([^)]+\)/g,
+        t = t.replace(/!\[([^\]]*)\]\(((?:[^()]+|\([^)]*\))+)\)/g,
             '<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0;">');
 
         // Link: [text](href)
