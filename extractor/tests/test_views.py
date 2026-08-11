@@ -273,9 +273,21 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         mock_urlopen.return_value = mock_resp
 
         # Execute Supabase auth flow with mock credentials
+        mock_request = MagicMock()
+        mock_request.POST = {"cf-turnstile-response": "valid-captcha-token"}
         backend = SupabaseAuthBackend()
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
-            user = backend.authenticate(None, username="supabase.test@example.com", password="somepassword")
+            user = backend.authenticate(mock_request, username="supabase.test@example.com", password="somepassword")
+
+        mock_urlopen.assert_called_once()
+        req_arg = mock_urlopen.call_args[0][0]
+        payload = json.loads(req_arg.data.decode("utf-8"))
+
+        # Verify the structure properly handles token placement and limits duplication across tests
+        meta_security = payload.get("gotrue_meta_security", {})
+        self.assertEqual(meta_security.get("captcha_token"), "valid-captcha-token")
+        self.assertNotIn("captcha_token", payload)
+        self.assertNotIn("cf-turnstile-response", payload)
 
         self.assertIsNotNone(user)
         self.assertEqual(user.email, "supabase.test@example.com")
@@ -965,6 +977,81 @@ class SecurityAuthTestCase(TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, "Invalid email format.")
+
+    def _verify_supabase_payload_captcha(self, payload_dict):
+        self.assertIn("gotrue_meta_security", payload_dict)
+        self.assertEqual(payload_dict["gotrue_meta_security"]["captcha_token"], "valid-captcha-token")
+        self.assertNotIn("captcha_token", payload_dict)
+        self.assertNotIn("cf-turnstile-response", payload_dict)
+
+    @patch("urllib.request.urlopen")
+    def test_register_supabase_payload_captcha(self, mock_urlopen, *args, **kwargs):
+        import json
+        from unittest.mock import MagicMock, patch
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({}).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="test-site-key",
+            APP_URL="https://test.server",
+            DEBUG=False,
+        ):
+            from extractor.views import _register_supabase_user
+
+            with patch("extractor.utils.validate_url_scheme"):
+                _register_supabase_user(
+                    "https://project.supabase.co",
+                    "mock-public-key",
+                    "test@example.com",
+                    "password123",
+                    "https://test.server",
+                    "valid-captcha-token",
+                )
+
+        mock_urlopen.assert_called_once()
+        req_arg = mock_urlopen.call_args[0][0]
+        payload = json.loads(req_arg.data.decode("utf-8"))
+        self._verify_supabase_payload_captcha(payload)
+
+    def test_forgot_password_supabase_payload_captcha(self, *args, **kwargs):
+        import json
+        from unittest.mock import MagicMock, patch
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({}).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen = MagicMock()
+        mock_urlopen.return_value = mock_resp
+
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="test-site-key",
+            APP_URL="https://test.server",
+        ):
+            from extractor.views import _send_supabase_recovery
+
+            with (
+                patch("urllib.request.urlopen", mock_urlopen),
+                patch("extractor.utils.validate_url_scheme"),
+            ):
+                _send_supabase_recovery(
+                    "test@example.com",
+                    "https://project.supabase.co",
+                    "mock-public-key",
+                    "https://test.server",
+                    "valid-captcha-token",
+                )
+
+        mock_urlopen.assert_called_once()
+        req_arg = mock_urlopen.call_args[0][0]
+        payload = json.loads(req_arg.data.decode("utf-8"))
+        self._verify_supabase_payload_captcha(payload)
 
     @patch("urllib.request.urlopen")
     def test_register_view_scheme_validation(self, mock_urlopen):
