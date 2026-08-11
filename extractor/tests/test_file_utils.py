@@ -1,3 +1,5 @@
+import os
+import tempfile
 import io
 import zipfile
 from unittest.mock import MagicMock, patch
@@ -31,6 +33,26 @@ class FileUtilsTestCase(TestCase):
             self.assertEqual(file_utils.calculate_file_sha256(temp_file_path), expected_hash)
         finally:
             os.remove(temp_file_path)
+
+
+    def test_calculate_file_sha256_symlink_traversal(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            os.mkdir(source_dir)
+
+            secret_file = os.path.join(temp_dir, "secret.txt")
+            with open(secret_file, "w") as f:
+                f.write("sensitive data")
+
+            symlink_path = os.path.join(source_dir, "symlink.txt")
+            try:
+                os.symlink(secret_file, symlink_path)
+            except OSError:
+                self.skipTest("Symlinks not supported on this system")
+
+            with self.assertRaises(ValueError) as ctx:
+                file_utils.calculate_file_sha256(symlink_path, safe_base_dir=source_dir)
+            self.assertIn("Path traversal detected", str(ctx.exception))
 
     def test_clean_html_content(self):
         dirty_html = "<script>alert('unsafe');</script><p>Safe content</p> <a href='javascript:void(0)'>Link</a>"

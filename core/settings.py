@@ -291,13 +291,11 @@ SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "")
 
 if not SURREAL_PASS:
-    SURREAL_PASS = "root"  # nosec B105
+    if DEBUG or SURREALDB_OFFLINE:
+        SURREAL_PASS = "root"  # nosec B105
+    elif "collectstatic" not in sys.argv:
+        raise ImproperlyConfigured("SURREAL_PASS environment variable is not set. Production deployments require an explicit password for SurrealDB.")
 
-if not DEBUG and SURREAL_PASS == "root" and not SURREALDB_OFFLINE and "collectstatic" not in sys.argv:  # nosec B105 # NOSONAR
-    logger.warning(
-        "[Security] SURREAL_PASS is using default 'root' credential. "
-        "Recommend configuring an explicit strong password for SurrealDB in production."
-    )
 
 
 # ── Google Cloud Tasks Configuration ──────────────────────────────────────────

@@ -133,28 +133,25 @@ def calculate_file_sha256(file_handle_or_path: str | IO[bytes], safe_base_dir: s
 
     if isinstance(file_handle_or_path, str):
         # CodeQL path traversal fix
-        # Ensure the filename contains NO directory traversal characters at all to be safe.
         if ".." in file_handle_or_path or file_handle_or_path.startswith("~"):
             raise ValueError(f"Path traversal characters detected in: {file_handle_or_path}")
 
-        # Completely sever the user-controlled path string from the directory traversal logic.
+        # Resolve symbolic links and normalize
+        safe_path = os.path.realpath(file_handle_or_path)
+
         if safe_base_dir:
-            filename = os.path.basename(file_handle_or_path)
-            base = os.path.abspath(safe_base_dir)
-            safe_path = os.path.join(base, filename)
+            base = os.path.realpath(safe_base_dir)
+            if os.path.commonpath([safe_path, base]) != base:
+                raise ValueError(f"Path traversal detected: {safe_path} is outside of {base}")
         else:
-            # If safe_base_dir is not provided, we must rely on absolute path resolution and check it against expected bases.
-            safe_path = os.path.abspath(file_handle_or_path)
-            # Ensure it is confined to known system boundaries like tmp or MEDIA_ROOT
+            # If safe_base_dir is not provided, ensure it is confined to known system boundaries
             from django.conf import settings
             import tempfile
 
-            # Since CodeQL needs containment checks when using an absolute path directly:
-            media_root = os.path.abspath(getattr(settings, 'MEDIA_ROOT', '/tmp'))
-            temp_dir = os.path.abspath(tempfile.gettempdir())
+            media_root = os.path.realpath(getattr(settings, 'MEDIA_ROOT', '/tmp'))
+            temp_dir = os.path.realpath(tempfile.gettempdir())
 
-            if not safe_path.startswith(os.path.join(media_root, '')) and not safe_path.startswith(os.path.join(temp_dir, '')):
-                # In tests, it might be in an unexpected dir
+            if os.path.commonpath([safe_path, media_root]) != media_root and os.path.commonpath([safe_path, temp_dir]) != temp_dir:
                 if not 'extractor/tests' in safe_path and not 'pytest' in safe_path:
                     raise ValueError(f"Path traversal detected: {safe_path} is outside allowed directories.")
 

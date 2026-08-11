@@ -307,3 +307,21 @@ class CleanupExpiredDocumentsTestCase(TestCase):
         self.assertFalse(SourceDocument.objects.filter(id__in=[doc1.id, doc2.id, doc3.id, doc5.id]).exists())
         # Confirm document 6 still exists.
         self.assertTrue(SourceDocument.objects.filter(id=doc6.id).exists())
+
+    def test_pdf_page_count_with_newlines(self):
+        # Create a dummy PDF with newlines between /Pages and /Count
+        import tempfile
+        import os
+        from extractor.tasks import _determine_actual_page_count
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            # We add dummy PDF content
+            pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Type /Pages \n\n\n /Count 42 >>\nendobj\n%%EOF"
+            temp_file.write(pdf_content)
+            temp_file_path = temp_file.name
+
+        try:
+            count = _determine_actual_page_count(temp_file_path, "PDF")
+            self.assertEqual(count, 42)
+        finally:
+            os.remove(temp_file_path)

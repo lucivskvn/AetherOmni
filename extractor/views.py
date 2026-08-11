@@ -1820,6 +1820,13 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         return redirect("deployment_controller")
 
 
+def validate_email_address(email: str) -> bool:
+    import re
+    # Reject domains with leading or trailing hyphens and consecutive dots
+    if ".." in email or "@-" in email or "-." in email or ".-" in email or email.endswith("-"):
+        return False
+    return bool(re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email))
+
 def _validate_registration_input(email, password, confirm_password, supabase_url, supabase_key):
     """Returns an error message string or None if input is valid."""
     import re
@@ -1840,7 +1847,7 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
     if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
         return "Registration of administrative or system email addresses is not permitted."
 
-    if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email):
+    if not validate_email_address(email):
         return "Invalid email format."
 
     return None
@@ -1962,7 +1969,7 @@ def forgot_password_view(request):
         # Validate email format
         import re
 
-        if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email):
+        if not validate_email_address(email):
             messages.error(request, "Invalid email format.")
             return render(request, TEMPLATE_FORGOT_PASSWORD)
 

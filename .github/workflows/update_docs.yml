@@ -13,7 +13,7 @@ name: Auto-Update Documentation & Version
         default: 'Manual docs sync'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────────
@@ -72,8 +72,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: compute-version
 
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout (full history)

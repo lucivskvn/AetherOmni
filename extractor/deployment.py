@@ -182,16 +182,20 @@ def get_gcp_access_token():
 
 
 def validate_service_name(service_name):
-    if not service_name or not re.match(r"^[a-z]([-a-z0-9]*[a-z0-9])?$", str(service_name)):
+    if not service_name or not re.fullmatch(r"[a-z]([-a-z0-9]*[a-z0-9])?", str(service_name)):
         raise ValueError(f"Invalid service name: {service_name}")
 
 def validate_region(region):
-    if not region or not re.match(r"^[a-z]+-[a-z]+\d+$", str(region)):
+    if not region or not re.fullmatch(r"[a-z]+-[a-z]+[0-9]+", str(region)):
         raise ValueError(f"Invalid region: {region}")
 
 def validate_project_namespace(project_namespace):
-    if not project_namespace or not re.match(r"^[a-z0-9-]+$", str(project_namespace)):
+    if not project_namespace or not re.fullmatch(r"[a-z0-9-]+", str(project_namespace)):
         raise ValueError(f"Invalid project namespace: {project_namespace}")
+
+def validate_project_id(project_id):
+    if not project_id or not re.fullmatch(r"[a-z0-9-]+", str(project_id)):
+        raise ValueError(f"Invalid project id: {project_id}")
 
 def get_service_config(service_name):
     """
@@ -226,6 +230,7 @@ def get_service_config(service_name):
             logger.exception(f"GCP REST API describe failed for {service_name}.")
             raise e
     else:
+        validate_project_id(project_id)
         # Local development fallback using gcloud CLI
         try:
             cmd = [
@@ -334,6 +339,7 @@ def update_service_scale(service_name, min_scale, max_scale):
             logger.exception(f"GCP REST API update failed for {service_name}.")
             raise e
     else:
+        validate_project_id(project_id)
         # Local development fallback using gcloud CLI
         try:
             cmd = [
@@ -390,6 +396,8 @@ def _parse_text_payload(entry):
 
 def _fallback_local_run_logs(service_name, region, project_id, limit):
     validate_service_name(service_name)
+    validate_region(region)
+    validate_project_id(project_id)
     try:
         cmd = [
             "gcloud",
@@ -418,6 +426,7 @@ def _fallback_local_run_logs(service_name, region, project_id, limit):
 
 def _get_service_logs_gcp(service_name, project_id, limit, token):
     validate_service_name(service_name)
+    validate_project_id(project_id)
     url = "https://logging.googleapis.com/v2/entries:list"
     body = {
         "resourceNames": [f"projects/{project_id}"],
@@ -457,6 +466,8 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
 
 def _get_service_logs_local(service_name, project_id, region, limit):
     validate_service_name(service_name)
+    validate_region(region)
+    validate_project_id(project_id)
     try:
         cmd = [
             "gcloud",
@@ -499,6 +510,8 @@ def get_service_logs(service_name, limit=50):
         return [{"timestamp": "", "message": "GCP Project ID not configured.", "severity": "WARNING"}]
 
     token = get_gcp_access_token()
+    validate_region(region)
+    validate_project_id(project_id)
     if token:
         return _get_service_logs_gcp(service_name, project_id, limit, token)
     else:
