@@ -435,9 +435,9 @@ if not DEBUG:
         if origin_app not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(origin_app)
 
-    logger.info(f"[Security] Production OWASP enforcement active. CSRF Trusted Origins: {CSRF_TRUSTED_ORIGINS}")
+    logger.info("[Security] Production OWASP enforcement active. CSRF Trusted Origins: ***")
 else:
-    logger.info(f"[Security] Development security active. CSRF Trusted Origins: {CSRF_TRUSTED_ORIGINS}")
+    logger.info("[Security] Development security active. CSRF Trusted Origins: ***")
 
 
 # ── Operational Settings ───────────────────────────────────────────────────────

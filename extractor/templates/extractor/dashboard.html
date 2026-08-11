@@ -110,7 +110,7 @@
                             <label for="sort-select" style="display: flex; align-items: center; gap: 4px;">
                                 <i data-lucide="arrow-up-down" style="width: 14px; height: 14px;"></i> Sort
                             </label>
-                            <select id="sort-select" class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px; height: auto; cursor: pointer; border-radius: var(--border-radius-sm);" onchange="window.location.href = '?sort_by=' + this.value">
+                            <select id="sort-select" class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px; height: auto; cursor: pointer; border-radius: var(--border-radius-sm);" onchange="window.location.href = '?sort_by=' + encodeURIComponent(this.value)">
                                 <option value="-date" {% if sort_by == '-date' %}selected{% endif %}>Newest first</option>
                                 <option value="date" {% if sort_by == 'date' %}selected{% endif %}>Oldest first</option>
                                 <option value="name" {% if sort_by == 'name' %}selected{% endif %}>Name (A-Z)</option>

@@ -12,6 +12,9 @@ name: Auto-Update Documentation & Version
         required: false
         default: 'Manual docs sync'
 
+permissions:
+  contents: write
+
 jobs:
   # ──────────────────────────────────────────────────────────────────────────────
   # Job 1: Compute the canonical version from git and export it as an output

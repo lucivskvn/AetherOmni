@@ -1034,7 +1034,7 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
             return JsonResponse(results)
         except ValueError as e:
             logger.warning("[RAG Search] Validation error: %s", e)
-            return JsonResponse({"error": str(e)}, status=400)
+            return JsonResponse({"error": "Invalid input provided for search request."}, status=400)
         except Exception as e:
             logger.exception("[RAG Search] Internal exception during semantic search: %s", e)
             return JsonResponse(
@@ -1840,7 +1840,7 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
     if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
         return "Registration of administrative or system email addresses is not permitted."
 
-    if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", email):
+    if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email):
         return "Invalid email format."
 
     return None
@@ -1962,7 +1962,7 @@ def forgot_password_view(request):
         # Validate email format
         import re
 
-        if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", email):
+        if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email):
             messages.error(request, "Invalid email format.")
             return render(request, TEMPLATE_FORGOT_PASSWORD)
 

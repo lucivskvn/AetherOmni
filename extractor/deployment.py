@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import subprocess  # nosec B404
 import sys
 import urllib.request
@@ -180,11 +181,24 @@ def get_gcp_access_token():
         return None
 
 
+def validate_service_name(service_name):
+    if not service_name or not re.match(r"^[a-z]([-a-z0-9]*[a-z0-9])?$", str(service_name)):
+        raise ValueError(f"Invalid service name: {service_name}")
+
+def validate_region(region):
+    if not region or not re.match(r"^[a-z]+-[a-z]+\d+$", str(region)):
+        raise ValueError(f"Invalid region: {region}")
+
+def validate_project_namespace(project_namespace):
+    if not project_namespace or not re.match(r"^[a-z0-9-]+$", str(project_namespace)):
+        raise ValueError(f"Invalid project namespace: {project_namespace}")
+
 def get_service_config(service_name):
     """
     Fetches the active Knative service JSON configuration.
     Uses Google REST API in production or falls back to 'gcloud' CLI locally.
     """
+    validate_service_name(service_name)
     details = get_gcp_project_details()
     project_id = details["project_id"]
     project_namespace = details.get("project_number") or project_id
@@ -192,6 +206,9 @@ def get_service_config(service_name):
 
     if not project_id:
         raise ValueError("GCP Project ID is not configured.")
+
+    validate_region(region)
+    validate_project_namespace(project_namespace)
 
     token = get_gcp_access_token()
     if token:
@@ -268,10 +285,14 @@ def update_service_scale(service_name, min_scale, max_scale):
     Updates the scaling settings of a Cloud Run service (min and max scale).
     Uses GCP REST PUT API in production or falls back to local gcloud updates.
     """
+    validate_service_name(service_name)
     details = get_gcp_project_details()
     project_id = details["project_id"]
     project_namespace = details.get("project_number") or project_id
     region = details["region"]
+
+    validate_region(region)
+    validate_project_namespace(project_namespace)
 
     # 1. Fetch current service config first (required for Knative PUT updates)
     service_json = get_service_config(service_name)
@@ -466,6 +487,7 @@ def get_service_logs(service_name, limit=50):
     Fetches the latest live logs from Google Cloud Logging API (production)
     or falls back to 'gcloud run services logs' (local).
     """
+    validate_service_name(service_name)
     details = get_gcp_project_details()
     project_id = details["project_id"]
     region = details["region"]

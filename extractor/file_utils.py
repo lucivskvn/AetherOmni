@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import os
 import hashlib
 import json
 import logging
@@ -129,8 +130,18 @@ def calculate_file_sha256(file_handle_or_path: str | IO[bytes]) -> str:
     Accepts either a string path or a file-like object.
     """
     sha256 = hashlib.sha256()
+
     if isinstance(file_handle_or_path, str):
-        with open(file_handle_or_path, "rb") as f:
+        # Prevent path traversal by explicitly disallowing relative traversal sequences.
+        # This function is used mostly on uploaded files or CLI arguments.
+        if ".." in file_handle_or_path or file_handle_or_path.startswith("~"):
+            raise ValueError(f"Path traversal detected in path: {file_handle_or_path}")
+
+        safe_path = os.path.abspath(file_handle_or_path)
+        if not os.path.exists(safe_path) or not os.path.isfile(safe_path):
+            raise FileNotFoundError(f"File not found or not a valid file: {safe_path}")
+
+        with open(safe_path, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
                 sha256.update(chunk)
     else:
