@@ -1864,7 +1864,7 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
         }
         body: dict = {"email": email, "password": password}
         if captcha_token:
-            body["captcha_token"] = captcha_token
+            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
@@ -1933,7 +1933,7 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_
         }
         body: dict = {"email": email}
         if captcha_token:
-            body["captcha_token"] = captcha_token
+            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
