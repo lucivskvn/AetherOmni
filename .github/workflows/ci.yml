@@ -103,8 +103,58 @@ jobs:
             -Dsonar.threads=4
             -Dsonar.analysis.cache.enabled=true
 
-      - name: SonarQube Quality Gate Status Check
+      - name: 3. SonarQube Quality Gate Status Check
+        id: quality-gate
+        continue-on-error: true
         uses: SonarSource/sonarqube-quality-gate-action@v1.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
+
+      - name: Publish SonarQube quality gate result
+        if: always()
+        env:
+          QUALITY_GATE_STATUS: ${{ steps.quality-gate.outputs.quality-gate-status }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_DASHBOARD_URL: https://sonarqube.fainko.cloud/dashboard?id=aetheromni
+          SONAR_HOST_URL: https://sonarqube.fainko.cloud
+          SONAR_PULL_REQUEST: ${{ github.event.pull_request.number || '' }}
+        run: |
+          set -euo pipefail
+
+          if [ "$QUALITY_GATE_STATUS" = "PASSED" ]; then
+            result="passed"
+          elif [ "$QUALITY_GATE_STATUS" = "WARN" ]; then
+            result="warning"
+          else
+            result="failed"
+          fi
+
+          {
+            echo "### SonarQube Quality Gate: ${result}"
+            echo
+            echo "| Status | Dashboard |"
+            echo "| --- | --- |"
+            echo "| ${QUALITY_GATE_STATUS:-UNAVAILABLE} | [Open SonarQube dashboard](${SONAR_DASHBOARD_URL}) |"
+
+            if [ -n "$QUALITY_GATE_STATUS" ]; then
+              quality_gate_url="${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=aetheromni"
+              if [ -n "$SONAR_PULL_REQUEST" ]; then
+                quality_gate_url="${quality_gate_url}&pullRequest=${SONAR_PULL_REQUEST}"
+              fi
+
+              echo
+              echo "| Metric | Status | Threshold | Actual |"
+              echo "| --- | --- | --- | --- |"
+              if gate_payload=$(curl --fail --silent --show-error --user "${SONAR_TOKEN}:" "$quality_gate_url"); then
+                jq -r '.projectStatus.conditions[]? | "| \(.metricKey) | \(.status) | \(.errorThreshold // "—") | \(.actualValue // "—") |"' <<< "$gate_payload"
+              else
+                echo "| Quality-gate details unavailable | — | — | — |"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$QUALITY_GATE_STATUS" != "PASSED" ]; then
+            echo "::error title=SonarQube Quality Gate ${result}::Review ${SONAR_DASHBOARD_URL}"
+            exit 1
+          fi

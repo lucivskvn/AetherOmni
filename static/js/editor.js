@@ -30,23 +30,6 @@ function parseInline(text) {
         return t;
     }
 
-function handleSuccess(btnElement) {
-    const origHTML = btnElement.innerHTML;
-    const checkSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check" style="color: #10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
-    btnElement.innerHTML = checkSvg;
-    btnElement.title = "Copied!";
-    btnElement.setAttribute('aria-label', "Copied!");
-
-    if (typeof globalThis.showClientSideAlert === 'function') {
-        globalThis.showClientSideAlert('Copied curation markdown to clipboard successfully!', 'success');
-    }
-
-    setTimeout(() => {
-        btnElement.innerHTML = origHTML;
-        btnElement.title = "Copy Markdown to Clipboard (Ctrl+Shift+C)";
-        btnElement.setAttribute('aria-label', "Copy Markdown to Clipboard (Ctrl+Shift+C)");
-    }, 2000);
-}
 /**
  * editor.js — Split-pane live Markdown editor with scroll sync, RTL detection,
  * and a robust block + inline parser. Fully XSS-safe via HTML escaping before parse.
@@ -196,7 +179,7 @@ function applyPostRenderFeatures(container) {
 
     // Re-render any lucide icons added dynamically
     if (typeof lucide !== 'undefined' && lucide.createIcons) {
-        try { lucide.createIcons(); } catch (_) { /* ignore */ }
+        try { lucide.createIcons(); } catch { /* ignore */ }
     }
 }
 
@@ -211,48 +194,6 @@ function applyPostRenderFeatures(container) {
  *   - Inline: bold, italic, inline-code, links, images, strikethrough
  * Returns sanitised HTML (XSS-safe via upfront escaping).
  */
-
-function extractYamlFrontmatter(escaped) {
-    let yamlHtml = '';
-    let bodyText = escaped;
-    if (escaped.startsWith('---\n') || escaped.startsWith('---\r\n')) {
-        const lineBreak = escaped.startsWith('---\r\n') ? '\r\n' : '\n';
-        const delimiter = lineBreak + '---' + lineBreak;
-        const nextDash = escaped.indexOf(delimiter, 5);
-        if (nextDash !== -1) {
-            const yamlText = escaped.substring(4, nextDash);
-            bodyText = escaped.substring(nextDash + delimiter.length);
-            const lines = yamlText.split(lineBreak);
-            let rowsHtml = '';
-            lines.forEach(line => {
-                const colonIdx = line.indexOf(':');
-                if (colonIdx !== -1) {
-                    const key = line.substring(0, colonIdx).trim();
-                    const val = line.substring(colonIdx + 1).trim()
-                        .replaceAll('"', '')
-                        .replaceAll("'", '');
-                    if (key && val) {
-                        rowsHtml += `
-                            <div style="display: flex; gap: 8px; font-size: 12px; margin-bottom: 4px; font-family: sans-serif;">
-                                <span style="font-weight: 600; color: var(--text-muted); text-transform: uppercase; width: 120px; flex-shrink: 0;">${key}:</span>
-                                <span style="color: var(--text-main); font-weight: 500;">${val}</span>
-                            </div>`;
-                    }
-                }
-            });
-            if (rowsHtml) {
-                yamlHtml = `
-                    <div class="glass-card" style="padding: 12px 16px; margin-bottom: 16px; background: rgba(255,255,255,0.01); border: 1px dashed var(--border-glass); border-radius: 8px;">
-                        <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--text-glow); margin-bottom: 8px; font-family: sans-serif;">
-                            <i data-lucide="file-text" style="width: 14px; height: 14px;"></i> Document Frontmatter (YAML)
-                        </div>
-                        ${rowsHtml}
-                    </div>`;
-            }
-        }
-    }
-    return { yamlHtml, bodyText };
-}
 
 function _handleBlockquote(line, state, pushHtml) {
     if (line.startsWith('> ')) {
@@ -482,43 +423,3 @@ function compileMarkdown(markdown) {
 
     return _restoreSafeHtml(html);
 }
-
-function copyTextToClipboard(text, onSuccess, onError) {
-    function fallbackCopy() {
-        try {
-            const tempTextArea = document.createElement('textarea');
-            tempTextArea.value = text;
-            tempTextArea.style.top = '0';
-            tempTextArea.style.left = '0';
-            tempTextArea.style.position = 'fixed';
-            tempTextArea.style.opacity = '0';
-            document.body.appendChild(tempTextArea);
-            tempTextArea.focus();
-            tempTextArea.select();
-
-            const successful = document.execCommand('copy'); // NOSONAR
-            tempTextArea.remove();
-
-            if (successful) {
-                if (onSuccess) onSuccess();
-            } else {
-                throw new Error('execCommand copy returned false');
-            }
-        } catch (fallbackErr) {
-            if (onError) onError(fallbackErr);
-        }
-    }
-
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        navigator.clipboard.writeText(text)
-            .then(() => {
-                if (onSuccess) onSuccess();
-            })
-            .catch(() => {
-                fallbackCopy();
-            });
-    } else {
-        fallbackCopy();
-    }
-}
-
