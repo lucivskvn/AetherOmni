@@ -1846,9 +1846,7 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
     return None
 
 
-def _execute_supabase_auth_request(
-    url_path, supabase_url, supabase_key, body_data, app_url, captcha_token, action_name
-):
+def _execute_supabase_auth_request(url_path, supabase_url, supabase_key, body_data, captcha_token, action_name):
     import json
     import urllib.parse
     import urllib.request
@@ -1886,7 +1884,7 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
 
     url_path = f"/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
     return _execute_supabase_auth_request(
-        url_path, supabase_url, supabase_key, {"email": email, "password": password}, app_url, captcha_token, "Signup"
+        url_path, supabase_url, supabase_key, {"email": email, "password": password}, captcha_token, "Signup"
     )
 
 
@@ -1931,7 +1929,7 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_
 
     url_path = f"/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"
     return _execute_supabase_auth_request(
-        url_path, supabase_url, supabase_key, {"email": email}, app_url, captcha_token, "Recovery"
+        url_path, supabase_url, supabase_key, {"email": email}, captcha_token, "Recovery"
     )
 
 

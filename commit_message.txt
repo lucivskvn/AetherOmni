@@ -1,5 +1,0 @@
-fix: resolve sonarqube code duplication failure
-
-- Moved the logic inside `_register_supabase_user` and `_send_supabase_recovery` to a new helper function `_execute_supabase_auth_request` in `extractor/views.py`.
-- Formatted the python file to correctly pass ruff and avoid the SonarQube duplicate block issues on pipeline.
-- Refactored `extractor/tests/test_views.py` tests by deduplicating authentication assertions into a single `_verify_supabase_payload_captcha` helper to avoid duplicating the same assert blocks and raising Sonarqube issues.

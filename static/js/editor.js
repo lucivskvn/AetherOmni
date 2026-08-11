@@ -20,7 +20,7 @@ function parseInline(text) {
         t = t.replace(/_([^_\n]+)_/g, '<em>$1</em>');
 
         // Image: ![alt](src)
-        t = t.replace(/!\[([^\]]*)\]\(([^()]+)\)/g,
+        t = t.replace(/!\[([^\]]*)\]\([^)]+\)/g,
             '<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0;">');
 
         // Link: [text](href)
@@ -394,7 +394,7 @@ function _restoreSafeHtml(html) {
     return html
         .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
         .replace(/&lt;hr\s*\/?&gt;/gi, '<hr>')
-        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b([^&]*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b([^&]*)&gt;/gi, (match, closeSlash, tagName, attrs) => {
             let cleanAttrs = '';
             if (attrs) {
                 const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
