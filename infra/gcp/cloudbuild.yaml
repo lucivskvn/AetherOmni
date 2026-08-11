@@ -29,16 +29,9 @@
 # ==============================================================================
 substitutions:
   _REGION: asia-southeast1
-  # Default deployment tag is latest so a normal build always deploys the newest image.
-  # If a specific release tag is needed for a rollback or pinned deployment, set this
-  # value explicitly in the Cloud Build trigger or env.
-  _RELEASE_VERSION: "latest"
-  # When true, attempt to read the latest GitHub release tag for the repository
-  # and use it as the RELEASE_VERSION. Defaults to false to preserve existing behavior.
-  _USE_GITHUB_RELEASE: "false"
-  # Optional GitHub owner/repo to query for releases when _USE_GITHUB_RELEASE is true
-  _GITHUB_OWNER: lucivskvn
-  _GITHUB_REPO: AetherOmni
+  # Leave empty for the canonical commit-derived version. A rollback trigger may
+  # supply an explicit MAJOR.MINOR.PATCH version.
+  _RELEASE_VERSION: ""
 
 steps:
   # 0. Compute dynamic RELEASE_VERSION from VERSION file + git commit count + SHA
@@ -51,39 +44,18 @@ steps:
         # Compute MAJOR.MINOR from VERSION file
         MAJOR_MINOR=$$(cat VERSION | tr -d '[:space:]' | cut -d. -f1-2)
 
-        # Optionally attempt to read latest GitHub release tag and use it as the
-        # canonical release version. This is disabled by default to preserve
-        # manual/legacy behavior.
-        USE_GITHUB_RELEASE="${_USE_GITHUB_RELEASE:-false}"
-        GITHUB_OWNER="${_GITHUB_OWNER:-lucivskvn}"
-        GITHUB_REPO="${_GITHUB_REPO:-AetherOmni}"
-
-        if [ "$${USE_GITHUB_RELEASE}" = "true" ]; then
-          echo "Attempting to fetch latest GitHub release for $${GITHUB_OWNER}/$${GITHUB_REPO}"
-          # Query GitHub Releases API (unauthenticated). If this environment
-          # requires auth, configure a GITHUB_TOKEN as a secret and export it
-          # into Cloud Build substitutions in the trigger.
-          GH_API_URL="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/releases/latest"
-          TAG=$$(curl -sSf --connect-timeout 5 "$${GH_API_URL}" 2>/dev/null | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' || true)
-          if [ -n "$${TAG}" ]; then
-            # Normalize to the vMAJOR.MINOR.PATCH+meta scheme if tag looks like a semantic tag
-            RELEASE_VERSION="$${TAG}"
-            echo "Using GitHub release tag as RELEASE_VERSION=$${RELEASE_VERSION}"
-            echo "RELEASE_VERSION=$${RELEASE_VERSION}" > /workspace/release_version.env
-            exit 0
-          fi
-          echo "No GitHub release tag found or fetch failed; falling back to local computation"
-        fi
-
-        PATCH=$$(git describe --tags --abbrev=0 2>/dev/null | sed -E 's/^v?([0-9]+\.[0-9]+\.)?([0-9]+)$/\2/' || echo "0")
-        if [ "$${PATCH}" = "0" ] || ! printf '%s' "$${PATCH}" | grep -Eq '^[0-9]+$$'; then
-          PATCH=$$(git rev-list --count HEAD 2>/dev/null || echo "0")
+        release_override='${_RELEASE_VERSION}'
+        if [ -n "$${release_override}" ]; then
+          RELEASE_VERSION="$${release_override#v}"
+          printf '%s' "$${RELEASE_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'
+        else
+          PATCH=$$(git rev-list --count HEAD)
+          RELEASE_VERSION="$${MAJOR_MINOR}.$${PATCH}"
         fi
         BUILD_SHA="${SHORT_SHA:-}"
         if [ -z "$${BUILD_SHA}" ]; then
           BUILD_SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo "local")
         fi
-        RELEASE_VERSION="v$${MAJOR_MINOR}.$${PATCH}"
         IMAGE_TAG="$${RELEASE_VERSION}"
         echo "RELEASE_VERSION=$${RELEASE_VERSION}" > /workspace/release_version.env
         echo "IMAGE_TAG=$${IMAGE_TAG}" >> /workspace/release_version.env
@@ -106,10 +78,10 @@ steps:
         if [ -f /workspace/release_version.env ]; then
           . /workspace/release_version.env
         else
-          RELEASE_VERSION="latest"
-          IMAGE_TAG="latest"
+          echo "Missing computed release version metadata" >&2
+          exit 1
         fi
-        IMAGE_TAG="$${IMAGE_TAG:-$${RELEASE_VERSION:-latest}}"
+        IMAGE_TAG="$${IMAGE_TAG:-$${RELEASE_VERSION}}"
         /kaniko/executor \
           --context=dir:///workspace \
           --dockerfile=/workspace/Dockerfile \
@@ -136,10 +108,10 @@ steps:
         if [ -f /workspace/release_version.env ]; then
           . /workspace/release_version.env
         else
-          RELEASE_VERSION="latest"
-          IMAGE_TAG="latest"
+          echo "Missing computed release version metadata" >&2
+          exit 1
         fi
-        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION:-latest}}"
+        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
         IMAGE_TAG="$${IMAGE_TAG//+/-}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
@@ -173,10 +145,10 @@ steps:
         if [ -f /workspace/release_version.env ]; then
           . /workspace/release_version.env
         else
-          RELEASE_VERSION="latest"
-          IMAGE_TAG="latest"
+          echo "Missing computed release version metadata" >&2
+          exit 1
         fi
-        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION:-latest}}"
+        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
         IMAGE_TAG="$${IMAGE_TAG//+/-}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"

@@ -72,6 +72,18 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
+      - name: Compute canonical analysis version
+        id: release-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          major_minor=$(tr -d '[:space:]' < VERSION)
+          [[ "$major_minor" =~ ^[0-9]+\.[0-9]+$ ]]
+          patch=$(git rev-list --count HEAD)
+          version="${major_minor}.${patch}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "### Analysis version: \`${version}\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
@@ -100,6 +112,7 @@ jobs:
         with:
           args: >
             -Dsonar.scm.provider=git
+            -Dsonar.projectVersion=${{ steps.release-version.outputs.version }}
             -Dsonar.threads=4
             -Dsonar.analysis.cache.enabled=true
 

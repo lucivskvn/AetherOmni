@@ -38,7 +38,7 @@ class UpdateDocsTestCase(unittest.TestCase):
     @patch("scripts.update_docs._git")
     def test_compute_version(self, mock_git):
         mock_git.side_effect = lambda *args: {
-            ("describe", "--tags", "--abbrev=0"): "v1.2.107",
+            ("rev-list", "--count", "HEAD"): "107",
             ("rev-parse", "--short", "HEAD"): "abc1234",
             ("rev-parse", "HEAD"): "abc123456789",
             ("rev-parse", "--abbrev-ref", "HEAD"): "main",
@@ -92,12 +92,12 @@ class UpdateDocsTestCase(unittest.TestCase):
     def test_update_gcp_guide(self, mock_root):
         mock_file = MagicMock()
         mock_file.exists.return_value = True
-        mock_file.read_text.return_value = "# Google Cloud Run Production Deployment Guide (Version 1.0.0)"
+        mock_file.read_text.return_value = "# Google Cloud Run Production Deployment Guide"
         mock_root.__truediv__.return_value.__truediv__.return_value = mock_file
 
         info = {"semver": "1.2.3"}
         changed = update_gcp_guide(info)
-        self.assertTrue(changed)
+        self.assertFalse(changed)
 
     @patch("scripts.update_docs.ROOT")
     def test_update_service_yamls(self, mock_root):
