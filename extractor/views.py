@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db import transaction  # noqa: F401
 from django.db.models import Q
@@ -38,6 +39,28 @@ def _turnstile_token_error(request) -> str | None:
     if captcha_token:
         return None
     return "CAPTCHA verification is required. Please complete the security check and try again."
+
+
+@require_http_methods(["POST"])
+def supabase_session_view(request):
+    """Establish a Django session after Supabase verifies an OAuth browser session."""
+    from extractor.auth import authenticate_supabase_access_token
+
+    access_token = request.POST.get("access_token", "")
+    user = authenticate_supabase_access_token(request, access_token)
+    if not user:
+        return JsonResponse({"detail": "Unable to validate the Supabase session."}, status=401)
+
+    login(request, user, backend="extractor.auth.SupabaseAuthBackend")
+    return JsonResponse({"redirect_url": "/"})
+
+
+def supabase_oauth_callback_view(request):
+    """Render the browser callback which exchanges OAuth code and bridges the Django session."""
+    if not getattr(settings, "SUPABASE_URL", "") or not getattr(settings, "SUPABASE_PUBLIC_KEY", ""):
+        messages.error(request, "Supabase integration is not configured.")
+        return redirect("login")
+    return render(request, "extractor/supabase_oauth_callback.html")
 
 
 from types import SimpleNamespace

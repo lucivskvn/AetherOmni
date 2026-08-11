@@ -1,0 +1,38 @@
+{% extends "extractor/base.html" %}
+
+{% block title %}Completing sign-in{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-live="polite">
+    <h1>Completing sign-in</h1>
+    <p id="auth-status">Validating your secure Supabase session…</p>
+    <form id="supabase-session-form" method="post" action="{% url 'supabase_session' %}" hidden>
+        {% csrf_token %}
+        <input id="supabase-access-token" name="access_token" type="hidden">
+    </form>
+</section>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const status = document.getElementById('auth-status');
+        const supabaseUrl = '{{ SUPABASE_URL|default:"" }}';
+        const supabaseKey = '{{ SUPABASE_PUBLIC_KEY|default:"" }}';
+        const code = new URLSearchParams(globalThis.location.search).get('code');
+
+        if (!supabaseUrl || !supabaseKey || !code || !globalThis.supabase) {
+            status.textContent = 'Sign-in could not be completed. Please return to the login page and try again.';
+            return;
+        }
+
+        const supabaseClient = globalThis.supabase.createClient(supabaseUrl, supabaseKey);
+        const { data, error } = await supabaseClient.auth.exchangeCodeForSession(code);
+        if (error || !data.session?.access_token) {
+            status.textContent = 'Supabase could not validate this sign-in. Please try again.';
+            return;
+        }
+
+        document.getElementById('supabase-access-token').value = data.session.access_token;
+        document.getElementById('supabase-session-form').submit();
+    });
+</script>
+{% endblock %}

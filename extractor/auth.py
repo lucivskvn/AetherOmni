@@ -68,11 +68,6 @@ def _sync_supabase_user(
     if app_metadata.get("is_admin") is True:
         is_promoted_admin = True
 
-    # 2. First-User Auto-Admin Bootstrapping
-    if not is_promoted_admin and not User.objects.filter(is_superuser=True, is_active=True).exists():
-        logger.info("[Auth] No active admins found. Bootstrapping first-user admin privileges for: %s", user_email)
-        is_promoted_admin = True
-
     if is_promoted_admin:
         user.is_superuser = True
         user.is_staff = True
@@ -90,6 +85,36 @@ def _sync_supabase_user(
         request.session["supabase_user_id"] = supabase_user_id
 
     return user
+
+
+def authenticate_supabase_access_token(request: HttpRequest, access_token: str) -> User | None:
+    """Validate a browser Supabase access token and return its mapped Django user."""
+    supabase_url = getattr(settings, "SUPABASE_URL", "")
+    supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
+    if not supabase_url or not supabase_key or not access_token or len(access_token) > 8192:
+        return None
+
+    url = f"{supabase_url.rstrip('/')}/auth/v1/user"
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": "AetherOmni Supabase OAuth callback",
+    }
+    try:
+        from extractor.utils import validate_url_scheme
+
+        validate_url_scheme(url)
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
+            user_info = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        logger.warning("[Auth] Supabase OAuth token validation failed.", exc_info=True)
+        return None
+
+    if not user_info.get("id") or not user_info.get("email"):
+        logger.warning("[Auth] Supabase OAuth token response did not contain an authenticated user.")
+        return None
+    return _sync_supabase_user(request, {"user": user_info}, user_info["email"])
 
 
 class SupabaseAuthBackend(ModelBackend):
@@ -151,7 +176,7 @@ class SupabaseAuthBackend(ModelBackend):
         body: dict = {"email": target_email, "password": password}
         captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
         if captcha_token:
-            body["captcha_token"] = captcha_token
+            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
 
         try:

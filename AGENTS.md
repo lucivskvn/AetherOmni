@@ -115,4 +115,5 @@ As an AI coding assistant, execute the requested task following these strict rep
    Release versions must be computed as MAJOR.MINOR.PATCH before SonarQube analysis and deployment.
 7. Standardized Model & Auth Naming: Always reference Gemini 3.6 Flash / 3.5 Flash-Lite,
    Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
+   Supabase OAuth callbacks must validate the Supabase session server-side before creating a Django session.
 ```

@@ -1028,14 +1028,14 @@ class SecurityAuthTestCase(TestCase):
             self.assertTrue(user.is_staff)
 
     @patch("urllib.request.urlopen")
-    def test_first_user_auto_bootstrap(self, mock_urlopen):
+    def test_first_user_is_not_auto_promoted(self, mock_urlopen):
         import json
 
         from django.contrib.auth.models import User
 
         from extractor.auth import SupabaseAuthBackend
 
-        # Ensure database has no superusers to trigger bootstrap
+        # No account should gain administrative privileges merely by signing in first.
         User.objects.all().delete()
 
         mock_resp = MagicMock()
@@ -1052,8 +1052,44 @@ class SecurityAuthTestCase(TestCase):
             user = backend.authenticate(None, username="first_user@example.com", password="password123")
 
             self.assertIsNotNone(user)
-            self.assertTrue(user.is_superuser)
-            self.assertTrue(user.is_staff)
+            self.assertFalse(user.is_superuser)
+            self.assertFalse(user.is_staff)
+
+    @patch("urllib.request.urlopen")
+    def test_supabase_oauth_session_creates_django_login(self, mock_urlopen):
+        import json
+
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps(
+            {"id": "oauth-user-id", "email": "oauth.user@example.com", "app_metadata": {}}
+        ).encode("utf-8")
+        mock_urlopen.return_value = mock_resp
+
+        with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
+            response = self.client.post(reverse("supabase_session"), {"access_token": "valid-access-token"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["redirect_url"], "/")
+        self.assertEqual(self.client.session["supabase_user_id"], "oauth-user-id")
+        self.assertIn("sessionid", response.cookies)
+
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(request.get_header("Authorization"), "Bearer valid-access-token")
+
+    def test_supabase_oauth_session_rejects_missing_access_token(self):
+        response = self.client.post(reverse("supabase_session"), {})
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_supabase_oauth_callback_renders_bridge(self):
+        with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
+            response = self.client.get(reverse("supabase_oauth_callback"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "exchangeCodeForSession")
+        self.assertContains(response, reverse("supabase_session"))
 
     def test_forgot_password_page_renders_turnstile_widget_when_configured(self):
         with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):

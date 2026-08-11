@@ -319,7 +319,6 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" integrity="sha384-N/qS5v5lH3o9O+X5X2wOqS2oOQ+T8M9i8cE2Z7G+p6G9qXvJz6JkH7pE4w+FwQ/w" crossorigin="anonymous"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const hash = globalThis.location.hash;
@@ -350,11 +349,11 @@
                     return;
                 }
 
-                const supabase = supabase.createClient(supabaseUrl, supabaseKey);
-                const { error } = await supabase.auth.signInWithOAuth({
+                const supabaseClient = globalThis.supabase.createClient(supabaseUrl, supabaseKey);
+                const { error } = await supabaseClient.auth.signInWithOAuth({
                     provider: 'github',
                     options: {
-                        redirectTo: globalThis.location.origin + "{% url 'dashboard' %}"
+                        redirectTo: globalThis.location.origin + "{% url 'supabase_oauth_callback' %}"
                     }
                 });
 
