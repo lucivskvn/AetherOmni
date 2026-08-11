@@ -94,7 +94,9 @@ steps:
   # 1. Kaniko Container Build with Layer Caching
   # The build must push the exact version tag selected by compute-version so the
   # later deploy steps can reference an image that actually exists in Artifact Registry.
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  # The standard executor image is shell-less. This step must source the
+  # computed release metadata, so use Kaniko's official BusyBox-enabled image.
+  - name: 'gcr.io/kaniko-project/executor@sha256:2562c4fe551399514277ffff7dcca9a3b1628c4ea38cb017d7286dc6ea52f4cd'
     id: 'build-image'
     waitFor: ['compute-version']
     entrypoint: /busybox/sh
@@ -115,8 +117,13 @@ steps:
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$SHORT_SHA \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
           --cache=true \
+          --cache-repo=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni-cache \
           --cache-ttl=24h \
-          --cache-dir=/cache
+          --image-download-retry=3 \
+          --image-fs-extract-retry=3 \
+          --push-retry=3 \
+          --reproducible \
+          --cleanup
 
   # 2. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'

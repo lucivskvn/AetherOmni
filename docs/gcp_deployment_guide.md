@@ -329,7 +329,7 @@ We deploy both the `web` service and the `worker` service. Deployments are manag
 
 ### Deploy Services Declaratively (Recommended)
 
-Cloud Build handles compiling the image, tagging it with the current `$BUILD_ID`, replacing the image references in the Knative YAMLs, and applying them:
+Cloud Build handles compiling the image, tagging it with the current `$BUILD_ID`, replacing the image references in the Knative YAMLs, and applying them. The Kaniko build step uses an official, digest-pinned debug image because it needs BusyBox to source the computed release metadata; the standard executor image does not include a shell. Its layer cache is stored in Artifact Registry and network-sensitive operations use bounded retries:
 
 ```bash
 # Run the pipeline to build and deploy web + worker services

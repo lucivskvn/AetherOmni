@@ -34,6 +34,7 @@
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
      2. SonarQube Cloud SAST (Self-Hosted) on `https://sonarqube.fainko.cloud` — multi-language Python 3.13 + JavaScript, Sonar agentic AI quality profiles, with `coverage.xml`
      3. Post-Scan Quality Gate Gatekeeper — blocks failures and enforces 0 new violations
+  - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
 
 ### 5. Local-First Review & No Unsolicited Remote Pushing
 
