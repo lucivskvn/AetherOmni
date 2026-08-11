@@ -271,19 +271,19 @@
             try {
                 const el = document.getElementById('cf-turnstile-response');
                 if (el) el.value = token;
-            } catch (e) { /* no-op */ }
+            } catch (e) { console.warn("Turnstile assignment failed", e); }
         }
         function onTurnstileSuccessRegister(token) {
             try {
                 const el = document.getElementById('cf-turnstile-response-register');
                 if (el) el.value = token;
-            } catch (e) { /* no-op */ }
+            } catch (e) { console.warn("Turnstile assignment failed", e); }
         }
         function onTurnstileSuccessForgot(token) {
             try {
                 const el = document.getElementById('cf-turnstile-response-forgot');
                 if (el) el.value = token;
-            } catch (e) { /* no-op */ }
+            } catch (e) { console.warn("Turnstile assignment failed", e); }
         }
         // Ensure forms submit even if Turnstile fires after user clicks submit by
         // adding submit handlers that wait briefly for token population.
