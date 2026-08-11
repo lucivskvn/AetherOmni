@@ -67,16 +67,6 @@ spec:
             secretKeyRef:
               name: ADMIN_EMAIL
               key: "latest"
-        - name: ADMIN_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: ADMIN_USERNAME
-              key: "latest"
-        - name: ADMIN_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: ADMIN_PASSWORD
-              key: "latest"
         - name: DJANGO_SECRET_KEY
           valueFrom:
             secretKeyRef:

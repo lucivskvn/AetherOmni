@@ -135,13 +135,13 @@ def _register_supabase_admin(signup_url, payload, headers, admin_email):
         logger.exception("Failed to register admin on Supabase")
 
 
-def _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_username, admin_password):
+def _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_password):
     import json
     import urllib.parse
 
     from django.conf import settings
 
-    logger.info("Supabase is configured. Checking if '%s' user already exists on Supabase Auth...", admin_username)
+    logger.info("Supabase is configured. Checking if admin user '%s' already exists on Supabase Auth...", admin_email)
     token_url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
     headers = {"apikey": supabase_key, "Content-Type": APPLICATION_JSON}
     payload = json.dumps({"email": admin_email, "password": admin_password}).encode("utf-8")
@@ -149,19 +149,23 @@ def _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_usernam
     admin_exists = _check_supabase_admin(token_url, payload, headers, admin_email)
 
     if not admin_exists:
-        logger.info("Admin user '%s' not authenticated. Attempting registration on Supabase Auth...", admin_username)
+        logger.info("Admin user '%s' not authenticated. Attempting registration on Supabase Auth...", admin_email)
         app_url = getattr(settings, "APP_URL", "http://localhost:8000")
         signup_url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
         _register_supabase_admin(signup_url, payload, headers, admin_email)
 
 
-def _create_local_superuser_stub(admin_username, admin_email):
+def _create_local_superuser_stub(admin_email):
     from django.contrib.auth.models import User
 
+    from extractor.auth import _generate_unique_username
+
+    django_username = _generate_unique_username(admin_email)
+
     user, created = User.objects.get_or_create(
-        username=admin_username,
+        email=admin_email,
         defaults={
-            "email": admin_email,
+            "username": django_username,
             "is_staff": True,
             "is_superuser": True,
             "is_active": True,
@@ -170,19 +174,21 @@ def _create_local_superuser_stub(admin_username, admin_email):
     if created:
         user.set_unusable_password()
         user.save()
-        logger.info(
-            "Local Django superuser stub '%s' created (password managed by Supabase).", admin_username
-        )  # NOSONAR
+        logger.info("Local Django superuser stub '%s' created (password managed by Supabase).", admin_email)  # NOSONAR
     return user
 
 
-def _create_local_superuser_full(admin_username, admin_email, admin_password):
+def _create_local_superuser_full(admin_email, admin_password):
     from django.contrib.auth.models import User
 
+    from extractor.auth import _generate_unique_username
+
+    django_username = _generate_unique_username(admin_email)
+
     user, created = User.objects.get_or_create(
-        username=admin_username,
+        email=admin_email,
         defaults={
-            "email": admin_email,
+            "username": django_username,
             "is_staff": True,
             "is_superuser": True,
             "is_active": True,
@@ -197,7 +203,7 @@ def _create_local_superuser_full(admin_username, admin_email, admin_password):
             logger.warning("Credential validation warning during initial admin setup: %s", exc)
         user.set_password(admin_password)  # NOSONAR # nosemgrep
         user.save()
-        logger.info("Local Django superuser '%s' created successfully.", admin_username)  # NOSONAR
+        logger.info("Local Django superuser '%s' created successfully.", admin_email)  # NOSONAR
         if admin_password == "admin":  # nosec B105
             from core.middleware import ForcePasswordChangeMiddleware
 
@@ -217,15 +223,15 @@ def _create_local_superuser_full(admin_username, admin_email, admin_password):
             user.is_staff = True
             user.is_superuser = True
             user.save()
-            logger.info("Updated existing user '%s' to superuser status.", admin_username)
+            logger.info("Updated existing user '%s' to superuser status.", admin_email)
     return user
 
 
-def _setup_local_admin(admin_username, admin_email, admin_password, supabase_url):
+def _setup_local_admin(admin_email, admin_password, supabase_url):
     if supabase_url:
-        return _create_local_superuser_stub(admin_username, admin_email)
+        return _create_local_superuser_stub(admin_email)
     else:
-        return _create_local_superuser_full(admin_username, admin_email, admin_password)
+        return _create_local_superuser_full(admin_email, admin_password)
 
 
 def _migrate_system_settings():
@@ -274,7 +280,6 @@ def init_django_admin():
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
 
         admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "admin@example.com"))
-        admin_username = os.getenv("ADMIN_USERNAME", getattr(settings, "ADMIN_USERNAME", "admin"))
         admin_password = os.getenv("ADMIN_PASSWORD")
 
         if not admin_password:
@@ -283,13 +288,13 @@ def init_django_admin():
             admin_password = secrets.token_urlsafe(16)
             logger.warning(  # NOSONAR # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
                 "[Security] ADMIN_PASSWORD not set in environment. Auto-generated temporary password for '%s'.",
-                admin_username,
+                admin_email,
             )
 
         if supabase_url and supabase_key:
-            _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_username, admin_password)
+            _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_password)
 
-        _setup_local_admin(admin_username, admin_email, admin_password, supabase_url)
+        _setup_local_admin(admin_email, admin_password, supabase_url)
         _migrate_system_settings()
 
     except Exception:

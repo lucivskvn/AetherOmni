@@ -8,35 +8,38 @@ from extractor.models import SystemSettings
 _log = logging.getLogger(__name__)
 
 
-def _resolve_release_version() -> str:
-    env_ver = os.environ.get("RELEASE_VERSION")
-    if env_ver:
-        return env_ver
-    # Prefer sonar-project.properties version when present so UI matches SonarQube
-    sonar_file = os.path.join(settings.BASE_DIR, "sonar-project.properties")
-    if os.path.isfile(sonar_file):
-        try:
-            with open(sonar_file, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    if line.startswith("sonar.projectVersion"):
-                        parts = line.split("=", 1)
-                        if len(parts) == 2:
-                            val = parts[1].strip()
-                            if val:
-                                return val
-        except OSError as exc:  # nosec B110 - non-critical fallback
-            _log.warning("Could not read sonar-project.properties: %s", exc)
+def _read_sonar_version(file_path: str) -> str | None:
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("sonar.projectVersion="):
+                    val = line.split("=", 1)[1].strip()
+                    if val:
+                        return val
+    except OSError as exc:
+        _log.warning("Could not read sonar-project.properties: %s", exc)
+    return None
 
-    version_file = os.path.join(settings.BASE_DIR, "VERSION")
-    if os.path.isfile(version_file):
-        try:
-            with open(version_file, encoding="utf-8") as f:
-                return f.read().strip()
-        except OSError as exc:  # nosec B110 - non-critical fallback
-            _log.warning("Could not read VERSION file: %s", exc)
+def _read_file_version(file_path: str) -> str | None:
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError as exc:
+        _log.warning("Could not read VERSION file: %s", exc)
+    return None
+
+def _resolve_release_version() -> str:
+    if env_ver := os.environ.get("RELEASE_VERSION"):
+        return env_ver
+
+    sonar_val = _read_sonar_version(os.path.join(settings.BASE_DIR, "sonar-project.properties"))
+    if sonar_val:
+        return sonar_val
+
+    file_val = _read_file_version(os.path.join(settings.BASE_DIR, "VERSION"))
+    if file_val:
+        return file_val
 
     return "1.5"
 

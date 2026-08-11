@@ -1003,6 +1003,56 @@ class SecurityAuthTestCase(TestCase):
             self.assertContains(response, "https://challenges.cloudflare.com/turnstile/v0/api.js")
             self.assertContains(response, 'data-sitekey="test-site-key"')
 
+
+    @patch("urllib.request.urlopen")
+    def test_supabase_app_metadata_admin_promotion(self, mock_urlopen):
+        import json
+        from extractor.auth import SupabaseAuthBackend
+
+        # User has app_metadata.is_admin = True
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps(
+            {"user": {"id": "mock-uuid-2", "email": "promoted_user@example.com", "app_metadata": {"is_admin": True}}}
+        ).encode("utf-8")
+        mock_urlopen.return_value = mock_resp
+
+        backend = SupabaseAuthBackend()
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key", DEBUG=False
+        ):
+            user = backend.authenticate(None, username="promoted_user@example.com", password="password123")
+
+            self.assertIsNotNone(user)
+            self.assertTrue(user.is_superuser)
+            self.assertTrue(user.is_staff)
+
+    @patch("urllib.request.urlopen")
+    def test_first_user_auto_bootstrap(self, mock_urlopen):
+        import json
+        from django.contrib.auth.models import User
+        from extractor.auth import SupabaseAuthBackend
+
+        # Ensure database has no superusers to trigger bootstrap
+        User.objects.all().delete()
+
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps(
+            {"user": {"id": "mock-uuid-3", "email": "first_user@example.com"}}
+        ).encode("utf-8")
+        mock_urlopen.return_value = mock_resp
+
+        backend = SupabaseAuthBackend()
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key", DEBUG=False
+        ):
+            user = backend.authenticate(None, username="first_user@example.com", password="password123")
+
+            self.assertIsNotNone(user)
+            self.assertTrue(user.is_superuser)
+            self.assertTrue(user.is_staff)
+
     def test_forgot_password_page_renders_turnstile_widget_when_configured(self):
         with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):
             response = self.client.get(reverse("forgot_password"))
@@ -1039,7 +1089,11 @@ class SecurityAuthTestCase(TestCase):
         # Mock successful login response from Supabase for a normal user email but trying to log in as "admin"
         import json
 
+        from django.contrib.auth.models import User
         from extractor.auth import SupabaseAuthBackend
+
+        # Create an initial superuser so that the auto-admin bootstrapping does not trigger for the normal user
+        User.objects.create_superuser(username="existing_admin", email="existing_admin@example.com", password="pwd")
 
         # User email is not admin@<domain>
         mock_resp = MagicMock()
@@ -1053,8 +1107,8 @@ class SecurityAuthTestCase(TestCase):
         with self.settings(
             SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key", DEBUG=False
         ):
-            # Pass "admin" as username but Supabase returns "normal_user@example.com"
-            user = backend.authenticate(None, username="admin", password="password123")
+            # Pass email as username
+            user = backend.authenticate(None, username="normal_user@example.com", password="password123")
 
             self.assertIsNotNone(user)
             # Normal user should NOT be promoted to superuser/staff
