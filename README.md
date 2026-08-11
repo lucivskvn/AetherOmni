@@ -183,7 +183,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.5.491)
+## ⚡ Current Functional Capabilities (Current State v1.5.0)
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
@@ -345,9 +345,9 @@ bash scripts/verify-pipeline.sh
 
 Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (`.github/workflows/ci.yml`):
 
-1. **Pre-Scan Validation**: Lints shell scripts and container files (`hadolint`).
+1. **Pre-Scan Validation**: Blocks on shell-script or container-file lint failures (`hadolint`).
 2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules with `coverage.xml`.
-3. **Quality Gate Gatekeeper**: Verifies 0 Blocker/High security issues before permitting merge.
+3. **Quality Gate Gatekeeper**: Blocks failed quality gates before permitting merge.
 
 ---
 

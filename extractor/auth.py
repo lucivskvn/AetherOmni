@@ -69,11 +69,9 @@ def _sync_supabase_user(
         is_promoted_admin = True
 
     # 2. First-User Auto-Admin Bootstrapping
-    if not is_promoted_admin:
-        # Check if any active superuser exists in the system
-        if not User.objects.filter(is_superuser=True, is_active=True).exists():
-            logger.info("[Auth] No active admins found. Bootstrapping first-user admin privileges for: %s", user_email)
-            is_promoted_admin = True
+    if not is_promoted_admin and not User.objects.filter(is_superuser=True, is_active=True).exists():
+        logger.info("[Auth] No active admins found. Bootstrapping first-user admin privileges for: %s", user_email)
+        is_promoted_admin = True
 
     if is_promoted_admin:
         user.is_superuser = True
@@ -102,7 +100,6 @@ class SupabaseAuthBackend(ModelBackend):
     to local Django superusers / SQLite auth databases when offline or unconfigured.
     """
 
-
     def authenticate(
         self,
         request: HttpRequest | None,
@@ -120,7 +117,9 @@ class SupabaseAuthBackend(ModelBackend):
             if is_email:
                 user = User.objects.filter(email=target_email).first()
                 if user:
-                    return super(SupabaseAuthBackend, self).authenticate(request, username=user.username, password=password, **kwargs)
+                    return super(SupabaseAuthBackend, self).authenticate(
+                        request, username=user.username, password=password, **kwargs
+                    )
             return super(SupabaseAuthBackend, self).authenticate(request, username, password, **kwargs)
 
         if not supabase_url or not supabase_key:
@@ -134,6 +133,7 @@ class SupabaseAuthBackend(ModelBackend):
             return None
 
         import re
+
         if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", target_email):
             logger.warning("[Auth] Supabase auth rejected: '%s' is not a valid email format.", target_email)
             return None
@@ -156,6 +156,7 @@ class SupabaseAuthBackend(ModelBackend):
 
         try:
             from extractor.utils import validate_url_scheme
+
             validate_url_scheme(url)
             req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
@@ -169,5 +170,5 @@ class SupabaseAuthBackend(ModelBackend):
         # Fall back if Supabase fails
         user = User.objects.filter(email=target_email).first()
         if user:
-            return super(SupabaseAuthBackend, self).authenticate(request, username=user.username, password=password)
-        return super(SupabaseAuthBackend, self).authenticate(request, username=target_email, password=password)
+            return super().authenticate(request, username=user.username, password=password)
+        return super().authenticate(request, username=target_email, password=password)
