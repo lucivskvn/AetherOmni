@@ -8,12 +8,12 @@
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-[![Quality gate status](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=alert_status&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Security Hotspots](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_hotspots&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Reliability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_issues&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Coverage](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=coverage&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Lines of Code](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=ncloc&token=sqb_e8d39ff98f4683653935932492f1aa23013f1c0e)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Quality gate status](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=alert_status)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Security Hotspots](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_hotspots)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Reliability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_issues)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Coverage](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=coverage)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Lines of Code](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=ncloc)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Desloppify Codebase Health](docs/scorecard.png)](docs/scorecard.png)
 
 ---
@@ -347,7 +347,7 @@ Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (
 
 1. **Pre-Scan Validation**: Blocks on shell-script or container-file lint failures (`hadolint`).
 2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules with `coverage.xml`.
-3. **Quality Gate Gatekeeper**: Blocks failed quality gates before permitting merge.
+3. **Quality Gate Gatekeeper**: Publishes the gate status and dashboard link in the Actions summary, then blocks failed quality gates before permitting merge.
 
 Cloud Build uses Kaniko's BusyBox-enabled debug image, pinned by immutable
 digest, when a build step must source computed release metadata. The standard

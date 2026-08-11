@@ -116,7 +116,7 @@ if [ "$DOCS_ONLY" = true ]; then
     if [ -n "$CHANGED_JS" ] && command -v npx &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed JS files with ESLint...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_JS holds space-separated filenames
-        npx -y eslint $CHANGED_JS
+        npx -y eslint --max-warnings 0 $CHANGED_JS
         echo -e "${GREEN}✓ Changed JavaScript files verified cleanly.${NC}"
     fi
 
@@ -155,7 +155,7 @@ fi
 
 echo -e "\n${YELLOW}[Code Quality] Executing JavaScript ESLint & SonarQube JS Convention Check...${NC}"
 if command -v npx &> /dev/null; then
-    npx -y eslint static/js/**/*.js
+    npx -y eslint --max-warnings 0 static/js/**/*.js
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 else
     echo -e "${YELLOW}⚠ npx not found in PATH (skipping JS lint).${NC}"
