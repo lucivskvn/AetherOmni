@@ -41,7 +41,6 @@ def _generate_unique_username(user_email: str) -> str:
 def _sync_supabase_user(
     request: HttpRequest | None,
     resp_data: dict,
-    supabase_url: str,
     username: str | None,
 ) -> User:
     """
@@ -103,6 +102,7 @@ class SupabaseAuthBackend(ModelBackend):
     to local Django superusers / SQLite auth databases when offline or unconfigured.
     """
 
+
     def authenticate(
         self,
         request: HttpRequest | None,
@@ -112,50 +112,43 @@ class SupabaseAuthBackend(ModelBackend):
     ) -> User | None:
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
-        # Use service role key for server-side calls — it bypasses CAPTCHA enforcement.
-        # Falls back to the public anon key if service key is not configured.
-        supabase_server_key = getattr(settings, "SUPABASE_SERVICE_KEY", "") or supabase_key
 
         target_email = (username or "").strip()
         is_email = "@" in target_email
 
         def _fallback_local_auth():
-            # If the input is an email, try to find the actual username to authenticate locally
             if is_email:
                 user = User.objects.filter(email=target_email).first()
                 if user:
                     return super(SupabaseAuthBackend, self).authenticate(request, username=user.username, password=password, **kwargs)
             return super(SupabaseAuthBackend, self).authenticate(request, username, password, **kwargs)
 
-        # 1. If Supabase is unconfigured, fall back immediately to local Django Database auth
         if not supabase_url or not supabase_key:
             return _fallback_local_auth()
 
-        # 2. Supabase Auth requires email addresses for authentication.
         if not is_email:
-            # If it's a non-email username, fall back to local Django DB immediately.
             local_user = _fallback_local_auth()
             if local_user:
                 logger.info(f"[Auth] Local user authenticated: {username}")
                 return local_user
             return None
 
-        # 3. Securely dispatch HTTPS POST to Supabase GoTrue Auth REST endpoint
-        # Validate email format to prevent auth bypass via crafted usernames
         import re
-
         if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", target_email):
             logger.warning("[Auth] Supabase auth rejected: '%s' is not a valid email format.", target_email)
             return None
 
+        return self._do_supabase_auth(request, target_email, password, supabase_url, supabase_key)
+
+    def _do_supabase_auth(self, request, target_email, password, supabase_url, supabase_key):
+        supabase_server_key = getattr(settings, "SUPABASE_SERVICE_KEY", "") or supabase_key
         url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
         headers = {
             "apikey": supabase_server_key,
             "Content-Type": APPLICATION_JSON,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
         body: dict = {"email": target_email, "password": password}
-        # Forward Turnstile captcha token when present (required if Supabase CAPTCHA is enabled)
         captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
         if captcha_token:
             body["captcha_token"] = captcha_token
@@ -163,21 +156,18 @@ class SupabaseAuthBackend(ModelBackend):
 
         try:
             from extractor.utils import validate_url_scheme
-
             validate_url_scheme(url)
             req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
                 resp_data = json.loads(response.read().decode("utf-8"))
-                return _sync_supabase_user(request, resp_data, supabase_url, username)
-
+                return _sync_supabase_user(request, resp_data, target_email)
         except urllib.error.HTTPError as e:
-            # Handle standard login credential mismatches (400 Bad Request) from Supabase GoTrue
-            error_body = e.read().decode("utf-8")
-            logger.warning(f"[Auth] Supabase authentication rejected: HTTP {e.code} - {error_body}")
-            # Fall back to local Django DB
-            return _fallback_local_auth()
+            logger.warning(f"[Auth] Supabase authentication rejected: HTTP {e.code} - {e.read().decode('utf-8')}")
         except Exception as e:
-            # Handle connection timeouts, DNS resolve issues, or unconfigured network sockets
             logger.exception(f"[Auth] Supabase API network connectivity exception: {e}")
-            # Fall back to local Django DB
-            return _fallback_local_auth()
+
+        # Fall back if Supabase fails
+        user = User.objects.filter(email=target_email).first()
+        if user:
+            return super(SupabaseAuthBackend, self).authenticate(request, username=user.username, password=password)
+        return super(SupabaseAuthBackend, self).authenticate(request, username=target_email, password=password)
