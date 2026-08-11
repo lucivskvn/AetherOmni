@@ -183,7 +183,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 ---
 
-## ⚡ Current Functional Capabilities (Current State v1.5.0)
+## ⚡ Current MVP Capabilities
 
 | Feature Area | Current Production Capability | Implementation & Location |
 | -------------- | ---------------- | --------------------------- |
@@ -208,7 +208,9 @@ flowchart LR
     M1["✅ Milestone 1.0 MVP<br>Multi-Format Ingestion & Caching"] --> M2["✅ Milestone 2.0 MVP<br>Dual DB & LLM Gateway"]
     M2 --> M3["✅ Milestone 3.0 MVP<br>Hybrid RAG & Vision OCR"]
     M3 --> M35["✅ Milestone 3.5 MVP<br>DevSecOps Hardening & SurrealQL"]
-    M35 --> M4["📦 Milestone 4.0 Enterprise<br>SSE Streaming & RBAC"]
+    M35 --> M36["🧭 Milestone 3.6 MVP<br>Auth & Release Reliability"]
+    M36 --> M37["📈 Milestone 3.7 MVP<br>Observability & Delivery"]
+    M37 --> M4["📦 Milestone 4.0 Enterprise<br>SSE Streaming & RBAC"]
     M4 --> M5["🚀 Milestone 5.0 Enterprise<br>Graph RAG & Agent Tools"]
 ```
 
@@ -241,6 +243,19 @@ flowchart LR
 - [x] **`run_checks.sh` Path Consistency**: Fixed autofix `markdownlint` target path from `gcp_deployment_guide.md` to `docs/gcp_deployment_guide.md`.
 - [x] **ShellCheck Integration**: `shellcheck run_checks.sh scripts/*.sh` added to Phase 2 for POSIX shell safety enforcement.
 - [x] **Full Test Suite**: All Django unit tests pass cleanly under `SURREALDB_OFFLINE=True` with `coverage.xml` generated for SonarQube ingestion.
+
+### 🧭 Milestone 3.6 (MVP Reliability — Authentication & Release Integrity)
+
+- [ ] **Supabase Login Recovery**: Complete email/password, GitHub OAuth, and Passkey flows with a Django session bridge, safe redirects, CSRF coverage, and regression tests.
+- [ ] **Release Traceability**: Require the computed release version in GitHub Actions, SonarQube, Cloud Build, Cloud Run, and the application UI.
+- [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
+
+### 📈 Milestone 3.7 (MVP Reliability — Operations & Observability)
+
+- [ ] **Actionable Agent Queue**: Enable GitHub Issues and the Jules integration; create small, scoped issues for CI, CodeQL, and SonarQube findings.
+- [ ] **Sentry Release Observability**: Correlate errors and deployments with the computed release version while keeping the DSN in Secret Manager and personal data disabled by default.
+- [ ] **Pulumi Foundation**: Model and import Cloud Run, Secret Manager, IAM, Artifact Registry, Cloud Tasks, and Storage before provisioning another environment.
+- [ ] **Operational Runbook**: Use the read-only GCP diagnostics tool for readiness, revisions, and bounded error logs.
 
 ### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & RBAC)
 

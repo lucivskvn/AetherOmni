@@ -1,4 +1,4 @@
-# Google Cloud Run Production Deployment Guide (Version 1.5.0)
+# Google Cloud Run Production Deployment Guide
 
 This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
 
@@ -90,7 +90,7 @@ gcloud tasks queues create ${QUEUE_NAME} \
 
 ---
 
-## 3. Security & IAM Configuration
+## 4. Security & IAM Configuration
 
 To follow security best practices (OWASP/SOC2 compliance), create a dedicated service account for Cloud Run services.
 
@@ -148,7 +148,7 @@ echo -n "admin" | gcloud secrets versions add SURREAL_USER --data-file=-
 gcloud secrets create SURREAL_PASS --replication-policy="automatic"
 echo -n "YOUR_SURREALDB_PASSWORD" | gcloud secrets versions add SURREAL_PASS --data-file=-
 
-# 4. Administrative Credentials (for automatic dashboard and local auth stub creation)
+# 4. Bootstrap contact
 gcloud secrets create ADMIN_EMAIL --replication-policy="automatic"
 echo -n "admin@example.com" | gcloud secrets versions add ADMIN_EMAIL --data-file=-
 
@@ -178,7 +178,9 @@ done
 Use Google Cloud Build to build and push your Docker container:
 
 ```bash
-gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/web-app:latest
+RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
+gcloud builds submit --config infra/gcp/cloudbuild.yaml \
+  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION}"
 ```
 
 ---
@@ -318,36 +320,26 @@ We deploy both the `web` service and the `worker` service. Deployments are manag
 
 ### Deploy Services Declaratively (Recommended)
 
-Cloud Build handles compiling the image, tagging it with the current `$BUILD_ID`, replacing the image references in the Knative YAMLs, and applying them. The Kaniko build step uses an official, digest-pinned debug image because it needs BusyBox to source the computed release metadata; the standard executor image does not include a shell. Its layer cache is stored in Artifact Registry and network-sensitive operations use bounded retries:
+Cloud Build computes the release version before it builds or deploys. It passes that
+same value to Cloud Run and SonarQube, so a production issue can be traced to one
+release. The Kaniko build step uses an official, digest-pinned debug image because
+it needs BusyBox to source computed release metadata; the standard executor image
+does not include a shell. Its layer cache is stored in Artifact Registry and
+network-sensitive operations use bounded retries:
 
 ```bash
 # Run the pipeline to build and deploy web + worker services
-gcloud builds submit --config cloudbuild.yaml
+RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
+gcloud builds submit --config infra/gcp/cloudbuild.yaml \
+  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION}"
 ```
 
-### Deploying Services Manually
+### Emergency recovery
 
-If you want to deploy manually using the CLI:
-
-```bash
-# Deploy Web Service
-gcloud run deploy aether-web \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/aether-web:latest \
-  --region=${REGION} \
-  --service-account=${SERVICE_ACCOUNT} \
-  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://aether-web-${PROJECT_NUMBER}.${REGION}.run.app,WORKER_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite" \
-  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
-  --allow-unauthenticated
-
-# Deploy Worker Service
-gcloud run deploy aether-worker \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}/aether-web:latest \
-  --region=${REGION} \
-  --service-account=${SERVICE_ACCOUNT} \
-  --set-env-vars="DJANGO_DEBUG=False,GS_BUCKET_NAME=${BUCKET_NAME},DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,.run.app,DJANGO_CSRF_TRUSTED_ORIGINS=https://*.run.app,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},GCP_QUEUE_LOCATION=${REGION},GCP_QUEUE_NAME=${QUEUE_NAME},APP_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,WORKER_URL=https://aether-worker-${PROJECT_NUMBER}.${REGION}.run.app,SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False,GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite" \
-  --set-secrets="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest,SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest" \
-  --allow-unauthenticated
-```
+Do not deploy individual services with ad-hoc `gcloud run deploy` commands.
+They drift secret bindings, service configuration, and release metadata. Recover
+through the reviewed Cloud Build configuration; Pulumi will become the supported
+provisioning and reconciliation path after infrastructure import and preview.
 
 ---
 
@@ -356,5 +348,7 @@ gcloud run deploy aether-worker \
 Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. The remote CI pipeline publishes the SonarQube quality-gate status and dashboard link in its Actions summary, then blocks container-lint and quality-gate failures before a deployment change should be promoted. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
 
 ```bash
-gcloud builds submit --config cloudbuild.yaml
+RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
+gcloud builds submit --config infra/gcp/cloudbuild.yaml \
+  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION}"
 ```
