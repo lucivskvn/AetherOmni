@@ -389,6 +389,7 @@ def _parse_text_payload(entry):
 
 
 def _fallback_local_run_logs(service_name, region, project_id, limit):
+    validate_service_name(service_name)
     try:
         cmd = [
             "gcloud",
@@ -416,6 +417,7 @@ def _fallback_local_run_logs(service_name, region, project_id, limit):
 
 
 def _get_service_logs_gcp(service_name, project_id, limit, token):
+    validate_service_name(service_name)
     url = "https://logging.googleapis.com/v2/entries:list"
     body = {
         "resourceNames": [f"projects/{project_id}"],
@@ -454,6 +456,7 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
 
 
 def _get_service_logs_local(service_name, project_id, region, limit):
+    validate_service_name(service_name)
     try:
         cmd = [
             "gcloud",

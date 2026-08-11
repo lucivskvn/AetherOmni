@@ -124,20 +124,22 @@ _rates_cache: dict[str, Any] = {}
 _rates_cache_lock = threading.Lock()
 
 
-def calculate_file_sha256(file_handle_or_path: str | IO[bytes]) -> str:
+def calculate_file_sha256(file_handle_or_path: str | IO[bytes], safe_base_dir: str | None = None) -> str:
     """
     Computes SHA-256 checksum in chunks of 64KB for deduplication and content-addressing.
     Accepts either a string path or a file-like object.
+    If a string path is provided, safe_base_dir can optionally be provided to enforce path containment.
     """
     sha256 = hashlib.sha256()
 
     if isinstance(file_handle_or_path, str):
-        # Prevent path traversal by explicitly disallowing relative traversal sequences.
-        # This function is used mostly on uploaded files or CLI arguments.
-        if ".." in file_handle_or_path or file_handle_or_path.startswith("~"):
-            raise ValueError(f"Path traversal detected in path: {file_handle_or_path}")
-
         safe_path = os.path.abspath(file_handle_or_path)
+
+        if safe_base_dir:
+            base = os.path.abspath(safe_base_dir)
+            if not safe_path.startswith(os.path.join(base, '')) and safe_path != base:
+                raise ValueError(f"Path traversal detected: {safe_path} is outside of {base}")
+
         if not os.path.exists(safe_path) or not os.path.isfile(safe_path):
             raise FileNotFoundError(f"File not found or not a valid file: {safe_path}")
 
