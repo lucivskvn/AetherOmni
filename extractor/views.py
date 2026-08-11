@@ -1846,15 +1846,16 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
     return None
 
 
-def _register_supabase_user(supabase_url, supabase_key, email, password, app_url, captcha_token=None):
-    """Make the Supabase signup API call. Returns (success: bool, error_msg: str | None)."""
+def _execute_supabase_auth_request(
+    url_path, supabase_url, supabase_key, body_data, app_url, captcha_token, action_name
+):
     import json
     import urllib.parse
     import urllib.request
 
     from extractor.utils import validate_url_scheme
 
-    url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
+    url = f"{supabase_url.rstrip('/')}{url_path}"
     try:
         validate_url_scheme(url)
         headers = {
@@ -1862,10 +1863,9 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
-        body: dict = {"email": email, "password": password}
         if captcha_token:
-            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
-        payload = json.dumps(body).encode("utf-8")
+            body_data["gotrue_meta_security"] = {"captcha_token": captcha_token}
+        payload = json.dumps(body_data).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
             return True, None
@@ -1875,9 +1875,19 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
             err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
         except (json.JSONDecodeError, KeyError, AttributeError):
             err_msg = body_bytes
-        return False, f"Supabase Signup Failed: {err_msg}"
+        return False, f"Supabase {action_name} Failed: {err_msg}"
     except Exception as e:
-        return False, f"Network error during registration: {e!s}"
+        return False, f"Network error during {action_name.lower()}: {e!s}"
+
+
+def _register_supabase_user(supabase_url, supabase_key, email, password, app_url, captcha_token=None):
+    """Make the Supabase signup API call. Returns (success: bool, error_msg: str | None)."""
+    import urllib.parse
+
+    url_path = f"/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
+    return _execute_supabase_auth_request(
+        url_path, supabase_url, supabase_key, {"email": email, "password": password}, app_url, captcha_token, "Signup"
+    )
 
 
 def register_view(request):
@@ -1917,36 +1927,12 @@ def register_view(request):
 
 
 def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_token=None):
-    import json
     import urllib.parse
-    import urllib.request
 
-    from extractor.utils import validate_url_scheme
-
-    url = f"{supabase_url.rstrip('/')}/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"
-    try:
-        validate_url_scheme(url)
-        headers = {
-            "apikey": supabase_key,
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        }
-        body: dict = {"email": email}
-        if captcha_token:
-            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
-        payload = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
-            return True, None
-    except urllib.error.HTTPError as e:
-        body_bytes = e.read().decode("utf-8")
-        try:
-            err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
-        except (json.JSONDecodeError, KeyError, AttributeError):
-            err_msg = body_bytes
-        return False, f"Supabase Recovery Failed: {err_msg}"
-    except Exception as e:
-        return False, f"Network error: {e!s}"
+    url_path = f"/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"
+    return _execute_supabase_auth_request(
+        url_path, supabase_url, supabase_key, {"email": email}, app_url, captcha_token, "Recovery"
+    )
 
 
 def forgot_password_view(request):
