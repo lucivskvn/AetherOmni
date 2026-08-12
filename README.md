@@ -64,6 +64,7 @@ flowchart TD
   - **Shift-Left Local Verification**: Multi-language `run_checks.sh` pipeline enforcing Python AST auditing (`ruff`), static typing (`mypy`), differential security scanning (`bandit`, Semgrep, AST-Grep), JavaScript conventions (`eslint`), YAML schema validation (`yamllint`), container hardening (`hadolint`), and comprehensive automated unit test coverage. New suppressions must identify the exact rule; Semgrep and SonarQube suppressions also require a justification.
   - **Desloppify Codebase Health**: Continuous structural complexity, cohesion, and dependency cycle monitoring across all 17 sensors to maintain high objective codebase quality and security scores.
   - **Cloud SAST & Quality Gate**: Automated CI pipeline integrating static application security testing with remote SonarQube MQR Quality Gate enforcement.
+  - **Reproducible CI Tooling**: Security scanners run in an isolated environment when their dependencies differ from the application runtime, without weakening blocking checks.
 
 ---
 

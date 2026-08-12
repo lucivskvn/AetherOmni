@@ -38,6 +38,7 @@ runbook. This file remains the authoritative cross-agent policy.
      2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python 3.13 + JavaScript coverage.
      3. Post-Scan Quality Gate Gatekeeper — publishes the actionable result in the Actions summary, blocks failures, and enforces 0 new violations
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
+  - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
 
 ### 5. Local-First Review & No Unsolicited Remote Pushing
 
