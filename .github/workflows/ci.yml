@@ -53,10 +53,53 @@ jobs:
             bash -n scripts/verify-pipeline.sh
           fi
 
-  sonarqube-cloud-analysis:
-    name: 2. SonarQube Cloud SAST (Self-Hosted)
+  pr-shift-left-security:
+    name: 2. PR Shift-Left Security Gate
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: pre-scan-validation
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v7.0.1
 
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install PR verification tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt coverage ruff bandit semgrep --quiet
+
+      - name: Run PR security and test gate
+        run: |
+          export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
+          ruff check .
+          npx -y eslint --max-warnings 0 static/js/**/*.js
+          semgrep scan --config=auto --quiet --error
+          bandit -c bandit.yaml -r core extractor
+          python manage.py collectstatic --noinput
+          coverage run --source='core,extractor' manage.py test --keepdb
+        env:
+          SURREALDB_OFFLINE: "True"
+          DATABASE_URL: "sqlite:///:memory:"
+
+      - name: Explain Community Edition scope
+        run: |
+          {
+            echo '### Community Edition PR gate'
+            echo
+            echo 'SonarQube Community Edition does not support pull-request analysis.'
+            echo 'This PR is protected by repository-native Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and the external security checks.'
+            echo 'SonarQube performs its authoritative project analysis and quality gate only after a push to `main`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  sonarqube-mainline-analysis:
+    name: 2. SonarQube Community Mainline Gate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: pre-scan-validation
     steps:
@@ -84,39 +127,6 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "### Analysis version: \`${version}\`" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Resolve SonarQube analysis target
-        id: sonar-target
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-          PR_BRANCH: ${{ github.head_ref || '' }}
-          PR_BASE: ${{ github.base_ref || '' }}
-        run: |
-          set -euo pipefail
-
-          dashboard_url="https://sonarqube.fainko.cloud/dashboard?id=aetheromni"
-          {
-            echo 'args<<EOF'
-            echo '-Dsonar.scm.provider=git'
-            echo "-Dsonar.projectVersion=${{ steps.release-version.outputs.version }}"
-            echo '-Dsonar.threads=4'
-            echo '-Dsonar.analysis.cache.enabled=true'
-
-            if [ "$EVENT_NAME" = 'pull_request' ]; then
-              test -n "$PR_NUMBER"
-              test -n "$PR_BRANCH"
-              test -n "$PR_BASE"
-              echo "-Dsonar.pullrequest.key=$PR_NUMBER"
-              echo "-Dsonar.pullrequest.branch=$PR_BRANCH"
-              echo "-Dsonar.pullrequest.base=$PR_BASE"
-              dashboard_url="${dashboard_url}&pullRequest=${PR_NUMBER}"
-            fi
-
-            echo 'EOF'
-            echo "dashboard_url=$dashboard_url"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
@@ -143,7 +153,11 @@ jobs:
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: ${{ steps.sonar-target.outputs.args }}
+          args: >
+            -Dsonar.scm.provider=git
+            -Dsonar.projectVersion=${{ steps.release-version.outputs.version }}
+            -Dsonar.threads=4
+            -Dsonar.analysis.cache.enabled=true
 
       - name: 3. SonarQube Quality Gate Status Check
         id: quality-gate
@@ -158,9 +172,9 @@ jobs:
         env:
           QUALITY_GATE_STATUS: ${{ steps.quality-gate.outputs.quality-gate-status }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_DASHBOARD_URL: ${{ steps.sonar-target.outputs.dashboard_url }}
+          SONAR_DASHBOARD_URL: https://sonarqube.fainko.cloud/dashboard?id=aetheromni
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
-          SONAR_PULL_REQUEST: ${{ github.event.pull_request.number || '' }}
+          SONAR_PULL_REQUEST: ''
         run: |
           set -euo pipefail
 

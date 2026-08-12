@@ -35,7 +35,7 @@ runbook. This file remains the authoritative cross-agent policy.
 - Once `run_checks.sh` passes locally and the user approves remote pushing, push to `origin main` or open a PR.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
-     2. SonarQube Cloud SAST (Self-Hosted) on `https://sonarqube.fainko.cloud` — analyzes `main` on pushes and identifies each pull request explicitly by its GitHub PR number, source branch, and target branch, with multi-language Python 3.13 + JavaScript coverage.
+     2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python 3.13 + JavaScript coverage.
      3. Post-Scan Quality Gate Gatekeeper — publishes the actionable result in the Actions summary, blocks failures, and enforces 0 new violations
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
 
@@ -55,9 +55,9 @@ runbook. This file remains the authoritative cross-agent policy.
   manually edit a release version or deploy a `latest` fallback.
 - Treat the GitHub Actions summary as the actionable SonarQube hand-off. Keep
   failures blocking so Jules can address scoped issues from PR checks or issues.
-- Pull-request scans must pass SonarQube pull-request identity parameters; never
-  analyze a merge checkout as the default branch because it overwrites main-line
-  results and cannot provide a scoped dashboard result.
+- SonarQube Community Edition does not support pull-request or branch analysis.
+  Never pass pull-request identity parameters or analyze a merge checkout as the
+  default branch; use the GitHub PR shift-left gate and reserve SonarQube for main.
 - Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do
   not reintroduce secret-retrieval or imperative provisioning scripts.
 - Use Pulumi for new or rebuilt GCP environments. Import and preview existing
