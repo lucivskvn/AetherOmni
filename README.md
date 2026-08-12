@@ -8,12 +8,16 @@
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-[![Quality gate status](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=alert_status)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Security Hotspots](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_hotspots)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Reliability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_issues)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Coverage](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=coverage)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Lines of Code](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=ncloc)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Quality gate status](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=alert_status&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Coverage](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=coverage&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Security Hotspots](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_hotspots&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Reliability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_issues&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Security Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_security_issues&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Maintainability Rating](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_rating&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Reliability Rating](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_rating&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Security Rating](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_security_rating&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Technical Debt](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_remediation_effort&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
 [![Desloppify Codebase Health](docs/scorecard.png)](docs/scorecard.png)
 
 ---
