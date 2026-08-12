@@ -322,7 +322,7 @@ class MonthlySpendLog(models.Model):
             try:
                 existing = surreal_db.kv_cache_get(key)
                 if existing:
-                    data = json.loads(existing)
+                    data = json.loads(existing) if isinstance(existing, str) else existing
                     return D(str(data.get("accumulated_cost_usd", 0.0)))
             except Exception as exc:
                 logger.warning("[SurrealDB] Failed to read cost from KV cache monthly log: %s", exc)

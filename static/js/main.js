@@ -416,7 +416,8 @@ function initializeFormSubmitSpinners() {
     );
 
     forms.forEach(form => {
-        form.addEventListener('submit', () => {
+        form.addEventListener('submit', event => {
+            if (event.defaultPrevented) return;
             const btn = form.querySelector('button[type="submit"]');
             if (!btn) return;
 
@@ -1419,20 +1420,19 @@ function initializeRetryActions() {
 
 
 /**
- * Automatically parses UTC timestamps from data-utc attribute and formats them
- * in the user's browser/system region timezone, appending the timezone name.
+ * Renders UTC datetimes in the user's browser timezone. The semantic datetime
+ * attribute is the primary source; data-utc keeps compatibility with old markup.
  */
 function initializeLocalTimezones() {
     const timeElements = document.querySelectorAll('.local-datetime');
     timeElements.forEach(el => {
-        const utcStr = el.dataset.utc;
+        const utcStr = el.dateTime || el.dataset.utc;
         if (!utcStr) return;
         
         try {
             const date = new Date(utcStr);
             if (Number.isNaN(date.getTime())) return;
             
-            // Format using user's system locale and configuration
             const options = {
                 year: 'numeric',
                 month: '2-digit',
@@ -1440,25 +1440,14 @@ function initializeLocalTimezones() {
                 hour: '2-digit',
                 minute: '2-digit',
                 second: '2-digit',
-                hour12: false
+                hour12: false,
+                timeZoneName: 'short'
             };
-            
-            // Format the main date/time part
-            const formatter = new Intl.DateTimeFormat(undefined, options);
-            const formattedDate = formatter.format(date);
-            
-            // Resolve local timezone abbreviation or offset (e.g. SGT or GMT+8)
-            const tzOptions = { timeZoneName: 'short' };
-            const tzFormatter = new Intl.DateTimeFormat(undefined, tzOptions);
-            const parts = tzFormatter.formatToParts(date);
-            const tzPart = parts.find(p => p.type === 'timeZoneName');
-            const tzName = tzPart ? tzPart.value : '';
-            
-            el.textContent = `${formattedDate} ${tzName}`.trim();
+
+            el.textContent = new Intl.DateTimeFormat(undefined, options).format(date);
+            el.setAttribute('title', `UTC: ${date.toISOString()}`);
         } catch (e) {
             console.error('Timezone conversion failed:', e);
         }
     });
 }
-
-

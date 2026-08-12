@@ -30,6 +30,8 @@
 substitutions:
   _REGION: asia-southeast1
   _GITHUB_REPOSITORY: lucivskvn/AetherOmni
+  # Optional public application URL. When unset, the deployed aether-web URL is used.
+  _APP_URL: ""
   # Manual/rollback builds must identify a commit whose mainline SonarQube gate passed.
   _DEPLOY_COMMIT_SHA: ""
   # Leave empty for the canonical commit-derived version. A rollback trigger may
@@ -177,10 +179,16 @@ steps:
         fi
         IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
         IMAGE_TAG="$${IMAGE_TAG//+/-}"
+        WEB_URL="$$(gcloud run services describe aether-web --region=${_REGION} --format='value(status.url)')"
+        WORKER_URL="$$(gcloud run services describe aether-worker --region=${_REGION} --format='value(status.url)')"
+        APP_URL='${_APP_URL}'
+        APP_URL="$${APP_URL:-$${WEB_URL}}"
+        test -n "$${WEB_URL}" && test -n "$${WORKER_URL}" && test -n "$${APP_URL}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=2"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
-        ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION}"
+        ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks"
+        ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
         ENV_VARS="$${ENV_VARS},SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
         ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite"
         SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
@@ -214,10 +222,16 @@ steps:
         fi
         IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
         IMAGE_TAG="$${IMAGE_TAG//+/-}"
+        WEB_URL="$$(gcloud run services describe aether-web --region=${_REGION} --format='value(status.url)')"
+        WORKER_URL="$$(gcloud run services describe aether-worker --region=${_REGION} --format='value(status.url)')"
+        APP_URL='${_APP_URL}'
+        APP_URL="$${APP_URL:-$${WEB_URL}}"
+        test -n "$${WEB_URL}" && test -n "$${WORKER_URL}" && test -n "$${APP_URL}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=True,GUNICORN_WORKERS=1"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
-        ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION}"
+        ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks"
+        ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
         ENV_VARS="$${ENV_VARS},SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
         ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-3.6-flash,GEMINI_MODEL_BATCH=gemini-3.5-flash-lite"
         SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"

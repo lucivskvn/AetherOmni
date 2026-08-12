@@ -62,6 +62,7 @@ flowchart TD
 
 - **The Pipeline Engineering**: Built on a decoupled, asynchronous 3-stage architecture (Stage 1: Layout Ingestion & SHA-256 Deduplication, Stage 2: Multi-Model LLM Gateway & Spend Control, Stage 3: SurrealDB HNSW Vector Storage & RRF RAG).
 - **Hybrid Dense-Sparse RAG (Reciprocal Rank Fusion)**: Combines sparse BM25 keyword matching with dense SurrealDB HNSW vector embeddings (`DIMENSION 768 DIST COSINE`) to eliminate search hallucination and optimize context window precision.
+- **Durable Tenant Ownership**: Production document access is keyed by the Supabase Auth subject UUID, so Cloud Run restarts cannot orphan a user's knowledge desk from its documents.
 - **Resilient Multi-Provider Gateway**: Implements exponential backoff and circuit-breaking across Google Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter free fallbacks (Llama 3, Gemma 2, Qwen 2).
 - **DevSecOps & Code Health Rigor**:
   - **Shift-Left Local Verification**: Multi-language `run_checks.sh` pipeline enforcing Python AST auditing (`ruff`), static typing (`mypy`), differential security scanning (`bandit`, Semgrep, AST-Grep), JavaScript conventions (`eslint`), YAML schema validation (`yamllint`), container hardening (`hadolint`), and comprehensive automated unit test coverage. New suppressions must identify the exact rule; Semgrep and SonarQube suppressions also require a justification.
@@ -246,6 +247,7 @@ flowchart LR
 - [x] **SurrealQL Schema Validation** (`surreal validate`): `schema.surql` is validated on every pipeline run via the official `surreal` CLI (install: `curl -sSf https://install.surrealdb.com | sh`). Integrated into Phase 2 of `run_checks.sh` and the fast differential `--fast` pass for `.surql` file changes.
 - [x] **Full-Suite Tool Alignment**: All DevSecOps tools verified at latest stable — `ruff`, `mypy`, `bandit`, `pip-audit`, `semgrep`, `yamllint`, `hadolint`, `ast-grep`, `markdownlint-cli`, `eslint`, `surreal`. Application dependencies are tracked in `requirements.txt`; local Python verification tools are tracked in `requirements-dev.txt`.
 - [x] **SonarQube Multi-Language SAST**: Removed the single-language lock; SonarQube now scans Python and JavaScript in the same analysis pass using repository-managed analyzer configuration.
+- [x] **Python Runtime Alignment**: Docker, GitHub Actions, local checks, and SonarQube use Python 3.14 semantics, preventing version-dependent findings and syntax drift.
 - [x] **`run_checks.sh` Path Consistency**: Fixed autofix `markdownlint` target path from `gcp_deployment_guide.md` to `docs/gcp_deployment_guide.md`.
 - [x] **ShellCheck Integration**: `shellcheck run_checks.sh scripts/*.sh` added to Phase 2 for POSIX shell safety enforcement.
 - [x] **Full Test Suite**: All Django unit tests pass cleanly under `SURREALDB_OFFLINE=True` with `coverage.xml` generated for SonarQube ingestion.
@@ -254,6 +256,7 @@ flowchart LR
 
 - [x] **Supabase Email Login Recovery**: Turnstile is required before credential dispatch and its token is forwarded through GoTrue security metadata; successful sessions bridge into Django without first-user privilege escalation. GitHub OAuth and Passkeys remain planned.
 - [x] **Release Traceability**: SonarQube and Cloud Build derive the same commit-count release from full Git history, then propagate it to the immutable image tag, Cloud Run, and application UI. Cloud Build waits for the exact commit's successful mainline SonarQube check before deployment.
+- [x] **Worker-Only Ingestion Dispatch**: Production uploads enqueue OIDC-authenticated work for the worker service only. Cloud Build resolves worker routing and the Vertex project identity at deploy time; an optional public-origin substitution keeps Supabase confirmation redirects on the browser-facing application URL.
 - [x] **Bounded SurrealDB Maintenance**: Periodic reaping and retention run only on one continuously allocated, unthrottled worker instance; spend-ledger persistence is validated before document deletion.
 - [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
 

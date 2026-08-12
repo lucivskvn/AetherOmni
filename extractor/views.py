@@ -45,6 +45,35 @@ from types import SimpleNamespace
 from extractor import surreal_db
 from extractor.models import AuditAction, AuditLog
 
+AUDIT_ACTION_CHOICES = (
+    (AuditAction.LOGIN, "Login"),
+    (AuditAction.LOGOUT, "Logout"),
+    (AuditAction.UPLOAD, "Upload fresh"),
+    (AuditAction.UPLOAD_CACHED, "Upload cached"),
+    (AuditAction.EXTRACTION_START, "Pipeline started"),
+    (AuditAction.EXTRACTION_COMPLETED, "Pipeline completed"),
+    (AuditAction.EXTRACTION_FAILED, "Pipeline failed"),
+    (AuditAction.DELETE, "Delete document"),
+    (AuditAction.PURGE_ALL, "Purge all records"),
+    (AuditAction.DOCUMENT_EDITED, "Document edited"),
+    (AuditAction.DOCUMENT_REQUEUED, "Document requeued"),
+    (AuditAction.SYSTEM_CONTROL, "System control"),
+)
+AUDIT_ACTION_ALIASES = {
+    "UPLOAD_FRESH": AuditAction.UPLOAD,
+    "PIPELINE_STARTED": AuditAction.EXTRACTION_START,
+    "PIPELINE_COMPLETED": AuditAction.EXTRACTION_COMPLETED,
+    "PIPELINE_FAILED": AuditAction.EXTRACTION_FAILED,
+    "DELETE_DOCUMENT": AuditAction.DELETE,
+    "PURGE_ALL_RECORDS": AuditAction.PURGE_ALL,
+}
+
+
+def normalize_audit_action(action):
+    """Return the canonical audit action for current and legacy ledger entries."""
+    normalized = str(action or "").strip().upper().replace("-", "_").replace(" ", "_")
+    return AUDIT_ACTION_ALIASES.get(normalized, normalized)
+
 
 def parse_datetime(val):
     if not val:
@@ -140,7 +169,7 @@ def _render_sanitized_markdown(markdown_text: str) -> str:
     return mark_safe(render_markdown_to_html(markdown_text))  # nosec B308 B703 # nosem
 
 
-def _is_budget_exceeded(user) -> bool:
+def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
     """
     Lightweight budget gate that only reads Django ORM tables — no SurrealDB.
     Safe to call from any view, including in test environments.
@@ -169,7 +198,7 @@ def _is_budget_exceeded(user) -> bool:
         try:
             from extractor import surreal_db as _sdb
 
-            raw_docs = _sdb.list_documents(str(user.id))
+            raw_docs = _sdb.list_documents(actor_id or str(user.id))
             from datetime import datetime
 
             first_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
@@ -202,6 +231,15 @@ def _parse_dt(value):
         return None
 
 
+def get_request_actor_id(request) -> str:
+    """Return the durable Supabase subject in production, not a local Django PK."""
+    if not request.user.is_authenticated:
+        return ""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return str(request.user.id)
+    return str(request.session.get("supabase_user_id") or request.user.id)
+
+
 def _get_dashboard_stats(request):
     """
     Helper to calculate and format dashboard statistics, avoiding duplicate logic
@@ -215,7 +253,7 @@ def _get_dashboard_stats(request):
     if user.is_staff or user.is_superuser:
         raw_docs = surreal_db.list_documents()
     else:
-        raw_docs = surreal_db.list_documents(str(user.id))
+        raw_docs = surreal_db.list_documents(get_request_actor_id(request))
 
     # Parse and wrap documents
     from django.contrib.auth import get_user_model
@@ -391,7 +429,7 @@ class UploadView(LoginRequiredMixin, View):
             "original_filename": orig_name,
             "file_hash": file_hash,
             "status": "COMPLETED",
-            "uploaded_by_id": str(request.user.id),
+            "uploaded_by_id": get_request_actor_id(request),
             "language": existing_doc.language if hasattr(existing_doc, "language") else existing_doc.get("language"),
             "author": existing_doc.author if hasattr(existing_doc, "author") else existing_doc.get("author"),
             "title": existing_doc.title if hasattr(existing_doc, "title") else existing_doc.get("title"),
@@ -520,7 +558,7 @@ class UploadView(LoginRequiredMixin, View):
             "original_filename": orig_name,
             "file_hash": file_hash,
             "status": "PENDING",
-            "uploaded_by_id": str(request.user.id),
+            "uploaded_by_id": get_request_actor_id(request),
             "title": title_guess or "Untitled",
             "document_type": ext_guess,
             "retry_count": 0,
@@ -618,14 +656,15 @@ class UploadView(LoginRequiredMixin, View):
 
         processed_hashes.add(file_hash)
 
-        existing_doc = self._find_existing_doc(file_hash, request.user.id)
+        actor_id = get_request_actor_id(request)
+        existing_doc = self._find_existing_doc(file_hash, actor_id)
 
         try:
             if existing_doc:
                 status = existing_doc.get("status")
                 uploaded_by_id = existing_doc.get("uploaded_by_id")
                 if status == "COMPLETED":
-                    if uploaded_by_id == str(request.user.id):
+                    if uploaded_by_id == actor_id:
                         logger.info(
                             "[Deduplication] User already has completed document with hash %s. Reusing without copy.",
                             file_hash,
@@ -654,7 +693,7 @@ class UploadView(LoginRequiredMixin, View):
             return redirect("dashboard")
 
         # Budget pre-check: block new LLM processing when monthly budget is exhausted
-        if _is_budget_exceeded(request.user):
+        if _is_budget_exceeded(request.user, get_request_actor_id(request)):
             messages.error(
                 request,
                 "Monthly AI budget has been reached. New document processing is paused until the budget resets "
@@ -976,7 +1015,7 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
     def _check_rag_limits(self, request):
         from django.core.cache import cache
 
-        rl_key = f"rag_ratelimit_{request.user.id}"
+        rl_key = f"rag_ratelimit_{get_request_actor_id(request)}"
         rl_count = cache.get(rl_key, 0)
         if rl_count >= 10:
             return JsonResponse(
@@ -985,7 +1024,7 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
             )
         cache.set(rl_key, rl_count + 1, 60)  # Rolling 60-second window
 
-        if _is_budget_exceeded(request.user):
+        if _is_budget_exceeded(request.user, get_request_actor_id(request)):
             return JsonResponse(
                 {"error": "Monthly AI budget has been reached. Intelligent search is paused until the budget resets."},
                 status=402,
@@ -1028,6 +1067,7 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
                 document_ids=document_ids,
                 top_k=5,
                 user=user,
+                actor_id=get_request_actor_id(request),
             )
             # Render markdown answer safely to HTML
             results["answer_html"] = render_markdown_to_html(results["answer"])
@@ -1051,7 +1091,7 @@ class ExportZipView(LoginRequiredMixin, View):
     def post(self, request):
         from django.core.cache import cache
 
-        user_key = f"export_ratelimit_{request.user.id}"
+        user_key = f"export_ratelimit_{get_request_actor_id(request)}"
         ip_key = f"export_ratelimit_{get_client_ip(request)}"
 
         if cache.get(user_key) or cache.get(ip_key):
@@ -1067,7 +1107,9 @@ class ExportZipView(LoginRequiredMixin, View):
             return redirect("dashboard")
 
         try:
-            zip_data = generate_curated_zip_bundle(document_ids, user=request.user)
+            zip_data = generate_curated_zip_bundle(
+                document_ids, user=request.user, actor_id=get_request_actor_id(request)
+            )
             response = HttpResponse(zip_data, content_type="application/zip")
             response["Content-Disposition"] = (
                 f'attachment; filename="curated_literature_archive_{timezone.now().strftime("%Y%m%d%H%M")}.zip"'
@@ -1084,7 +1126,7 @@ def _restart_single_document(doc, request, cloud_tasks):
         doc_uuid_val = doc_uuid_val.split(":", 1)[1]
     doc_uuid = str(doc_uuid_val)
     uploaded_by_id = doc.get("uploaded_by_id")
-    if not (request.user.is_staff or request.user.is_superuser or str(uploaded_by_id) == str(request.user.id)):
+    if not (request.user.is_staff or request.user.is_superuser or str(uploaded_by_id) == get_request_actor_id(request)):
         return False
 
     status = doc.get("status")
@@ -1172,7 +1214,9 @@ def _get_docs_for_delete(request, document_ids, users_map):
         docs = []
         for raw_doc in raw_docs:
             uploaded_by_id = raw_doc.get("uploaded_by_id")
-            if not (request.user.is_staff or request.user.is_superuser or uploaded_by_id == str(request.user.id)):
+            if not (
+                request.user.is_staff or request.user.is_superuser or uploaded_by_id == get_request_actor_id(request)
+            ):
                 continue
             docs.append(_wrap_surreal_doc(raw_doc, users_map))
         return docs
@@ -1464,7 +1508,9 @@ def _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_
         logs_qs = AuditLog.objects.filter(user=request.user).select_related("user", "document")
 
     if action_filter:
-        logs_qs = logs_qs.filter(action=action_filter)
+        # Audit records are immutable and older deployments may have used a
+        # different case. Canonicalize the request and match case-insensitively.
+        logs_qs = logs_qs.filter(action__iexact=action_filter)
     if is_staff_or_superuser and user_query:
         logs_qs = logs_qs.filter(user__username__icontains=user_query)
     if search_query:
@@ -1479,23 +1525,9 @@ def _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_
         )
 
     logs = list(logs_qs.distinct().order_by("-created_at")[:200])
-    action_choices = [
-        (AuditAction.LOGIN, "Login"),
-        (AuditAction.LOGOUT, "Logout"),
-        (AuditAction.UPLOAD, "Upload Fresh"),
-        (AuditAction.UPLOAD_CACHED, "Upload Cached"),
-        (AuditAction.EXTRACTION_START, "Pipeline Started"),
-        (AuditAction.EXTRACTION_COMPLETED, "Pipeline Completed"),
-        (AuditAction.EXTRACTION_FAILED, "Pipeline Failed"),
-        (AuditAction.DELETE, "Delete Document"),
-        (AuditAction.PURGE_ALL, "Purge All Records"),
-        (AuditAction.DOCUMENT_EDITED, "Document Edited"),
-        (AuditAction.DOCUMENT_REQUEUED, "Document Requeued"),
-        (AuditAction.SYSTEM_CONTROL, "System Control"),
-    ]
     return {
         "logs": logs,
-        "action_choices": action_choices,
+        "action_choices": AUDIT_ACTION_CHOICES,
         "selected_action": action_filter,
         "selected_user": user_query if is_staff_or_superuser else "",
         "search_query": search_query,
@@ -1532,15 +1564,19 @@ def _parse_surreal_audit_log(rl, users_map):
     a = DummyAuditLog()
     a.id = rl.get("id", "")
     a.user = u
-    a.action = rl.get("action", "")
+    a.action = normalize_audit_action(rl.get("action"))
     a.document = doc
     a.details = rl.get("details", "")
     a.ip_address = rl.get("ip_address", "")
     a.created_at = ts_parsed
+    a.timestamp = ts_parsed
     return a
 
 
-def _filter_audit_logs(logs, is_staff_or_superuser, user_query, search_query):
+def _filter_audit_logs(logs, is_staff_or_superuser, action_filter, user_query, search_query):
+    if action_filter:
+        logs = [log_item for log_item in logs if normalize_audit_action(log_item.action) == action_filter]
+
     if is_staff_or_superuser and user_query:
         logs = [
             log_item
@@ -1566,15 +1602,13 @@ def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_
     params = {}
     if not is_staff_or_superuser:
         where_clauses.append("user_id = $user_id")
-        params["user_id"] = str(request.user.id)
-    if action_filter:
-        where_clauses.append("action = $action")
-        params["action"] = action_filter
-
+        params["user_id"] = get_request_actor_id(request)
     sql = "SELECT * FROM audit_logs"
     if where_clauses:
         sql += " WHERE " + " AND ".join(where_clauses)
-    sql += " ORDER BY timestamp DESC LIMIT 200;"
+    # Filter actions after normalizing legacy ledger values. This keeps old,
+    # immutable entries discoverable while all new writes remain canonical.
+    sql += " ORDER BY timestamp DESC LIMIT 500;"
 
     raw_logs = surreal_db._first_result(surreal_db._run(sql, params))
 
@@ -1589,25 +1623,10 @@ def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_
         if a:
             logs.append(a)
 
-    logs = _filter_audit_logs(logs, is_staff_or_superuser, user_query, search_query)
-
-    action_choices = [
-        ("LOGIN", "Login"),
-        ("LOGOUT", "Logout"),
-        ("UPLOAD", "Upload Fresh"),
-        ("UPLOAD_CACHED", "Upload Cached"),
-        ("EXTRACTION_START", "Pipeline Started"),
-        ("EXTRACTION_COMPLETED", "Pipeline Completed"),
-        ("EXTRACTION_FAILED", "Pipeline Failed"),
-        ("DELETE", "Delete Document"),
-        ("PURGE_ALL", "Purge All Records"),
-        ("DOCUMENT_EDITED", "Document Edited"),
-        ("DOCUMENT_REQUEUED", "Document Requeued"),
-        ("SYSTEM_CONTROL", "System Control"),
-    ]
+    logs = _filter_audit_logs(logs, is_staff_or_superuser, action_filter, user_query, search_query)
     return {
         "logs": logs,
-        "action_choices": action_choices,
+        "action_choices": AUDIT_ACTION_CHOICES,
         "selected_action": action_filter,
         "selected_user": user_query if is_staff_or_superuser else "",
         "search_query": search_query,
@@ -1623,7 +1642,9 @@ class AuditLogListView(LoginRequiredMixin, View):
 
     def get(self, request):
         is_staff_or_superuser = request.user.is_superuser or request.user.is_staff
-        action_filter = request.GET.get("action", "").strip()
+        action_filter = normalize_audit_action(request.GET.get("action", ""))
+        if action_filter and action_filter not in dict(AUDIT_ACTION_CHOICES):
+            action_filter = ""
         user_query = request.GET.get("user", "").strip()
         search_query = request.GET.get("q", "").strip()
         from django.conf import settings

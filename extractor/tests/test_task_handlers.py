@@ -18,6 +18,20 @@ class TaskHandlersTestCase(TestCase):
         request = self.factory.post("/internal/tasks/test_task/")
         self.assertTrue(task_handlers._verify_oidc_token(request, "audience"))
 
+    @override_settings(DEBUG=False, APP_URL="https://app.example.test", WORKER_URL="https://worker.example.test")
+    @patch("extractor.task_handlers._verify_source_ip", return_value=True)
+    @patch("extractor.task_handlers._verify_oidc_token", return_value=True)
+    def test_worker_url_is_used_as_task_oidc_audience(self, mock_verify_oidc, _mock_verify_source_ip):
+        task_handlers.TASK_REGISTRY["audience_test"] = lambda payload: None
+        request = self.factory.post("/internal/tasks/audience_test/", data="{}", content_type="application/json")
+        try:
+            response = CloudTaskHandlerView().post(request, "audience_test")
+        finally:
+            task_handlers.TASK_REGISTRY.pop("audience_test", None)
+
+        self.assertEqual(response.status_code, 200)
+        mock_verify_oidc.assert_called_once_with(request, "https://worker.example.test/internal/tasks/audience_test/")
+
     @override_settings(DEBUG=False)
     @patch("google.oauth2.id_token.verify_oauth2_token")
     def test_verify_oidc_token_prod_success(self, mock_verify):

@@ -250,12 +250,12 @@
     <!-- Header -->
     <div class="audit-header animate-fade-in">
         <div class="audit-title-section">
-            <h2>Security Audit & Trace Logs</h2>
-            <p>Complete immutable audit trail tracking database sessions, user operations, and AI API costs.</p>
+            <h2>Knowledge Desk audit trail</h2>
+            <p>Immutable activity records for access, curation, and processing. Times use your browser's local timezone.</p>
         </div>
         <div>
             <a href="{% url 'dashboard' %}" class="btn btn-secondary">
-                <i data-lucide="arrow-left"></i> Back to Library
+                <i data-lucide="arrow-left"></i> Back to Knowledge Desk
             </a>
         </div>
     </div>
@@ -264,9 +264,9 @@
     <div class="glass-card padding-lg filter-card animate-fade-in delay-100">
         <form method="get" class="filter-form">
             <div class="form-group">
-                <label for="search-input">Search Log Details</label>
+                <label for="search-input">Search audit records</label>
                 <div class="search-input-container" style="position: relative; width: 100%;">
-                    <input type="search" id="search-input" name="q" value="{{ search_query }}" placeholder="Filter by details, IP address, file name..." class="filter-input" style="padding-right: 40px;" aria-describedby="audit-search-hint">
+                    <input type="search" id="search-input" name="q" value="{{ search_query }}" placeholder="Details, IP address, or document…" class="filter-input" style="padding-right: 40px;" aria-describedby="audit-search-hint">
                     <kbd class="search-shortcut-hint" id="audit-search-hint" aria-label="Shortcut: forward slash" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono, monospace); font-size: 11px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-glass); border-radius: 4px; padding: 2px 6px; color: var(--text-muted); pointer-events: none; transition: opacity 0.25s ease, visibility 0.25s ease;">/</kbd>
                 </div>
             </div>
@@ -281,10 +281,12 @@
                 </select>
             </div>
 
+            {% if request.user.is_staff or request.user.is_superuser %}
             <div class="form-group">
                 <label for="user-filter">Username</label>
                 <input type="text" id="user-filter" name="user" value="{{ selected_user }}" placeholder="Username..." class="filter-input">
             </div>
+            {% endif %}
 
             <div class="filter-actions">
                 <button type="submit" class="btn btn-primary" aria-label="Apply filters to audit logs">
@@ -305,7 +307,7 @@
             <table class="audit-table">
                 <thead>
                     <tr>
-                        <th style="width: 180px;">Timestamp</th>
+                        <th style="width: 190px;">Local timestamp</th>
                         <th style="width: 140px;">User</th>
                         <th style="width: 180px;">Action</th>
                         <th style="width: 130px;">IP Address</th>
@@ -317,7 +319,7 @@
                     {% for log in logs %}
                         <tr>
                             <td>
-                                <span class="doc-meta-sub local-datetime" data-utc="{{ log.timestamp|date:'c' }}">{{ log.timestamp|date:"Y-m-d H:i:s" }} UTC</span>
+                                <time class="doc-meta-sub local-datetime" datetime="{{ log.timestamp|date:'c' }}" data-utc="{{ log.timestamp|date:'c' }}" title="UTC: {{ log.timestamp|date:'c' }}">{{ log.timestamp|date:"Y-m-d H:i:s" }} UTC</time>
                             </td>
                             <td>
                                 <span class="user-cell">

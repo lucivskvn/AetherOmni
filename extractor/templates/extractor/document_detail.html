@@ -9,7 +9,7 @@
 <div class="detail-header">
     <div class="detail-header-left">
         <a href="{% url 'dashboard' %}" class="btn btn-secondary btn-back-workspace">
-            <i data-lucide="arrow-left" style="width:14px; height:14px;"></i> Back to Library
+            <i data-lucide="arrow-left" style="width:14px; height:14px;"></i> Back to Knowledge Desk
         </a>
         {% if document.status == 'COMPLETED' or document.refined_markdown %}
         <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 12px;">
@@ -324,7 +324,7 @@
         
         <div class="failed-actions-row">
             <a href="{% url 'dashboard' %}" class="btn btn-secondary">
-                <i data-lucide="arrow-left" style="width:14px; height:14px; margin-right:4px;"></i> Back to Library
+                <i data-lucide="arrow-left" style="width:14px; height:14px; margin-right:4px;"></i> Back to Knowledge Desk
             </a>
             <button type="button" class="btn btn-primary btn-retry-doc" data-doc-id="{{ document.uuid }}">
                 <i data-lucide="refresh-cw" style="width:14px; height:14px; margin-right:4px;"></i> Retry Curation

@@ -15,7 +15,7 @@ class CloudTasksTestCase(TestCase):
     def test_enqueue_local_thread_fallback(self, mock_logger):
         # We test that in local environment (where get_gcp_project_details returns None)
         # the task triggers execution inside a local Thread pool fallback
-        with patch("extractor.cloud_tasks.get_gcp_project_details") as mock_details:
+        with self.settings(DEBUG=True), patch("extractor.cloud_tasks.get_gcp_project_details") as mock_details:
             mock_details.return_value = {"project_id": None, "region": "us-central1"}
 
             # Let's mock the actual target task runner in extractor.tasks
@@ -57,6 +57,16 @@ class CloudTasksTestCase(TestCase):
             task = kwargs.get("task") or args[1]
             self.assertEqual(task["http_request"]["url"], "https://my-app.run.app/internal/tasks/process_document/")
             self.assertEqual(task["http_request"]["headers"]["Content-Type"], "application/json")
+
+    @patch("extractor.cloud_tasks.get_gcp_project_details")
+    def test_enqueue_production_rejects_missing_worker_configuration(self, mock_details):
+        mock_details.return_value = {"project_id": "my-gcp-project", "region": "asia-southeast1"}
+
+        with (
+            self.settings(DEBUG=False, APP_URL="", WORKER_URL=""),
+            self.assertRaisesRegex(RuntimeError, "worker URL is not configured"),
+        ):
+            cloud_tasks.enqueue("process_document", {"document_id": 99})
 
     @patch("urllib.request.urlopen")
     def test_get_gcp_service_account_success(self, mock_urlopen):

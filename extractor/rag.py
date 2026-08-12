@@ -363,6 +363,7 @@ def query_semantic_knowledge_rag(
     document_ids: list[int] | None = None,
     top_k: int = 5,
     user: Any = None,
+    actor_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Encodes the search query, runs SurrealDB Hybrid Dense-Sparse RAG chunk search (BM25 + HNSW RRF),
@@ -374,7 +375,7 @@ def query_semantic_knowledge_rag(
 
     query_cleaned = query.strip()
     query_hash = hashlib.sha256(query_cleaned.lower().encode("utf-8")).hexdigest()
-    user_part = str(user.id) if (user and user.is_authenticated) else "guest"
+    user_part = actor_id or (str(user.id) if (user and user.is_authenticated) else "guest")
     cache_key = f"rag_search_cache:{user_part}:{query_hash}"
 
     # ── 1. Exact-match KV cache lookup (SurrealDB) ────────────────────────────
@@ -402,7 +403,7 @@ def query_semantic_knowledge_rag(
         return cached_res
 
     # ── 6. SurrealDB Hybrid Dense-Sparse RAG chunk search (HNSW + BM25 RRF) ───
-    allowed_uuids = _get_allowed_doc_uuids(user, document_ids)
+    allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
     _ensure_chunks_loaded(allowed_uuids)
 
     try:
@@ -550,16 +551,16 @@ def _get_offline_uuids(user, document_ids):
     return [str(d.uuid) for d in qs]
 
 
-def _get_surreal_uuids(user, document_ids):
+def _get_surreal_uuids(user, document_ids, actor_id: str | None = None):
     from extractor import surreal_db
 
     where_clauses = []
-    params = {}
+    params: dict[str, Any] = {}
     if not user or not user.is_authenticated:
         where_clauses.append("uploaded_by_id = NONE")
     elif not (user.is_staff or user.is_superuser):
         where_clauses.append("uploaded_by_id = $user_id OR uploaded_by_id = NONE")
-        params["user_id"] = str(user.id)
+        params["user_id"] = actor_id or str(user.id)
 
     if document_ids:
         str_ids = [str(i) for i in document_ids if i]
@@ -578,7 +579,9 @@ def _get_surreal_uuids(user, document_ids):
     return [r["doc_uuid"] for r in rows]
 
 
-def _get_allowed_doc_uuids(user: Any, document_ids: list[str] | list[int] | None) -> list[str] | None:
+def _get_allowed_doc_uuids(
+    user: Any, document_ids: list[str] | list[int] | None, actor_id: str | None = None
+) -> list[str] | None:
     """
     Returns a list of UUID strings the user is allowed to access.
     Returns None if the user is staff/superuser (no filter).
@@ -589,7 +592,7 @@ def _get_allowed_doc_uuids(user: Any, document_ids: list[str] | list[int] | None
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return _get_offline_uuids(user, document_ids)
 
-    return _get_surreal_uuids(user, document_ids)
+    return _get_surreal_uuids(user, document_ids, actor_id=actor_id)
 
 
 def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:

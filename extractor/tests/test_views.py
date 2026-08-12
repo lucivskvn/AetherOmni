@@ -7,6 +7,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
 from extractor.models import AuditAction, AuditLog, SourceDocument, SystemSettings
+from extractor.views import get_request_actor_id
 
 
 class ViewsTestCase(TestCase):
@@ -704,8 +705,34 @@ class AuditLogTestCase(TestCase):
         self.assertEqual(len(response.context["logs"]), 1)
         self.assertIn("doc1", response.context["logs"][0].details)
 
+    def test_audit_action_filter_normalizes_legacy_case_and_renders_local_time_markup(self):
+        legacy_log = AuditLog.objects.create(
+            user=self.staff_user,
+            action="delete",
+            details="Legacy delete record",
+            ip_address="10.0.0.2",
+        )
+        self.client.login(username="staffuser", password="password123")
+
+        response = self.client.get(reverse("audit_logs") + "?action=delete")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_action"], AuditAction.DELETE)
+        self.assertEqual(len(response.context["logs"]), 2)
+        self.assertIn(legacy_log, response.context["logs"])
+        self.assertTrue(all(log.action.lower() == "delete" for log in response.context["logs"]))
+        self.assertContains(response, 'class="doc-meta-sub local-datetime"')
+        self.assertContains(response, 'datetime="')
+
+    def test_audit_username_filter_is_not_rendered_for_standard_users(self):
+        self.client.login(username="normaluser", password="password123")
+
+        response = self.client.get(reverse("audit_logs"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="user-filter"')
+
     def test_audit_logs_dangling_document(self):
-        # Create an audit log referencing a document, then delete the document
         log_dangling = AuditLog.objects.create(
             user=self.normal_user,
             action=AuditAction.EXTRACTION_COMPLETED,
@@ -714,15 +741,35 @@ class AuditLogTestCase(TestCase):
             ip_address="127.0.0.1",
         )
         self.doc1.delete()
-        # Since on_delete=models.SET_NULL, log_dangling.document should now be None
         log_dangling.refresh_from_db()
         self.assertIsNone(log_dangling.document)
 
-        # Login and verify the view still renders successfully without 500 error
         self.client.login(username="normaluser", password="password123")
         response = self.client.get(reverse("audit_logs"))
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"--", response.content)
+
+
+class StableSupabaseIdentityTestCase(TestCase):
+    """Production ownership must not depend on a Cloud Run instance's local PK."""
+
+    def test_request_actor_id_prefers_the_supabase_subject_in_production(self):
+        user = User.objects.create_user(username="stable-owner", password="password123")
+        request = RequestFactory().get("/")
+        request.user = user
+        request.session = {"supabase_user_id": "c955747c-322f-4e92-b933-5bca794710b3"}
+
+        with self.settings(SURREALDB_OFFLINE=False):
+            self.assertEqual(get_request_actor_id(request), "c955747c-322f-4e92-b933-5bca794710b3")
+
+    def test_request_actor_id_keeps_local_id_for_explicit_offline_mode(self):
+        user = User.objects.create_user(username="offline-owner", password="password123")
+        request = RequestFactory().get("/")
+        request.user = user
+        request.session = {"supabase_user_id": "c955747c-322f-4e92-b933-5bca794710b3"}
+
+        with self.settings(SURREALDB_OFFLINE=True):
+            self.assertEqual(get_request_actor_id(request), str(user.id))
 
 
 class DeploymentControllerViewTestCase(TestCase):
@@ -1021,6 +1068,14 @@ class SecurityAuthTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "CAPTCHA verification is required")
+
+    def test_login_turnstile_guard_is_non_blocking_for_the_submit_button(self):
+        with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):
+            response = self.client.get(reverse("login"))
+
+        self.assertContains(response, "showTurnstileValidationError")
+        self.assertContains(response, "e.defaultPrevented")
+        self.assertNotContains(response, "Please complete the CAPTCHA verification before submitting.")
 
     def test_register_view_rejects_reserved_emails(self):
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):

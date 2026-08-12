@@ -123,9 +123,9 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
     """Create a Cloud Tasks HTTP target task for production delivery."""
     details = get_gcp_project_details()
     if not details or not details.get("project_id"):
-        logger.info("[CloudTasks] Not running on GCP (project details missing). Falling back to local thread.")
-        _enqueue_local(task_name, payload)
-        return
+        message = "Cloud Tasks project details are unavailable; refusing to run a production task on the web service."
+        logger.error("[CloudTasks] %s", message)
+        raise RuntimeError(message)
 
     project = details.get("project_id")
     region = details.get("region") or getattr(settings, "GCP_REGION", "asia-southeast1")
@@ -133,13 +133,9 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
     service_url = getattr(settings, "WORKER_URL", "") or getattr(settings, "APP_URL", "")
 
     if not project or not service_url:
-        logger.error(
-            "[CloudTasks] GCP_PROJECT or APP_URL not configured. Cannot dispatch task '%s'. "
-            "Falling back to local thread.",
-            task_name,
-        )
-        _enqueue_local(task_name, payload)
-        return
+        message = f"Cloud Tasks worker URL is not configured; task '{task_name}' was not dispatched."
+        logger.error("[CloudTasks] %s", message)
+        raise RuntimeError(message)
 
     handler_url = f"{service_url.rstrip('/')}/internal/tasks/{task_name}/"
     queue_path = f"projects/{project}/locations/{region}/queues/{queue_name}"
@@ -177,6 +173,6 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
         client = _get_tasks_client()
         response = client.create_task(parent=queue_path, task=task)
         logger.info("[CloudTasks] Task '%s' enqueued: %s", task_name, response.name)
-    except Exception:
-        logger.exception("[CloudTasks] Failed to enqueue task '%s', falling back to local thread", task_name)
-        _enqueue_local(task_name, payload)
+    except Exception as exc:
+        logger.exception("[CloudTasks] Failed to enqueue task '%s'", task_name)
+        raise RuntimeError(f"Cloud Tasks could not enqueue '{task_name}'.") from exc

@@ -524,6 +524,23 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         client = get_vertex_client()
         self.assertIsNone(client)
 
+    @patch("extractor.llm_gateway.settings")
+    @patch("extractor.llm_gateway.os.getenv")
+    @patch("google.genai.Client")
+    def test_get_vertex_client_uses_gcp_project_id(self, mock_client_init, mock_getenv, mock_settings):
+        from extractor.llm_gateway import get_vertex_client
+
+        mock_settings.GCP_PROJECT = None
+        mock_settings.GCP_REGION = "asia-southeast1"
+        mock_getenv.side_effect = lambda key: "project-from-gcp-id" if key == "GCP_PROJECT_ID" else None
+
+        client = get_vertex_client()
+
+        self.assertIsNotNone(client)
+        mock_client_init.assert_called_once_with(
+            vertexai=True, project="project-from-gcp-id", location="asia-southeast1"
+        )
+
     @patch("extractor.llm_gateway.get_vertex_client_for_location")
     @patch("time.sleep")
     def test_execute_generate_content_with_fallback_cascades_to_vertex(
