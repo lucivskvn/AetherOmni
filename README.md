@@ -253,8 +253,9 @@ flowchart LR
 
 ### 🧭 Milestone 3.6 (MVP Reliability — Authentication & Release Integrity)
 
-- [ ] **Supabase Login Recovery**: Complete email/password, GitHub OAuth, and Passkey flows with a Django session bridge, safe redirects, CSRF coverage, and regression tests.
-- [ ] **Release Traceability**: Require the computed release version in GitHub Actions, SonarQube, Cloud Build, Cloud Run, and the application UI.
+- [x] **Supabase Email Login Recovery**: Turnstile is required before credential dispatch and its token is forwarded through GoTrue security metadata; successful sessions bridge into Django without first-user privilege escalation. GitHub OAuth and Passkeys remain planned.
+- [x] **Release Traceability**: SonarQube and Cloud Build derive the same commit-count release from full Git history, then propagate it to the immutable image tag, Cloud Run, and application UI.
+- [x] **Bounded SurrealDB Maintenance**: Periodic reaping and retention run only on the single-worker maintenance service; spend-ledger persistence is validated before document deletion.
 - [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
 
 ### 📈 Milestone 3.7 (MVP Reliability — Operations & Observability)
@@ -331,7 +332,7 @@ AetherOmni strictly enforces **Shift-Left Local Verification** before code can b
 
 ### 🧪 5-Phase Verification Gate (`run_checks.sh`)
 
-Execute the local verification script to validate all quality gates prior to opening a Pull Request:
+Execute the local verification script to validate all quality gates prior to opening a Pull Request. Pipeline failure propagation ensures captured test output cannot turn a failed command into a false-green result:
 
 ```bash
 bash run_checks.sh --autofix

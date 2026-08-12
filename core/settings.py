@@ -316,11 +316,12 @@ WORKER_URL = os.getenv("WORKER_URL", "")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_PUBLIC_KEY = os.getenv("SUPABASE_PUBLIC_KEY", "")
-# Service role key for server-side auth calls (bypasses CAPTCHA — never expose to clients)
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
 # Cloudflare Turnstile — site key is public (safe to render in templates)
 CF_TURNSTILE_SITE_KEY = os.getenv("CF_TURNSTILE_SITE_KEY", "")
+
+# Run periodic database maintenance only on the single-worker maintenance service.
+ENABLE_PERIODIC_MAINTENANCE = os.getenv("ENABLE_PERIODIC_MAINTENANCE", "False").lower() in ("true", "1", "yes")
 
 
 # ── Cloud Run / Upload RAM Safeguards ─────────────────────────────────────────

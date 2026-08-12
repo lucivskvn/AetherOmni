@@ -68,11 +68,6 @@ def _sync_supabase_user(
     if app_metadata.get("is_admin") is True:
         is_promoted_admin = True
 
-    # 2. First-User Auto-Admin Bootstrapping
-    if not is_promoted_admin and not User.objects.filter(is_superuser=True, is_active=True).exists():
-        logger.info("[Auth] No active admins found. Bootstrapping first-user admin privileges for: %s", user_email)
-        is_promoted_admin = True
-
     if is_promoted_admin:
         user.is_superuser = True
         user.is_staff = True
@@ -141,17 +136,16 @@ class SupabaseAuthBackend(ModelBackend):
         return self._do_supabase_auth(request, target_email, password, supabase_url, supabase_key)
 
     def _do_supabase_auth(self, request, target_email, password, supabase_url, supabase_key):
-        supabase_server_key = getattr(settings, "SUPABASE_SERVICE_KEY", "") or supabase_key
         url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
         headers = {
-            "apikey": supabase_server_key,
+            "apikey": supabase_key,
             "Content-Type": APPLICATION_JSON,
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
         body: dict = {"email": target_email, "password": password}
         captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
         if captcha_token:
-            body["captcha_token"] = captcha_token
+            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
 
         try:

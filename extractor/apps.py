@@ -25,6 +25,11 @@ class ExtractorConfig(AppConfig):
         import os
         import sys
 
+        from django.conf import settings
+
+        if not getattr(settings, "ENABLE_PERIODIC_MAINTENANCE", False):
+            return
+
         # Only run in the main process (avoids double-scheduling in gunicorn's
         # prefork model and Django test runner).
         if os.environ.get("RUN_MAIN") == "true" or os.environ.get("GUNICORN_WORKER") or "test" in sys.argv:

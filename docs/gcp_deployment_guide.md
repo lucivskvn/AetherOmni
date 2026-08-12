@@ -183,6 +183,20 @@ gcloud builds submit --config infra/gcp/cloudbuild.yaml \
   --substitutions="_RELEASE_VERSION=${RELEASE_VERSION}"
 ```
 
+Push-triggered Cloud Build checkouts are shallow by default. The reviewed build
+configuration unshallows Git history before computing the commit-count patch so
+its image tag and `RELEASE_VERSION` match the SonarQube analysis version. Manual
+source uploads must pass `_RELEASE_VERSION` explicitly as shown above.
+
+Supabase CAPTCHA-protected password, signup, and recovery calls forward the
+Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
+from the configured `ADMIN_EMAIL` or server-controlled Supabase app metadata;
+the application never promotes the first authenticated user automatically.
+
+Cloud Run enables periodic SurrealDB reaping and retention only on the
+single-worker worker service. Web instances do not start duplicate maintenance
+threads, and paid document deletion stops if spend-ledger persistence fails.
+
 ---
 
 ## 6. SurrealDB Setup and HNSW Vector Indexes
@@ -347,7 +361,7 @@ provisioning and reconciliation path after infrastructure import and preview.
 
 ## 8. Continuous Updates & Redeployment
 
-Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. With SonarQube Community Edition, the remote PR pipeline blocks on repository-native shift-left checks and GitHub security tools, then publishes a read-only table of the current `main` quality-gate baseline; the authoritative SonarQube quality-gate summary and dashboard link apply to `main` after a push. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
+Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. With SonarQube Community Edition, the remote PR pipeline blocks on repository-native shift-left checks and GitHub security tools, then publishes a read-only table of the current `main` quality-gate baseline; the authoritative SonarQube quality-gate summary and dashboard link apply to `main` after a push. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
 
 CI installs security scanners in an isolated environment if their dependency graph differs from the application runtime. This preserves reproducible application tests and keeps all scanner results blocking.
 

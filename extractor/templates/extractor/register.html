@@ -264,7 +264,7 @@
             {% if CF_TURNSTILE_SITE_KEY %}
                 <div class="form-group cf-turnstile-widget">
                     <input type="hidden" name="cf-turnstile-response" id="cf-turnstile-response-register">
-                    <div class="cf-turnstile" data-sitekey="{{ CF_TURNSTILE_SITE_KEY }}" data-callback="onTurnstileSuccessRegister"></div>
+                    <div class="cf-turnstile" data-sitekey="{{ CF_TURNSTILE_SITE_KEY }}" data-response-field="false" data-callback="onTurnstileSuccessRegister" data-expired-callback="onTurnstileExpiredRegister" data-error-callback="onTurnstileErrorRegister"></div>
                 </div>
             {% endif %}
 

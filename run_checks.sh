@@ -6,7 +6,7 @@ if [ -d ".venv" ] && [ -z "$VIRTUAL_ENV" ]; then
     source .venv/bin/activate || true
 fi
 
-set -e
+set -euo pipefail
 
 # Parse optional arguments
 AUTOFIX=false
@@ -53,7 +53,7 @@ echo -e "${CYAN}    Release Version: ${APP_VERSION}                             
 echo -e "${CYAN}    Automated Fix Mode: ${AUTOFIX}                                       ${NC}"
 echo -e "${CYAN}======================================================================${NC}"
 
-export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-django-insecure-ci-test-key-50-chars-long-for-local-testing}"
+export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-local-verification-only-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df0Jy}"
 
 # Ensure SurrealDB CLI is in PATH (installed via https://install.surrealdb.com)
 if [ -d "${HOME}/.surrealdb" ]; then

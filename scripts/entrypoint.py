@@ -13,12 +13,15 @@ def _debug_enabled() -> bool:
 
 
 def _gunicorn_command() -> list[str]:
+    workers = os.getenv("GUNICORN_WORKERS", "2")
+    if workers not in {"1", "2", "3", "4"}:
+        workers = "2"
     command = [
         "gunicorn",
         "--bind",
         ":8080",
         "--workers",
-        "2",
+        workers,
         "--threads",
         "4",
         "--timeout",

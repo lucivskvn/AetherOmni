@@ -33,6 +33,16 @@ class EntrypointTest(SimpleTestCase):
     def test_debug_gunicorn_command_omits_warning_log_level(self):
         self.assertNotIn("--log-level", entrypoint._gunicorn_command())
 
+    @patch.dict(os.environ, {"GUNICORN_WORKERS": "1"}, clear=False)
+    def test_gunicorn_worker_count_is_configurable(self):
+        command = entrypoint._gunicorn_command()
+        self.assertEqual(command[command.index("--workers") + 1], "1")
+
+    @patch.dict(os.environ, {"GUNICORN_WORKERS": "unbounded"}, clear=False)
+    def test_invalid_gunicorn_worker_count_uses_safe_default(self):
+        command = entrypoint._gunicorn_command()
+        self.assertEqual(command[command.index("--workers") + 1], "2")
+
     @patch("scripts.entrypoint.subprocess.run")
     def test_migrations_use_an_argument_list(self, mock_run):
         entrypoint._run_migrations()

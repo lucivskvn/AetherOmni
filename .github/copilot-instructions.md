@@ -14,7 +14,7 @@ runbook. This file remains the authoritative cross-agent policy.
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
   - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.git/hooks/pre-commit` which runs `bash run_checks.sh --fast`. This differential gate checks modified files with Ruff, ESLint, yamllint, markdownlint, SurrealQL validation, Bandit, Semgrep, AST-Grep, and ShellCheck where applicable; new suppressions require a precise rule ID, with Semgrep and SonarQube suppressions also requiring a reason.
   - **Pre-Push Gatekeeper Hook**: Local pushes are enforced by `.git/hooks/pre-push` running the full verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), Docker (`hadolint`), SurrealQL (`surreal validate`), and AST pattern rules (`ast-grep`).
-  - **Full Suite Run**: Execute `bash run_checks.sh` locally for a full 5-phase verification pass.
+  - **Full Suite Run**: Execute `bash run_checks.sh` locally for a full 5-phase verification pass. Shell pipeline failures must propagate so log capture cannot mask a failed check.
   - **Runtime Alignment**: Create the local environment with Python 3.14 and install `requirements-dev.txt`; `run_checks.sh` rejects an older interpreter rather than silently producing incompatible results.
   - **Active Linters & Auto-Fixers**: Ensure active auto-fixers (`markdownlint --fix`, `yamllint`, `ruff check --fix`, `ruff format`) are executed so document formatting, JS/Python code standards, and YAML schemas are automatically corrected.
 - You MUST ensure the verification suite passes cleanly with **0 Blocker / High Security Vulnerabilities** and **0 Complexity Errors** BEFORE creating or opening a Pull Request.
@@ -52,7 +52,9 @@ runbook. This file remains the authoritative cross-agent policy.
 
 ### 7. Release, GCP, and Agent Hand-off
 
-- Compute the release version before SonarQube analysis and Cloud Build; never manually edit it or deploy a `latest` fallback.
+- Compute the release version before SonarQube analysis and Cloud Build; never manually edit it or deploy a `latest` fallback. Cloud Build must unshallow trigger checkouts before deriving the commit-count patch.
+- Send Supabase CAPTCHA tokens in GoTrue `gotrue_meta_security`; require Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL` or server-controlled Supabase app metadata. Never auto-promote the first user.
+- Enable periodic SurrealDB maintenance only on the single-worker worker service; web instances must not start duplicate reaper or retention threads.
 - Keep SonarQube failures blocking and actionable in the GitHub Actions summary so Jules can work from scoped PR checks or issues.
 - SonarQube Community Edition does not support pull-request or branch analysis; never analyze a merge checkout as the default branch.
 - PR Actions publish the read-only `main` quality-gate baseline as a table and label it as baseline context, never as a PR result.
