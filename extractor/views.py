@@ -1543,6 +1543,31 @@ def _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_
     }
 
 
+def _parse_surreal_audit_details(raw_log):
+    """Return human-readable details from current and historical audit rows."""
+    details = raw_log.get("details", "")
+    metadata = raw_log.get("metadata")
+    if details or not metadata:
+        return str(details)
+    if isinstance(metadata, dict):
+        return str(metadata.get("details", ""))
+    if not isinstance(metadata, str):
+        return ""
+    try:
+        decoded_metadata = json.loads(metadata)
+    except json.JSONDecodeError:
+        return metadata
+    return str(decoded_metadata.get("details", "") if isinstance(decoded_metadata, dict) else metadata)
+
+
+def _get_surreal_audit_document(raw_log, users_map):
+    document_id = raw_log.get("doc_uuid")
+    if not document_id:
+        return None
+    raw_document = surreal_db.get_document(document_id)
+    return _wrap_surreal_doc(raw_document, users_map) if raw_document else None
+
+
 def _parse_surreal_audit_log(rl, users_map):
     if not rl:
         return None
@@ -1560,13 +1585,6 @@ def _parse_surreal_audit_log(rl, users_map):
     uid = rl.get("user_id")
     u = users_map.get(uid) if uid else None
 
-    doc = None
-    did = rl.get("doc_uuid")
-    if did:
-        d_raw = surreal_db.get_document(did)
-        if d_raw:
-            doc = _wrap_surreal_doc(d_raw, users_map)
-
     class DummyAuditLog:
         pass
 
@@ -1574,19 +1592,8 @@ def _parse_surreal_audit_log(rl, users_map):
     a.id = rl.get("id", "")
     a.user = u
     a.action = normalize_audit_action(rl.get("action"))
-    a.document = doc
-    details = rl.get("details", "")
-    metadata = rl.get("metadata")
-    if not details and metadata:
-        if isinstance(metadata, dict):
-            details = metadata.get("details", "")
-        elif isinstance(metadata, str):
-            try:
-                decoded_metadata = json.loads(metadata)
-                details = decoded_metadata.get("details", "") if isinstance(decoded_metadata, dict) else metadata
-            except json.JSONDecodeError:
-                details = metadata
-    a.details = str(details)
+    a.document = _get_surreal_audit_document(rl, users_map)
+    a.details = _parse_surreal_audit_details(rl)
     a.ip_address = rl.get("ip_address", "")
     a.created_at = ts_parsed
     a.timestamp = ts_parsed
