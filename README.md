@@ -64,6 +64,7 @@ flowchart TD
   - **Shift-Left Local Verification**: Multi-language `run_checks.sh` pipeline enforcing Python AST auditing (`ruff`), static typing (`mypy`), differential security scanning (`bandit`, Semgrep, AST-Grep), JavaScript conventions (`eslint`), YAML schema validation (`yamllint`), container hardening (`hadolint`), and comprehensive automated unit test coverage. New suppressions must identify the exact rule; Semgrep and SonarQube suppressions also require a justification.
   - **Desloppify Codebase Health**: Continuous structural complexity, cohesion, and dependency cycle monitoring across all 17 sensors to maintain high objective codebase quality and security scores.
   - **Cloud SAST & Quality Gate**: Automated CI pipeline integrating static application security testing with remote SonarQube MQR Quality Gate enforcement.
+  - **Reproducible CI Tooling**: Security scanners run in an isolated environment when their dependencies differ from the application runtime, without weakening blocking checks.
 
 ---
 
@@ -361,7 +362,7 @@ bash scripts/verify-pipeline.sh
 Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (`.github/workflows/ci.yml`):
 
 1. **Pre-Scan Validation**: Blocks on shell-script or container-file lint failures (`hadolint`).
-2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules with `coverage.xml`.
+2. **Community Edition PR Gate and SonarQube Deep SAST**: Pull requests use the repository-native shift-left gate and GitHub security checks, then show a read-only table of the current `main` SonarQube quality-gate baseline. SonarQube scans `main` on pushes at `https://sonarqube.fainko.cloud` using Sonar rules with coverage.
 3. **Quality Gate Gatekeeper**: Publishes the gate status and dashboard link in the Actions summary, then blocks failed quality gates before permitting merge.
 
 Cloud Build uses Kaniko's BusyBox-enabled debug image, pinned by immutable
