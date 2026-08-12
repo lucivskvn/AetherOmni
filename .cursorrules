@@ -55,7 +55,9 @@ runbook. This file remains the authoritative cross-agent policy.
 
 - Compute the release version before SonarQube analysis and Cloud Build; never manually edit it or deploy a `latest` fallback. Cloud Build must unshallow trigger checkouts before deriving the commit-count patch.
 - Send Supabase CAPTCHA tokens in GoTrue `gotrue_meta_security`; require Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL` or server-controlled Supabase app metadata. Never auto-promote the first user.
+- In production, use the Supabase Auth subject UUID for document ownership, tenant filtering, exports, RAG access, and rate-limit keys; Django/SQLite IDs are offline-only implementation details.
 - Enable periodic SurrealDB maintenance only on the worker service with one continuously allocated, unthrottled instance; web instances must not start duplicate reaper or retention threads.
+- Cloud Tasks must dispatch only to `WORKER_URL` in production; never fall back to a local web-process thread. Cloud Build resolves the worker URL and GCP project identity at deploy time, while `_APP_URL` may set the public Supabase confirmation origin.
 - Keep SonarQube failures blocking and actionable in the GitHub Actions summary so Jules can work from scoped PR checks or issues.
 - SonarQube Community Edition does not support pull-request or branch analysis; never analyze a merge checkout as the default branch.
 - PR Actions publish the read-only `main` quality-gate baseline as a table and label it as baseline context, never as a PR result.
@@ -87,7 +89,7 @@ runbook. This file remains the authoritative cross-agent policy.
    - Use `concurrent.futures.ThreadPoolExecutor` worker dispatch in sync/async boundaries instead of monkeypatching event loops with `nest_asyncio`.
 
 6. **Multi-Language Code Quality & Eco-Design**:
-   - Python: Use the canonical runtime and Ruff target declared in project configuration, with `ruff`, `mypy`, and `bandit`.
+   - Python: Target Python 3.14 across Docker, CI, local checks, and SonarQube, with `ruff`, `mypy`, and `bandit`.
    - JavaScript: ESLint 10 with SonarQube JS conventions (`?.` optional chaining, global scope checks, complexity ≤ 15).
    - SurrealQL: `surreal validate` enforces `.surql` schema syntax on every pipeline run.
    - Adhere to Creedengo Eco-Design rules (low energy consumption, optimal memory management).

@@ -406,7 +406,7 @@ def _get_offline_docs(document_ids, user):
     return list(docs)
 
 
-def _get_surreal_docs(document_ids, user):
+def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
     from django.contrib.auth import get_user_model
 
     from extractor import surreal_db
@@ -422,7 +422,8 @@ def _get_surreal_docs(document_ids, user):
             continue
 
         uploaded_by_id = raw_doc.get("uploaded_by_id")
-        if user and not (user.is_staff or user.is_superuser) and uploaded_by_id and uploaded_by_id != str(user.id):
+        owner_id = actor_id or str(user.id)
+        if user and not (user.is_staff or user.is_superuser) and uploaded_by_id and uploaded_by_id != owner_id:
             continue
 
         doc = _wrap_surreal_doc(raw_doc, users_map)
@@ -434,6 +435,7 @@ def generate_curated_zip_bundle(
     document_ids: list[int] | list[str],
     user: Any = None,
     include_taxonomic_views: bool = True,
+    actor_id: str | None = None,
 ) -> bytes:
     """
     Aggregates selected documents into an organized directory structure.
@@ -446,7 +448,7 @@ def generate_curated_zip_bundle(
     if getattr(settings, "SURREALDB_OFFLINE", False):
         docs_list = _get_offline_docs(document_ids, user)
     else:
-        docs_list = _get_surreal_docs(document_ids, user)
+        docs_list = _get_surreal_docs(document_ids, user, actor_id=actor_id)
 
     if not docs_list:
         raise ValueError("No completed documents selected for export bundle.")

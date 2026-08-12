@@ -144,8 +144,9 @@ class CloudTaskHandlerView(View):
             _register()
 
         # ── Security checks (production only) ─────────────────────────────
+        worker_url = getattr(settings, "WORKER_URL", "").rstrip("/")
         app_url = getattr(settings, "APP_URL", "http://localhost:8080").rstrip("/")
-        audience = f"{app_url}/internal/tasks/{task_name}/"
+        audience = f"{(worker_url or app_url)}/internal/tasks/{task_name}/"
 
         if not _verify_oidc_token(request, audience):
             return HttpResponse("Unauthorized", status=401)

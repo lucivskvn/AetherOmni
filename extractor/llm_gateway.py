@@ -702,9 +702,14 @@ def get_vertex_client_for_location(location: str) -> Any | None:
         logger.warning("[Gateway] google-genai package is not installed.")
         return None
 
-    project = getattr(settings, "GCP_PROJECT", None) or os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    project = (
+        getattr(settings, "GCP_PROJECT", None)
+        or os.getenv("GCP_PROJECT")
+        or os.getenv("GOOGLE_CLOUD_PROJECT")
+        or os.getenv("GCP_PROJECT_ID")
+    )
     if not project:
-        logger.warning("[Gateway] GCP_PROJECT / GOOGLE_CLOUD_PROJECT not set. Vertex AI skipped.")
+        logger.warning("[Gateway] GCP project identifier not set. Vertex AI skipped.")
         return None
 
     try:

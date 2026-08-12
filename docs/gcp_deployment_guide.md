@@ -8,7 +8,7 @@ This guide describes how to provision, configure, build, and deploy the **Aether
 
 The production system consists of:
 
-1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic, serves dashboard/login pages, and houses ephemeral SQLite databases for Django's user sessions.
+1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Its local SQLite state is an offline-development fallback only; production document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
 2. **Cloud Run Service (`aether-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
 3. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
 4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (at `wss://surrealdb.fainko.cloud/rpc`). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
@@ -181,8 +181,15 @@ Use Google Cloud Build to build and push your Docker container:
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
 DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
 gcloud builds submit --config infra/gcp/cloudbuild.yaml \
-  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
+  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA},_APP_URL=https://your-public-app.example"
 ```
+
+Cloud Build resolves the current Cloud Run web and worker URLs before deployment,
+sets `GOOGLE_CLOUD_PROJECT` for Vertex AI ADC, and passes `WORKER_URL` to both
+services. The web process must only enqueue tasks; it must not run production
+ingestion locally when the worker routing configuration is missing. Set `_APP_URL`
+to the public origin that is allow-listed in Supabase Auth so confirmation and
+recovery links return to the browser-facing login page.
 
 Push-triggered Cloud Build checkouts are shallow by default. The reviewed build
 configuration unshallows Git history before computing the commit-count patch so
@@ -345,7 +352,9 @@ We deploy both the `web` service and the `worker` service. Deployments are manag
 
 ### Deploy Services Declaratively (Recommended)
 
-Cloud Build computes the release version before it builds or deploys. It passes that
+Cloud Build computes the release version before it builds or deploys. The production
+container, GitHub verification workflow, local checks, and SonarQube analysis use
+the Python 3.14 runtime declared by project configuration. It passes that
 same value to Cloud Run and SonarQube, so a production issue can be traced to one
 release. The Kaniko build step uses an official, digest-pinned debug image because
 it needs BusyBox to source computed release metadata; the standard executor image

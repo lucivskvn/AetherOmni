@@ -1176,12 +1176,14 @@ def kv_cache_set(key: str, value: Any, ttl_seconds: int | None = None) -> None:
 
     json_value = json.dumps(value)
     sql = (  # nosec B608
+        "BEGIN TRANSACTION;"
         "DELETE FROM kv_cache WHERE cache_key = $cache_key;"
         "INSERT INTO kv_cache {"
         "  cache_key: $cache_key,"
         "  cache_value: $cache_value,"
         "  expires_at: $expires_at"
         "};"
+        "COMMIT TRANSACTION;"
     )
     _run(
         sql,
