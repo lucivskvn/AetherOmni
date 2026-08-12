@@ -16,7 +16,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Document Repository{% endblock %} | Knowledge Desk - AI-Assisted Curator</title>
+    <title>{% block title %}Knowledge Desk{% endblock %} | Knowledge Desk - AI-Assisted Curator</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -105,7 +105,7 @@
                 </button>
                 {% if user.is_authenticated %}
                 <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
-                    <i data-lucide="layout-dashboard"></i> Library
+                    <i data-lucide="layout-dashboard"></i> Knowledge Desk
                 </a>
                 <a href="{% url 'audit_logs' %}" class="nav-link {% if request.resolver_match.url_name == 'audit_logs' %}active{% endif %}">
                     <i data-lucide="shield-alert"></i> Audit Logs
@@ -271,7 +271,10 @@
         function onTurnstileSuccess(token) {
             try {
                 const el = document.getElementById('cf-turnstile-response');
-                if (el) el.value = token;
+                if (el) {
+                    el.value = token;
+                    clearTurnstileValidationError(el);
+                }
             } catch (e) { console.warn("Turnstile assignment failed", e); }
         }
         function clearTurnstileToken(fieldId) {
@@ -287,17 +290,40 @@
         function onTurnstileSuccessRegister(token) {
             try {
                 const el = document.getElementById('cf-turnstile-response-register');
-                if (el) el.value = token;
+                if (el) {
+                    el.value = token;
+                    clearTurnstileValidationError(el);
+                }
             } catch (e) { console.warn("Turnstile assignment failed", e); }
         }
         function onTurnstileSuccessForgot(token) {
             try {
                 const el = document.getElementById('cf-turnstile-response-forgot');
-                if (el) el.value = token;
+                if (el) {
+                    el.value = token;
+                    clearTurnstileValidationError(el);
+                }
             } catch (e) { console.warn("Turnstile assignment failed", e); }
         }
-        // Ensure forms submit even if Turnstile fires after user clicks submit by
-        // adding submit handlers that wait briefly for token population.
+        function showTurnstileValidationError(form, widget) {
+            let error = form.querySelector('[data-turnstile-error]');
+            if (!error) {
+                error = document.createElement('div');
+                error.className = 'form-errors';
+                error.dataset.turnstileError = 'true';
+                error.setAttribute('role', 'alert');
+                error.setAttribute('aria-live', 'assertive');
+                form.insertBefore(error, widget);
+            }
+            error.textContent = 'CAPTCHA verification is required. Please complete the security check and try again.';
+            widget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        function clearTurnstileValidationError(tokenField) {
+            tokenField.closest('form')?.querySelector('[data-turnstile-error]')?.remove();
+        }
+
+        // Block incomplete challenges before the loading-spinner listener runs.
+        // The server repeats this validation, so client-side validation only improves feedback.
         document.addEventListener('DOMContentLoaded', function() {
             const formsToPatch = [
                 { id: 'login-form', tokenField: 'cf-turnstile-response' },
@@ -308,30 +334,14 @@
                 const form = document.getElementById(cfg.id) || document.querySelector(`form#${cfg.id}`) || document.querySelector(`form[name='${cfg.id}']`);
                 if (!form) return;
                 form.addEventListener('submit', function (e) {
-                    // If token already present, nothing to do.
+                    if (e.defaultPrevented) return;
                     const tf = document.getElementById(cfg.tokenField);
-                    if (tf && tf.value) return;
-                    // Otherwise, briefly wait for Turnstile to set token (max 1200ms)
+                    const widget = form.querySelector('.cf-turnstile-widget');
+                    if (!widget || (tf && tf.value.trim())) return;
+
                     e.preventDefault();
-                    let waited = 0;
-                    const interval = setInterval(() => {
-                        if (tf && tf.value) {
-                            clearInterval(interval);
-                            form.submit();
-                            return;
-                        }
-                        waited += 100;
-                        if (waited >= 1200) {
-                            clearInterval(interval);
-                            const widget = form.querySelector('.cf-turnstile-widget');
-                            if (widget) {
-                                alert('Please complete the CAPTCHA verification before submitting.');
-                            } else {
-                                form.submit();
-                            }
-                        }
-                    }, 100);
-                });
+                    showTurnstileValidationError(form, widget);
+                }, true);
             });
         });
     </script>

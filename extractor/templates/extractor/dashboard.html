@@ -1,7 +1,7 @@
 {% extends 'extractor/base.html' %}
 {% load extractor_filters %}
 
-{% block title %}Academic Heritage Library{% endblock %}
+{% block title %}Knowledge Desk{% endblock %}
 
 {% block content %}
 <!-- Top Metrics Highlights Row -->
@@ -98,12 +98,12 @@
                 {% csrf_token %}
                 <div class="panel-header">
                     <div class="panel-title">
-                        <i data-lucide="archive"></i> Academic Publications Library
+                        <i data-lucide="archive"></i> Curated knowledge library
                     </div>
                     <div class="flex-gap-sm" style="display: flex; gap: 12px; align-items: center;">
                         <div class="table-filter-wrapper" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); position: relative;">
-                            <label for="table-filter" class="visually-hidden">Filter library documents</label>
-                            <input type="search" id="table-filter" class="table-filter-input" placeholder="Filter library...">
+                            <label for="table-filter" class="visually-hidden">Filter knowledge documents</label>
+                            <input type="search" id="table-filter" class="table-filter-input" placeholder="Filter knowledge…">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted);"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                         </div>
                         <div class="sort-select-wrapper" style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted);">

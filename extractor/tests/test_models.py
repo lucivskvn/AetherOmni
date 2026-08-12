@@ -6,7 +6,7 @@ from django.core.files.base import ContentFile
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from extractor.models import AuditLog, SafeVectorField, SourceDocument
+from extractor.models import AuditLog, MonthlySpendLog, SafeVectorField, SourceDocument
 
 
 class SafeVectorFieldTestCase(TestCase):
@@ -16,6 +16,15 @@ class SafeVectorFieldTestCase(TestCase):
         field = SafeVectorField()
         mock_connection = MagicMock()
         self.assertEqual(field.db_type(mock_connection), "TEXT")
+
+
+class MonthlySpendLogTestCase(TestCase):
+    @patch("extractor.surreal_db.kv_cache_get")
+    def test_surreal_monthly_spend_reads_decoded_cache_values(self, mock_get):
+        mock_get.return_value = {"accumulated_cost_usd": 12.345678}
+
+        with self.settings(SURREALDB_OFFLINE=False):
+            self.assertEqual(str(MonthlySpendLog.total_for_month(2026, 7)), "12.345678")
 
 
 class AuditLogSignalsTestCase(TestCase):

@@ -62,9 +62,16 @@ runbook. This file remains the authoritative cross-agent policy.
 - Supabase CAPTCHA tokens must be sent in GoTrue `gotrue_meta_security`; require
   Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL`
   or server-controlled Supabase app metadata. Never auto-promote the first user.
+- In production, use the Supabase Auth subject UUID for document ownership,
+  tenant filtering, exports, RAG access, and rate-limit keys. Django/SQLite IDs
+  are local implementation details and are permitted only in explicit offline mode.
 - Enable periodic SurrealDB maintenance only on the worker service, enforcing a
   single continuously allocated instance with no CPU throttling; web instances
   must not start duplicate reaper or retention threads.
+- Cloud Tasks must dispatch only to `WORKER_URL` in production; never fall back
+  to a local web-process thread. Cloud Build resolves the worker URL and GCP
+  project identity at deploy time, while `_APP_URL` may set the public Supabase
+  confirmation origin.
 - Treat the GitHub Actions summary as the actionable SonarQube hand-off. Keep
   failures blocking so Jules can address scoped issues from PR checks or issues.
 - SonarQube Community Edition does not support pull-request or branch analysis.
@@ -100,7 +107,7 @@ runbook. This file remains the authoritative cross-agent policy.
    - Use `concurrent.futures.ThreadPoolExecutor` worker dispatch in sync/async boundaries instead of monkeypatching event loops with `nest_asyncio`.
 
 6. **Multi-Language Code Quality & Eco-Design**:
-   - Python: Use the canonical runtime and Ruff target declared in project configuration, with `ruff`, `mypy`, and `bandit`.
+   - Python: Target Python 3.14 across Docker, CI, local checks, and SonarQube, with `ruff`, `mypy`, and `bandit`.
    - JavaScript: ESLint 10 with SonarQube JS conventions (`?.` optional chaining, global scope checks, complexity ≤ 15).
    - SurrealQL: `surreal validate` enforces `.surql` schema syntax on every pipeline run.
    - Adhere to Creedengo Eco-Design rules (low energy consumption, optimal memory management).
