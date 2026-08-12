@@ -1,7 +1,7 @@
 # ==========================================
 # 1. Base Builder and Dependency Stage
 # ==========================================
-FROM python:3.13-slim AS builder
+FROM python:3.14.6-slim-trixie@sha256:7bec7ddcddeff7975d6ba9b4be7dd6f6b2f55e7491539145e2978f7f97ce9144 AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r re
 # ==========================================
 # 2. Production Non-Root Runtime Stage
 # ==========================================
-FROM python:3.13-slim AS runner
+FROM python:3.14.6-slim-trixie@sha256:7bec7ddcddeff7975d6ba9b4be7dd6f6b2f55e7491539145e2978f7f97ce9144 AS runner
 
 WORKDIR /app
 
@@ -43,14 +43,14 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Create a dedicated non-privileged user (OWASP SOC2 compliance)
 RUN groupadd -g 1000 django-group && \
-    useradd -m -u 1000 -g django-group -s /bin/bash django-user
+    useradd -m -u 1000 -g django-group -s /usr/sbin/nologin django-user
 
 # Copy project assets and application code owned by root (read-only for non-root user)
 COPY core/ /app/core/
 COPY extractor/ /app/extractor/
 COPY static/ /app/static/
 COPY manage.py schema.surql /app/
-COPY scripts/init_surreal.py /app/init_surreal.py
+COPY scripts/entrypoint.py scripts/init_surreal.py /app/
 
 # Ensure application files and static_root are owned by django-user
 RUN mkdir -p /app/static_root && \
@@ -64,7 +64,5 @@ RUN DJANGO_SECRET_KEY=dummy-key-for-collectstatic SURREALDB_OFFLINE=True python 
 
 EXPOSE 8080
 
-# Run database initialisation and standard production server Gunicorn
-CMD ["sh", "-c", "python manage.py migrate && (python init_surreal.py &) && if [ \"$DJANGO_DEBUG\" = \"True\" ]; then gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 core.wsgi:application; else gunicorn --bind :8080 --workers 2 --threads 4 --timeout 120 --log-level warning core.wsgi:application; fi"]
-
-
+# Shell-free startup: migrate, start bounded SurrealDB initialization, then exec Gunicorn.
+ENTRYPOINT ["python", "/app/entrypoint.py"]

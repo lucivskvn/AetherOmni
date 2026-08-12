@@ -274,12 +274,17 @@ class SecurityGatewayAndAuthTestCase(TestCase):
 
         # Execute Supabase auth flow with mock credentials
         backend = SupabaseAuthBackend()
+        request = MagicMock()
+        request.POST = {"cf-turnstile-response": "valid-captcha-token"}
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
-            user = backend.authenticate(None, username="supabase.test@example.com", password="somepassword")
+            user = backend.authenticate(request, username="supabase.test@example.com", password="somepassword")
 
         self.assertIsNotNone(user)
         self.assertEqual(user.email, "supabase.test@example.com")
         self.assertEqual(user.username, "supabase.test")
+        request_body = json.loads(mock_urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertNotIn("captcha_token", request_body)
+        self.assertEqual(request_body["gotrue_meta_security"], {"captcha_token": "valid-captcha-token"})
 
     @patch("urllib.request.urlopen")
     def test_supabase_idp_auth_rejected_credential(self, mock_urlopen):
@@ -303,6 +308,30 @@ class SecurityGatewayAndAuthTestCase(TestCase):
             # Since username doesn't have '@', SupabaseAuthBackend falls back to local DB directly without GoTrue dispatch!
             self.assertIsNotNone(user_by_uname)
             self.assertEqual(user_by_uname.username, self.username)
+
+    @patch("urllib.request.urlopen")
+    def test_turnstile_protected_supabase_rejection_does_not_fallback_locally(self, mock_urlopen):
+        """A rejected protected GoTrue request must not bypass CAPTCHA via local auth."""
+        import urllib.error
+
+        from extractor.auth import SupabaseAuthBackend
+
+        mock_err = urllib.error.HTTPError(
+            url="https://project.supabase.co/auth/v1/token", code=400, msg="Bad Request", hdrs={}, fp=MagicMock()
+        )
+        mock_err.read = MagicMock(return_value=b'{"error": "captcha_failed"}')
+        mock_urlopen.side_effect = mock_err
+        request = MagicMock()
+        request.POST = {"cf-turnstile-response": "invalid-captcha-token"}
+
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="test-site-key",
+        ):
+            user = SupabaseAuthBackend().authenticate(request, username=self.user_email, password=self.password)
+
+        self.assertIsNone(user)
 
     @patch("urllib.request.urlopen")
     def test_supabase_email_prefix_collision(self, mock_urlopen):
@@ -935,6 +964,64 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
 class SecurityAuthTestCase(TestCase):
     """Verifies that various authentication, registration, recovery, and settings input checks are secure."""
 
+    def assert_supabase_captcha_payload(self, mock_urlopen):
+        import json
+
+        request_body = json.loads(mock_urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertNotIn("captcha_token", request_body)
+        self.assertEqual(request_body["gotrue_meta_security"], {"captcha_token": "valid-captcha-token"})
+
+    @patch("urllib.request.urlopen")
+    def test_registration_sends_captcha_in_gotrue_security_metadata(self, mock_urlopen):
+        from extractor.views import _register_supabase_user
+
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+
+        success, error_message = _register_supabase_user(
+            "https://project.supabase.co",
+            "mock-public-key",
+            "test@example.com",
+            "password123",
+            "https://app.example.com",
+            "valid-captcha-token",
+        )
+
+        self.assertTrue(success)
+        self.assertIsNone(error_message)
+        self.assert_supabase_captcha_payload(mock_urlopen)
+
+    @patch("urllib.request.urlopen")
+    def test_recovery_sends_captcha_in_gotrue_security_metadata(self, mock_urlopen):
+        from extractor.views import _send_supabase_recovery
+
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+
+        success, error_message = _send_supabase_recovery(
+            "test@example.com",
+            "https://project.supabase.co",
+            "mock-public-key",
+            "https://app.example.com",
+            "valid-captcha-token",
+        )
+
+        self.assertTrue(success)
+        self.assertIsNone(error_message)
+        self.assert_supabase_captcha_payload(mock_urlopen)
+
+    def test_login_requires_turnstile_token_when_configured(self):
+        with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):
+            response = self.client.post(
+                reverse("login"),
+                {"username": "test@example.com", "password": "password123"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CAPTCHA verification is required")
+
     def test_register_view_rejects_reserved_emails(self):
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
             # Register user with admin@
@@ -1028,14 +1115,14 @@ class SecurityAuthTestCase(TestCase):
             self.assertTrue(user.is_staff)
 
     @patch("urllib.request.urlopen")
-    def test_first_user_auto_bootstrap(self, mock_urlopen):
+    def test_first_user_is_not_automatically_promoted(self, mock_urlopen):
         import json
 
         from django.contrib.auth.models import User
 
         from extractor.auth import SupabaseAuthBackend
 
-        # Ensure database has no superusers to trigger bootstrap
+        # An empty local database must not turn the first public signup into an administrator.
         User.objects.all().delete()
 
         mock_resp = MagicMock()
@@ -1052,8 +1139,17 @@ class SecurityAuthTestCase(TestCase):
             user = backend.authenticate(None, username="first_user@example.com", password="password123")
 
             self.assertIsNotNone(user)
-            self.assertTrue(user.is_superuser)
-            self.assertTrue(user.is_staff)
+            self.assertFalse(user.is_superuser)
+            self.assertFalse(user.is_staff)
+
+    def test_static_example_email_is_not_an_admin_grant(self):
+        from extractor.auth import _sync_supabase_user
+
+        with self.settings(ADMIN_EMAIL=""):
+            user = _sync_supabase_user(None, {"user": {"email": "admin@example.com"}}, "admin@example.com")
+
+        self.assertFalse(user.is_superuser)
+        self.assertFalse(user.is_staff)
 
     def test_forgot_password_page_renders_turnstile_widget_when_configured(self):
         with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):

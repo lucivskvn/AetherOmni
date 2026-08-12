@@ -60,17 +60,12 @@ def _sync_supabase_user(
         email=user_email, defaults={"username": django_username, "is_active": True}
     )
 
-    admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
-    is_promoted_admin = user_email.lower() == admin_email.lower()
+    admin_email = getattr(settings, "ADMIN_EMAIL", "").strip()
+    is_promoted_admin = bool(admin_email) and user_email.lower() == admin_email.lower()
 
     # 1. Supabase App Metadata Role Syncing
     app_metadata = user_info.get("app_metadata", {})
     if app_metadata.get("is_admin") is True:
-        is_promoted_admin = True
-
-    # 2. First-User Auto-Admin Bootstrapping
-    if not is_promoted_admin and not User.objects.filter(is_superuser=True, is_active=True).exists():
-        logger.info("[Auth] No active admins found. Bootstrapping first-user admin privileges for: %s", user_email)
         is_promoted_admin = True
 
     if is_promoted_admin:
@@ -141,17 +136,20 @@ class SupabaseAuthBackend(ModelBackend):
         return self._do_supabase_auth(request, target_email, password, supabase_url, supabase_key)
 
     def _do_supabase_auth(self, request, target_email, password, supabase_url, supabase_key):
-        supabase_server_key = getattr(settings, "SUPABASE_SERVICE_KEY", "") or supabase_key
         url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
         headers = {
-            "apikey": supabase_server_key,
+            "apikey": supabase_key,
             "Content-Type": APPLICATION_JSON,
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
         body: dict = {"email": target_email, "password": password}
         captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
+        turnstile_required = bool(getattr(settings, "CF_TURNSTILE_SITE_KEY", ""))
+        if turnstile_required and not captcha_token:
+            logger.warning("[Auth] Supabase authentication rejected before dispatch: security check incomplete.")
+            return None
         if captcha_token:
-            body["captcha_token"] = captcha_token
+            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
 
         try:
@@ -163,9 +161,13 @@ class SupabaseAuthBackend(ModelBackend):
                 resp_data = json.loads(response.read().decode("utf-8"))
                 return _sync_supabase_user(request, resp_data, target_email)
         except urllib.error.HTTPError as e:
-            logger.warning(f"[Auth] Supabase authentication rejected: HTTP {e.code} - {e.read().decode('utf-8')}")
+            logger.warning("[Auth] Supabase authentication rejected: HTTP %s", e.code)
+            if turnstile_required:
+                return None
         except Exception as e:
             logger.exception(f"[Auth] Supabase API network connectivity exception: {e}")
+            if turnstile_required:
+                return None
 
         # Fall back if Supabase fails
         user = User.objects.filter(email=target_email).first()

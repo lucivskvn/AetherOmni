@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import re
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from asgiref.sync import async_to_sync
@@ -327,7 +327,9 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
                 await asyncio.sleep(wait_secs)
             else:
                 logger.exception(
-                    "[SurrealDB] SDK query failure after %d attempts for SQL: %s", _max_attempts, sql[:120]
+                    "[SurrealDB] event=surrealdb_query_exhausted operation=query attempts=%d sql=%s",
+                    _max_attempts,
+                    sql[:120],
                 )
 
     raise RuntimeError(f"SurrealDB error after {_max_attempts} attempts: {last_exc}")
@@ -549,7 +551,7 @@ def _update_document_offline(doc_uuid, data):
             doc = SourceDocument.objects.get(uuid=doc_uuid)
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
-    except (SourceDocument.DoesNotExist, ValueError):
+    except SourceDocument.DoesNotExist, ValueError:
         return {}
 
     _apply_offline_doc_update(doc, data, user_model)
@@ -638,7 +640,7 @@ def get_document(doc_uuid: str) -> dict | None:
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(doc_uuid))
             return _model_to_dict(doc)
-        except (SourceDocument.DoesNotExist, ValueError):
+        except SourceDocument.DoesNotExist, ValueError:
             return None
 
     sql = "SELECT * FROM documents WHERE doc_uuid = $doc_uuid;"
@@ -792,27 +794,46 @@ def count_audit_logs() -> int:
     return rows[0].get("n", 0) if rows else 0
 
 
-def _flush_document_cost(doc):
+def _flush_document_cost(doc) -> bool:
+    """Persist a document's spend before deletion, returning whether deletion is safe."""
     cost = doc.get("cost_usd") or 0.0
-    created_at_str = doc.get("created_at")
-    if cost > 0 and created_at_str:
-        from django.utils.dateparse import parse_datetime as django_parse
+    created_at_value = doc.get("created_at")
+    if cost <= 0:
+        return True
 
-        created_at = django_parse(created_at_str)
-        if created_at:
-            from decimal import Decimal
+    if not created_at_value:
+        logger.warning("[SurrealDB] event=surrealdb_missing_created_at")
+        return False
 
-            from extractor.models import MonthlySpendLog
+    from django.utils.dateparse import parse_datetime as django_parse
 
-            try:
-                MonthlySpendLog.add_cost(
-                    date=created_at,
-                    cost=Decimal(str(cost)),
-                    in_tok=doc.get("input_tokens") or 0,
-                    out_tok=doc.get("output_tokens") or 0,
-                )
-            except Exception as exc:
-                logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
+    if isinstance(created_at_value, datetime):
+        created_at = created_at_value
+    elif isinstance(created_at_value, str):
+        created_at = django_parse(created_at_value)
+    else:
+        logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=%s", type(created_at_value).__name__)
+        return False
+
+    if not created_at:
+        logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=string")
+        return False
+
+    from decimal import Decimal
+
+    from extractor.models import MonthlySpendLog
+
+    try:
+        persisted = MonthlySpendLog.add_cost(
+            date=created_at,
+            cost=Decimal(str(cost)),
+            in_tok=doc.get("input_tokens") or 0,
+            out_tok=doc.get("output_tokens") or 0,
+        )
+    except Exception as exc:
+        logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
+        return False
+    return persisted
 
 
 def _delete_offline_document(doc_uuid: str) -> None:
@@ -827,7 +848,7 @@ def _delete_offline_document(doc_uuid: str) -> None:
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
         doc.delete()
-    except (SourceDocument.DoesNotExist, ValueError):
+    except SourceDocument.DoesNotExist, ValueError:
         pass
 
 
@@ -842,8 +863,8 @@ def delete_document(doc_uuid: str) -> None:
 
     # Flush cost to MonthlySpendLog before deleting from SurrealDB
     doc = get_document(doc_uuid)
-    if doc:
-        _flush_document_cost(doc)
+    if doc and not _flush_document_cost(doc):
+        raise RuntimeError("Refusing to delete a document before its spend ledger is persisted.")
 
     sql = (  # nosec B608
         "DELETE FROM documents WHERE doc_uuid = $doc_uuid;"
@@ -1139,7 +1160,7 @@ def kv_cache_get(key: str) -> Any | None:
                 if isinstance(val_data, str):
                     return json.loads(val_data)
                 return val_data
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 return val_data
     return None
 

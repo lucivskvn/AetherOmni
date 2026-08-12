@@ -183,13 +183,28 @@ gcloud builds submit --config infra/gcp/cloudbuild.yaml \
   --substitutions="_RELEASE_VERSION=${RELEASE_VERSION}"
 ```
 
+Push-triggered Cloud Build checkouts are shallow by default. The reviewed build
+configuration unshallows Git history before computing the commit-count patch so
+its image tag and `RELEASE_VERSION` match the SonarQube analysis version. Manual
+source uploads must pass `_RELEASE_VERSION` explicitly as shown above.
+
+Supabase CAPTCHA-protected password, signup, and recovery calls forward the
+Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
+from the configured `ADMIN_EMAIL` or server-controlled Supabase app metadata;
+the application never promotes the first authenticated user automatically.
+
+Cloud Run enables periodic SurrealDB reaping and retention only on the worker
+service. Deployment enforces one continuously allocated instance with no CPU
+throttling, while web instances never start maintenance threads. Paid document
+deletion stops if spend-ledger persistence fails.
+
 ---
 
 ## 6. SurrealDB Setup and HNSW Vector Indexes
 
 ### Automated Schema Bootstrap
 
-The database schema is automatically bootstrapped and verified on container boot by `init_surreal.py` (which runs automatically as the Docker `web` container entrypoint). It waits for SurrealDB to become healthy, ensures the namespace and database are pre-defined, and imports the full schema.
+The shell-free Python container entrypoint runs migrations, starts `init_surreal.py` as a bounded bootstrap process, and then `exec`s Gunicorn. The bootstrap waits for SurrealDB to become healthy, ensures the namespace and database are pre-defined, and imports the full schema without making the application command depend on a shell interpreter.
 
 ### Manual Schema Initialization
 
@@ -204,7 +219,9 @@ If you need to manually initialize or verify the SurrealDB schema, run the follo
 > surreal validate schema.surql
 > ```
 >
-> The `surreal validate` command (`surreal` v3.3.0+) enforces SurrealQL syntax correctness and is run automatically in Phase 2 of `run_checks.sh`.
+> The `surreal validate` command enforces SurrealQL syntax correctness and runs automatically in `run_checks.sh`. Use the tool and interpreter versions declared by repository configuration with `requirements-dev.txt`; the gate rejects incompatible versions, keeping local checks aligned with Cloud Run and GitHub Actions.
+
+GitHub Action dependencies are pinned to reviewed commit SHAs, preventing a mutable action tag from changing the deployment or quality-gate workflow unexpectedly.
 
 ```surrealql
 -- ── 1. documents ─────────────────────────────────────────────
@@ -345,7 +362,7 @@ provisioning and reconciliation path after infrastructure import and preview.
 
 ## 8. Continuous Updates & Redeployment
 
-Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. With SonarQube Community Edition, the remote PR pipeline blocks on repository-native shift-left checks and GitHub security tools, then publishes a read-only table of the current `main` quality-gate baseline; the authoritative SonarQube quality-gate summary and dashboard link apply to `main` after a push. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
+Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. With SonarQube Community Edition, the remote PR pipeline blocks on repository-native shift-left checks and GitHub security tools, then publishes a read-only table of the current `main` quality-gate baseline; the authoritative SonarQube quality-gate summary and dashboard link apply to `main` after a push. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
 
 CI installs security scanners in an isolated environment if their dependency graph differs from the application runtime. This preserves reproducible application tests and keeps all scanner results blocking.
 

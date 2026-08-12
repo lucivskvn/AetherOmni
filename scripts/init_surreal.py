@@ -97,64 +97,6 @@ def apply_schema(client: httpx.Client) -> None:
         logger.error("Schema applied with %d errors.", errors)
 
 
-def _check_supabase_admin(token_url, payload, headers, admin_email):
-    import urllib.request
-
-    from extractor.utils import validate_url_scheme
-
-    try:
-        validate_url_scheme(token_url)
-        req = urllib.request.Request(token_url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
-            logger.info("Admin user '%s' already exists and authenticated successfully on Supabase Auth.", admin_email)
-            return True
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8")
-        logger.info("Admin check status code: HTTP %d", e.code)
-        if "email_not_confirmed" in body or "Email not confirmed" in body:
-            logger.info("Admin user '%s' already exists on Supabase Auth but has an unconfirmed email.", admin_email)
-            return True
-    except Exception as e:
-        logger.warning("Failed to check existing admin on Supabase: %s", e)
-    return False
-
-
-def _register_supabase_admin(signup_url, payload, headers, admin_email):
-    import urllib.request
-
-    from extractor.utils import validate_url_scheme
-
-    try:
-        validate_url_scheme(signup_url)
-        req = urllib.request.Request(signup_url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
-            logger.info("Admin user '%s' registered successfully on Supabase!", admin_email)
-    except urllib.error.HTTPError as e:
-        logger.info("Supabase registration status: HTTP %d", e.code)
-    except Exception:
-        logger.exception("Failed to register admin on Supabase")
-
-
-def _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_password):
-    import json
-    import urllib.parse
-
-    from django.conf import settings
-
-    logger.info("Supabase is configured. Checking if admin user '%s' already exists on Supabase Auth...", admin_email)
-    token_url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
-    headers = {"apikey": supabase_key, "Content-Type": APPLICATION_JSON}
-    payload = json.dumps({"email": admin_email, "password": admin_password}).encode("utf-8")
-
-    admin_exists = _check_supabase_admin(token_url, payload, headers, admin_email)
-
-    if not admin_exists:
-        logger.info("Admin user '%s' not authenticated. Attempting registration on Supabase Auth...", admin_email)
-        app_url = getattr(settings, "APP_URL", "http://localhost:8000")
-        signup_url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
-        _register_supabase_admin(signup_url, payload, headers, admin_email)
-
-
 def _create_local_superuser_stub(admin_email):
     from django.contrib.auth.models import User
 
@@ -174,7 +116,7 @@ def _create_local_superuser_stub(admin_email):
     if created:
         user.set_unusable_password()
         user.save()
-        logger.info("Local Django superuser stub '%s' created (password managed by Supabase).", admin_email)  # NOSONAR
+        logger.info("Local account stub initialized.")
     return user
 
 
@@ -203,7 +145,7 @@ def _create_local_superuser_full(admin_email, admin_password):
             logger.warning("Credential validation warning during initial admin setup.")
         user.set_password(admin_password)  # NOSONAR # nosemgrep
         user.save()
-        logger.info("Local Django superuser '%s' created successfully.", admin_email)  # NOSONAR
+        logger.info("Local Django superuser created successfully.")
         if admin_password == "admin":  # nosec B105
             from core.middleware import ForcePasswordChangeMiddleware
 
@@ -223,7 +165,7 @@ def _create_local_superuser_full(admin_email, admin_password):
             user.is_staff = True
             user.is_superuser = True
             user.save()
-            logger.info("Updated existing user '%s' to superuser status.", admin_email)
+            logger.info("Updated existing local user to superuser status.")
     return user
 
 
@@ -277,9 +219,7 @@ def init_django_admin():
             logger.warning("Django migrate warning: %s", me)
 
         supabase_url = getattr(settings, "SUPABASE_URL", "")
-        supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
-
-        admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "admin@example.com"))
+        admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "")).strip()
         import secrets
 
         # Interactive authentication is delegated to Supabase. The local Django
@@ -287,10 +227,10 @@ def init_django_admin():
         # or persisted in deployment configuration.
         admin_password = secrets.token_urlsafe(16)
 
-        if supabase_url and supabase_key:
-            _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_password)
-
-        _setup_local_admin(admin_email, admin_password, supabase_url)
+        if admin_email:
+            _setup_local_admin(admin_email, admin_password, supabase_url)
+        else:
+            logger.info("ADMIN_EMAIL is not configured; skipping local administrator stub creation.")
         _migrate_system_settings()
 
     except Exception:

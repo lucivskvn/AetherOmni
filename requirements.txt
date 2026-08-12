@@ -1,4 +1,4 @@
-django>=6.0.7
+django==6.0.8
 django-storages[google]==1.14.6
 google-genai==2.17.0
 google-cloud-tasks==2.24.0
@@ -13,4 +13,5 @@ ruff==0.16.2
 psycopg2-binary==2.9.12
 surrealdb==2.0.0
 nest-asyncio==1.6.0
-protobuf>=7.35.1
+protobuf==7.35.1
+sqlparse==0.5.5
