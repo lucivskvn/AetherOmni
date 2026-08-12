@@ -179,14 +179,22 @@ Use Google Cloud Build to build and push your Docker container:
 
 ```bash
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
+DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
 gcloud builds submit --config infra/gcp/cloudbuild.yaml \
-  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION}"
+  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```
 
 Push-triggered Cloud Build checkouts are shallow by default. The reviewed build
 configuration unshallows Git history before computing the commit-count patch so
 its image tag and `RELEASE_VERSION` match the SonarQube analysis version. Manual
-source uploads must pass `_RELEASE_VERSION` explicitly as shown above.
+source uploads must pass `_RELEASE_VERSION` and `_DEPLOY_COMMIT_SHA` explicitly
+as shown above. The latter must identify a commit with a successful mainline gate.
+
+Cloud Build may construct and publish the immutable image while GitHub Actions
+analyzes the same commit, but the web and worker deployment steps wait for that
+exact SHA's successful SonarQube mainline check. Failed, cancelled, missing, or
+timed-out checks stop deployment. The Actions log and summary both contain the
+condition table, and failing metrics are emitted as annotations for Jules.
 
 Supabase CAPTCHA-protected password, signup, and recovery calls forward the
 Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
@@ -347,8 +355,9 @@ network-sensitive operations use bounded retries:
 ```bash
 # Run the pipeline to build and deploy web + worker services
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
+DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
 gcloud builds submit --config infra/gcp/cloudbuild.yaml \
-  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION}"
+  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```
 
 ### Emergency recovery
@@ -362,12 +371,13 @@ provisioning and reconciliation path after infrastructure import and preview.
 
 ## 8. Continuous Updates & Redeployment
 
-Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. With SonarQube Community Edition, the remote PR pipeline blocks on repository-native shift-left checks and GitHub security tools, then publishes a read-only table of the current `main` quality-gate baseline; the authoritative SonarQube quality-gate summary and dashboard link apply to `main` after a push. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
+Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. With SonarQube Community Edition, the remote PR pipeline blocks on repository-native shift-left checks and GitHub security tools, then publishes a read-only table of the current `main` quality-gate baseline; the authoritative SonarQube quality-gate log, summary, annotations, and dashboard link apply to `main` after a push. Cloud Build automatically builds the immutable container, but updates both Cloud Run services only after the exact commit's mainline gate succeeds:
 
 CI installs security scanners in an isolated environment if their dependency graph differs from the application runtime. This preserves reproducible application tests and keeps all scanner results blocking.
 
 ```bash
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
+DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
 gcloud builds submit --config infra/gcp/cloudbuild.yaml \
-  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION}"
+  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```

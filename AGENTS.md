@@ -37,8 +37,9 @@ runbook. This file remains the authoritative cross-agent policy.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
      2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python and JavaScript coverage.
-     3. Post-Scan Quality Gate Gatekeeper — publishes the actionable result in the Actions summary, blocks failures, and enforces 0 new violations
+     3. Post-Scan Quality Gate Gatekeeper — publishes the actionable condition table in both the Actions log and summary, annotates failures, and blocks violations
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
+  - Cloud Build may construct the immutable image in parallel, but it must wait for a successful GitHub mainline SonarQube check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
   - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
   - Pin every GitHub Action to a full commit SHA, retaining the reviewed release tag only as an adjacent comment.
 
