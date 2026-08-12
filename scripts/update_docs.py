@@ -9,7 +9,7 @@ VERSION SCHEME
 --------------
   Full version : MAJOR.MINOR.PATCH
   MAJOR.MINOR  : human-controlled; stored in VERSION file (e.g. "1.2")
-  PATCH        : Git commit count, so every analyzed commit has a distinct version
+  PATCH        : last Git release tag patch value, not the current commit count
   Release tag  : stable semver only; no SHA suffix because Docker/Cloud Run tags
                  reject '+' and we want a predictable deployment image tag.
 
@@ -31,8 +31,8 @@ HOW IT IS TRIGGERED
   2. After run_checks.sh passes (step 7)
   3. GitHub Actions: manual workflow dispatch only (.github/workflows/update_docs.yml)
      — this workflow no longer auto-commits to main to prevent branch churn.
-  4. CI and Cloud Build compute RELEASE_VERSION from VERSION + commit count and
-     pass it to SonarQube and Cloud Run without rewriting tracked files.
+  4. Cloud Build: computes RELEASE_VERSION using the same VERSION file +
+     $SHORT_SHA substitution, injects it into service YAMLs before deploy
 
 Usage:
     python scripts/update_docs.py [--ci] [--dry-run]
@@ -109,11 +109,19 @@ def get_last_release_tag() -> str:
 
 
 def get_commit_count() -> str:
-    """Return a monotonically increasing PATCH number for the current commit."""
+    """Return the patch number from the latest release tag, not commit count."""
     env_count = os.getenv("BUILD_NUMBER") or os.getenv("COMMIT_COUNT")
     if env_count and env_count.isdigit():
         return env_count
-    return _git("rev-list", "--count", "HEAD") or "0"
+
+    tag = get_last_release_tag()
+    if tag:
+        base = tag.lstrip("v")
+        parts = base.split(".")
+        if len(parts) == 3 and all(part.isdigit() for part in parts):
+            return parts[2]
+
+    return "0"
 
 
 def get_short_sha() -> str:
@@ -302,6 +310,13 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
             text,
         )
 
+    # Current State heading version
+    text = re.sub(
+        r"(## ⚡ Current Functional Capabilities \(Current State v)[\d\.]+(\))",
+        rf"\g<1>{v['semver']}\g<2>",
+        text,
+    )
+
     # Test count
     if test_count:
         text = re.sub(
@@ -339,9 +354,25 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
 
 
 def update_gcp_guide(v: dict) -> bool:
-    """Keep the deployment guide free of generated version churn."""
-    _ = v
-    return False
+    """Update docs/gcp_deployment_guide.md heading. Returns True if modified."""
+    guide = ROOT / "docs" / "gcp_deployment_guide.md"
+    if not guide.exists():
+        return False
+
+    original = guide.read_text(encoding="utf-8")
+    text = re.sub(
+        r"(# Google Cloud Run Production Deployment Guide \(Version )\S+(\))",
+        rf"\g<1>{v['semver']}\g<2>",
+        original,
+    )
+
+    if text == original:
+        print("[INFO] docs/gcp_deployment_guide.md — no changes needed.")
+        return False
+
+    guide.write_text(text, encoding="utf-8")
+    print(f"[OK]   docs/gcp_deployment_guide.md — heading updated to v{v['semver']}")
+    return True
 
 
 # ── service.yaml / service-worker.yaml update ─────────────────────────────────
@@ -377,10 +408,36 @@ def update_service_yamls(_v: dict) -> bool:
             )
             if fixed != content:
                 f.write_text(fixed, encoding="utf-8")
-                print(f"[OK]   {fname} — restored {placeholder} dynamic placeholder")
+                print(f"[OK]   {fname} — restored ${{{placeholder}}} dynamic placeholder")
             else:
                 print(f"[WARN] {fname} — RELEASE_VERSION entry not found; manual check needed")
     return False  # service YAMLs are never "changed" by this updater
+
+
+# ── sonar-project.properties update ───────────────────────────────────────────
+
+
+def update_sonar_properties(v: dict) -> bool:
+    """Sync sonar.projectVersion with the current full semver (MAJOR.MINOR.PATCH). Returns True if modified."""
+    sonar_props = ROOT / "sonar-project.properties"
+    if not sonar_props.exists():
+        return False
+
+    original = sonar_props.read_text(encoding="utf-8")
+    text = re.sub(
+        r"^(sonar\.projectVersion=).+$",
+        rf"\g<1>{v['semver']}",
+        original,
+        flags=re.MULTILINE,
+    )
+
+    if text == original:
+        print("[INFO] sonar-project.properties — no changes needed.")
+        return False
+
+    sonar_props.write_text(text, encoding="utf-8")
+    print(f"[OK]   sonar-project.properties — sonar.projectVersion → {v['semver']}")
+    return True
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
@@ -427,8 +484,13 @@ def main() -> int:
     changed = []
     if update_readme(v, test_count, scores):
         changed.append("README.md")
+    if update_gcp_guide(v):
+        changed.append("gcp_deployment_guide.md")
     if update_service_yamls(v):
         changed.extend(["service.yaml", "service-worker.yaml"])
+    if update_sonar_properties(v):
+        changed.append("sonar-project.properties")
+
     if args.ci:
         print(f"\nChanged: {', '.join(changed) if changed else 'none'}")
 

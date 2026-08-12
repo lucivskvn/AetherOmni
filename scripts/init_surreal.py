@@ -280,12 +280,16 @@ def init_django_admin():
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
 
         admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "admin@example.com"))
-        import secrets
+        admin_password = os.getenv("ADMIN_PASSWORD")
 
-        # Interactive authentication is delegated to Supabase. The local Django
-        # account is bootstrap-only, so its credential must never be supplied by
-        # or persisted in deployment configuration.
-        admin_password = secrets.token_urlsafe(16)
+        if not admin_password:
+            import secrets
+
+            admin_password = secrets.token_urlsafe(16)
+            logger.warning(  # NOSONAR # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                "[Security] ADMIN_PASSWORD not set in environment. Auto-generated temporary password for '%s'.",
+                admin_email,
+            )
 
         if supabase_url and supabase_key:
             _setup_supabase_admin(supabase_url, supabase_key, admin_email, admin_password)
