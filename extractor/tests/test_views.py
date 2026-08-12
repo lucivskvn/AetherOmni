@@ -7,7 +7,8 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
 from extractor.models import AuditAction, AuditLog, SourceDocument, SystemSettings
-from extractor.views import get_request_actor_id
+from extractor.utils import AuditEvent, log_audit_event
+from extractor.views import _parse_surreal_audit_log, get_request_actor_id
 
 
 class ViewsTestCase(TestCase):
@@ -771,6 +772,27 @@ class StableSupabaseIdentityTestCase(TestCase):
         with self.settings(SURREALDB_OFFLINE=True):
             self.assertEqual(get_request_actor_id(request), str(user.id))
 
+    @patch("extractor.surreal_db.log_audit")
+    def test_audit_event_writes_the_stable_actor_id(self, mock_log_audit):
+        user = User.objects.create_user(username="audit-owner", password="password123")
+
+        log_audit_event(AuditEvent(action=AuditAction.LOGIN, user=user, actor_id="stable-supabase-subject"))
+
+        self.assertEqual(mock_log_audit.call_args.kwargs["user_id"], "stable-supabase-subject")
+
+    def test_surreal_audit_metadata_is_rendered_as_details(self):
+        audit_log = _parse_surreal_audit_log(
+            {
+                "id": "audit:one",
+                "timestamp": "2026-08-12T02:00:00Z",
+                "action": AuditAction.LOGIN,
+                "metadata": "Login succeeded",
+            },
+            {},
+        )
+
+        self.assertEqual(audit_log.details, "Login succeeded")
+
 
 class DeploymentControllerViewTestCase(TestCase):
     """Verifies DeploymentControllerView behaviour under various roles and scaling options."""
@@ -869,10 +891,10 @@ class DeploymentControllerViewTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["worker_min"], 0)
-        self.assertEqual(response.context["worker_max"], 0)
+        self.assertEqual(response.context["worker_max"], 5)
         self.assertEqual(response.context["web_min"], 1)
         self.assertEqual(response.context["web_max"], 5)
-        self.assertEqual(response.context["current_mode"], "hibernate")
+        self.assertEqual(response.context["current_mode"], "on-demand")
         self.assertTrue(any("Could not load worker config from GCP" in message for message in log_capture.output))
         self.assertTrue(any("Could not load web config from GCP" in message for message in log_capture.output))
 

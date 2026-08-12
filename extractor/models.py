@@ -353,6 +353,7 @@ def log_user_login(sender, request, user, **kwargs):
         AuditEvent(
             action=AuditAction.LOGIN,
             user=user,
+            actor_id=getattr(request, "session", {}).get("supabase_user_id") if request else None,
             details=f"User '{user.username}' authenticated successfully.",
             ip_address=ip,
         )
@@ -373,6 +374,7 @@ def log_user_logout(sender, request, user, **kwargs):
             AuditEvent(
                 action=AuditAction.LOGOUT,
                 user=user,
+                actor_id=getattr(request, "session", {}).get("supabase_user_id") if request else None,
                 details=f"User '{user.username}' logged out.",
                 ip_address=ip,
             )
