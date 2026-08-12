@@ -335,16 +335,11 @@
     document.addEventListener('DOMContentLoaded', () => {
         const logPanels = document.querySelectorAll('[data-log-panel]');
         logPanels.forEach((panel) => {
-            let followingLatest = true;
-            const isAtBottom = () => panel.scrollHeight - panel.scrollTop - panel.clientHeight < 24;
             const followLatest = () => {
                 panel.scrollTop = panel.scrollHeight;
             };
 
             followLatest();
-            panel.addEventListener('scroll', () => {
-                followingLatest = isAtBottom();
-            });
         });
         const deployForm = document.querySelector('.deploy-grid form');
         if (deployForm) {
