@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import re
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from asgiref.sync import async_to_sync
@@ -327,7 +327,9 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
                 await asyncio.sleep(wait_secs)
             else:
                 logger.exception(
-                    "[SurrealDB] SDK query failure after %d attempts for SQL: %s", _max_attempts, sql[:120]
+                    "[SurrealDB] event=surrealdb_query_exhausted operation=query attempts=%d sql=%s",
+                    _max_attempts,
+                    sql[:120],
                 )
 
     raise RuntimeError(f"SurrealDB error after {_max_attempts} attempts: {last_exc}")
@@ -794,11 +796,18 @@ def count_audit_logs() -> int:
 
 def _flush_document_cost(doc):
     cost = doc.get("cost_usd") or 0.0
-    created_at_str = doc.get("created_at")
-    if cost > 0 and created_at_str:
+    created_at_value = doc.get("created_at")
+    if cost > 0 and created_at_value:
         from django.utils.dateparse import parse_datetime as django_parse
 
-        created_at = django_parse(created_at_str)
+        if isinstance(created_at_value, datetime):
+            created_at = created_at_value
+        elif isinstance(created_at_value, str):
+            created_at = django_parse(created_at_value)
+        else:
+            logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=%s", type(created_at_value).__name__)
+            return
+
         if created_at:
             from decimal import Decimal
 

@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from django.test import TestCase, override_settings
 
@@ -39,6 +40,16 @@ class SurrealDBClientTestCase(TestCase):
         mock_surreal.side_effect = Exception("Connection refused")
         self.assertFalse(surreal_db.check_health())
         mock_surreal.assert_called_once()
+
+    @patch("extractor.models.MonthlySpendLog.add_cost")
+    def test_flush_document_cost_accepts_surreal_datetime(self, mock_add_cost):
+        created_at = datetime(2026, 8, 12, tzinfo=UTC)
+
+        surreal_db._flush_document_cost(
+            {"created_at": created_at, "cost_usd": 1.25, "input_tokens": 10, "output_tokens": 20}
+        )
+
+        mock_add_cost.assert_called_once_with(date=created_at, cost=ANY, in_tok=10, out_tok=20)
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
