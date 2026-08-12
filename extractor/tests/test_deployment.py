@@ -183,6 +183,26 @@ class DeploymentFunctionsTestCase(TestCase):
 
     @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
+    @patch("urllib.request.urlopen")
+    def test_get_service_logs_orders_the_latest_entry_at_the_bottom(
+        self, mock_urlopen, mock_get_token, mock_get_details
+    ):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}
+        mock_get_token.return_value = "mock-token"
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = (
+            b'{"entries": [{"timestamp": "2026-08-12T02:00:01Z", "textPayload": "latest"}, '
+            b'{"timestamp": "2026-08-12T02:00:00Z", "textPayload": "earlier"}]}'
+        )
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        logs = get_service_logs("worker")
+
+        self.assertEqual([entry["message"] for entry in logs], ["earlier", "latest"])
+
+    @patch("extractor.deployment.get_gcp_project_details")
+    @patch("extractor.deployment.get_gcp_access_token")
     @patch("subprocess.check_output")
     def test_get_service_logs_gcloud(self, mock_check_output, mock_get_token, mock_get_details):
         mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}

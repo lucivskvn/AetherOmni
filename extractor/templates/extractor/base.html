@@ -313,7 +313,7 @@
                 error.dataset.turnstileError = 'true';
                 error.setAttribute('role', 'alert');
                 error.setAttribute('aria-live', 'assertive');
-                form.insertBefore(error, widget);
+                widget.before(error);
             }
             error.textContent = 'CAPTCHA verification is required. Please complete the security check and try again.';
             widget.scrollIntoView({ behavior: 'smooth', block: 'center' });

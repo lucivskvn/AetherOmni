@@ -218,6 +218,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Custom AetherOmni ignores
+.codex/
 scratch/
 backups/
 scorecard.png

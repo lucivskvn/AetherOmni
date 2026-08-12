@@ -227,7 +227,7 @@ steps:
         APP_URL='${_APP_URL}'
         APP_URL="$${APP_URL:-$${WEB_URL}}"
         test -n "$${WEB_URL}" && test -n "$${WORKER_URL}" && test -n "$${APP_URL}"
-        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=True,GUNICORN_WORKERS=1"
+        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=1"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks"
@@ -245,9 +245,8 @@ steps:
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
-          --min-instances=1 \
-          --max-instances=1 \
-          --no-cpu-throttling \
+          --min-instances=0 \
+          --max-instances=5 \
           --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"

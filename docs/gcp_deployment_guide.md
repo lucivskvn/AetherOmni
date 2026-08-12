@@ -208,10 +208,11 @@ Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
 from the configured `ADMIN_EMAIL` or server-controlled Supabase app metadata;
 the application never promotes the first authenticated user automatically.
 
-Cloud Run enables periodic SurrealDB reaping and retention only on the worker
-service. Deployment enforces one continuously allocated instance with no CPU
-throttling, while web instances never start maintenance threads. Paid document
-deletion stops if spend-ledger persistence fails.
+Cloud Run deploys the worker in bounded on-demand mode by default. Cloud Tasks
+wakes it for queued ingestion and it scales back to zero when idle; periodic
+SurrealDB maintenance is disabled unless an explicit always-on operating mode is
+selected. Web instances never start maintenance threads. Paid document deletion
+stops if spend-ledger persistence fails.
 
 ---
 

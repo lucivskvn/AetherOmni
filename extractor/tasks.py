@@ -151,6 +151,7 @@ def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: b
             AuditEvent(
                 action=AuditAction.EXTRACTION_FAILED,
                 user=user,
+                actor_id=uploaded_by_id,
                 document=doc,
                 details=details,
             )
@@ -214,6 +215,7 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
         AuditEvent(
             action=AuditAction.EXTRACTION_START,
             user=user,
+            actor_id=uploaded_by_id,
             document=doc,
             details=f"Background curation pipeline started for '{doc.get('original_filename')}' (UUID: {doc_uuid}).",
         )
@@ -970,6 +972,7 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
             AuditEvent(
                 action=AuditAction.EXTRACTION_COMPLETED,
                 user=user,
+                actor_id=uploaded_by_id,
                 document=doc,
                 details=(
                     f"Curation pipeline completed. Pages: {doc.get('page_count')}. "
@@ -1269,6 +1272,7 @@ def _reap_single_stale_doc(doc: dict) -> bool:
         AuditEvent(
             action=AuditAction.EXTRACTION_FAILED,
             user=user,
+            actor_id=uploaded_by_id,
             document=doc,
             details=(
                 f"[Reaper] Document '{doc.get('original_filename')}' was stuck in '{doc.get('status')}' for >15 minutes "

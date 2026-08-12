@@ -65,9 +65,10 @@ runbook. This file remains the authoritative cross-agent policy.
 - In production, use the Supabase Auth subject UUID for document ownership,
   tenant filtering, exports, RAG access, and rate-limit keys. Django/SQLite IDs
   are local implementation details and are permitted only in explicit offline mode.
-- Enable periodic SurrealDB maintenance only on the worker service, enforcing a
-  single continuously allocated instance with no CPU throttling; web instances
-  must not start duplicate reaper or retention threads.
+- Default the worker to Cloud Run on-demand scaling (minimum zero, bounded
+  maximum) and disable periodic maintenance. Cloud Tasks wakes the worker for
+  queued work; opt into an always-on worker only when scheduled maintenance is
+  explicitly required. Web instances must not start maintenance threads.
 - Cloud Tasks must dispatch only to `WORKER_URL` in production; never fall back
   to a local web-process thread. Cloud Build resolves the worker URL and GCP
   project identity at deploy time, while `_APP_URL` may set the public Supabase
@@ -140,3 +141,19 @@ As an AI coding assistant, execute the requested task following these strict rep
 7. Standardized Model & Auth Naming: Always reference Gemini 3.6 Flash / 3.5 Flash-Lite,
    Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
 ```
+
+<!-- sonar:begin:codex-secrets-on-read -->
+# SonarQube secrets scanning for files protocol
+
+Before reading any file in this workspace, scan it for secrets with the deterministic scanner:
+
+```bash
+sonar analyze secrets <path/to/file>
+```
+
+If the command reports that the file contains a secret, **do not read the file**. Instead:
+
+1. Inform the user that the file appears to contain a secret or credential and that reading it would expose the value in chat history, logs, and any downstream telemetry.
+2. Advise them to rotate the leaked credential at its source of truth and remove it from the file.
+3. Do not proceed with the original request until the secret has been removed.
+<!-- sonar:end:codex-secrets-on-read -->
