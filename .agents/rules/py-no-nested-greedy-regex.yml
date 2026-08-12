@@ -1,0 +1,9 @@
+id: py-no-nested-greedy-regex
+message: "Avoid nested greedy regex quantifiers; they can cause super-linear backtracking (S8786)."
+severity: error
+language: Python
+rule:
+  pattern: re.$METHOD($PATTERN, $$$)
+constraints:
+  PATTERN:
+    regex: '\((?:\?:)?[^)]*(?:\.\*|\.\+)[^)]*\)[+*{]'
