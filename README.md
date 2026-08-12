@@ -361,7 +361,7 @@ bash scripts/verify-pipeline.sh
 Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (`.github/workflows/ci.yml`):
 
 1. **Pre-Scan Validation**: Blocks on shell-script or container-file lint failures (`hadolint`).
-2. **SonarQube Deep SAST**: Scans code on `https://sonarqube.fainko.cloud` using Sonar agentic AI rules with `coverage.xml`.
+2. **SonarQube Deep SAST**: Scans `main` on pushes and passes the GitHub pull-request number, source branch, and target branch for every PR scan on `https://sonarqube.fainko.cloud`, using Sonar rules with coverage.
 3. **Quality Gate Gatekeeper**: Publishes the gate status and dashboard link in the Actions summary, then blocks failed quality gates before permitting merge.
 
 Cloud Build uses Kaniko's BusyBox-enabled debug image, pinned by immutable

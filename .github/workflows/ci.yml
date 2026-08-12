@@ -84,6 +84,39 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "### Analysis version: \`${version}\`" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Resolve SonarQube analysis target
+        id: sonar-target
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          PR_BRANCH: ${{ github.head_ref || '' }}
+          PR_BASE: ${{ github.base_ref || '' }}
+        run: |
+          set -euo pipefail
+
+          dashboard_url="https://sonarqube.fainko.cloud/dashboard?id=aetheromni"
+          {
+            echo 'args<<EOF'
+            echo '-Dsonar.scm.provider=git'
+            echo "-Dsonar.projectVersion=${{ steps.release-version.outputs.version }}"
+            echo '-Dsonar.threads=4'
+            echo '-Dsonar.analysis.cache.enabled=true'
+
+            if [ "$EVENT_NAME" = 'pull_request' ]; then
+              test -n "$PR_NUMBER"
+              test -n "$PR_BRANCH"
+              test -n "$PR_BASE"
+              echo "-Dsonar.pullrequest.key=$PR_NUMBER"
+              echo "-Dsonar.pullrequest.branch=$PR_BRANCH"
+              echo "-Dsonar.pullrequest.base=$PR_BASE"
+              dashboard_url="${dashboard_url}&pullRequest=${PR_NUMBER}"
+            fi
+
+            echo 'EOF'
+            echo "dashboard_url=$dashboard_url"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
@@ -110,11 +143,7 @@ jobs:
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: >
-            -Dsonar.scm.provider=git
-            -Dsonar.projectVersion=${{ steps.release-version.outputs.version }}
-            -Dsonar.threads=4
-            -Dsonar.analysis.cache.enabled=true
+          args: ${{ steps.sonar-target.outputs.args }}
 
       - name: 3. SonarQube Quality Gate Status Check
         id: quality-gate
@@ -129,7 +158,7 @@ jobs:
         env:
           QUALITY_GATE_STATUS: ${{ steps.quality-gate.outputs.quality-gate-status }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_DASHBOARD_URL: https://sonarqube.fainko.cloud/dashboard?id=aetheromni
+          SONAR_DASHBOARD_URL: ${{ steps.sonar-target.outputs.dashboard_url }}
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
           SONAR_PULL_REQUEST: ${{ github.event.pull_request.number || '' }}
         run: |

@@ -345,7 +345,7 @@ provisioning and reconciliation path after infrastructure import and preview.
 
 ## 8. Continuous Updates & Redeployment
 
-Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. The remote CI pipeline publishes the SonarQube quality-gate status and dashboard link in its Actions summary, then blocks container-lint and quality-gate failures before a deployment change should be promoted. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
+Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. The remote CI pipeline publishes the SonarQube quality-gate status and a main- or PR-specific dashboard link in its Actions summary, then blocks container-lint and quality-gate failures before a deployment change should be promoted. Then run the Cloud Build pipeline. This automatically builds the container, registers it in the Google Artifact Registry, and performs a zero-downtime rolling update of both Cloud Run services:
 
 ```bash
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
