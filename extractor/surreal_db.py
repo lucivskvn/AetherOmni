@@ -794,34 +794,46 @@ def count_audit_logs() -> int:
     return rows[0].get("n", 0) if rows else 0
 
 
-def _flush_document_cost(doc):
+def _flush_document_cost(doc) -> bool:
+    """Persist a document's spend before deletion, returning whether deletion is safe."""
     cost = doc.get("cost_usd") or 0.0
     created_at_value = doc.get("created_at")
-    if cost > 0 and created_at_value:
-        from django.utils.dateparse import parse_datetime as django_parse
+    if cost <= 0:
+        return True
 
-        if isinstance(created_at_value, datetime):
-            created_at = created_at_value
-        elif isinstance(created_at_value, str):
-            created_at = django_parse(created_at_value)
-        else:
-            logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=%s", type(created_at_value).__name__)
-            return
+    if not created_at_value:
+        logger.warning("[SurrealDB] event=surrealdb_missing_created_at")
+        return False
 
-        if created_at:
-            from decimal import Decimal
+    from django.utils.dateparse import parse_datetime as django_parse
 
-            from extractor.models import MonthlySpendLog
+    if isinstance(created_at_value, datetime):
+        created_at = created_at_value
+    elif isinstance(created_at_value, str):
+        created_at = django_parse(created_at_value)
+    else:
+        logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=%s", type(created_at_value).__name__)
+        return False
 
-            try:
-                MonthlySpendLog.add_cost(
-                    date=created_at,
-                    cost=Decimal(str(cost)),
-                    in_tok=doc.get("input_tokens") or 0,
-                    out_tok=doc.get("output_tokens") or 0,
-                )
-            except Exception as exc:
-                logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
+    if not created_at:
+        logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=string")
+        return False
+
+    from decimal import Decimal
+
+    from extractor.models import MonthlySpendLog
+
+    try:
+        MonthlySpendLog.add_cost(
+            date=created_at,
+            cost=Decimal(str(cost)),
+            in_tok=doc.get("input_tokens") or 0,
+            out_tok=doc.get("output_tokens") or 0,
+        )
+    except Exception as exc:
+        logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
+        return False
+    return True
 
 
 def _delete_offline_document(doc_uuid: str) -> None:
@@ -851,8 +863,8 @@ def delete_document(doc_uuid: str) -> None:
 
     # Flush cost to MonthlySpendLog before deleting from SurrealDB
     doc = get_document(doc_uuid)
-    if doc:
-        _flush_document_cost(doc)
+    if doc and not _flush_document_cost(doc):
+        raise RuntimeError("Refusing to delete a document before its spend ledger is persisted.")
 
     sql = (  # nosec B608
         "DELETE FROM documents WHERE doc_uuid = $doc_uuid;"

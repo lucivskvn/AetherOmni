@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from django.test import TestCase, override_settings
 
@@ -41,15 +42,42 @@ class SurrealDBClientTestCase(TestCase):
         self.assertFalse(surreal_db.check_health())
         mock_surreal.assert_called_once()
 
+    @override_settings(SURREALDB_OFFLINE=True)
     @patch("extractor.models.MonthlySpendLog.add_cost")
     def test_flush_document_cost_accepts_surreal_datetime(self, mock_add_cost):
         created_at = datetime(2026, 8, 12, tzinfo=UTC)
 
-        surreal_db._flush_document_cost(
-            {"created_at": created_at, "cost_usd": 1.25, "input_tokens": 10, "output_tokens": 20}
+        self.assertTrue(
+            surreal_db._flush_document_cost(
+                {"created_at": created_at, "cost_usd": 1.25, "input_tokens": 10, "output_tokens": 20}
+            )
         )
 
-        mock_add_cost.assert_called_once_with(date=created_at, cost=ANY, in_tok=10, out_tok=20)
+        self.assertTrue(
+            surreal_db._flush_document_cost(
+                {"created_at": "2026-08-12T00:00:00Z", "cost_usd": 1.25, "input_tokens": 10, "output_tokens": 20}
+            )
+        )
+        mock_add_cost.assert_has_calls(
+            [
+                call(date=created_at, cost=Decimal("1.25"), in_tok=10, out_tok=20),
+                call(date=datetime(2026, 8, 12, tzinfo=UTC), cost=Decimal("1.25"), in_tok=10, out_tok=20),
+            ]
+        )
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    @patch("extractor.models.MonthlySpendLog.add_cost")
+    def test_flush_document_cost_rejects_unsupported_timestamp(self, mock_add_cost):
+        self.assertFalse(surreal_db._flush_document_cost({"created_at": 42, "cost_usd": 1.25}))
+        mock_add_cost.assert_not_called()
+
+    @patch("extractor.surreal_db._run")
+    @patch("extractor.surreal_db._flush_document_cost", return_value=False)
+    @patch("extractor.surreal_db.get_document", return_value={"cost_usd": 1.25, "created_at": "not-a-date"})
+    def test_delete_document_preserves_paid_document_when_spend_cannot_flush(self, _mock_doc, _mock_flush, mock_run):
+        with self.assertRaisesRegex(RuntimeError, "spend ledger"):
+            surreal_db.delete_document("paid-document")
+        mock_run.assert_not_called()
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
