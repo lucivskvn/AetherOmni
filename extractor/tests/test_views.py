@@ -1441,7 +1441,9 @@ class CoreDesignHardeningTests(TestCase):
         mock_rag.return_value = {"answer": "this is filtered answer", "sources": []}
         response = self.client.get(reverse("rag_search") + "?q=filtered-query&document_ids=5,12")
         self.assertEqual(response.status_code, 200)
-        mock_rag.assert_called_once_with("filtered-query", document_ids=[5, 12], top_k=5, user=self.user)
+        mock_rag.assert_called_once_with(
+            "filtered-query", document_ids=[5, 12], top_k=5, user=self.user, actor_id=str(self.user.id)
+        )
 
 
 class DatetimeUtilityTestCase(TestCase):
