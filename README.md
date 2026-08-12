@@ -253,7 +253,7 @@ flowchart LR
 ### 🧭 Milestone 3.6 (MVP Reliability — Authentication & Release Integrity)
 
 - [x] **Supabase Email Login Recovery**: Turnstile is required before credential dispatch and its token is forwarded through GoTrue security metadata; successful sessions bridge into Django without first-user privilege escalation. GitHub OAuth and Passkeys remain planned.
-- [x] **Release Traceability**: SonarQube and Cloud Build derive the same commit-count release from full Git history, then propagate it to the immutable image tag, Cloud Run, and application UI.
+- [x] **Release Traceability**: SonarQube and Cloud Build derive the same commit-count release from full Git history, then propagate it to the immutable image tag, Cloud Run, and application UI. Cloud Build waits for the exact commit's successful mainline SonarQube check before deployment.
 - [x] **Bounded SurrealDB Maintenance**: Periodic reaping and retention run only on one continuously allocated, unthrottled worker instance; spend-ledger persistence is validated before document deletion.
 - [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
 
@@ -369,7 +369,7 @@ Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (
 
 1. **Pre-Scan Validation**: Blocks on shell-script or container-file lint failures (`hadolint`).
 2. **Community Edition PR Gate and SonarQube Deep SAST**: Pull requests use the repository-native shift-left gate and GitHub security checks, then show a read-only table of the current `main` SonarQube quality-gate baseline. SonarQube scans `main` on pushes at `https://sonarqube.fainko.cloud` using Sonar rules with coverage.
-3. **Quality Gate Gatekeeper**: Publishes the gate status and dashboard link in the Actions summary, then blocks failed quality gates before permitting merge.
+3. **Quality Gate Gatekeeper**: Publishes the condition table to the Actions log and summary, annotates failing metrics for Jules, and blocks failed gates. Cloud Build independently waits for that exact commit check before mutating Cloud Run.
 
 Cloud Build uses Kaniko's BusyBox-enabled debug image, pinned by immutable
 digest, when a build step must source computed release metadata. The standard
