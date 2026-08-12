@@ -53,10 +53,90 @@ jobs:
             bash -n scripts/verify-pipeline.sh
           fi
 
-  sonarqube-cloud-analysis:
-    name: 2. SonarQube Cloud SAST (Self-Hosted)
+  pr-shift-left-security:
+    name: 2. PR Shift-Left Security Gate
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: pre-scan-validation
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v7.0.1
 
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install PR verification tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt coverage==7.15.4 --quiet
+          python -m venv .ci-security-tools
+          .ci-security-tools/bin/pip install --upgrade pip --quiet
+          .ci-security-tools/bin/pip install ruff==0.16.2 bandit==1.9.4 semgrep==1.172.0 --quiet
+
+      - name: Run PR security and test gate
+        run: |
+          export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
+          .ci-security-tools/bin/ruff check .
+          npx -y eslint --max-warnings 0 static/js/**/*.js
+          .ci-security-tools/bin/semgrep scan --config=auto --quiet --error
+          .ci-security-tools/bin/bandit -c bandit.yaml -r core extractor
+          python manage.py collectstatic --noinput
+          coverage run --source='core,extractor' manage.py test --keepdb
+        env:
+          SURREALDB_OFFLINE: "True"
+          DATABASE_URL: "sqlite:///:memory:"
+
+      - name: Explain Community Edition scope
+        if: always()
+        run: |
+          {
+            echo '### Community Edition PR gate'
+            echo
+            echo 'SonarQube Community Edition does not support pull-request analysis.'
+            echo 'This PR is protected by repository-native Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and the external security checks.'
+            echo 'SonarQube performs its authoritative project analysis and quality gate only after a push to `main`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish SonarQube mainline baseline
+        if: always()
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarqube.fainko.cloud
+        run: |
+          set -euo pipefail
+
+          quality_gate_url="${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=aetheromni"
+          {
+            echo
+            echo '### SonarQube Community Edition mainline baseline'
+            echo
+            echo 'This is the current `main` project status, not a pull-request analysis.'
+            echo '| Status | Dashboard |'
+            echo '| --- | --- |'
+
+            if gate_payload=$(curl --fail --silent --show-error --user "${SONAR_TOKEN}:" "$quality_gate_url"); then
+              gate_status=$(jq -r '.projectStatus.status // "UNAVAILABLE"' <<< "$gate_payload")
+              echo "| ${gate_status} | [Open SonarQube dashboard](${SONAR_HOST_URL}/dashboard?id=aetheromni) |"
+              echo
+              echo '| Metric | Status | Threshold | Actual |'
+              echo '| --- | --- | --- | --- |'
+              jq -r '.projectStatus.conditions[]? | "| \(.metricKey) | \(.status) | \(.errorThreshold // "—") | \(.actualValue // "—") |"' <<< "$gate_payload"
+            else
+              echo "| UNAVAILABLE | [Open SonarQube dashboard](${SONAR_HOST_URL}/dashboard?id=aetheromni) |"
+              echo
+              echo '| Metric | Status | Threshold | Actual |'
+              echo '| --- | --- | --- | --- |'
+              echo '| Server response unavailable | — | — | — |'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  sonarqube-mainline-analysis:
+    name: 2. SonarQube Community Mainline Gate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: pre-scan-validation
     steps:
@@ -131,7 +211,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_DASHBOARD_URL: https://sonarqube.fainko.cloud/dashboard?id=aetheromni
           SONAR_HOST_URL: https://sonarqube.fainko.cloud
-          SONAR_PULL_REQUEST: ${{ github.event.pull_request.number || '' }}
+          SONAR_PULL_REQUEST: ''
         run: |
           set -euo pipefail
 

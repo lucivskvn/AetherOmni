@@ -35,7 +35,7 @@ runbook. This file remains the authoritative cross-agent policy.
 - Once `run_checks.sh` passes locally and the user approves remote pushing, push to `origin main` or open a PR.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
-     2. SonarQube Cloud SAST (Self-Hosted) on `https://sonarqube.fainko.cloud` — multi-language Python 3.13 + JavaScript, Sonar agentic AI quality profiles, with `coverage.xml`
+     2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python 3.13 + JavaScript coverage.
      3. Post-Scan Quality Gate Gatekeeper — publishes the actionable result in the Actions summary, blocks failures, and enforces 0 new violations
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
 
@@ -53,7 +53,10 @@ runbook. This file remains the authoritative cross-agent policy.
 
 - Compute the release version before SonarQube analysis and Cloud Build; never manually edit it or deploy a `latest` fallback.
 - Keep SonarQube failures blocking and actionable in the GitHub Actions summary so Jules can work from scoped PR checks or issues.
+- SonarQube Community Edition does not support pull-request or branch analysis; never analyze a merge checkout as the default branch.
+- PR Actions publish the read-only `main` quality-gate baseline as a table and label it as baseline context, never as a PR result.
 - Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do not reintroduce secret-retrieval or imperative provisioning scripts.
+- Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
 - Use Pulumi for new or rebuilt GCP environments; import and preview existing infrastructure before applying changes.
 
 ---
