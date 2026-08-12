@@ -294,7 +294,7 @@
             <h3 class="flex-align-center gap-sm mb-md text-white font-semibold">
                 <i data-lucide="terminal"></i> Cloud Run Worker Logs (aether-worker)
             </h3>
-            <div class="log-panel" data-log-panel aria-label="Cloud Run worker logs" tabindex="0">
+            <div class="log-panel" data-log-panel aria-label="Cloud Run worker logs">
                 {% if worker_logs %}
                     {% for entry in worker_logs %}
                     <div class="log-entry">
@@ -313,7 +313,7 @@
             <h3 class="flex-align-center gap-sm mb-md text-white font-semibold">
                 <i data-lucide="terminal"></i> Cloud Run Web Logs (aether-web)
             </h3>
-            <div class="log-panel" data-log-panel aria-label="Cloud Run web logs" tabindex="0">
+            <div class="log-panel" data-log-panel aria-label="Cloud Run web logs">
                 {% if web_logs %}
                     {% for entry in web_logs %}
                     <div class="log-entry">
@@ -344,9 +344,6 @@
             followLatest();
             panel.addEventListener('scroll', () => {
                 followingLatest = isAtBottom();
-            });
-            panel.addEventListener('focus', () => {
-                if (followingLatest) followLatest();
             });
         });
         const deployForm = document.querySelector('.deploy-grid form');

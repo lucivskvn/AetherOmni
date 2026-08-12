@@ -8,7 +8,7 @@ from django.urls import reverse
 
 from extractor.models import AuditAction, AuditLog, SourceDocument, SystemSettings
 from extractor.utils import AuditEvent, log_audit_event
-from extractor.views import _parse_surreal_audit_log, get_request_actor_id
+from extractor.views import _parse_surreal_audit_details, _parse_surreal_audit_log, get_request_actor_id
 
 
 class ViewsTestCase(TestCase):
@@ -792,6 +792,14 @@ class StableSupabaseIdentityTestCase(TestCase):
         )
 
         self.assertEqual(audit_log.details, "Login succeeded")
+
+    def test_surreal_audit_details_support_structured_and_serialized_metadata(self):
+        self.assertEqual(
+            _parse_surreal_audit_details({"metadata": {"details": "Structured event"}}), "Structured event"
+        )
+        self.assertEqual(
+            _parse_surreal_audit_details({"metadata": '{"details": "Serialized event"}'}), "Serialized event"
+        )
 
 
 class DeploymentControllerViewTestCase(TestCase):
