@@ -1,5 +1,6 @@
 ISO_8601_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DOCUMENT_NOT_FOUND_MSG = "Document not found."
+import json
 import logging
 from datetime import datetime
 from decimal import Decimal
@@ -477,6 +478,7 @@ class UploadView(LoginRequiredMixin, View):
             AuditEvent(
                 action=AuditAction.UPLOAD_CACHED,
                 user=request.user,
+                actor_id=get_request_actor_id(request),
                 document=doc,
                 details=f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
                 ip_address=ip,
@@ -516,6 +518,7 @@ class UploadView(LoginRequiredMixin, View):
             AuditEvent(
                 action=AuditAction.UPLOAD,
                 user=request.user,
+                actor_id=get_request_actor_id(request),
                 document=doc_ref,
                 details=f"File '{orig_name}' re-uploaded; resetting failed pipeline status and re-enqueuing.",
                 ip_address=ip,
@@ -573,6 +576,7 @@ class UploadView(LoginRequiredMixin, View):
             AuditEvent(
                 action=AuditAction.UPLOAD,
                 user=request.user,
+                actor_id=get_request_actor_id(request),
                 document=doc,
                 details=f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
                 ip_address=ip,
@@ -845,6 +849,7 @@ class DocumentSaveView(LoginRequiredMixin, View):
             AuditEvent(
                 action=AuditAction.DOCUMENT_EDITED,
                 user=request.user,
+                actor_id=get_request_actor_id(request),
                 document=doc_wrapped,
                 details=f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
                 ip_address=get_client_ip(request),
@@ -915,6 +920,7 @@ class DocumentDeleteView(LoginRequiredMixin, View):
             AuditEvent(
                 action=AuditAction.DELETE,
                 user=request.user,
+                actor_id=get_request_actor_id(request),
                 document=doc,
                 details=f"Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
                 ip_address=ip,
@@ -971,6 +977,7 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             AuditEvent(
                 action=AuditAction.PURGE_ALL,
                 user=request.user,
+                actor_id=get_request_actor_id(request),
                 details=f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
                 ip_address=ip,
             )
@@ -1180,6 +1187,7 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
         AuditEvent(
             action=AuditAction.DELETE,
             user=request.user,
+            actor_id=get_request_actor_id(request),
             document=doc,
             details=f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
             ip_address=get_client_ip(request),
@@ -1434,6 +1442,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
             AuditEvent(
                 action=AuditAction.UPLOAD,
                 user=request.user,
+                actor_id=get_request_actor_id(request),
                 document=doc_wrapped,
                 details=f"Curation pipeline re-enqueued for document: {doc_wrapped.title or doc_wrapped.original_filename}",
                 ip_address=get_client_ip(request),
@@ -1566,7 +1575,18 @@ def _parse_surreal_audit_log(rl, users_map):
     a.user = u
     a.action = normalize_audit_action(rl.get("action"))
     a.document = doc
-    a.details = rl.get("details", "")
+    details = rl.get("details", "")
+    metadata = rl.get("metadata")
+    if not details and metadata:
+        if isinstance(metadata, dict):
+            details = metadata.get("details", "")
+        elif isinstance(metadata, str):
+            try:
+                decoded_metadata = json.loads(metadata)
+                details = decoded_metadata.get("details", "") if isinstance(decoded_metadata, dict) else metadata
+            except json.JSONDecodeError:
+                details = metadata
+    a.details = str(details)
     a.ip_address = rl.get("ip_address", "")
     a.created_at = ts_parsed
     a.timestamp = ts_parsed
@@ -1616,6 +1636,9 @@ def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_
 
     user_model = get_user_model()
     users_map = {str(u.id): u for u in user_model.objects.all()}
+    actor_id = get_request_actor_id(request)
+    if actor_id:
+        users_map[actor_id] = request.user
 
     logs = []
     for rl in raw_logs:
@@ -1716,7 +1739,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
                     "metadata": {
                         "annotations": {
                             KNATIVE_MIN_SCALE: "0",
-                            "autoscaling.knative.dev/maxScale": "0",
+                            "autoscaling.knative.dev/maxScale": "5",
                         }
                     }
                 }
@@ -1830,6 +1853,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
                 AuditEvent(
                     action=AuditAction.SYSTEM_CONTROL,
                     user=request.user,
+                    actor_id=get_request_actor_id(request),
                     details=f"Admins toggled worker scaling mode to '{mode}' (minScale: {min_scale}, maxScale: {max_scale}).",
                     ip_address=request.META.get("REMOTE_ADDR"),
                 )

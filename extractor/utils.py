@@ -82,6 +82,7 @@ class AuditEvent:
     details: str = ""
     ip_address: str | None = None
     metadata: dict | None = None
+    actor_id: str | None = None
 
 
 def log_audit_event(event: AuditEvent) -> None:
@@ -107,7 +108,9 @@ def log_audit_event(event: AuditEvent) -> None:
     try:
         from extractor import surreal_db
 
-        if event.user and hasattr(event.user, "id"):
+        if event.actor_id:
+            user_id = str(event.actor_id)
+        elif event.user and hasattr(event.user, "id"):
             user_id = str(event.user.id)
         elif event.user:
             user_id = str(event.user)

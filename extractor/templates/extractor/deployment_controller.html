@@ -294,7 +294,7 @@
             <h3 class="flex-align-center gap-sm mb-md text-white font-semibold">
                 <i data-lucide="terminal"></i> Cloud Run Worker Logs (aether-worker)
             </h3>
-            <div class="log-panel">
+            <div class="log-panel" data-log-panel aria-label="Cloud Run worker logs" tabindex="0">
                 {% if worker_logs %}
                     {% for entry in worker_logs %}
                     <div class="log-entry">
@@ -313,7 +313,7 @@
             <h3 class="flex-align-center gap-sm mb-md text-white font-semibold">
                 <i data-lucide="terminal"></i> Cloud Run Web Logs (aether-web)
             </h3>
-            <div class="log-panel">
+            <div class="log-panel" data-log-panel aria-label="Cloud Run web logs" tabindex="0">
                 {% if web_logs %}
                     {% for entry in web_logs %}
                     <div class="log-entry">
@@ -333,6 +333,22 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', () => {
+        const logPanels = document.querySelectorAll('[data-log-panel]');
+        logPanels.forEach((panel) => {
+            let followingLatest = true;
+            const isAtBottom = () => panel.scrollHeight - panel.scrollTop - panel.clientHeight < 24;
+            const followLatest = () => {
+                panel.scrollTop = panel.scrollHeight;
+            };
+
+            followLatest();
+            panel.addEventListener('scroll', () => {
+                followingLatest = isAtBottom();
+            });
+            panel.addEventListener('focus', () => {
+                if (followingLatest) followLatest();
+            });
+        });
         const deployForm = document.querySelector('.deploy-grid form');
         if (deployForm) {
             deployForm.addEventListener('submit', () => {

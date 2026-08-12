@@ -56,7 +56,7 @@ runbook. This file remains the authoritative cross-agent policy.
 - Compute the release version before SonarQube analysis and Cloud Build; never manually edit it or deploy a `latest` fallback. Cloud Build must unshallow trigger checkouts before deriving the commit-count patch.
 - Send Supabase CAPTCHA tokens in GoTrue `gotrue_meta_security`; require Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL` or server-controlled Supabase app metadata. Never auto-promote the first user.
 - In production, use the Supabase Auth subject UUID for document ownership, tenant filtering, exports, RAG access, and rate-limit keys; Django/SQLite IDs are offline-only implementation details.
-- Enable periodic SurrealDB maintenance only on the worker service with one continuously allocated, unthrottled instance; web instances must not start duplicate reaper or retention threads.
+- Default the worker to bounded Cloud Run on-demand scaling with periodic maintenance disabled. Cloud Tasks wakes it for queued work; only opt into an always-on worker for an explicit scheduled-maintenance requirement. Web instances must not start maintenance threads.
 - Cloud Tasks must dispatch only to `WORKER_URL` in production; never fall back to a local web-process thread. Cloud Build resolves the worker URL and GCP project identity at deploy time, while `_APP_URL` may set the public Supabase confirmation origin.
 - Keep SonarQube failures blocking and actionable in the GitHub Actions summary so Jules can work from scoped PR checks or issues.
 - SonarQube Community Edition does not support pull-request or branch analysis; never analyze a merge checkout as the default branch.

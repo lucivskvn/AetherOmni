@@ -420,7 +420,9 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
                 payload = _parse_http_request_payload(entry) or _parse_text_payload(entry)
                 if payload:
                     logs_parsed.append({"timestamp": timestamp, "message": payload, "severity": severity})
-            return logs_parsed
+            # Cloud Logging returns newest-first. Render chronological order so
+            # the bottom of the terminal panel is the most recent entry.
+            return list(reversed(logs_parsed))
     except Exception as e:
         logger.exception("Failed to fetch logs via Logging REST API.")
         return [
@@ -455,7 +457,8 @@ def _get_service_logs_local(service_name, project_id, region, limit):
             payload = _parse_http_request_payload(entry) or _parse_text_payload(entry)
             if payload:
                 logs_parsed.append({"timestamp": timestamp, "message": payload, "severity": severity})
-        return logs_parsed
+        # Keep the local gcloud fallback consistent with the Cloud Logging API.
+        return list(reversed(logs_parsed))
 
     except Exception:
         return _fallback_local_run_logs(service_name, region, project_id, limit)
