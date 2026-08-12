@@ -274,12 +274,17 @@ class SecurityGatewayAndAuthTestCase(TestCase):
 
         # Execute Supabase auth flow with mock credentials
         backend = SupabaseAuthBackend()
+        request = MagicMock()
+        request.POST = {"cf-turnstile-response": "valid-captcha-token"}
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
-            user = backend.authenticate(None, username="supabase.test@example.com", password="somepassword")
+            user = backend.authenticate(request, username="supabase.test@example.com", password="somepassword")
 
         self.assertIsNotNone(user)
         self.assertEqual(user.email, "supabase.test@example.com")
         self.assertEqual(user.username, "supabase.test")
+        request_body = json.loads(mock_urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertNotIn("captcha_token", request_body)
+        self.assertEqual(request_body["gotrue_meta_security"], {"captcha_token": "valid-captcha-token"})
 
     @patch("urllib.request.urlopen")
     def test_supabase_idp_auth_rejected_credential(self, mock_urlopen):
@@ -934,6 +939,54 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
 
 class SecurityAuthTestCase(TestCase):
     """Verifies that various authentication, registration, recovery, and settings input checks are secure."""
+
+    def assert_supabase_captcha_payload(self, mock_urlopen):
+        import json
+
+        request_body = json.loads(mock_urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertNotIn("captcha_token", request_body)
+        self.assertEqual(request_body["gotrue_meta_security"], {"captcha_token": "valid-captcha-token"})
+
+    @patch("urllib.request.urlopen")
+    def test_registration_sends_captcha_in_gotrue_security_metadata(self, mock_urlopen):
+        from extractor.views import _register_supabase_user
+
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+
+        success, error_message = _register_supabase_user(
+            "https://project.supabase.co",
+            "mock-public-key",
+            "test@example.com",
+            "password123",
+            "https://app.example.com",
+            "valid-captcha-token",
+        )
+
+        self.assertTrue(success)
+        self.assertIsNone(error_message)
+        self.assert_supabase_captcha_payload(mock_urlopen)
+
+    @patch("urllib.request.urlopen")
+    def test_recovery_sends_captcha_in_gotrue_security_metadata(self, mock_urlopen):
+        from extractor.views import _send_supabase_recovery
+
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+
+        success, error_message = _send_supabase_recovery(
+            "test@example.com",
+            "https://project.supabase.co",
+            "mock-public-key",
+            "https://app.example.com",
+            "valid-captcha-token",
+        )
+
+        self.assertTrue(success)
+        self.assertIsNone(error_message)
+        self.assert_supabase_captcha_payload(mock_urlopen)
 
     def test_register_view_rejects_reserved_emails(self):
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):

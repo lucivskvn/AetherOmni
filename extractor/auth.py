@@ -151,7 +151,7 @@ class SupabaseAuthBackend(ModelBackend):
         body: dict = {"email": target_email, "password": password}
         captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
         if captcha_token:
-            body["captcha_token"] = captcha_token
+            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
 
         try:
