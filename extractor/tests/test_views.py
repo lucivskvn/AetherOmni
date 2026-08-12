@@ -310,6 +310,30 @@ class SecurityGatewayAndAuthTestCase(TestCase):
             self.assertEqual(user_by_uname.username, self.username)
 
     @patch("urllib.request.urlopen")
+    def test_turnstile_protected_supabase_rejection_does_not_fallback_locally(self, mock_urlopen):
+        """A rejected protected GoTrue request must not bypass CAPTCHA via local auth."""
+        import urllib.error
+
+        from extractor.auth import SupabaseAuthBackend
+
+        mock_err = urllib.error.HTTPError(
+            url="https://project.supabase.co/auth/v1/token", code=400, msg="Bad Request", hdrs={}, fp=MagicMock()
+        )
+        mock_err.read = MagicMock(return_value=b'{"error": "captcha_failed"}')
+        mock_urlopen.side_effect = mock_err
+        request = MagicMock()
+        request.POST = {"cf-turnstile-response": "invalid-captcha-token"}
+
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="test-site-key",
+        ):
+            user = SupabaseAuthBackend().authenticate(request, username=self.user_email, password=self.password)
+
+        self.assertIsNone(user)
+
+    @patch("urllib.request.urlopen")
     def test_supabase_email_prefix_collision(self, mock_urlopen):
         """Verify that when registering two users with the same email prefix but different domains, no IntegrityError occurs."""
         import json
@@ -1117,6 +1141,15 @@ class SecurityAuthTestCase(TestCase):
             self.assertIsNotNone(user)
             self.assertFalse(user.is_superuser)
             self.assertFalse(user.is_staff)
+
+    def test_static_example_email_is_not_an_admin_grant(self):
+        from extractor.auth import _sync_supabase_user
+
+        with self.settings(ADMIN_EMAIL=""):
+            user = _sync_supabase_user(None, {"user": {"email": "admin@example.com"}}, "admin@example.com")
+
+        self.assertFalse(user.is_superuser)
+        self.assertFalse(user.is_staff)
 
     def test_forgot_password_page_renders_turnstile_widget_when_configured(self):
         with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):

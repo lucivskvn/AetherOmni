@@ -109,7 +109,7 @@ if not _raw_secret:
 
 SECRET_KEY = _raw_secret
 
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip()
 
 # ALLOWED_HOSTS configuration
 django_allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,.run.app")

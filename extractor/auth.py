@@ -60,8 +60,8 @@ def _sync_supabase_user(
         email=user_email, defaults={"username": django_username, "is_active": True}
     )
 
-    admin_email = getattr(settings, "ADMIN_EMAIL", "admin@example.com")
-    is_promoted_admin = user_email.lower() == admin_email.lower()
+    admin_email = getattr(settings, "ADMIN_EMAIL", "").strip()
+    is_promoted_admin = bool(admin_email) and user_email.lower() == admin_email.lower()
 
     # 1. Supabase App Metadata Role Syncing
     app_metadata = user_info.get("app_metadata", {})
@@ -144,6 +144,10 @@ class SupabaseAuthBackend(ModelBackend):
         }
         body: dict = {"email": target_email, "password": password}
         captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
+        turnstile_required = bool(getattr(settings, "CF_TURNSTILE_SITE_KEY", ""))
+        if turnstile_required and not captcha_token:
+            logger.warning("[Auth] Supabase authentication rejected before dispatch: security check incomplete.")
+            return None
         if captcha_token:
             body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
@@ -157,9 +161,13 @@ class SupabaseAuthBackend(ModelBackend):
                 resp_data = json.loads(response.read().decode("utf-8"))
                 return _sync_supabase_user(request, resp_data, target_email)
         except urllib.error.HTTPError as e:
-            logger.warning(f"[Auth] Supabase authentication rejected: HTTP {e.code} - {e.read().decode('utf-8')}")
+            logger.warning("[Auth] Supabase authentication rejected: HTTP %s", e.code)
+            if turnstile_required:
+                return None
         except Exception as e:
             logger.exception(f"[Auth] Supabase API network connectivity exception: {e}")
+            if turnstile_required:
+                return None
 
         # Fall back if Supabase fails
         user = User.objects.filter(email=target_email).first()

@@ -824,7 +824,7 @@ def _flush_document_cost(doc) -> bool:
     from extractor.models import MonthlySpendLog
 
     try:
-        MonthlySpendLog.add_cost(
+        persisted = MonthlySpendLog.add_cost(
             date=created_at,
             cost=Decimal(str(cost)),
             in_tok=doc.get("input_tokens") or 0,
@@ -833,7 +833,7 @@ def _flush_document_cost(doc) -> bool:
     except Exception as exc:
         logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
         return False
-    return True
+    return persisted
 
 
 def _delete_offline_document(doc_uuid: str) -> None:

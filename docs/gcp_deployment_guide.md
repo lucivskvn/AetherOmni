@@ -193,9 +193,10 @@ Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
 from the configured `ADMIN_EMAIL` or server-controlled Supabase app metadata;
 the application never promotes the first authenticated user automatically.
 
-Cloud Run enables periodic SurrealDB reaping and retention only on the
-single-worker worker service. Web instances do not start duplicate maintenance
-threads, and paid document deletion stops if spend-ledger persistence fails.
+Cloud Run enables periodic SurrealDB reaping and retention only on the worker
+service. Deployment enforces one continuously allocated instance with no CPU
+throttling, while web instances never start maintenance threads. Paid document
+deletion stops if spend-ledger persistence fails.
 
 ---
 
@@ -218,7 +219,7 @@ If you need to manually initialize or verify the SurrealDB schema, run the follo
 > surreal validate schema.surql
 > ```
 >
-> The `surreal validate` command (`surreal` v3.3.0+) enforces SurrealQL syntax correctness and is run automatically in Phase 2 of `run_checks.sh`. Local verification must use a Python 3.14 environment with `requirements-dev.txt`; the gate fails explicitly if the selected interpreter is older, keeping local checks aligned with Cloud Run and GitHub Actions.
+> The `surreal validate` command enforces SurrealQL syntax correctness and runs automatically in `run_checks.sh`. Use the tool and interpreter versions declared by repository configuration with `requirements-dev.txt`; the gate rejects incompatible versions, keeping local checks aligned with Cloud Run and GitHub Actions.
 
 GitHub Action dependencies are pinned to reviewed commit SHAs, preventing a mutable action tag from changing the deployment or quality-gate workflow unexpectedly.
 

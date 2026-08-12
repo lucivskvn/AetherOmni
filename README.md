@@ -3,7 +3,6 @@
 > **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
 [![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)
-[![Python Version](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/)
 
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
@@ -99,7 +98,7 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | **Non-Technical User** | Ease of Use & Automated Ingestion | Drag-and-drop uploads, simple markdown view, instant single-copy ZIP export (`documents/001_title.md`). | Zero technical learning curve; eliminates manual document transcription. |
 | **Software Engineer** | Architecture Rigor & Zero Hallucination | Decoupled 3-stage pipeline, SurrealDB HNSW vector RAG, RRF hybrid search (BM25 + HNSW). | High-precision sub-100ms retrieval with zero prompt context window waste. |
-| **DevSecOps Engineer** | Security, SAST & Pipeline Stability | 5-phase `run_checks.sh` gate: Ruff, Mypy, ast-grep, Semgrep SAST, Bandit, Hadolint, **`surreal validate`** SurrealQL schema lint, ShellCheck, SonarQube MQR. | Prevents broken code, security vulnerabilities, or failing tests from entering main branch. |
+| **DevSecOps Engineer** | Security, SAST & Pipeline Stability | Complete `run_checks.sh` gate: Ruff, Mypy, ast-grep, Semgrep SAST, Bandit, Hadolint, **`surreal validate`** SurrealQL schema lint, ShellCheck, SonarQube MQR. | Prevents broken code, security vulnerabilities, or failing tests from entering main branch. |
 | **CFO / Finance Lead** | Cost Control & Budget Predictability | Instant SHA-256 hash caching ($0.00 cost reuse), `MonthlySpendLog` USD caps, Cloud Run scale-to-zero. | Eliminates duplicate LLM API charges; ensures spend stays within strict monthly caps. |
 | **Compliance Officer** | Auditability & SOC 2 Governance | Immutable append-only `AuditLog` with PostgreSQL triggers and client IP logging (`get_client_ip`). | Complete tamper-evident audit trail for regulatory compliance. |
 | **Academic Researcher** | Scientific Rigor & Verifiable Citations | Structural source boundaries (`<!-- SOURCE_START -->`), SFT Q&A JSON dataset export, RTL Arabic layout. | Verifiable peer-reviewed citation attribution and reproducible ML dataset preparation. |
@@ -185,7 +184,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 - **Zero-Cost SHA-256 Deduplication Caching**: Developers prevent duplicate API charges during iterative dataset processing via instant SHA-256 hash lookups.
 - **Multi-Provider Resilient LLM Gateway**: Fallback chain automatically switches between Gemini 3.6 Flash, Vertex AI, and OpenRouter free tiers to ensure 99.99% uptime.
-- **Air-Gapped Local Verification**: Supports offline development (`SURREALDB_OFFLINE=True`) and complete 5-phase DevSecOps pipeline testing (`run_checks.sh`).
+- **Air-Gapped Local Verification**: Supports offline development (`SURREALDB_OFFLINE=True`) and the complete DevSecOps pipeline (`run_checks.sh`).
 
 ---
 
@@ -240,13 +239,13 @@ flowchart LR
 - [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
 - [x] **Multi-Modal Diagram & Schema Vision OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
 
-### ✅ Milestone 3.5 (MVP Core — DevSecOps Hardening, SurrealQL Validation & Python 3.14)
+### ✅ Milestone 3.5 (MVP Core — DevSecOps Hardening, SurrealQL Validation & Runtime Alignment)
 
-- [x] **Python 3.14 Runtime Upgrade**: Builder and runtime use a digest-pinned `python:3.14.6-slim-trixie` image; CI and Ruff target `py314`.
+- [x] **Runtime Upgrade**: Builder and runtime use the digest-pinned image declared by `Dockerfile`; CI and Ruff follow the canonical versions in project configuration.
 - [x] **Shell-Free Container Startup**: A Python entrypoint runs migrations, starts bounded database initialization, and `exec`s Gunicorn without a shell interpreter in the startup path.
 - [x] **SurrealQL Schema Validation** (`surreal validate`): `schema.surql` is validated on every pipeline run via the official `surreal` CLI (install: `curl -sSf https://install.surrealdb.com | sh`). Integrated into Phase 2 of `run_checks.sh` and the fast differential `--fast` pass for `.surql` file changes.
 - [x] **Full-Suite Tool Alignment**: All DevSecOps tools verified at latest stable — `ruff`, `mypy`, `bandit`, `pip-audit`, `semgrep`, `yamllint`, `hadolint`, `ast-grep`, `markdownlint-cli`, `eslint`, `surreal`. Application dependencies are tracked in `requirements.txt`; local Python verification tools are tracked in `requirements-dev.txt`.
-- [x] **SonarQube Multi-Language SAST**: Removed `sonar.language=py` single-language lock; SonarQube now scans Python 3.14 (`py314`) **and** JavaScript (ESLint 10 conventions) in the same analysis pass.
+- [x] **SonarQube Multi-Language SAST**: Removed the single-language lock; SonarQube now scans Python and JavaScript in the same analysis pass using repository-managed analyzer configuration.
 - [x] **`run_checks.sh` Path Consistency**: Fixed autofix `markdownlint` target path from `gcp_deployment_guide.md` to `docs/gcp_deployment_guide.md`.
 - [x] **ShellCheck Integration**: `shellcheck run_checks.sh scripts/*.sh` added to Phase 2 for POSIX shell safety enforcement.
 - [x] **Full Test Suite**: All Django unit tests pass cleanly under `SURREALDB_OFFLINE=True` with `coverage.xml` generated for SonarQube ingestion.
@@ -255,7 +254,7 @@ flowchart LR
 
 - [x] **Supabase Email Login Recovery**: Turnstile is required before credential dispatch and its token is forwarded through GoTrue security metadata; successful sessions bridge into Django without first-user privilege escalation. GitHub OAuth and Passkeys remain planned.
 - [x] **Release Traceability**: SonarQube and Cloud Build derive the same commit-count release from full Git history, then propagate it to the immutable image tag, Cloud Run, and application UI.
-- [x] **Bounded SurrealDB Maintenance**: Periodic reaping and retention run only on the single-worker maintenance service; spend-ledger persistence is validated before document deletion.
+- [x] **Bounded SurrealDB Maintenance**: Periodic reaping and retention run only on one continuously allocated, unthrottled worker instance; spend-ledger persistence is validated before document deletion.
 - [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
 
 ### 📈 Milestone 3.7 (MVP Reliability — Operations & Observability)
@@ -303,7 +302,7 @@ flowchart LR
 
 | Component Layer | Technology / Tool | Version / Details | Purpose |
 | ----------------- | ------------------- | ------------------- | --------- |
-| **Core Framework** | Python / Django | Python 3.14, Django 6.0.8 | Core MVC framework, ORM, admin backend, authentication |
+| **Core Framework** | Python / Django | Versions managed in `pyproject.toml` and requirements files | Core MVC framework, ORM, admin backend, authentication |
 | **Vector Database** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model document database, vector similarity search, KV cache |
 | **Relational Storage** | PostgreSQL / SQLite | PostgreSQL 16+ / SQLite 3 | Enterprise relational storage for users, spend logs, audit events |
 | **LLM Gateway** | Google Gemini / Vertex AI / OpenRouter | Gemini 3.6 Flash / 3.5 Flash-Lite, Llama 3 (OpenRouter free fallback) | Dynamic multi-provider fallback chain for document extraction |
@@ -311,8 +310,8 @@ flowchart LR
 | **Queue & Dispatcher** | GCP Cloud Tasks | OIDC Authenticated Tasks | Production asynchronous queue with localized thread fallbacks |
 | **Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw and processed documents |
 | **Auth** | Supabase Auth Platform (Supabase Cloud) | GoTrue REST API · `SupabaseAuthBackend` | User authentication, login, and registration |
-| **Container Runtime** | Docker · Python 3.14 slim (digest-pinned) | Multi-stage, shell-free OWASP non-root build | Minimal production container, non-root user `1000` |
-| **DevSecOps & SAST** | SonarQube / Bandit / Hadolint / Semgrep / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | Sonar MQR Gate, SurrealQL syntax validation | 5-phase shift-left security verification and code quality gate |
+| **Container Runtime** | Docker · digest-pinned Python slim image | Multi-stage, shell-free OWASP non-root build | Minimal production container, non-root runtime user |
+| **DevSecOps & SAST** | SonarQube / Bandit / Hadolint / Semgrep / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | Sonar MQR Gate, SurrealQL syntax validation | Complete shift-left security verification and code quality gate |
 
 ---
 
@@ -330,7 +329,7 @@ flowchart LR
 
 AetherOmni strictly enforces **Shift-Left Local Verification** before code can be committed or merged into production branches.
 
-### 🧪 5-Phase Verification Gate (`run_checks.sh`)
+### 🧪 Complete Verification Gate (`run_checks.sh`)
 
 Execute the local verification script to validate all quality gates prior to opening a Pull Request. Pipeline failure propagation ensures captured test output cannot turn a failed command into a false-green result:
 
@@ -340,7 +339,7 @@ bash run_checks.sh --autofix
 bash scripts/verify-pipeline.sh
 ```
 
-`run_checks.sh` executes the 5 phase quality gate pipeline in sequence:
+`run_checks.sh` executes the complete quality gate pipeline in sequence:
 
 1. **Phase 1: Code Formatting & Syntax**:
    - Ruff AST Formatter (`ruff format --check .`)
@@ -383,7 +382,7 @@ extraction, and push retries.
 
 ### 1. Prerequisites
 
-- Python 3.14 installed
+- The Python runtime declared by `pyproject.toml` installed
 - Docker & Docker Compose (optional for SurrealDB)
 
 ### 2. Environment Configuration
@@ -416,10 +415,10 @@ uv pip install -r requirements-dev.txt
 
 # Run migrations & initialize SurrealDB
 python manage.py migrate
-python init_surreal.py
+python scripts/init_surreal.py
 ```
 
-> **Alternative (standard venv):** `python3.14 -m venv .venv && source .venv/bin/activate && pip install -r requirements-dev.txt`
+> **Alternative (standard venv):** create `.venv` with the interpreter required by `pyproject.toml`, activate it, and install `requirements-dev.txt`.
 
 ### 4. Launch Development Server
 

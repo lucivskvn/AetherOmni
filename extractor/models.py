@@ -242,7 +242,7 @@ class MonthlySpendLog(models.Model):
         ordering = ["-year", "-month"]
 
     @classmethod
-    def add_cost(cls, date, cost: Decimal, in_tok: int = 0, out_tok: int = 0):
+    def add_cost(cls, date, cost: Decimal, in_tok: int = 0, out_tok: int = 0) -> bool:
         """Thread-safe upsert: add cost to the specified year/month bucket."""
         from decimal import Decimal as D
 
@@ -282,7 +282,7 @@ class MonthlySpendLog(models.Model):
                     "accumulated_output_tokens": accumulated_out,
                 }
                 surreal_db.kv_cache_set(key, new_data)
-                return
+                return True
             except Exception as exc:
                 logger.warning("[SurrealDB] Failed to add cost to KV cache monthly log: %s", exc)
 
@@ -296,13 +296,15 @@ class MonthlySpendLog(models.Model):
                 pass
 
             # Use F-expression to avoid race conditions on concurrent workers
-            cls.objects.filter(year=year, month=month).update(
+            updated = cls.objects.filter(year=year, month=month).update(
                 accumulated_cost_usd=models.F("accumulated_cost_usd") + D(str(cost)),
                 accumulated_input_tokens=models.F("accumulated_input_tokens") + in_tok,
                 accumulated_output_tokens=models.F("accumulated_output_tokens") + out_tok,
             )
+            return updated == 1
         except Exception as exc:  # pragma: no cover — handles pre-migration state
             logger.warning("[MonthlyLog] add_cost skipped (table may not exist yet): %s", exc)
+            return False
 
     @classmethod
     def total_for_month(cls, year: int, month: int) -> Decimal:

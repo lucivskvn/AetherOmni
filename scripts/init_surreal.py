@@ -219,7 +219,7 @@ def init_django_admin():
             logger.warning("Django migrate warning: %s", me)
 
         supabase_url = getattr(settings, "SUPABASE_URL", "")
-        admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "admin@example.com"))
+        admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "")).strip()
         import secrets
 
         # Interactive authentication is delegated to Supabase. The local Django
@@ -227,7 +227,10 @@ def init_django_admin():
         # or persisted in deployment configuration.
         admin_password = secrets.token_urlsafe(16)
 
-        _setup_local_admin(admin_email, admin_password, supabase_url)
+        if admin_email:
+            _setup_local_admin(admin_email, admin_password, supabase_url)
+        else:
+            logger.info("ADMIN_EMAIL is not configured; skipping local administrator stub creation.")
         _migrate_system_settings()
 
     except Exception:

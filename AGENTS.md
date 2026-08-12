@@ -14,8 +14,8 @@ runbook. This file remains the authoritative cross-agent policy.
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
   - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.git/hooks/pre-commit` which runs `bash run_checks.sh --fast`. This differential gate checks modified files with Ruff, ESLint, yamllint, markdownlint, SurrealQL validation, Bandit, Semgrep, AST-Grep, and ShellCheck where applicable; new suppressions require a precise rule ID, with Semgrep and SonarQube suppressions also requiring a reason.
   - **Pre-Push Gatekeeper Hook**: Local pushes are enforced by `.git/hooks/pre-push` running the full verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), Docker (`hadolint`), SurrealQL (`surreal validate`), and AST pattern rules (`ast-grep`).
-  - **Full Suite Run**: Execute `bash run_checks.sh` locally for a full 5-phase verification pass. Shell pipeline failures must propagate so log capture cannot mask a failed check.
-  - **Runtime Alignment**: Create the local environment with Python 3.14 and install `requirements-dev.txt`; `run_checks.sh` rejects an older interpreter rather than silently producing incompatible results.
+  - **Full Suite Run**: Execute `bash run_checks.sh` locally for the complete verification pass. Shell pipeline failures must propagate so log capture cannot mask a failed check.
+  - **Runtime Alignment**: Create the local environment with the interpreter declared by `pyproject.toml` and install `requirements-dev.txt`; `run_checks.sh` rejects an incompatible interpreter rather than silently producing incompatible results.
   - **Active Linters & Auto-Fixers**: Ensure active auto-fixers (`markdownlint --fix`, `yamllint`, `ruff check --fix`, `ruff format`) are executed so document formatting, JS/Python code standards, and YAML schemas are automatically corrected.
 - You MUST ensure the verification suite passes cleanly with **0 Blocker / High Security Vulnerabilities** and **0 Complexity Errors** BEFORE creating or opening a Pull Request.
 
@@ -28,7 +28,7 @@ runbook. This file remains the authoritative cross-agent policy.
 ### 3. Desloppify Codebase Health & Sensor Audit
 
 - Run `desloppify scan` to audit structural complexity, responsibility cohesion, dependency cycles, duplicate logic, and code health metrics.
-- Maintain objective mechanical health score >= 85.0. Target runtime: Python 3.14 (`py314`).
+- Use the generated `docs/scorecard.png` as the source of truth for the health target and status. Use the runtime declared by `pyproject.toml` and the digest-pinned `Dockerfile` image.
 - Never hardcode Desloppify scores in Markdown — always reference the dynamic `docs/scorecard.png` badge image.
 
 ### 4. Automated Cloud SAST & Quality Gate (SonarQube & Semgrep)
@@ -36,7 +36,7 @@ runbook. This file remains the authoritative cross-agent policy.
 - Once `run_checks.sh` passes locally and the user approves remote pushing, push to `origin main` or open a PR.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
-     2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python 3.14 + JavaScript coverage.
+     2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python and JavaScript coverage.
      3. Post-Scan Quality Gate Gatekeeper — publishes the actionable result in the Actions summary, blocks failures, and enforces 0 new violations
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
   - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
@@ -61,8 +61,9 @@ runbook. This file remains the authoritative cross-agent policy.
 - Supabase CAPTCHA tokens must be sent in GoTrue `gotrue_meta_security`; require
   Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL`
   or server-controlled Supabase app metadata. Never auto-promote the first user.
-- Enable periodic SurrealDB maintenance only on the single-worker worker service;
-  web instances must not start duplicate reaper or retention threads.
+- Enable periodic SurrealDB maintenance only on the worker service, enforcing a
+  single continuously allocated instance with no CPU throttling; web instances
+  must not start duplicate reaper or retention threads.
 - Treat the GitHub Actions summary as the actionable SonarQube hand-off. Keep
   failures blocking so Jules can address scoped issues from PR checks or issues.
 - SonarQube Community Edition does not support pull-request or branch analysis.
@@ -89,7 +90,7 @@ runbook. This file remains the authoritative cross-agent policy.
    - Avoid hardcoding static version strings, score numbers, test counts, or rule counts in Markdown text or tables. Use dynamic badges or auto-generated images (`scorecard.png`) to prevent stale documentation.
 
 4. **Remote Self-Hosted SonarQube Architecture (`sonarqube.fainko.cloud`)**:
-   - Target Host: `https://sonarqube.fainko.cloud` (Coolify Cloudflare Tunnel, Python 3.14 runtime).
+   - Target Host: `https://sonarqube.fainko.cloud` (Coolify Cloudflare Tunnel).
    - Zero local server footprint: Reclaims local RAM and CPU cycles.
 
 5. **SurrealDB Native Transactions, Schema Validation & Async Safety**:
@@ -98,7 +99,7 @@ runbook. This file remains the authoritative cross-agent policy.
    - Use `concurrent.futures.ThreadPoolExecutor` worker dispatch in sync/async boundaries instead of monkeypatching event loops with `nest_asyncio`.
 
 6. **Multi-Language Code Quality & Eco-Design**:
-   - Python: Target runtime Python 3.14 (`py314`) with `ruff`, `mypy`, `bandit`.
+   - Python: Use the canonical runtime and Ruff target declared in project configuration, with `ruff`, `mypy`, and `bandit`.
    - JavaScript: ESLint 10 with SonarQube JS conventions (`?.` optional chaining, global scope checks, complexity ≤ 15).
    - SurrealQL: `surreal validate` enforces `.surql` schema syntax on every pipeline run.
    - Adhere to Creedengo Eco-Design rules (low energy consumption, optimal memory management).
@@ -120,8 +121,8 @@ As an AI coding assistant, execute the requested task following these strict rep
    linter configurations, runtime rules, or architectural decisions change.
 3. Local-First Review: Keep all commits and code modifications strictly local on the working
    branch. NEVER execute `git push` unless explicitly commanded by the user.
-4. Desloppify Health & Security: Maintain objective mechanical health score >= 85.0 and security
-   score = 100%. Target runtime: Python 3.14 (py314). Never hardcode scores — reference scorecard.png.
+4. Desloppify Health & Security: Use `docs/scorecard.png` for current health and security status
+   and the canonical project configuration for the runtime. Never hardcode scores in documentation.
 5. Active Linters & Auto-Fixers: Ensure `markdownlint --fix`, `yamllint`, `npx eslint`,
    `ruff check --fix`, `ruff format`, and `surreal validate` are actively executed across all
    files without exception.

@@ -43,7 +43,7 @@ class SurrealDBClientTestCase(TestCase):
         mock_surreal.assert_called_once()
 
     @override_settings(SURREALDB_OFFLINE=True)
-    @patch("extractor.models.MonthlySpendLog.add_cost")
+    @patch("extractor.models.MonthlySpendLog.add_cost", return_value=True)
     def test_flush_document_cost_accepts_surreal_datetime(self, mock_add_cost):
         created_at = datetime(2026, 8, 12, tzinfo=UTC)
 
@@ -63,6 +63,12 @@ class SurrealDBClientTestCase(TestCase):
                 call(date=datetime(2026, 8, 12, tzinfo=UTC), cost=Decimal("1.25"), in_tok=10, out_tok=20),
             ]
         )
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    @patch("extractor.models.MonthlySpendLog.add_cost", return_value=False)
+    def test_flush_document_cost_reports_ledger_persistence_failure(self, mock_add_cost):
+        self.assertFalse(surreal_db._flush_document_cost({"created_at": "2026-08-12T00:00:00Z", "cost_usd": 1.25}))
+        mock_add_cost.assert_called_once()
 
     @override_settings(SURREALDB_OFFLINE=True)
     @patch("extractor.models.MonthlySpendLog.add_cost")
