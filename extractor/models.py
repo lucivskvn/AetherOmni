@@ -242,7 +242,7 @@ class MonthlySpendLog(models.Model):
         ordering = ["-year", "-month"]
 
     @classmethod
-    def add_cost(cls, date, cost: "Decimal", in_tok: int = 0, out_tok: int = 0):
+    def add_cost(cls, date, cost: Decimal, in_tok: int = 0, out_tok: int = 0):
         """Thread-safe upsert: add cost to the specified year/month bucket."""
         from decimal import Decimal as D
 
@@ -305,7 +305,7 @@ class MonthlySpendLog(models.Model):
             logger.warning("[MonthlyLog] add_cost skipped (table may not exist yet): %s", exc)
 
     @classmethod
-    def total_for_month(cls, year: int, month: int) -> "Decimal":
+    def total_for_month(cls, year: int, month: int) -> Decimal:
         """Return the total spend for the given calendar month."""
         from decimal import Decimal as D
 

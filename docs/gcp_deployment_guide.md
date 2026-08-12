@@ -189,7 +189,7 @@ gcloud builds submit --config infra/gcp/cloudbuild.yaml \
 
 ### Automated Schema Bootstrap
 
-The database schema is automatically bootstrapped and verified on container boot by `init_surreal.py` (which runs automatically as the Docker `web` container entrypoint). It waits for SurrealDB to become healthy, ensures the namespace and database are pre-defined, and imports the full schema.
+The shell-free Python container entrypoint runs migrations, starts `init_surreal.py` as a bounded bootstrap process, and then `exec`s Gunicorn. The bootstrap waits for SurrealDB to become healthy, ensures the namespace and database are pre-defined, and imports the full schema without making the application command depend on a shell interpreter.
 
 ### Manual Schema Initialization
 
@@ -204,7 +204,9 @@ If you need to manually initialize or verify the SurrealDB schema, run the follo
 > surreal validate schema.surql
 > ```
 >
-> The `surreal validate` command (`surreal` v3.3.0+) enforces SurrealQL syntax correctness and is run automatically in Phase 2 of `run_checks.sh`.
+> The `surreal validate` command (`surreal` v3.3.0+) enforces SurrealQL syntax correctness and is run automatically in Phase 2 of `run_checks.sh`. Local verification must use a Python 3.14 environment with `requirements-dev.txt`; the gate fails explicitly if the selected interpreter is older, keeping local checks aligned with Cloud Run and GitHub Actions.
+
+GitHub Action dependencies are pinned to reviewed commit SHAs, preventing a mutable action tag from changing the deployment or quality-gate workflow unexpectedly.
 
 ```surrealql
 -- ── 1. documents ─────────────────────────────────────────────

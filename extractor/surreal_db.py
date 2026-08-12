@@ -549,7 +549,7 @@ def _update_document_offline(doc_uuid, data):
             doc = SourceDocument.objects.get(uuid=doc_uuid)
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
-    except (SourceDocument.DoesNotExist, ValueError):
+    except SourceDocument.DoesNotExist, ValueError:
         return {}
 
     _apply_offline_doc_update(doc, data, user_model)
@@ -638,7 +638,7 @@ def get_document(doc_uuid: str) -> dict | None:
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(doc_uuid))
             return _model_to_dict(doc)
-        except (SourceDocument.DoesNotExist, ValueError):
+        except SourceDocument.DoesNotExist, ValueError:
             return None
 
     sql = "SELECT * FROM documents WHERE doc_uuid = $doc_uuid;"
@@ -827,7 +827,7 @@ def _delete_offline_document(doc_uuid: str) -> None:
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
         doc.delete()
-    except (SourceDocument.DoesNotExist, ValueError):
+    except SourceDocument.DoesNotExist, ValueError:
         pass
 
 
@@ -1139,7 +1139,7 @@ def kv_cache_get(key: str) -> Any | None:
                 if isinstance(val_data, str):
                     return json.loads(val_data)
                 return val_data
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 return val_data
     return None
 
