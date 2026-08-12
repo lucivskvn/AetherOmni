@@ -6,6 +6,7 @@ from django.test import TestCase, override_settings
 from extractor.llm_gateway import (
     BudgetExceededException,
     UnifiedResponse,
+    _parse_refinement_output,
     calculate_gemini_cost,
     calculate_openrouter_cost,
     check_budget_and_api_limit,
@@ -60,6 +61,15 @@ class LLMGatewayTestCase(TestCase):
 
         err_no_delay = Exception("Generic error with no delay")
         self.assertIsNone(extract_retry_delay(err_no_delay))
+
+    def test_refinement_output_removes_complete_markdown_heading_before_qa_block(self):
+        refined_text, yaml_block, qa_list = _parse_refinement_output(
+            'Introduction\n# Model-generated heading\nDetails\n```json\n[{"question": "Q", "answer": "A"}]\n```'
+        )
+
+        self.assertEqual(refined_text, "Introduction\nDetails")
+        self.assertEqual(yaml_block, "")
+        self.assertEqual(qa_list, [{"question": "Q", "answer": "A"}])
 
     @patch("extractor.models.MonthlySpendLog.total_for_month", return_value=Decimal("1.00"))
     @patch("extractor.models.SourceDocument.objects.filter")

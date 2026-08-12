@@ -17,7 +17,7 @@ def _get_subprocess_env():
 
         # Restore true user home directory to allow gcloud fallback to find user credentials
         env["HOME"] = pwd.getpwuid(os.getuid()).pw_dir
-    except (ImportError, KeyError, AttributeError):
+    except ImportError, KeyError, AttributeError:
         env["HOME"] = os.path.expanduser("~")
     return env
 

@@ -85,3 +85,11 @@ class InitSurrealTestCase(TestCase):
         # Should return immediately and not initialize httpx client
         init_surreal.main()
         mock_httpx_client.assert_not_called()
+
+    def test_local_superuser_bootstrap_does_not_log_email(self):
+        admin_email = "bootstrap-admin@example.com"
+
+        with self.assertLogs("init_surreal", level="INFO") as logs:
+            init_surreal._create_local_superuser_stub(admin_email)
+
+        self.assertNotIn(admin_email, "\n".join(logs.output))

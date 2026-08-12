@@ -53,7 +53,7 @@ def parse_datetime(val):
         return val
     try:
         return datetime.strptime(val, ISO_8601_FORMAT).replace(tzinfo=timezone.UTC)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         try:
             from django.utils.dateparse import parse_datetime as django_parse
 
@@ -62,7 +62,7 @@ def parse_datetime(val):
                 if parsed.tzinfo is None:
                     parsed = parsed.replace(tzinfo=timezone.UTC)
                 return parsed
-        except (ValueError, TypeError, AttributeError):
+        except ValueError, TypeError, AttributeError:
             pass
     return timezone.now()
 
@@ -1281,7 +1281,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             budget_val = Decimal(monthly_budget_usd)
             if budget_val < 0:
                 raise ValueError("Budget cannot be negative.")
-        except (ValueError, ArithmeticError):
+        except ValueError, ArithmeticError:
             messages.error(request, "Invalid budget value provided. Must be a valid positive number.")
             return redirect("dashboard")
 
@@ -1792,7 +1792,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         target_service = "aether-worker"
         try:
             get_service_config("aether-worker")
-        except (OSError, ValueError, RuntimeError):
+        except OSError, ValueError, RuntimeError:
             try:
                 get_service_config("aether-web")
                 target_service = "aether-web"
@@ -1864,7 +1864,7 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
         }
         body: dict = {"email": email, "password": password}
         if captcha_token:
-            body["captcha_token"] = captcha_token
+            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
@@ -1873,7 +1873,7 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
         body_bytes = e.read().decode("utf-8")
         try:
             err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
-        except (json.JSONDecodeError, KeyError, AttributeError):
+        except json.JSONDecodeError, KeyError, AttributeError:
             err_msg = body_bytes
         return False, f"Supabase Signup Failed: {err_msg}"
     except Exception as e:
@@ -1933,7 +1933,7 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_
         }
         body: dict = {"email": email}
         if captcha_token:
-            body["captcha_token"] = captcha_token
+            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
         payload = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
@@ -1942,7 +1942,7 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_
         body_bytes = e.read().decode("utf-8")
         try:
             err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
-        except (json.JSONDecodeError, KeyError, AttributeError):
+        except json.JSONDecodeError, KeyError, AttributeError:
             err_msg = body_bytes
         return False, f"Supabase Recovery Failed: {err_msg}"
     except Exception as e:

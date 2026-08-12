@@ -109,7 +109,7 @@ if not _raw_secret:
 
 SECRET_KEY = _raw_secret
 
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip()
 
 # ALLOWED_HOSTS configuration
 django_allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,.run.app")
@@ -316,11 +316,12 @@ WORKER_URL = os.getenv("WORKER_URL", "")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_PUBLIC_KEY = os.getenv("SUPABASE_PUBLIC_KEY", "")
-# Service role key for server-side auth calls (bypasses CAPTCHA — never expose to clients)
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
 # Cloudflare Turnstile — site key is public (safe to render in templates)
 CF_TURNSTILE_SITE_KEY = os.getenv("CF_TURNSTILE_SITE_KEY", "")
+
+# Run periodic database maintenance only on the single-worker maintenance service.
+ENABLE_PERIODIC_MAINTENANCE = os.getenv("ENABLE_PERIODIC_MAINTENANCE", "False").lower() in ("true", "1", "yes")
 
 
 # ── Cloud Run / Upload RAM Safeguards ─────────────────────────────────────────

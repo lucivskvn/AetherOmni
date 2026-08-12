@@ -24,7 +24,7 @@ function parseInline(text) {
             '<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0;">');
 
         // Link: [text](href)
-        t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
+        t = t.replace(/\[([^\]\r\n]+)]\(([^()\s\r\n]+)\)/g,
             '<a href="$2" target="_blank" rel="noopener" class="preview-link">$1</a>');
 
         return t;

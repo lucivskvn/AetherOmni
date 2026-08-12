@@ -35,7 +35,7 @@ substitutions:
 
 steps:
   # 0. Compute dynamic RELEASE_VERSION from VERSION file + git commit count + SHA
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'compute-version'
     entrypoint: bash
     args:
@@ -49,6 +49,13 @@ steps:
           RELEASE_VERSION="$${release_override#v}"
           printf '%s' "$${RELEASE_VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'
         else
+          if [ ! -d .git ]; then
+            echo "_RELEASE_VERSION is required when the submitted source has no Git metadata" >&2
+            exit 1
+          fi
+          if [ "$$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow --no-tags origin
+          fi
           PATCH=$$(git rev-list --count HEAD)
           RELEASE_VERSION="$${MAJOR_MINOR}.$${PATCH}"
         fi
@@ -98,7 +105,7 @@ steps:
           --cleanup
 
   # 2. Production GCP Cloud Run Web Service Deployment
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-web'
     waitFor: ['build-image']
     entrypoint: bash
@@ -113,7 +120,7 @@ steps:
         fi
         IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
         IMAGE_TAG="$${IMAGE_TAG//+/-}"
-        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False"
+        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=2"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks"
@@ -135,7 +142,7 @@ steps:
           --set-secrets="$${SECRETS}"
 
   # 3. Production GCP Cloud Run Worker Service Deployment
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-worker'
     waitFor: ['build-image']
     entrypoint: bash
@@ -150,7 +157,7 @@ steps:
         fi
         IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
         IMAGE_TAG="$${IMAGE_TAG//+/-}"
-        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False"
+        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=True,GUNICORN_WORKERS=1"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks"
@@ -167,6 +174,9 @@ steps:
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
+          --min-instances=1 \
+          --max-instances=1 \
+          --no-cpu-throttling \
           --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"

@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Local shift-left verification tools. Keep these aligned with run_checks.sh.
+mypy==2.3.0
+bandit==1.9.4
+pip-audit==2.10.1
+coverage==7.15.4

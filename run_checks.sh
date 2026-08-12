@@ -6,7 +6,7 @@ if [ -d ".venv" ] && [ -z "$VIRTUAL_ENV" ]; then
     source .venv/bin/activate || true
 fi
 
-set -e
+set -euo pipefail
 
 # Parse optional arguments
 AUTOFIX=false
@@ -27,7 +27,25 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0;m'
 
-APP_VERSION=$(python3 scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [ -z "$PYTHON_BIN" ] && [ -x ".venv/bin/python3.14" ]; then
+    PYTHON_BIN=".venv/bin/python3.14"
+elif [ -z "$PYTHON_BIN" ] && [ -x ".venv/bin/python3" ]; then
+    PYTHON_BIN=".venv/bin/python3"
+elif [ -z "$PYTHON_BIN" ] && [ -x ".venv/bin/python" ]; then
+    PYTHON_BIN=".venv/bin/python"
+elif command -v python3.14 &> /dev/null; then
+    PYTHON_BIN="python3.14"
+else
+    PYTHON_BIN="python3"
+fi
+
+if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))'; then
+    echo -e "${RED}✗ Python 3.14 or newer is required. Recreate .venv with Python 3.14 and install requirements-dev.txt.${NC}"
+    exit 1
+fi
+
+APP_VERSION=$($PYTHON_BIN scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${CYAN} 🚀 AetherOmni Pre-Production Quality & DevSecOps Verification Suite   ${NC}"
@@ -35,14 +53,7 @@ echo -e "${CYAN}    Release Version: ${APP_VERSION}                             
 echo -e "${CYAN}    Automated Fix Mode: ${AUTOFIX}                                       ${NC}"
 echo -e "${CYAN}======================================================================${NC}"
 
-PYTHON_BIN="python3"
-if [ -f ".venv/bin/python3" ]; then
-    PYTHON_BIN=".venv/bin/python3"
-elif [ -f ".venv/bin/python" ]; then
-    PYTHON_BIN=".venv/bin/python"
-fi
-
-export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-django-insecure-ci-test-key-50-chars-long-for-local-testing}"
+export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-local-verification-only-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df0Jy}"
 
 # Ensure SurrealDB CLI is in PATH (installed via https://install.surrealdb.com)
 if [ -d "${HOME}/.surrealdb" ]; then
@@ -82,12 +93,12 @@ if [ "$DOCS_ONLY" = true ]; then
 
     # Filter changed Python files
     CHANGED_PY=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
-    if [ -n "$CHANGED_PY" ] && command -v ruff &> /dev/null; then
+    if [ -n "$CHANGED_PY" ] && $PYTHON_BIN -m ruff --version &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST & Django Linters...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
-        ruff check $CHANGED_PY
+        $PYTHON_BIN -m ruff check $CHANGED_PY
         # shellcheck disable=SC2086
-        ruff format --check $CHANGED_PY
+        $PYTHON_BIN -m ruff format --check $CHANGED_PY
         echo -e "${GREEN}✓ Changed Python files verified cleanly.${NC}"
     fi
 
@@ -167,9 +178,9 @@ fi
 
 if [ "$AUTOFIX" = true ]; then
     echo -e "\n${YELLOW}🛠️ Executing Automated Code Formatting & Lint Fix Pass...${NC}"
-    if command -v ruff &> /dev/null; then
-        ruff check --fix . || true
-        ruff format . || true
+    if $PYTHON_BIN -m ruff --version &> /dev/null; then
+        $PYTHON_BIN -m ruff check --fix . || true
+        $PYTHON_BIN -m ruff format . || true
     fi
     if command -v markdownlint &> /dev/null; then
         markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md .kiro/steering/*.md 2>/dev/null || true
@@ -181,8 +192,8 @@ if [ "$AUTOFIX" = true ]; then
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Executing Ruff AST Linter & Cyclomatic Complexity Check...${NC}"
-if command -v ruff &> /dev/null; then
-    ruff check .
+if $PYTHON_BIN -m ruff --version &> /dev/null; then
+    $PYTHON_BIN -m ruff check .
     echo -e "${GREEN}✓ Python code quality & cyclomatic complexity checks passed cleanly.${NC}"
 else
     echo -e "${RED}✗ Ruff is not installed! Please execute 'pip install ruff'.${NC}"
@@ -198,7 +209,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Verifying Source Code Formatting Consistency...${NC}"
-ruff format --check .
+$PYTHON_BIN -m ruff format --check .
 echo -e "${GREEN}✓ Source code formatting is fully consistent.${NC}"
 
 
@@ -250,8 +261,8 @@ fi
 # ── PHASE 3: DEEP SECURITY & DATA FLOW SAST ───────────────────────────────────
 
 echo -e "\n${YELLOW}[Type & Data Flow] Performing Mypy Static Type & Data Flow Analysis...${NC}"
-if command -v mypy &> /dev/null; then
-    mypy --ignore-missing-imports core/ extractor/
+if $PYTHON_BIN -m mypy --version &> /dev/null; then
+    $PYTHON_BIN -m mypy --ignore-missing-imports core/ extractor/
     echo -e "${GREEN}✓ Static type definitions & data flow analysis passed cleanly (0 errors).${NC}"
 else
     echo -e "${YELLOW}⚠ mypy not found in PATH (skipping).${NC}"
