@@ -87,6 +87,7 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
 
       - name: Explain Community Edition scope
+        if: always()
         run: |
           {
             echo '### Community Edition PR gate'
@@ -94,6 +95,39 @@ jobs:
             echo 'SonarQube Community Edition does not support pull-request analysis.'
             echo 'This PR is protected by repository-native Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and the external security checks.'
             echo 'SonarQube performs its authoritative project analysis and quality gate only after a push to `main`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish SonarQube mainline baseline
+        if: always()
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarqube.fainko.cloud
+        run: |
+          set -euo pipefail
+
+          quality_gate_url="${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=aetheromni"
+          {
+            echo
+            echo '### SonarQube Community Edition mainline baseline'
+            echo
+            echo 'This is the current `main` project status, not a pull-request analysis.'
+            echo '| Status | Dashboard |'
+            echo '| --- | --- |'
+
+            if gate_payload=$(curl --fail --silent --show-error --user "${SONAR_TOKEN}:" "$quality_gate_url"); then
+              gate_status=$(jq -r '.projectStatus.status // "UNAVAILABLE"' <<< "$gate_payload")
+              echo "| ${gate_status} | [Open SonarQube dashboard](${SONAR_HOST_URL}/dashboard?id=aetheromni) |"
+              echo
+              echo '| Metric | Status | Threshold | Actual |'
+              echo '| --- | --- | --- | --- |'
+              jq -r '.projectStatus.conditions[]? | "| \(.metricKey) | \(.status) | \(.errorThreshold // "—") | \(.actualValue // "—") |"' <<< "$gate_payload"
+            else
+              echo "| UNAVAILABLE | [Open SonarQube dashboard](${SONAR_HOST_URL}/dashboard?id=aetheromni) |"
+              echo
+              echo '| Metric | Status | Threshold | Actual |'
+              echo '| --- | --- | --- | --- |'
+              echo '| Server response unavailable | — | — | — |'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   sonarqube-mainline-analysis:

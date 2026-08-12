@@ -58,6 +58,8 @@ runbook. This file remains the authoritative cross-agent policy.
 - SonarQube Community Edition does not support pull-request or branch analysis.
   Never pass pull-request identity parameters or analyze a merge checkout as the
   default branch; use the GitHub PR shift-left gate and reserve SonarQube for main.
+  PR Actions must publish the read-only `main` quality-gate baseline as a table,
+  clearly labeled as baseline context rather than a PR result.
 - Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do
   not reintroduce secret-retrieval or imperative provisioning scripts.
 - Use Pulumi for new or rebuilt GCP environments. Import and preview existing

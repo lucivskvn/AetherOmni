@@ -54,6 +54,7 @@ runbook. This file remains the authoritative cross-agent policy.
 - Compute the release version before SonarQube analysis and Cloud Build; never manually edit it or deploy a `latest` fallback.
 - Keep SonarQube failures blocking and actionable in the GitHub Actions summary so Jules can work from scoped PR checks or issues.
 - SonarQube Community Edition does not support pull-request or branch analysis; never analyze a merge checkout as the default branch.
+- PR Actions publish the read-only `main` quality-gate baseline as a table and label it as baseline context, never as a PR result.
 - Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do not reintroduce secret-retrieval or imperative provisioning scripts.
 - Use Pulumi for new or rebuilt GCP environments; import and preview existing infrastructure before applying changes.
 
