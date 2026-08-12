@@ -29,6 +29,9 @@
 # ==============================================================================
 substitutions:
   _REGION: asia-southeast1
+  _GITHUB_REPOSITORY: lucivskvn/AetherOmni
+  # Manual/rollback builds must identify a commit whose mainline SonarQube gate passed.
+  _DEPLOY_COMMIT_SHA: ""
   # Leave empty for the canonical commit-derived version. A rollback trigger may
   # supply an explicit MAJOR.MINOR.PATCH version.
   _RELEASE_VERSION: ""
@@ -104,10 +107,64 @@ steps:
           --reproducible \
           --cleanup
 
-  # 2. Production GCP Cloud Run Web Service Deployment
+  # 2. Do not deploy until GitHub Actions reports a successful mainline SonarQube gate
+  # for this exact commit. Container construction may run in parallel with analysis,
+  # but production mutation remains blocked on the authoritative quality result.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
+    id: 'wait-for-quality-gate'
+    waitFor: ['build-image']
+    entrypoint: bash
+    args:
+      - '-euc'
+      - |
+        TARGET_SHA='${_DEPLOY_COMMIT_SHA}'
+        if [ -z "$${TARGET_SHA}" ]; then
+          TARGET_SHA='${COMMIT_SHA}'
+        fi
+        printf '%s' '${_GITHUB_REPOSITORY}' | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$$'
+        printf '%s' "$${TARGET_SHA}" | grep -Eq '^[0-9a-fA-F]{40}$$'
+        python - '${_GITHUB_REPOSITORY}' "$${TARGET_SHA}" <<'PY'
+        import json
+        import sys
+        import time
+        import urllib.error
+        import urllib.request
+
+        repository, commit_sha = sys.argv[1:]
+        endpoint = f"https://api.github.com/repos/{repository}/commits/{commit_sha}/check-runs"
+        request = urllib.request.Request(
+            endpoint,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "AetherOmni-CloudBuild-Gate",
+            },
+        )
+        check_name = "2. SonarQube Community Mainline Gate"
+
+        for attempt in range(30):
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    payload = json.load(response)
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+                print(f"GitHub quality-gate query attempt {attempt + 1} failed: {type(exc).__name__}")
+            else:
+                checks = [item for item in payload.get("check_runs", []) if item.get("name") == check_name]
+                completed = [item for item in checks if item.get("status") == "completed"]
+                if completed:
+                    conclusion = completed[0].get("conclusion")
+                    print(f"GitHub mainline quality gate concluded: {conclusion}")
+                    raise SystemExit(0 if conclusion == "success" else 1)
+                print(f"Waiting for GitHub mainline quality gate (attempt {attempt + 1}/30)")
+            time.sleep(30)
+
+        print("Timed out waiting for the GitHub mainline quality gate", file=sys.stderr)
+        raise SystemExit(1)
+        PY
+
+  # 3. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-web'
-    waitFor: ['build-image']
+    waitFor: ['wait-for-quality-gate']
     entrypoint: bash
     args:
       - '-euc'
@@ -141,10 +198,10 @@ steps:
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 
-  # 3. Production GCP Cloud Run Worker Service Deployment
+  # 4. Production GCP Cloud Run Worker Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-worker'
-    waitFor: ['build-image']
+    waitFor: ['wait-for-quality-gate']
     entrypoint: bash
     args:
       - '-euc'
