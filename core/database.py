@@ -16,6 +16,10 @@ def database_config_from_url(database_url: str) -> dict[str, object]:
         raise ImproperlyConfigured("DATABASE_URL must include a host and database name.")
 
     options = {key: values[-1] for key, values in parse_qs(parsed.query).items() if values}
+    sslmode = options.get("sslmode", "require").lower()
+    if sslmode in {"disable", "allow", "prefer"}:
+        raise ImproperlyConfigured("DATABASE_URL must require TLS (sslmode=require or stronger).")
+    options["sslmode"] = sslmode
     return {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": unquote(parsed.path.lstrip("/")),
