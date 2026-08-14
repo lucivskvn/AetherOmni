@@ -32,10 +32,14 @@ class TaskHandlersTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         mock_verify_oidc.assert_called_once_with(request, "https://worker.example.test/internal/tasks/audience_test/")
 
-    @override_settings(DEBUG=False)
+    @override_settings(DEBUG=False, CLOUD_TASKS_SERVICE_ACCOUNT="tasks@example.iam.gserviceaccount.com")
     @patch("google.oauth2.id_token.verify_oauth2_token")
     def test_verify_oidc_token_prod_success(self, mock_verify):
-        mock_verify.return_value = {"iss": "https://accounts.google.com"}
+        mock_verify.return_value = {
+            "iss": "https://accounts.google.com",
+            "email": "tasks@example.iam.gserviceaccount.com",
+            "email_verified": True,
+        }
         request = self.factory.post("/internal/tasks/test_task/")
         request.META["HTTP_AUTHORIZATION"] = "Bearer token123"
         self.assertTrue(task_handlers._verify_oidc_token(request, "audience"))
@@ -44,6 +48,18 @@ class TaskHandlersTestCase(TestCase):
     @patch("google.oauth2.id_token.verify_oauth2_token")
     def test_verify_oidc_token_prod_invalid_iss(self, mock_verify):
         mock_verify.return_value = {"iss": "bad-issuer.com"}
+        request = self.factory.post("/internal/tasks/test_task/")
+        request.META["HTTP_AUTHORIZATION"] = "Bearer token123"
+        self.assertFalse(task_handlers._verify_oidc_token(request, "audience"))
+
+    @override_settings(DEBUG=False, CLOUD_TASKS_SERVICE_ACCOUNT="tasks@example.iam.gserviceaccount.com")
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_verify_oidc_token_rejects_unexpected_service_account(self, mock_verify):
+        mock_verify.return_value = {
+            "iss": "https://accounts.google.com",
+            "email": "other@example.iam.gserviceaccount.com",
+            "email_verified": True,
+        }
         request = self.factory.post("/internal/tasks/test_task/")
         request.META["HTTP_AUTHORIZATION"] = "Bearer token123"
         self.assertFalse(task_handlers._verify_oidc_token(request, "audience"))

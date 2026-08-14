@@ -53,6 +53,8 @@ spec:
           value: "${APP_URL}"
         - name: WORKER_URL
           value: "${WORKER_URL}"
+        - name: CLOUD_TASKS_SERVICE_ACCOUNT
+          value: "${SERVICE_ACCOUNT}"
         - name: SURREAL_NS
           value: "aetheromni"
         - name: SURREAL_DB

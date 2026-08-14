@@ -551,7 +551,7 @@ def _update_document_offline(doc_uuid, data):
             doc = SourceDocument.objects.get(uuid=doc_uuid)
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
-    except SourceDocument.DoesNotExist, ValueError:
+    except (SourceDocument.DoesNotExist, ValueError):
         return {}
 
     _apply_offline_doc_update(doc, data, user_model)
@@ -623,6 +623,41 @@ def update_document(doc_uuid: str, data: dict) -> dict:
     return _update_document_surreal(doc_uuid, data)
 
 
+def claim_document_for_processing(doc_uuid: str) -> dict | None:
+    """Atomically claim a pending document for a single processing attempt."""
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            import uuid
+
+            try:
+                document_id = SourceDocument.objects.filter(uuid=uuid.UUID(doc_uuid), status="PENDING").values_list(
+                    "id", flat=True
+                ).first()
+            except ValueError:
+                document_id = SourceDocument.objects.filter(id=int(doc_uuid), status="PENDING").values_list(
+                    "id", flat=True
+                ).first()
+        except (TypeError, ValueError):
+            return None
+        if document_id is None:
+            return None
+        if SourceDocument.objects.filter(id=document_id, status="PENDING").update(status="EXTRACTING") != 1:
+            return None
+        return _model_to_dict(SourceDocument.objects.get(id=document_id))
+
+    sql = (
+        "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now() "
+        "WHERE doc_uuid = $doc_uuid AND status = 'PENDING' RETURN AFTER;"
+    )
+    rows = _first_result(_run(sql, {"doc_uuid": doc_uuid}))
+    return rows[0] if rows else None
+
+
 def get_document(doc_uuid: str) -> dict | None:
     """Retrieve a single document record by UUID."""
     doc_uuid = str(doc_uuid)
@@ -640,7 +675,7 @@ def get_document(doc_uuid: str) -> dict | None:
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(doc_uuid))
             return _model_to_dict(doc)
-        except SourceDocument.DoesNotExist, ValueError:
+        except (SourceDocument.DoesNotExist, ValueError):
             return None
 
     sql = "SELECT * FROM documents WHERE doc_uuid = $doc_uuid;"
@@ -848,7 +883,7 @@ def _delete_offline_document(doc_uuid: str) -> None:
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
         doc.delete()
-    except SourceDocument.DoesNotExist, ValueError:
+    except (SourceDocument.DoesNotExist, ValueError):
         pass
 
 
@@ -1160,7 +1195,7 @@ def kv_cache_get(key: str) -> Any | None:
                 if isinstance(val_data, str):
                     return json.loads(val_data)
                 return val_data
-            except json.JSONDecodeError, ValueError:
+            except (json.JSONDecodeError, ValueError):
                 return val_data
     return None
 

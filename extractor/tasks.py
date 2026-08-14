@@ -185,14 +185,6 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     Lock document row and transition status to EXTRACTING.
     Returns None if document is already finalised, doesn't exist, or budget is exceeded.
     """
-    doc = surreal_db.get_document(doc_uuid)
-    if not doc:
-        logger.error("[Worker] Document %s does not exist.", doc_uuid)
-        return None
-    if doc.get("status") in ["COMPLETED", "FAILED"]:
-        logger.info("[Worker] Document %s already finalised. Skipping.", doc_uuid)
-        return None
-
     try:
         check_budget_and_api_limit()
     except Exception as budget_err:
@@ -203,7 +195,10 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
         )
         return None
 
-    doc = surreal_db.update_document(doc_uuid, {"status": "EXTRACTING"})
+    doc = surreal_db.claim_document_for_processing(doc_uuid)
+    if not doc:
+        logger.info("[Worker] Document %s is not pending or is already claimed. Skipping.", doc_uuid)
+        return None
 
     from django.contrib.auth import get_user_model
 
@@ -247,7 +242,7 @@ def _get_working_path_offline(doc_id: str, download: bool) -> str:
             doc = SourceDocument.objects.get(uuid=doc_id)
         except ValueError:
             doc = SourceDocument.objects.get(id=int(getattr(doc_id, "id", doc_id)))
-    except SourceDocument.DoesNotExist, ValueError:
+    except (SourceDocument.DoesNotExist, ValueError):
         raise ValueError(f"Document {doc_id} not found in SQLite")
     if not download:
         return ""
@@ -314,7 +309,7 @@ def _get_doc_info_stage1(document_id):
                 doc = SourceDocument.objects.get(uuid=document_id)
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(document_id))
-        except SourceDocument.DoesNotExist, ValueError:
+        except (SourceDocument.DoesNotExist, ValueError):
             logger.exception("[Worker] Document ID/UUID %s not found in SQLite", document_id)
             raise
         return doc, doc.original_filename.lower(), doc.id
@@ -446,7 +441,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
                     doc_ref = SourceDocument.objects.select_for_update().get(uuid=document_id)
                 except ValueError:
                     doc_ref = SourceDocument.objects.select_for_update().get(id=int(document_id))
-            except SourceDocument.DoesNotExist, ValueError:
+            except (SourceDocument.DoesNotExist, ValueError):
                 doc_ref = doc
             doc_ref.document_type = doc_type_detected
             doc_ref.page_count = page_count_detected

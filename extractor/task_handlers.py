@@ -92,6 +92,13 @@ def _verify_oidc_token(request: HttpRequest, audience: str) -> bool:
         if id_info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
             logger.warning("[CloudTasksHandler] OIDC issuer unexpected: %s", id_info.get("iss"))
             return False
+        expected_service_account = getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "").strip()
+        if not expected_service_account:
+            logger.error("[CloudTasksHandler] CLOUD_TASKS_SERVICE_ACCOUNT is not configured.")
+            return False
+        if id_info.get("email") != expected_service_account or not id_info.get("email_verified"):
+            logger.warning("[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account.")
+            return False
         return True
     except Exception as exc:
         logger.warning("[CloudTasksHandler] OIDC verification failed: %s", exc)
