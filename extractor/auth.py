@@ -68,14 +68,16 @@ def _sync_supabase_user(
     if app_metadata.get("is_admin") is True:
         is_promoted_admin = True
 
-    if is_promoted_admin:
-        user.is_superuser = True
-        user.is_staff = True
+    # Supabase is authoritative for privileges on every successful authentication.
+    # A removed admin claim must demote the corresponding Django account immediately.
+    role_changed = user.is_superuser != is_promoted_admin or user.is_staff != is_promoted_admin
+    user.is_superuser = is_promoted_admin
+    user.is_staff = is_promoted_admin
 
-    if created or is_promoted_admin:
+    if created or role_changed:
         user.set_unusable_password()
         user.save()
-        logger.info("[Auth] Django sync account created/updated for Supabase admin/user: %s", user_email)
+        logger.info("[Auth] Django sync account created/updated from Supabase claims: %s", user_email)
     else:
         logger.info("[Auth] Supabase user session established: %s", user_email)
 
@@ -91,8 +93,8 @@ class SupabaseAuthBackend(ModelBackend):
     """
     Custom server-side authentication backend that authenticates credentials against
     Supabase GoTrue Auth service, dynamically creating standard Django User accounts
-    and establishing local authenticated sessions, while maintaining seamless fallback
-    to local Django superusers / SQLite auth databases when offline or unconfigured.
+    and establishing local authenticated sessions. Local Django authentication is used
+    only when Supabase is explicitly unconfigured (for offline development).
     """
 
     def authenticate(
@@ -169,8 +171,7 @@ class SupabaseAuthBackend(ModelBackend):
             if turnstile_required:
                 return None
 
-        # Fall back if Supabase fails
-        user = User.objects.filter(email=target_email).first()
-        if user:
-            return super().authenticate(request, username=user.username, password=password)
-        return super().authenticate(request, username=target_email, password=password)
+        # Do not fall back to a local password after a configured Supabase
+        # authentication attempt. Otherwise Supabase account disablement, password
+        # resets, and MFA policy can be bypassed by stale Django credentials.
+        return None
