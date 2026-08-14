@@ -22,3 +22,17 @@ class DatabaseConfigTests(SimpleTestCase):
     def test_non_postgres_uri_is_rejected(self):
         with self.assertRaises(ImproperlyConfigured):
             database_config_from_url("sqlite:///:memory:")
+
+
+    def test_postgres_uri_defaults_to_required_tls(self):
+        config = database_config_from_url("postgresql://app_user:password@pooler.example.com/app")
+
+        self.assertEqual(config["OPTIONS"]["sslmode"], "require")
+
+    def test_postgres_uri_rejects_insecure_tls_modes(self):
+        for sslmode in ("disable", "allow", "prefer"):
+            with self.subTest(sslmode=sslmode):
+                with self.assertRaises(ImproperlyConfigured):
+                    database_config_from_url(
+                        f"postgresql://app_user:password@pooler.example.com/app?sslmode={sslmode}"
+                    )
