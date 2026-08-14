@@ -391,3 +391,4 @@ DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
 gcloud builds submit --config infra/gcp/cloudbuild.yaml \
   --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```
+
