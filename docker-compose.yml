@@ -38,15 +38,15 @@ services:
     user: root
     restart: always
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     environment:
-      - SURREAL_HTTP_MAX_SQL_BODY_SIZE=104857600
-      - SURREAL_HTTP_MAX_API_BODY_SIZE=104857600
+      - SURREAL_HTTP_MAX_SQL_BODY_SIZE=10485760
+      - SURREAL_HTTP_MAX_API_BODY_SIZE=10485760
     command:
       - start
       - --log=info
-      - --user=root
-      - --pass=root
+      - --user=${SURREAL_USER:-root}
+      - --pass=${SURREAL_PASS:?Set SURREAL_PASS in .env}
       - surrealkv://data/aetheromni.db
     volumes:
       - surreal_data:/data

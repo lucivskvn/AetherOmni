@@ -290,7 +290,7 @@ class SecurityGatewayAndAuthTestCase(TestCase):
 
     @patch("urllib.request.urlopen")
     def test_supabase_idp_auth_rejected_credential(self, mock_urlopen):
-        """Verify rejected GoTrue credentials fall back to local Django DB authentication."""
+        """Verify rejected GoTrue credentials never fall back to local Django authentication."""
         import urllib.error
 
         from extractor.auth import SupabaseAuthBackend
@@ -302,14 +302,11 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         mock_err.read = MagicMock(return_value=b'{"error": "invalid_credentials"}')
         mock_urlopen.side_effect = mock_err
 
-        # Check that it falls back to authenticating against the local Django DB
         backend = SupabaseAuthBackend()
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
-            # Authentic user from local Django DB (created in setUp) should still login successfully
-            user_by_uname = backend.authenticate(None, username=self.username, password=self.password)
-            # Since username doesn't have '@', SupabaseAuthBackend falls back to local DB directly without GoTrue dispatch!
-            self.assertIsNotNone(user_by_uname)
-            self.assertEqual(user_by_uname.username, self.username)
+            authenticated = backend.authenticate(None, username=self.user_email, password=self.password)
+
+        self.assertIsNone(authenticated)
 
     @patch("urllib.request.urlopen")
     def test_turnstile_protected_supabase_rejection_does_not_fallback_locally(self, mock_urlopen):
