@@ -1,0 +1,9 @@
+id: py-no-unbounded-newline-regex
+message: "Avoid unbounded newline repetition before a line matcher; use a bounded line boundary instead (S8786)."
+severity: error
+language: Python
+rule:
+  pattern: re.$METHOD($PATTERN, $$$)
+constraints:
+  PATTERN:
+    regex: '\\\\[rn]\+.*#\[\^\\\\[rn]\]\*'

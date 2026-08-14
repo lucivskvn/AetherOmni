@@ -1255,7 +1255,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
             logger.exception("[Refinement Pass 2] JSON Parsing error")
 
         pre_json = refined_text[: json_match.start()].rstrip()
-        pre_json = re.sub(r"\n+#[^\n]*", "", pre_json).rstrip()
+        pre_json = re.sub(r"(?:\r?\n)#[^\r\n]*", "", pre_json).rstrip()
         refined_text = pre_json
 
     # Clean any trailing or leading stray backticks, spaces, or lines from markdown split/model boundaries

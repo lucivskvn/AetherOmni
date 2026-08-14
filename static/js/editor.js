@@ -24,8 +24,7 @@ function parseInline(text) {
             '<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0;">');
 
         // Link: [text](href)
-        t = t.replace(/\[([^\]\r\n]+)]\(([^()\s\r\n]+)\)/g,
-            '<a href="$2" target="_blank" rel="noopener" class="preview-link">$1</a>');
+        t = replaceMarkdownLinks(t);
 
         return t;
     }
@@ -62,6 +61,33 @@ function setupScrollSync(editor, preview) {
         const ratio = preview.scrollTop / Math.max(1, preview.scrollHeight - preview.clientHeight);
         editor.scrollTop = ratio * (editor.scrollHeight - editor.clientHeight);
     });
+}
+
+function replaceMarkdownLinks(text) {
+    let output = '';
+    let remaining = text;
+
+    while (remaining) {
+        const start = remaining.indexOf('[');
+        if (start === -1) return output + remaining;
+
+        const labelEnd = remaining.indexOf('](', start + 1);
+        const urlEnd = labelEnd === -1 ? -1 : remaining.indexOf(')', labelEnd + 2);
+        if (labelEnd === -1 || urlEnd === -1) return output + remaining;
+
+        const label = remaining.slice(start + 1, labelEnd);
+        const url = remaining.slice(labelEnd + 2, urlEnd);
+        if (!label || /[\r\n]/.test(label) || /[\s()]/.test(url)) {
+            output += remaining.slice(0, start + 1);
+            remaining = remaining.slice(start + 1);
+            continue;
+        }
+
+        output += `${remaining.slice(0, start)}<a href="${url}" target="_blank" rel="noopener" class="preview-link">${label}</a>`;
+        remaining = remaining.slice(urlEnd + 1);
+    }
+
+    return output;
 }
 
 // ── Markdown Formatting Insertion ───────────────────────────────────────────
@@ -331,30 +357,28 @@ function _parseYamlFrontmatter(escaped) {
     return { yamlHtml, bodyText };
 }
 
+const SAFE_HTML_TAGS = new Set([
+    'b', 'i', 'u', 'strong', 'em', 'sup', 'sub', 'table', 'thead', 'tbody',
+    'tr', 'th', 'td', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'span',
+    'div', 'p'
+]);
+const SAFE_HTML_ATTRIBUTES = new Set(['colspan', 'rowspan', 'class', 'style', 'dir']);
+
 function _restoreSafeHtml(html) {
     return html
         .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
         .replace(/&lt;hr\s*\/?&gt;/gi, '<hr>')
-        .replace(/&lt;(\/)?(b|i|u|strong|em|sup|sub|table|thead|tbody|tr|th|td|code|pre|blockquote|ul|ol|li)\b([^&]*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?([a-z]+)\b([^&]*)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+            if (!SAFE_HTML_TAGS.has(tagName.toLowerCase())) return match;
             let cleanAttrs = '';
             if (attrs) {
                 const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
-                const attrRegex = /\b(colspan|rowspan|class|style|dir)\s*=\s*["']([^"']*)["']/gi;
+                const attrRegex = /\b([a-z]+)\s*=\s*["']([^"']*)["']/gi;
                 let m;
                 while ((m = attrRegex.exec(decodedAttrs)) !== null) {
-                    cleanAttrs += ` ${m[1]}="${m[2]}"`;
-                }
-            }
-            return `<${closeSlash || ''}${tagName}${cleanAttrs}>`;
-        })
-        .replace(/&lt;(\/)?(span|div|p)\b([^&]*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
-            let cleanAttrs = '';
-            if (attrs) {
-                const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
-                const attrRegex = /\b(class|dir|style)\s*=\s*["']([^"']*)["']/gi;
-                let m;
-                while ((m = attrRegex.exec(decodedAttrs)) !== null) {
-                    cleanAttrs += ` ${m[1]}="${m[2]}"`;
+                    if (SAFE_HTML_ATTRIBUTES.has(m[1].toLowerCase())) {
+                        cleanAttrs += ` ${m[1]}="${m[2]}"`;
+                    }
                 }
             }
             return `<${closeSlash || ''}${tagName}${cleanAttrs}>`;
