@@ -582,6 +582,14 @@ function initializeSettingsModal() {
             }
         });
     }
+
+    if (finalResetBtn) {
+        finalResetBtn.addEventListener('click', (e) => {
+            if (!confirm('Are you absolutely sure you want to permanently wipe all database and files? This cannot be undone. This irreversible action removes the database, local files, and connected cloud vectors.')) {
+                e.preventDefault();
+            }
+        });
+    }
 }
 
 function cancelResetConfirmation() {
@@ -767,6 +775,15 @@ function initializeExportActions() {
             }
         }
     });
+
+    const deleteDocForm = document.getElementById('delete-document-form');
+    if (deleteDocForm) {
+        deleteDocForm.addEventListener('submit', (e) => {
+            if (!confirm('Are you sure you want to delete this document from the library?')) {
+                e.preventDefault();
+            }
+        });
+    }
 }
 
 function toggleExportFooter() {
