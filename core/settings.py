@@ -198,7 +198,7 @@ ASGI_APPLICATION = "core.asgi.application"
 # All document/vector/KV data lives in SurrealDB. Django relational state uses
 # Supabase PostgreSQL in production and SQLite only for explicit offline/test use.
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-if DATABASE_URL:
+if DATABASE_URL and not SURREALDB_OFFLINE:
     from core.database import database_config_from_url
 
     DATABASES = {"default": database_config_from_url(DATABASE_URL)}
