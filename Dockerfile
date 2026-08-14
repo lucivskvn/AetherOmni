@@ -8,12 +8,6 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install system compilation packages
-# hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
 # Generate standard virtual environment to bypass non-root access limits
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
