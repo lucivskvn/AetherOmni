@@ -24,21 +24,21 @@ class LLMGatewayTestCase(TestCase):
             in_toks=100,
             out_toks=50,
             cost_val=Decimal("0.0015"),
-            model_used="gemini-3.6-flash",
+            model_used="gemini-2.5-flash",
         )
         self.assertEqual(resp.input_tokens, 100)
         self.assertEqual(resp.output_tokens, 50)
         self.assertEqual(resp.cost_usd, Decimal("0.0015"))
         self.assertEqual(resp.text, "Hello World")
-        self.assertEqual(resp.model_used, "gemini-3.6-flash")
+        self.assertEqual(resp.model_used, "gemini-2.5-flash")
 
     def test_calculate_gemini_cost(self):
-        cost = calculate_gemini_cost("gemini-3.6-flash", 1000, 500)
+        cost = calculate_gemini_cost("gemini-2.5-flash", 1000, 500)
         self.assertGreater(cost, Decimal("0"))
         self.assertIsInstance(cost, Decimal)
 
     def test_calculate_openrouter_cost(self):
-        cost = calculate_openrouter_cost("google/gemini-3.6-flash", 1000, 500)
+        cost = calculate_openrouter_cost("google/gemini-2.5-flash", 1000, 500)
         self.assertGreater(cost, Decimal("0"))
         self.assertIsInstance(cost, Decimal)
 
