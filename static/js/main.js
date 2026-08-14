@@ -410,16 +410,9 @@ function initializeCapsLockDetector() {
  * Attaches real-time, context-specific loading spinners to standard form submission buttons
  * across authentication and security credentials views.
  */
-function initializeFormSubmitSpinners() {
-    const forms = document.querySelectorAll(
-        '.login-card form, .register-card form, .forgot-card form, .password-change-card form, #editor-form'
-    );
-
-    forms.forEach(form => {
-        form.addEventListener('submit', event => {
-            if (event.defaultPrevented) return;
-            const btn = form.querySelector('button[type="submit"]');
-            if (!btn) return;
+function setFormSubmitLoadingState(form) {
+    const btn = form.querySelector('button[type="submit"]');
+    if (!btn) return;
 
             let text = 'Processing...';
             if (btn.classList.contains('btn-login-submit')) {
@@ -432,6 +425,10 @@ function initializeFormSubmitSpinners() {
                 text = 'Updating Credentials...';
             } else if (btn.classList.contains('btn-save-curation')) {
                 text = 'Saving Curation...';
+            } else if (btn.classList.contains('btn-confirm-submit')) {
+                text = 'Updating Password...';
+            } else if (form.id === 'settings-form') {
+                text = 'Saving Configurations...';
             }
 
             const spinnerSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spinner" style="margin-right: 8px;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
@@ -439,10 +436,24 @@ function initializeFormSubmitSpinners() {
             btn.innerHTML = `${spinnerSvg} ${text}`;
             btn.style.pointerEvents = 'none';
             btn.style.opacity = '0.85';
+}
+
+/**
+ * Attaches real-time, context-specific loading spinners to standard form submission buttons
+ * across authentication and security credentials views.
+ */
+function initializeFormSubmitSpinners() {
+    const forms = document.querySelectorAll(
+        '.login-card form, .register-card form, .forgot-card form, .password-change-card form, #editor-form, #settings-form, .confirm-card form'
+    );
+
+    forms.forEach(form => {
+        form.addEventListener('submit', event => {
+            if (event.defaultPrevented) return;
+            setFormSubmitLoadingState(form);
         });
     });
 }
-
 /**
  * Create and render an accessible, animated client-side alert card.
  */
