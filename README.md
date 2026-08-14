@@ -63,9 +63,9 @@ flowchart TD
 - **The Pipeline Engineering**: Built on a decoupled, asynchronous 3-stage architecture (Stage 1: Layout Ingestion & SHA-256 Deduplication, Stage 2: Multi-Model LLM Gateway & Spend Control, Stage 3: SurrealDB HNSW Vector Storage & RRF RAG).
 - **Hybrid Dense-Sparse RAG (Reciprocal Rank Fusion)**: Combines sparse BM25 keyword matching with dense SurrealDB HNSW vector embeddings (`DIMENSION 768 DIST COSINE`) to eliminate search hallucination and optimize context window precision.
 - **Durable Tenant Ownership**: Production document access is keyed by the Supabase Auth subject UUID, so Cloud Run restarts cannot orphan a user's knowledge desk from its documents.
-- **Resilient Multi-Provider Gateway**: Implements exponential backoff and circuit-breaking across Google Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter free fallbacks (Llama 3, Gemma 2, Qwen 2).
+- **Resilient Multi-Provider Gateway**: Implements exponential backoff and circuit-breaking across stable Google Gemini 2.5 Flash / 2.5 Flash-Lite on Vertex AI, plus OpenRouter fallbacks (Llama 3, Gemma 2, Qwen 2).
 - **DevSecOps & Code Health Rigor**:
-  - **Shift-Left Local Verification**: Multi-language `run_checks.sh` pipeline enforcing Python AST auditing (`ruff`), static typing (`mypy`), differential security scanning (`bandit`, Semgrep, AST-Grep), JavaScript conventions (`eslint`), YAML schema validation (`yamllint`), container hardening (`hadolint`), and comprehensive automated unit test coverage. New suppressions must identify the exact rule; Semgrep and SonarQube suppressions also require a justification.
+  - **Shift-Left Local Verification**: Multi-language `run_checks.sh` pipeline enforcing Python AST auditing (`ruff`), static typing (`mypy`), differential security scanning (`bandit`, Semgrep, AST-Grep), JavaScript conventions (`eslint`), YAML schema validation (`yamllint`), container hardening (`hadolint`), and comprehensive automated unit test coverage. CI uses the pinned official AST-Grep CLI; the Python library distribution is not a CLI substitute. New suppressions must identify the exact rule; Semgrep and SonarQube suppressions also require a justification.
   - **Desloppify Codebase Health**: Continuous structural complexity, cohesion, and dependency cycle monitoring across all 17 sensors to maintain high objective codebase quality and security scores.
   - **Cloud SAST & Quality Gate**: Automated CI pipeline integrating static application security testing with remote SonarQube MQR Quality Gate enforcement.
   - **Immutable CI Dependencies**: GitHub Actions are pinned to reviewed commit SHAs, preventing tag-repointing supply-chain changes.
@@ -231,7 +231,7 @@ flowchart LR
 ### ✅ Milestone 2.0 (MVP Core — Dual Database Engine & Multi-Model LLM Gateway)
 
 - [x] **SurrealDB HNSW Vector Storage**: SurrealDB vector indexer (`DIMENSION 768 DIST COSINE`) paired with relational SQLite metadata store.
-- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter free tiers with exponential backoff.
+- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter free tiers with exponential backoff.
 - [x] **Persisted Budget Accounting**: Hard monthly USD spend limits backed by immutable `MonthlySpendLog` ledgers.
 
 ### ✅ Milestone 3.0 (MVP Core — Hybrid RAG & Multi-Modal Vision OCR)
@@ -307,8 +307,8 @@ flowchart LR
 | ----------------- | ------------------- | ------------------- | --------- |
 | **Core Framework** | Python / Django | Versions managed in `pyproject.toml` and requirements files | Core MVC framework, ORM, admin backend, authentication |
 | **Vector Database** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model document database, vector similarity search, KV cache |
-| **Relational Storage** | PostgreSQL / SQLite | PostgreSQL 16+ / SQLite 3 | Enterprise relational storage for users, spend logs, audit events |
-| **LLM Gateway** | Google Gemini / Vertex AI / OpenRouter | Gemini 3.6 Flash / 3.5 Flash-Lite, Llama 3 (OpenRouter free fallback) | Dynamic multi-provider fallback chain for document extraction |
+| **Relational Storage** | Supabase PostgreSQL / SQLite | PostgreSQL 17 / SQLite 3 offline-only | Durable production storage for users, sessions, spend logs, settings, and audit events |
+| **LLM Gateway** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite, Llama 3 (OpenRouter free fallback) | Dynamic multi-provider fallback chain for document extraction |
 | **Cloud Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast1` | Zero-scale web app and worker process containers |
 | **Queue & Dispatcher** | GCP Cloud Tasks | OIDC Authenticated Tasks | Production asynchronous queue with localized thread fallbacks |
 | **Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw and processed documents |

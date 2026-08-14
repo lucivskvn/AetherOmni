@@ -1,6 +1,6 @@
 # Google Cloud Run Production Deployment Guide
 
-This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing a SQLite metadata database, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager.
+This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing Supabase PostgreSQL for Django relational state, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager. SQLite is restricted to explicit offline/test use.
 
 ---
 
@@ -8,14 +8,14 @@ This guide describes how to provision, configure, build, and deploy the **Aether
 
 The production system consists of:
 
-1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Its local SQLite state is an offline-development fallback only; production document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
+1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Production users, sessions, audit logs, spend history, and settings persist in Supabase PostgreSQL; document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
 2. **Cloud Run Service (`aether-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
 3. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
 4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (at `wss://surrealdb.fainko.cloud/rpc`). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
-5. **Vertex AI & Gemini Multi-Modal Gateway**: Direct Application Default Credentials (ADC) access (`roles/aiplatform.user`) for multi-region Gemini 3.6 Flash / Vertex AI Vision.
+5. **Vertex AI & Gemini Multi-Modal Gateway**: Direct Application Default Credentials (ADC) access (`roles/aiplatform.user`) for stable Vertex v1 Gemini 2.5 Flash / Flash-Lite and Vertex AI Vision.
 6. **Cloud Storage (GCS)**: Stores raw, uploaded PDF assets securely in GCP bucket (`GS_BUCKET_NAME`).
 7. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely on a self-hosted instance (at `https://supabase.fainko.cloud`).
-8. **Secret Manager**: Securely stores environment credentials (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`).
+8. **Secret Manager**: Securely stores environment credentials (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`, `SUPABASE_DATABASE_URL`).
 
 ---
 
@@ -383,7 +383,7 @@ provisioning and reconciliation path after infrastructure import and preview.
 
 Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. With SonarQube Community Edition, the remote PR pipeline blocks on repository-native shift-left checks and GitHub security tools, then publishes a read-only table of the current `main` quality-gate baseline; the authoritative SonarQube quality-gate log, summary, annotations, and dashboard link apply to `main` after a push. Cloud Build automatically builds the immutable container, but updates both Cloud Run services only after the exact commit's mainline gate succeeds:
 
-CI installs security scanners in an isolated environment if their dependency graph differs from the application runtime. This preserves reproducible application tests and keeps all scanner results blocking.
+CI installs Python security scanners in an isolated environment if their dependency graph differs from the application runtime. AST-Grep is invoked through its pinned official npm CLI because the similarly named Python package does not expose a command-line executable. This preserves reproducible application tests and keeps all scanner results blocking.
 
 ```bash
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
@@ -391,3 +391,4 @@ DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
 gcloud builds submit --config infra/gcp/cloudbuild.yaml \
   --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```
+

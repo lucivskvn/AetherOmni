@@ -586,7 +586,7 @@ def _parse_yaml_metadata(
 
 
 # Maximum characters to send to Stage 2 in a single LLM call.
-# gemini-3.5-flash has a 1M token window (~4 chars/token) = ~4M chars safe.
+# Gemini 2.5 Flash has a large context window; keep the conservative character cap below.
 # We use a conservative 600K chars per chunk to stay well within limits and
 # leave room for the system prompt + output.
 _STAGE2_CHUNK_CHARS = 600_000

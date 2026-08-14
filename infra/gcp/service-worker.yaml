@@ -54,9 +54,9 @@ spec:
         - name: GOOGLE_CLOUD_PROJECT
           value: "${GCP_PROJECT_ID}"
         - name: GEMINI_MODEL
-          value: "gemini-3.6-flash"
+          value: "gemini-2.5-flash"
         - name: GEMINI_MODEL_BATCH
-          value: "gemini-3.5-flash-lite"
+          value: "gemini-2.5-flash-lite"
         - name: SURREAL_URL
           valueFrom:
             secretKeyRef:
@@ -96,6 +96,11 @@ spec:
           valueFrom:
             secretKeyRef:
               name: SUPABASE_PUBLIC_KEY
+              key: "latest"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: SUPABASE_DATABASE_URL
               key: "latest"
         - name: CF_TURNSTILE_SITE_KEY
           valueFrom:

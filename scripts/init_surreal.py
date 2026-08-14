@@ -184,10 +184,17 @@ def _migrate_system_settings():
         from extractor.surreal_db import get_system_settings, save_system_settings
 
         db_settings = get_system_settings()
-        if db_settings.get("selected_model") in ("gemini-1.5-flash", "gemini-3.1-flash-lite", "default_llm_model"):
-            db_settings["selected_model"] = "gemini-3.6-flash"
+        if db_settings.get("selected_model") in (
+            "gemini-1.5-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.6-flash",
+            "default_llm_model",
+        ):
+            db_settings["selected_model"] = "gemini-2.5-flash"
             save_system_settings(db_settings)
-            logger.info("System settings migrated: updated SurrealDB model to 'gemini-3.6-flash'")
+            logger.info("System settings migrated: updated SurrealDB model to 'gemini-2.5-flash'")
     except Exception as me:
         logger.warning("Failed to migrate SurrealDB settings: %s", me)
 
@@ -195,10 +202,17 @@ def _migrate_system_settings():
     try:
         if SystemSettings.objects.exists():
             stg = SystemSettings.objects.first()
-            if stg.selected_model in ("gemini-1.5-flash", "google/gemini-1.5-flash", "gemini-3.1-flash-lite"):
-                stg.selected_model = "gemini-3.6-flash"
+            if stg.selected_model in (
+                "gemini-1.5-flash",
+                "google/gemini-1.5-flash",
+                "gemini-3.1-flash-lite",
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3.6-flash",
+            ):
+                stg.selected_model = "gemini-2.5-flash"
                 stg.save()
-                logger.info("System settings migrated: updated SQLite model to 'gemini-3.6-flash'")
+                logger.info("System settings migrated: updated SQLite model to 'gemini-2.5-flash'")
     except Exception as se:
         logger.warning("Failed to migrate SystemSettings model: %s", se)
 

@@ -561,12 +561,12 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
         response, model_used = execute_generate_content_with_fallback(
             client=mock_ai_studio_client,
-            model_name="gemini-3.5-flash",
+            model_name="gemini-2.5-flash",
             contents=["Hello world"],
         )
 
         self.assertEqual(response, mock_vertex_response)
-        self.assertEqual(model_used, "gemini-3.5-flash")
+        self.assertEqual(model_used, "gemini-2.5-flash")
         self.assertEqual(mock_ai_studio_client.models.generate_content.call_count, 5)
         mock_vertex_client.models.generate_content.assert_called_once()
 
@@ -609,7 +609,7 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
 
                 response, _ = execute_generate_content_with_fallback(
                     client=mock_ai_studio_client,
-                    model_name="gemini-3.5-flash",
+                    model_name="gemini-2.5-flash",
                     contents=[mock_file, "Explain this pdf"],
                     file_path_for_vertex=temp_path,
                 )
