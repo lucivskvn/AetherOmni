@@ -12,7 +12,7 @@ runbook. This file remains the authoritative cross-agent policy.
 ### 1. Shift-Left Local Verification FIRST (Multi-Language Stack & Dual Git Hooks)
 
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
-  - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.git/hooks/pre-commit` which runs `bash run_checks.sh --fast`. This differential gate checks modified files with Ruff, ESLint, yamllint, markdownlint, SurrealQL validation, Bandit, Semgrep, AST-Grep, and ShellCheck where applicable; new suppressions require a precise rule ID, with Semgrep and SonarQube suppressions also requiring a reason.
+  - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.git/hooks/pre-commit` which runs `bash run_checks.sh --fast`. This differential gate checks modified files with Ruff, ESLint, strict Sonar-aligned YAML linting, markdownlint, SurrealQL validation, Bandit, Semgrep, AST-Grep regex rules, and ShellCheck where applicable. The AST-Grep rules block recurring regex complexity and backtracking findings before a push; new suppressions require a precise rule ID, with Semgrep and SonarQube suppressions also requiring a reason.
   - **Pre-Push Gatekeeper Hook**: Local pushes are enforced by `.git/hooks/pre-push` running the full verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), Docker (`hadolint`), SurrealQL (`surreal validate`), and AST pattern rules (`ast-grep`).
   - **Full Suite Run**: Execute `bash run_checks.sh` locally for the complete verification pass. Shell pipeline failures must propagate so log capture cannot mask a failed check.
   - **Runtime Alignment**: Create the local environment with the interpreter declared by `pyproject.toml` and install `requirements-dev.txt`; `run_checks.sh` rejects an incompatible interpreter rather than silently producing incompatible results.
@@ -36,7 +36,7 @@ runbook. This file remains the authoritative cross-agent policy.
 - Once `run_checks.sh` passes locally and the user approves remote pushing, push to `origin main` or open a PR.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
-     2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python and JavaScript coverage.
+     2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, strict Sonar-aligned YAML linting, AST-Grep regex rules, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python and JavaScript coverage.
      3. Post-Scan Quality Gate Gatekeeper — publishes the actionable condition table in both the Actions log and summary, annotates failures, and blocks violations
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
   - Cloud Build may construct the immutable image in parallel, but it must wait for a successful GitHub mainline SonarQube check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.

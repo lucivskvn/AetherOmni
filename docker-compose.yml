@@ -1,5 +1,6 @@
 ---
-# Docker Compose v2 format — 'version' key is obsolete and intentionally omitted.
+# Docker Compose v2 format — the 'version' key is obsolete and intentionally
+# omitted.
 #
 # Local development stack — mirrors production architecture.
 # Production uses a remote SurrealDB instance configured via SURREAL_URL in .env
@@ -50,7 +51,8 @@ services:
     volumes:
       - surreal_data:/data
     healthcheck:
-      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:8000"]
+      test:
+        ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:8000"]
       interval: 10s
       timeout: 5s
       retries: 5
