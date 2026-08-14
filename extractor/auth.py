@@ -123,10 +123,8 @@ class SupabaseAuthBackend(ModelBackend):
             return _fallback_local_auth()
 
         if not is_email:
-            local_user = _fallback_local_auth()
-            if local_user:
-                logger.info(f"[Auth] Local user authenticated: {username}")
-                return local_user
+            # A configured Supabase deployment accepts email identities only.
+            # Allowing username/password auth here would bypass the IdP entirely.
             return None
 
         import re
