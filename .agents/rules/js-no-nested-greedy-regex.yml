@@ -1,0 +1,9 @@
+id: js-no-nested-greedy-regex
+message: "Avoid nested greedy regex quantifiers; they can cause super-linear backtracking (S8786)."
+severity: error
+language: JavaScript
+rule:
+  pattern: /$REGEX/
+constraints:
+  REGEX:
+    regex: '\((?:\?:)?[^)]*(?:\.\*|\.\+)[^)]*\)[+*{]'
