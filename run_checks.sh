@@ -64,7 +64,7 @@ if [ "$DOCS_ONLY" = true ]; then
     echo -e "\n${CYAN}⚡ Executing Fast Differential Verification Pass (Targeting Changed Files Only)...${NC}"
     
     # Identify changed or staged files against HEAD
-    CHANGED_FILES=$({ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u)
+    CHANGED_FILES=$({ git diff --name-only --diff-filter=ACMR HEAD; git ls-files --others --exclude-standard; } | sort -u)
     
     if [ -z "$CHANGED_FILES" ]; then
         echo -e "${GREEN}✓ No changed files detected in working tree. Skipping differential scan.${NC}"
@@ -89,6 +89,14 @@ if [ "$DOCS_ONLY" = true ]; then
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_YAML holds space-separated filenames
         yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" $CHANGED_YAML 2>/dev/null || true
         echo -e "${GREEN}✓ Changed YAML structures verified cleanly.${NC}"
+    fi
+
+    if [ -n "$CHANGED_YAML" ] && command -v yamllint &> /dev/null; then
+        for SONAR_YAML_FILE in bandit.yaml docker-compose.yml; do
+            if echo "$CHANGED_YAML" | grep -Fxq "$SONAR_YAML_FILE"; then
+                yamllint "$SONAR_YAML_FILE"
+            fi
+        done
     fi
 
     # Filter changed Python files
@@ -217,6 +225,7 @@ echo -e "${GREEN}✓ Source code formatting is fully consistent.${NC}"
 
 echo -e "\n${YELLOW}[Schema Audit] Verifying YAML & Configuration File Structure...${NC}"
 if command -v yamllint &> /dev/null; then
+    yamllint bandit.yaml docker-compose.yml
     yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" \
         docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml
     echo -e "${GREEN}✓ Configuration schemas and YAML structures verified successfully.${NC}"

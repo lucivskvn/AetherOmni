@@ -1,0 +1,9 @@
+id: js-no-high-complexity-regex
+message: "Simplify this regular expression before merge; SonarQube limits regex complexity (S5843)."
+severity: error
+language: JavaScript
+rule:
+  pattern: /$REGEX/
+constraints:
+  REGEX:
+    regex: '(?:[^|]*\|){20}'
