@@ -410,16 +410,9 @@ function initializeCapsLockDetector() {
  * Attaches real-time, context-specific loading spinners to standard form submission buttons
  * across authentication and security credentials views.
  */
-function initializeFormSubmitSpinners() {
-    const forms = document.querySelectorAll(
-        '.login-card form, .register-card form, .forgot-card form, .password-change-card form, #editor-form, #settings-form, .confirm-card form'
-    );
-
-    forms.forEach(form => {
-        form.addEventListener('submit', event => {
-            if (event.defaultPrevented) return;
-            const btn = form.querySelector('button[type="submit"]');
-            if (!btn) return;
+function setFormSubmitLoadingState(form) {
+    const btn = form.querySelector('button[type="submit"]');
+    if (!btn) return;
 
             let text = 'Processing...';
             if (btn.classList.contains('btn-login-submit')) {
@@ -443,10 +436,24 @@ function initializeFormSubmitSpinners() {
             btn.innerHTML = `${spinnerSvg} ${text}`;
             btn.style.pointerEvents = 'none';
             btn.style.opacity = '0.85';
+}
+
+/**
+ * Attaches real-time, context-specific loading spinners to standard form submission buttons
+ * across authentication and security credentials views.
+ */
+function initializeFormSubmitSpinners() {
+    const forms = document.querySelectorAll(
+        '.login-card form, .register-card form, .forgot-card form, .password-change-card form, #editor-form, #settings-form, .confirm-card form'
+    );
+
+    forms.forEach(form => {
+        form.addEventListener('submit', event => {
+            if (event.defaultPrevented) return;
+            setFormSubmitLoadingState(form);
         });
     });
 }
-
 /**
  * Create and render an accessible, animated client-side alert card.
  */
