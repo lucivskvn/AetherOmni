@@ -195,15 +195,24 @@ ASGI_APPLICATION = "core.asgi.application"
 
 
 # ── Database Configuration ─────────────────────────────────────────────────────
-# All document/vector/KV data lives in SurrealDB.
-# Django users and sessions live in SQLite locally.
+# All document/vector/KV data lives in SurrealDB. Django relational state uses
+# Supabase PostgreSQL in production and SQLite only for explicit offline/test use.
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if DATABASE_URL and not SURREALDB_OFFLINE:
+    from core.database import database_config_from_url
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    DATABASES = {"default": database_config_from_url(DATABASE_URL)}
+elif SURREALDB_OFFLINE or DEBUG or not os.getenv("K_SERVICE"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
+else:
+    raise ImproperlyConfigured(
+        "DATABASE_URL is required on Cloud Run. Configure the Supabase PostgreSQL connection through Secret Manager."
+    )
 
 AUTHENTICATION_BACKENDS = [
     "extractor.auth.SupabaseAuthBackend",
@@ -446,7 +455,7 @@ else:
 DATA_RETENTION_DAYS = int(os.getenv("DATA_RETENTION_DAYS", "30"))
 MONTHLY_BUDGET_USD = float(os.getenv("MONTHLY_BUDGET_USD", "10.00"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 if not DEBUG and not GEMINI_API_KEY and not os.getenv("GOOGLE_CLOUD_PROJECT") and not os.getenv("GCP_PROJECT"):
     logger.warning(
