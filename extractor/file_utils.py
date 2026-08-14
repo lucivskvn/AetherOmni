@@ -608,7 +608,7 @@ def get_locale_currency_details(request: Any) -> dict[str, Any]:
     try:
         settings_obj = SystemSettings.get_settings()
         selected_currency = settings_obj.currency
-    except SystemSettings.DoesNotExist, AttributeError, RuntimeError:
+    except (SystemSettings.DoesNotExist, AttributeError, RuntimeError):
         selected_currency = "auto"
 
     if selected_currency and selected_currency != "auto":
