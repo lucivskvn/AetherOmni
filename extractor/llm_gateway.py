@@ -34,8 +34,8 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-MODEL_GEMINI_FLASH_LITE = "gemini-3.5-flash-lite"
-MODEL_GEMINI_FLASH = "gemini-3.6-flash"
+MODEL_GEMINI_FLASH_LITE = "gemini-2.5-flash-lite"
+MODEL_GEMINI_FLASH = "gemini-2.5-flash"
 _NOT_FOUND = "not found"
 PREFIX_GOOGLE = "google/"
 
@@ -446,8 +446,7 @@ KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
     {
         MODEL_GEMINI_FLASH,
         MODEL_GEMINI_FLASH_LITE,
-        "gemini-3.5-flash",
-        "gemini-3.1-flash-lite",
+        "gemini-2.5-pro",
         "gemini-3.1-pro",
         "auto",
     }
@@ -489,14 +488,14 @@ def _determine_api_routing(model_name: str, is_vision: bool, openrouter_api_key:
 
     if model_name == "auto":
         if is_vision:
-            # gemini-3.6-flash: 1M context window, best multimodal accuracy & speed
-            final_model = MODEL_GEMINI_FLASH  # = gemini-3.6-flash
+            # Gemini 2.5 Flash is available through the stable Vertex v1 API.
+            final_model = MODEL_GEMINI_FLASH
         else:
             if openrouter_api_key:
                 final_model = "meta-llama/llama-3-8b-instruct:free"
                 use_openrouter = True
             else:
-                # gemini-3.6-flash: 1M context — best performance/cost balance
+                # Gemini 2.5 Flash is the stable production default.
                 final_model = MODEL_GEMINI_FLASH
     else:
         # Check if the requested model is an OpenRouter model (has '/' but is not google/)
@@ -992,7 +991,7 @@ def execute_generate_content_with_fallback(
         model_name = MODEL_GEMINI_FLASH
 
     fallback_list = []
-    # Fallback priority: chosen model -> gemini-3.5-flash -> gemini-3.1-flash-lite
+    # Fallback priority: chosen model -> stable Flash -> stable Flash-Lite.
     for candidate in [model_name, MODEL_GEMINI_FLASH, MODEL_GEMINI_FLASH_LITE]:
         if candidate not in fallback_list:
             fallback_list.append(candidate)
@@ -1125,7 +1124,7 @@ def run_stage1_multimodal_ocr(file_path: str, model_name: str = MODEL_GEMINI_FLA
     Pass 1 Multimodal OCR. Uploads the target PDF/Image using Gemini Files API
     to handle heavy payloads (up to 170+ pages) without timeouts or memory crashes,
     runs structure-aware optical character recognition, and monitors execution.
-    Defaults to MODEL_GEMINI_FLASH_LITE (gemini-3.5-flash-lite) for high-speed,
+    Defaults to MODEL_GEMINI_FLASH_LITE (gemini-2.5-flash-lite) for high-speed,
     cost-optimized batch ingestion.
     If Gemini API Key is missing or rate-limited/exhausted, falls back to Vertex AI inline bytes.
     """
