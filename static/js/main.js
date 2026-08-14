@@ -585,7 +585,7 @@ function initializeSettingsModal() {
 
     if (finalResetBtn) {
         finalResetBtn.addEventListener('click', (e) => {
-            if (!confirm('Are you absolutely sure you want to permanently wipe all database and files? This cannot be undone.')) {
+            if (!confirm('Are you absolutely sure you want to permanently wipe all database and files? This cannot be undone. This irreversible action removes the database, local files, and connected cloud vectors.')) {
                 e.preventDefault();
             }
         });
