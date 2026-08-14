@@ -43,6 +43,15 @@ runbook. This file remains the authoritative cross-agent policy.
   - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
   - Pin every GitHub Action to a full commit SHA, retaining the reviewed release tag only as an adjacent comment.
 
+### 4.1 Protected PR Branch Refresh
+
+- `.github/workflows/refresh-pr-branches.yml` refreshes only open, non-draft,
+  same-repository PRs targeting `main` after a mainline push or manual dispatch.
+- It never merges PRs or relaxes required checks. Configure
+  `PR_AUTOMATION_TOKEN` as a dedicated fine-grained GitHub App/PAT token with
+  only `contents: write` and `pull-requests: write` repository access so its
+  branch updates trigger fresh PR checks.
+
 ### 5. Local-First Review & No Unsolicited Remote Pushing
 
 - **DO NOT AUTOMATICALLY PUSH INCREMENTAL EDITS TO REMOTE GITHUB**:
