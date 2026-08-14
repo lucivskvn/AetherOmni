@@ -74,14 +74,14 @@ jobs:
           pip install -r requirements.txt coverage==7.15.4 --quiet
           python -m venv .ci-security-tools
           .ci-security-tools/bin/pip install --upgrade pip --quiet
-          .ci-security-tools/bin/pip install ruff==0.16.2 bandit==1.9.4 semgrep==1.172.0 --quiet
+          .ci-security-tools/bin/pip install ast-grep-cli==0.45.1 ruff==0.16.2 bandit==1.9.4 semgrep==1.172.0 --quiet
 
       - name: Run PR security and test gate
         run: |
           export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
           .ci-security-tools/bin/ruff check .
           npx -y eslint --max-warnings 0 static/js/**/*.js
-          npx -y @ast-grep/cli@0.45.1 scan --color never
+          .ci-security-tools/bin/ast-grep scan --color never
           yamllint bandit.yaml docker-compose.yml
           .ci-security-tools/bin/semgrep scan --config=auto --quiet --error
           .ci-security-tools/bin/bandit -c bandit.yaml -r core extractor
