@@ -6,3 +6,11 @@
 **Learning:** Loading states for interactive forms improve perceived performance and give clear UX feedback. Centralizing form submit spinners in `static/js/main.js` using `initializeFormSubmitSpinners` is an effective pattern.
 
 **Action:** When adding new forms, such as `#settings-form` or `.confirm-card form`, ensure they are added to the centralized spinner query selector to provide consistent UX state transitions. Also, remove duplicate inline submit handlers to prevent regressions.
+
+## 2026-08-14 - Fix Empty State Opacity
+**Learning:** Low opacity on empty states makes text unreadable and fails minimum color contrast requirements.
+**Action:** Set opacity to 1 on empty state text to ensure readability and compliance.
+
+## 2026-08-15 - Add ARIA Labels to OAuth Buttons
+**Learning:** Icon-heavy third-party authentication buttons (like GitHub OAuth) lack clear accessible names if they rely solely on SVG content.
+**Action:** Add descriptive `aria-label` attributes to OAuth buttons (e.g., `Sign in with GitHub`) to ensure screen readers announce their function accurately.
