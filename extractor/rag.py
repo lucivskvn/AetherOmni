@@ -42,32 +42,42 @@ GEMINI_API_KEY_ERROR = "GEMINI_API_KEY is not configured."
 
 def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[str]:
     """
-    Chunks large documents on natural boundaries (paragraphs or sentences)
-    to maintain context coherence during semantic memory searches.
-    max_chunk_size is passed by the caller — tasks.py uses 500 for Arabic,
-    1200 for Latin/Latin-script languages.
+    Chunks large documents on natural structural boundaries (chapters, Surahs, Hadiths,
+    page breaks, and complete sentences) to maintain context coherence and prevent cutting
+    in the middle of verses or paragraphs.
     """
-    paragraphs = text.split("\n\n")
+    if not text or not text.strip():
+        return []
+
+    # 1. Normalize line endings and extract structural blocks
+    # Break on major structural delimiters (page dividers, markdown headings, chapters)
+    raw_blocks = re.split(
+        r"(?:\n\s*---\s*\n|\n(?=##\s+Page\s+\d+)|\n(?=###?\s+(?:Surah|Hadith|Chapter|Section|Bab)\b))", text
+    )
+    blocks = [b.strip() for b in raw_blocks if b.strip()]
+
     chunks: list[str] = []
     current_chunk: list[str] = []
     current_size = 0
 
-    for p in paragraphs:
-        p_len = len(p)
-        if current_size + p_len <= max_chunk_size:
-            current_chunk.append(p)
-            current_size += p_len + 2  # account for double newline
-        else:
-            if current_chunk:
-                chunks.append("\n\n".join(current_chunk))
-
-            if p_len > max_chunk_size:
-                sub_chunk, sub_size = _chunk_long_paragraph(p, max_chunk_size, chunks)
-                current_chunk = sub_chunk
-                current_size = sub_size
+    for block in blocks:
+        paragraphs = [p.strip() for p in block.split("\n\n") if p.strip()]
+        for p in paragraphs:
+            p_len = len(p)
+            if current_size + p_len <= max_chunk_size:
+                current_chunk.append(p)
+                current_size += p_len + 2  # account for double newline
             else:
-                current_chunk = [p]
-                current_size = p_len
+                if current_chunk:
+                    chunks.append("\n\n".join(current_chunk))
+
+                if p_len > max_chunk_size:
+                    sub_chunk, sub_size = _chunk_long_paragraph(p, max_chunk_size, chunks)
+                    current_chunk = sub_chunk
+                    current_size = sub_size
+                else:
+                    current_chunk = [p]
+                    current_size = p_len
 
     if current_chunk:
         chunks.append("\n\n".join(current_chunk))
@@ -76,12 +86,12 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
 
 
 def _chunk_long_paragraph(paragraph: str, max_chunk_size: int, chunks: list[str]) -> tuple[list[str], int]:
-    """Split a very long paragraph into sentence-level sub-chunks.
-
-    Fix EDGE-02: Flush any remaining sub_chunk sentences before returning so
-    the final segment of an oversized paragraph is never silently dropped.
     """
-    sentences = re.split(r"(?<=[.!?])\s+", paragraph)
+    Split a long paragraph into sentence- and verse-level sub-chunks without
+    cutting in the middle of Arabic Ayahs (verse numbers, Harakat) or translations.
+    """
+    # Split on Latin and Arabic sentence/verse boundaries (including ۝, (1), ., ?, !, ؟)
+    sentences = re.split(r"(?<=[.!?؟؛;۝\)])\s+", paragraph)
     sub_chunk: list[str] = []
     sub_size = 0
     for s in sentences:
@@ -94,7 +104,6 @@ def _chunk_long_paragraph(paragraph: str, max_chunk_size: int, chunks: list[str]
                 chunks.append(" ".join(sub_chunk))
             sub_chunk = [s]
             sub_size = s_len
-    # EDGE-02 fix: flush the final pending sub-chunk so no sentences are lost
     if sub_chunk:
         chunks.append(" ".join(sub_chunk))
     return [], 0
@@ -454,13 +463,21 @@ def query_semantic_knowledge_rag(
     return result
 
 
-def _format_doc_info_parts(doc_meta: dict[str, Any]) -> str:
-    """Format academic metadata header for a grounded RAG context block."""
+def _format_doc_info_parts(doc_meta: dict[str, Any], chunk: dict[str, Any] | None = None) -> str:
+    """Format academic and structural metadata header for a grounded RAG context block."""
     info_parts = [
         f"Source: {doc_meta.get('title', 'Unknown')}",
         f"Lang: {doc_meta.get('language', 'Unknown')}",
         f"Author: {doc_meta.get('author', 'Unknown')}",
     ]
+    if chunk:
+        page_num = chunk.get("page_number")
+        chap = chunk.get("chapter_title")
+        if page_num:
+            info_parts.append(f"Page: {page_num}")
+        if chap:
+            info_parts.append(f"Chapter: {chap}")
+
     if doc_meta.get("publisher") and doc_meta["publisher"] not in ("Unknown", ""):
         info_parts.append(f"Publisher: {doc_meta['publisher']}")
     if doc_meta.get("publication_year") and doc_meta["publication_year"] != "":
@@ -478,7 +495,12 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
     for idx, chunk in enumerate(matching_chunks):
         doc_uuid_str = chunk.get("doc_uuid", "")
         doc_meta = _get_doc_metadata(doc_uuid_str)
-        doc_info = _format_doc_info_parts(doc_meta)
+        doc_info = _format_doc_info_parts(doc_meta, chunk)
+
+        page_num = chunk.get("page_number") or 1
+        chap = chunk.get("chapter_title") or ""
+        anchor_id = chunk.get("anchor_id") or f"page-{page_num}"
+        deep_link = f"/editor/{doc_uuid_str}/#{anchor_id}" if doc_uuid_str else ""
 
         context_blocks.append(f"--- BLOCK {idx + 1} [{doc_info}] ---\n{chunk.get('content', '')}")
         sources.append(
@@ -493,6 +515,10 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
                 "license_type": doc_meta.get("license_type", "Unknown"),
                 "doi": doc_meta.get("doi", ""),
                 "chunk_index": chunk.get("chunk_index", 0),
+                "page_number": page_num,
+                "chapter_title": chap,
+                "anchor_id": anchor_id,
+                "deep_link": deep_link,
             }
         )
     return "\n\n".join(context_blocks), sources

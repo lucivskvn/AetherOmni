@@ -14,6 +14,7 @@ from extractor.utils import (
     get_locale_currency_details,
     process_csv_local,
     process_excel_local,
+    process_json_local,
     process_pdf_local,
     process_txt_local,
     validate_url_scheme,
@@ -21,7 +22,7 @@ from extractor.utils import (
 
 
 class LocalParsersTestCase(TestCase):
-    """Verifies that offline CSV, Excel, TXT, and digital PDF local parsers function with $0 API cost."""
+    """Verifies that offline CSV, Excel, JSON, TXT, and digital PDF local parsers function with $0 API cost."""
 
     def test_csv_parser_success(self):
         # Create a temp CSV file
@@ -90,6 +91,59 @@ class LocalParsersTestCase(TestCase):
             self.assertEqual(text, "")
         finally:
             os.unlink(temp_path)
+
+    def test_json_parser_dataset_and_dict(self):
+        # 1. Test tabular JSON list (e.g., Quran verse dataset)
+        verse_data = [
+            {"surah": "1", "ayah": "1", "text_ar": "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ", "text_en": "In the Name of Allah"},
+            {"surah": "1", "ayah": "2", "text_ar": "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ", "text_en": "Praise be to Allah"},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json", encoding="utf-8") as f:
+            import json
+
+            json.dump(verse_data, f)
+            temp_path = f.name
+
+        try:
+            result = process_json_local(temp_path)
+            self.assertIn("| surah | ayah | text_ar | text_en |", result)
+            self.assertIn("بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ", result)
+        finally:
+            os.unlink(temp_path)
+
+        # 2. Test structured JSON dict
+        hadith_dict = {
+            "book_title": "Sahih Hadith Collection",
+            "narrator": "Abu Hurairah",
+            "hadith_text": "Actions are judged by intentions.",
+        }
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json", encoding="utf-8") as f:
+            json.dump(hadith_dict, f)
+            temp_path = f.name
+
+        try:
+            result_dict = process_json_local(temp_path)
+            self.assertIn("## Book Title", result_dict)
+            self.assertIn("Sahih Hadith Collection", result_dict)
+            self.assertIn("Actions are judged by intentions.", result_dict)
+        finally:
+            os.unlink(temp_path)
+
+    def test_semantic_chunking_islamic_structural_boundaries(self):
+        text = (
+            "## Page 1\n\n"
+            "### Surah Al-Fatiha\n\n"
+            "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ (1)\n"
+            "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ (2)\n\n"
+            "### Surah Al-Baqarah\n\n"
+            "الم (1)\n"
+            "ذَٰلِكَ ٱلْكِتَـٰبُ لَا رَيْبَ ۛ فِيهِ ۛ هُدًۭى لِّلْمُتَّقِينَ (2)"
+        )
+        chunks = chunk_document_semantically(text, max_chunk_size=150)
+        self.assertGreaterEqual(len(chunks), 2)
+        # Verify Surah headers remain grouped with their verses
+        self.assertTrue(any("Surah Al-Fatiha" in c for c in chunks))
+        self.assertTrue(any("Surah Al-Baqarah" in c for c in chunks))
 
 
 class ContentAddressingTestCase(TestCase):

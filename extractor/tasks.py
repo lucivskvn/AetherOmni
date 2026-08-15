@@ -20,6 +20,7 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
+from django.utils.text import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ from extractor.utils import (
     log_audit_event,
     process_csv_local,
     process_excel_local,
+    process_json_local,
     process_pdf_local,
     process_txt_local,
     run_stage1_multimodal_ocr,
@@ -394,6 +396,10 @@ def _acquire_stage1_raw_markdown(
     if lower_name.endswith((".xlsx", ".xls")):
         raw_md = process_excel_local(working_path)
         return raw_md, "EXCEL", _determine_actual_page_count(working_path, "EXCEL"), Decimal("0.0"), 0, 0
+
+    if lower_name.endswith(".json"):
+        raw_md = process_json_local(working_path)
+        return raw_md, "JSON", _determine_actual_page_count(working_path, "JSON"), Decimal("0.0"), 0, 0
 
     if lower_name.endswith(".pdf"):
         # 1. Try zero-cost native digital text extraction first
@@ -886,16 +892,32 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
     if chunks:
         embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
 
-        chunk_payloads = [
-            {
-                "chunk_index": i,
-                "content": chunk_text,
-                "token_count": len(chunk_text.split()),
-                "language": doc.get("language") or "",
-                "embedding": emb,
-            }
-            for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
-        ]
+        chunk_payloads = []
+        current_page = 1
+        current_chapter = ""
+        for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings)):
+            page_match = re.search(r"## Page (\d+)", chunk_text, re.IGNORECASE)
+            if page_match:
+                current_page = int(page_match.group(1))
+            chap_match = re.search(r"(?:###?|Chapter|Surah|Hadith)\s+([^\n]+)", chunk_text, re.IGNORECASE)
+            if chap_match:
+                current_chapter = chap_match.group(1).strip()
+            anchor_slug = (
+                f"page-{current_page}" if not current_chapter else f"p{current_page}-{slugify(current_chapter[:30])}"
+            )
+
+            chunk_payloads.append(
+                {
+                    "chunk_index": i,
+                    "content": chunk_text,
+                    "token_count": len(chunk_text.split()),
+                    "language": doc.get("language") or "",
+                    "page_number": current_page,
+                    "chapter_title": current_chapter,
+                    "anchor_id": anchor_slug,
+                    "embedding": emb,
+                }
+            )
 
         # Delete old SurrealDB chunks first, then insert new ones atomically
         surreal_db.recreate_chunks(doc_uuid, chunk_payloads)

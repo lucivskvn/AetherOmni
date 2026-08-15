@@ -1029,6 +1029,9 @@ def clone_chunks(source_uuid: str, target_uuid: str) -> None:
         "    content: $row.content,"
         "    token_count: $row.token_count,"
         "    language: $row.language,"
+        "    page_number: $row.page_number,"
+        "    chapter_title: $row.chapter_title,"
+        "    anchor_id: $row.anchor_id,"
         "    embedding: $row.embedding"
         "  };"
         "};"
@@ -1047,7 +1050,7 @@ def search_chunks_hnsw(
     if allowed_doc_uuids is not None:
         params["allowed_doc_uuids"] = allowed_doc_uuids
         sql = (
-            "SELECT id, doc_uuid, content, language, chunk_index, "
+            "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id, "
             "1.0 - vector::similarity::cosine(embedding, $query_embedding) AS score "
             "FROM chunks "
             "WHERE doc_uuid INSIDE $allowed_doc_uuids "
@@ -1056,7 +1059,7 @@ def search_chunks_hnsw(
         )
     else:
         sql = (
-            "SELECT id, doc_uuid, content, language, chunk_index, "
+            "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id, "
             "1.0 - vector::similarity::cosine(embedding, $query_embedding) AS score "
             "FROM chunks "
             "ORDER BY score ASC "
@@ -1084,14 +1087,14 @@ def search_chunks_bm25(query_text: str, limit: int = 10, allowed_doc_uuids: list
     if allowed_doc_uuids is not None:
         params["allowed_doc_uuids"] = allowed_doc_uuids
         sql = (
-            "SELECT id, doc_uuid, content, language, chunk_index "
+            "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id "
             "FROM chunks "
             "WHERE doc_uuid INSIDE $allowed_doc_uuids AND content CONTAINS $query_text "
             "LIMIT $limit;"
         )
     else:
         sql = (
-            "SELECT id, doc_uuid, content, language, chunk_index "
+            "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id "
             "FROM chunks "
             "WHERE content CONTAINS $query_text "
             "LIMIT $limit;"

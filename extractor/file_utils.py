@@ -195,6 +195,49 @@ def process_txt_local(file_path: str) -> str:
     return content
 
 
+def _format_json_rows_as_table(title: str, items: list[dict]) -> str:
+    """Formats a list of dictionaries into a clean Markdown table."""
+    keys = list({k: True for item in items for k in item}.keys())
+    rows = []
+    for item in items:
+        rows.append([str(item.get(k, "")).strip().replace("\n", "<br>") for k in keys])
+    return _format_markdown_table_sheet(title, [keys, *rows])
+
+
+def process_json_local(file_path: str) -> str:
+    """
+    Parses local JSON documents (including Quran verse datasets, Hadith collections,
+    and structured JSON payloads) into structured Markdown sections and tables ($0 API cost).
+    """
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except UnicodeDecodeError:
+        with open(file_path, encoding="latin-1") as f:
+            data = json.load(f)
+
+    if isinstance(data, list):
+        if not data:
+            return "*Empty JSON List*"
+        if all(isinstance(item, dict) for item in data):
+            return _format_json_rows_as_table("Dataset", data)
+        return "\n\n".join(f"- {json.dumps(item, ensure_ascii=False)}" for item in data)
+
+    if isinstance(data, dict):
+        sections = []
+        for key, value in data.items():
+            title = str(key).replace("_", " ").title()
+            if isinstance(value, list) and all(isinstance(x, dict) for x in value):
+                sections.append(f"## {title}\n\n" + _format_json_rows_as_table(title, value))
+            elif isinstance(value, (dict, list)):
+                sections.append(f"## {title}\n\n```json\n{json.dumps(value, indent=2, ensure_ascii=False)}\n```")
+            else:
+                sections.append(f"## {title}\n\n{value}")
+        return "\n\n".join(sections) if sections else "*Empty JSON Object*"
+
+    return str(data)
+
+
 def _format_markdown_table_sheet(sheet_title: str, rows: list[list[str]]) -> str:
     """Formats a matrix of cells into a GitHub Flavored Markdown table."""
     if not rows:
