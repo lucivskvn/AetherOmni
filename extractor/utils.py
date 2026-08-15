@@ -145,9 +145,11 @@ def validate_url_scheme(url: str) -> None:
     """
     from django.conf import settings
 
-    if not url.startswith(("http://", "https://")):  # NOSONAR
+    if not url.startswith(("http://", "https://")):  # NOSONAR python:S5332 -- Protocol scheme validator
         raise ValueError("Invalid URL scheme. Only http and https schemes are permitted.")
-    if not getattr(settings, "DEBUG", True) and url.startswith("http://"):  # NOSONAR
+    if not getattr(settings, "DEBUG", True) and url.startswith(
+        "http://"
+    ):  # NOSONAR python:S5332 -- Enforcement of https in production
         raise ValueError("Insecure URL scheme. Production environments require https.")
 
 
