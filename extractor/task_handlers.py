@@ -95,8 +95,18 @@ def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
                 continue
             try:
                 id_info = google.oauth2.id_token.verify_oauth2_token(token, request_obj, aud)
-                if id_info.get("iss") in ("accounts.google.com", "https://accounts.google.com"):
-                    return True
+                if id_info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+                    logger.warning("[CloudTasksHandler] OIDC issuer unexpected: %s", id_info.get("iss"))
+                    return False
+
+                expected_service_account = getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "").strip()
+                if expected_service_account and (
+                    id_info.get("email") != expected_service_account or not id_info.get("email_verified")
+                ):
+                    logger.warning("[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account.")
+                    return False
+
+                return True
             except Exception as aud_err:
                 logger.debug("[CloudTasksHandler] Candidate audience '%s' rejected: %s", aud, aud_err)
 
