@@ -305,16 +305,17 @@ flowchart LR
 
 | Component Layer | Technology / Tool | Version / Details | Purpose |
 | ----------------- | ------------------- | ------------------- | --------- |
-| **Core Framework** | Python / Django | Versions managed in `pyproject.toml` and requirements files | Core MVC framework, ORM, admin backend, authentication |
-| **Vector & Cache DB** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model document database, HNSW vector similarity search, `context_cache` prompt prefix caching, `rate_limits` atomic sliding quotas, and `kv_cache` |
-| **Relational Storage** | Supabase PostgreSQL / SQLite | PostgreSQL 17 / SQLite 3 offline-only | Persistent production storage for users, sessions, spend logs, settings, and audit events (Supabase Cloud + `SUPABASE_SERVICE_ROLE_KEY`) |
-| **LLM Gateway** | Google Gemini / Vertex AI / OpenRouter | Dynamic cheapest model resolution: Gemini 2.5 Flash / 2.5 Flash-Lite, OpenRouter Free router | Multi-provider fallback chain with cost control and multi-modal diagram extraction |
-| **Cloud Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast1` | Zero-scale web app and worker process containers |
-| **Queue & Dispatcher** | GCP Cloud Tasks | OIDC Authenticated Tasks | Production asynchronous queue with localized thread fallbacks |
-| **Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw and processed documents |
-| **Auth** | Supabase Auth Platform (Supabase Cloud) | GoTrue REST API · `SupabaseAuthBackend` | User authentication, login, and registration |
-| **Container Runtime** | Docker · digest-pinned Python slim image | Multi-stage, shell-free OWASP non-root build | Minimal production container, non-root runtime user |
-| **DevSecOps & SAST** | SonarQube / Bandit / Hadolint / Semgrep / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | Sonar MQR Gate, SurrealQL syntax validation | Complete shift-left security verification and code quality gate |
+| **Core Framework** | Python / Django | Python 3.14 · Django 5.x | Core MVC architecture, ORM data layer, admin backend, session management |
+| **Relational Storage & Auth** | Supabase PostgreSQL / Supabase Auth | PostgreSQL 17 · GoTrue REST API · Cloudflare Turnstile | User identity, authentication, session tokens with `gotrue_meta_security`, spend logs, and audit trails |
+| **High-Throughput Vector & Cache DB** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model vector store (HNSW 768 cosine), prompt prefix cache (`context_cache`), sliding rate limits (`rate_limits`), and `user_memories` |
+| **Secrets & Keyless IAM** | GCP Secret Manager / IAM ADC | Application Default Credentials (ADC) | Keyless IAM runtime authentication, dynamic resolution of API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) with zero committed secrets |
+| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (EU-first primary), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
+| **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast1` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
+| **Asynchronous Task Queue** | GCP Cloud Tasks | OIDC Authenticated Worker Tasks | Production asynchronous document processing queue with localized thread fallbacks |
+| **Cloud Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw documents and curated export bundles |
+| **CI/CD & Git Automation** | GitHub Actions / GitHub CLI | Pinned commit SHAs · `gh` CLI | 3-Phase Shift-Left validation, automated PR branch refresh (`refresh-pr-branches.yml`), CodeQL, and Dependabot security |
+| **Container Runtime & Build** | Docker / Kaniko | Multi-stage OWASP non-root build · Kaniko debug image | Immutable digest-pinned containers with zero shell footprint in the application startup path |
+| **DevSecOps & SAST Suite** | SonarQube / Bandit / Hadolint / Semgrep / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | Sonar MQR Gate, SurrealQL syntax validation | Shift-left security verification, static typing, regex ReDoS prevention, and continuous codebase health |
 | **AI Agent Tooling & MCP** | SonarQube / Google Cloud Logging / Chrome DevTools / Google Dev Knowledge | Model Context Protocol (MCP) servers | Fast grounded triage, live quality gate queries, Cloud Run log inspection, and UI/UX accessibility auditing |
 
 ---
