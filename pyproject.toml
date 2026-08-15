@@ -18,7 +18,7 @@ exclude = [
 ]
 
 line-length = 120
-target-version = "py314"
+target-version = "py313"  # Preserves cross-version exception parenthesization (PEP 759 / py313+ compatibility)
 
 
 [tool.ruff.lint]
