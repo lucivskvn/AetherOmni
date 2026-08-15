@@ -1578,7 +1578,7 @@ tr:hover td {
     font-style: italic;
     text-align: center;
     padding: 40px 0;
-    opacity: 0.5;
+    opacity: 1;
 }
 
 .qa-section {
