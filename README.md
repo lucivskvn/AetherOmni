@@ -214,15 +214,15 @@ flowchart LR
     M1["✅ Milestone 1.0 MVP<br>Multi-Format Ingestion & Caching"] --> M2["✅ Milestone 2.0 MVP<br>Dual DB & LLM Gateway"]
     M2 --> M3["✅ Milestone 3.0 MVP<br>Hybrid RAG & Vision OCR"]
     M3 --> M35["✅ Milestone 3.5 MVP<br>DevSecOps Hardening & SurrealQL"]
-    M35 --> M36["🧭 Milestone 3.6 MVP<br>Auth & Release Reliability"]
-    M36 --> M37["📈 Milestone 3.7 MVP<br>Observability & Delivery"]
-    M37 --> M4["📦 Milestone 4.0 Enterprise<br>SSE Streaming & RBAC"]
+    M35 --> M36["✅ Milestone 3.6 MVP<br>Auth & Release Reliability"]
+    M36 --> M37["📈 Milestone 3.7 MVP<br>Observability & Multi-MCP Triage"]
+    M37 --> M4["📦 Milestone 4.0 Enterprise<br>SSE Streaming & Parquet Export"]
     M4 --> M5["🚀 Milestone 5.0 Enterprise<br>Graph RAG & Agent Tools"]
 ```
 
 ### ✅ Milestone 1.0 (MVP Core — Multi-Format Layout Ingestion & Instant Caching)
 
-- [x] **Multi-Format Document Ingestion**: Ingests PDF, DOCX, CSV, TXT, and recursive ZIP batch archives.
+- [x] **Multi-Format Document Ingestion**: Ingests PDF, DOCX, CSV, Excel (`.xlsx`, `.xls`), TXT, Markdown (`.md`), JSON (`.json`), and recursive ZIP batch archives with $0.00 local zero-cost parsers.
 - [x] **Arabic & Multilingual RTL Typography**: Automatic Arabic layout detection (`dir="rtl" class="arabic-text"`), Markdown rendering, and HTML sanitization.
 - [x] **Instant SHA-256 Hash Caching ($0.00 Cost)**: Deduplicates incoming documents by SHA-256 checksums to instantly reuse extracted metadata without calling LLM APIs.
 - [x] **Standardized Batch Export & Single-Copy Bundles**: Exports single-copy standardized files (`documents/001_title.md`) with optional multi-taxonomy views (`Language/`, `Author/`), `manifest.json`, and `master_archival_source.md`.
@@ -230,48 +230,48 @@ flowchart LR
 
 ### ✅ Milestone 2.0 (MVP Core — Dual Database Engine & Multi-Model LLM Gateway)
 
-- [x] **SurrealDB HNSW Vector Storage**: SurrealDB vector indexer (`DIMENSION 768 DIST COSINE`) paired with relational SQLite metadata store.
-- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter free tiers with exponential backoff.
+- [x] **SurrealDB HNSW Vector Storage**: Remote SurrealDB vector indexer (`DIMENSION 768 DIST COSINE`) paired with Supabase PostgreSQL (and SQLite offline).
+- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (EU-first primary regions), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
 - [x] **Persisted Budget Accounting**: Hard monthly USD spend limits backed by immutable `MonthlySpendLog` ledgers.
 
-### ✅ Milestone 3.0 (MVP Core — Hybrid RAG & Multi-Modal Vision OCR)
+### ✅ Milestone 3.0 (MVP Core — Hybrid RAG, Context Caching & Vision OCR)
 
 - [x] **Native SurrealDB WebSocket Connection Pools**: Upgraded SurrealDB client logic for high-concurrency connection handling (`surrealdb==2.0.0`).
 - [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
 - [x] **Multi-Modal Diagram & Schema Vision OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
+- [x] **Structural Context Chunking & Provenance Deep Linking**: Boundary-aware chunking preserving Surahs, Ayahs, and Hadiths with page and chapter metadata (`page_number`, `chapter_title`, `anchor_id`) stored in SurrealDB `chunks`.
+- [x] **SurrealDB Context Caching & Memories**: Zero-cost query short-circuiting via `rag_cache` (cosine distance $\le 0.15$), tokenized `context_cache`, and `user_memories`.
 
 ### ✅ Milestone 3.5 (MVP Core — DevSecOps Hardening, SurrealQL Validation & Runtime Alignment)
 
 - [x] **Runtime Upgrade**: Builder and runtime use the digest-pinned image declared by `Dockerfile`; CI and Ruff follow the canonical versions in project configuration.
 - [x] **Shell-Free Container Startup**: A Python entrypoint runs migrations, starts bounded database initialization, and `exec`s Gunicorn without a shell interpreter in the startup path.
-- [x] **SurrealQL Schema Validation** (`surreal validate`): `schema.surql` is validated on every pipeline run via the official `surreal` CLI (install: `curl -sSf https://install.surrealdb.com | sh`). Integrated into Phase 2 of `run_checks.sh` and the fast differential `--fast` pass for `.surql` file changes.
-- [x] **Full-Suite Tool Alignment**: All DevSecOps tools verified at latest stable — `ruff`, `mypy`, `bandit`, `pip-audit`, `semgrep`, `yamllint`, `hadolint`, `ast-grep`, `markdownlint-cli`, `eslint`, `surreal`. Application dependencies are tracked in `requirements.txt`; local Python verification tools are tracked in `requirements-dev.txt`.
-- [x] **SonarQube Multi-Language SAST**: Removed the single-language lock; SonarQube now scans Python and JavaScript in the same analysis pass using repository-managed analyzer configuration.
+- [x] **SurrealQL Schema Validation** (`surreal validate`): `schema.surql` is validated on every pipeline run via the official `surreal` CLI. Integrated into Phase 2 of `run_checks.sh` and the fast differential `--fast` pass for `.surql` file changes.
+- [x] **Full-Suite Tool Alignment**: All DevSecOps tools verified at latest stable — `ruff`, `mypy`, `bandit`, `pip-audit`, `semgrep`, `yamllint`, `hadolint`, `ast-grep`, `markdownlint-cli`, `eslint`, `shellcheck`, `surreal`. Application dependencies are tracked in `requirements.txt`; local Python verification tools are tracked in `requirements-dev.txt`.
+- [x] **SonarQube Multi-Language SAST**: Removed the single-language lock; SonarQube scans Python and JavaScript in the same analysis pass using repository-managed analyzer configuration.
 - [x] **Python Runtime Alignment**: Docker, GitHub Actions, local checks, and SonarQube use Python 3.14 semantics, preventing version-dependent findings and syntax drift.
-- [x] **`run_checks.sh` Path Consistency**: Fixed autofix `markdownlint` target path from `gcp_deployment_guide.md` to `docs/gcp_deployment_guide.md`.
-- [x] **ShellCheck Integration**: `shellcheck run_checks.sh scripts/*.sh` added to Phase 2 for POSIX shell safety enforcement.
 - [x] **Full Test Suite**: All Django unit tests pass cleanly under `SURREALDB_OFFLINE=True` with `coverage.xml` generated for SonarQube ingestion.
 
-### 🧭 Milestone 3.6 (MVP Reliability — Authentication & Release Integrity)
+### ✅ Milestone 3.6 (MVP Reliability — Authentication & Release Integrity)
 
 - [x] **Supabase Email Login Recovery**: Turnstile is required before credential dispatch and its token is forwarded through GoTrue security metadata; successful sessions bridge into Django without first-user privilege escalation. GitHub OAuth and Passkeys remain planned.
 - [x] **Release Traceability**: SonarQube and Cloud Build derive the same commit-count release from full Git history, then propagate it to the immutable image tag, Cloud Run, and application UI. Cloud Build waits for the exact commit's successful mainline SonarQube check before deployment.
 - [x] **Worker-Only Ingestion Dispatch**: Production uploads enqueue OIDC-authenticated work for the worker service only. Cloud Build resolves worker routing and the Vertex project identity at deploy time; an optional public-origin substitution keeps Supabase confirmation redirects on the browser-facing application URL.
 - [x] **On-Demand Worker Processing**: Cloud Tasks wakes a bounded zero-minimum worker only for queued ingestion; periodic maintenance is disabled by default and can be enabled only with an explicit always-on operating decision. Spend-ledger persistence is validated before document deletion.
-- [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
+- [x] **Protected Delivery Path & PR Branch Refresh**: Automatic PR branch refresh workflow (`refresh-pr-branches.yml`) and CLI helper (`scripts/refresh_pr_branches.sh`) keeping open PR branches synchronized against `main`.
 
-### 📈 Milestone 3.7 (MVP Reliability — Operations & Observability)
+### 📈 Milestone 3.7 (MVP Reliability — Operations & Multi-MCP Triage)
 
-- [ ] **Actionable Agent Queue**: Enable GitHub Issues and the Jules integration; create small, scoped issues for CI, CodeQL, and SonarQube findings.
+- [x] **Multi-MCP Triage & Observability**: Dedicated Model Context Protocol server workflows for SonarQube quality gates, Google Cloud Logging container inspections, Google Cloud Monitoring metrics, Chrome DevTools accessibility testing, and Google Developer Knowledge.
+- [x] **Operational Runbook & Diagnostic Tools**: Read-only GCP diagnostics CLI (`scripts/gcp-diagnostics.sh`) for Cloud Run revisions, readiness status, and bounded error log inspection.
 - [ ] **Sentry Release Observability**: Correlate errors and deployments with the computed release version while keeping the DSN in Secret Manager and personal data disabled by default.
 - [ ] **Pulumi Foundation**: Model and import Cloud Run, Secret Manager, IAM, Artifact Registry, Cloud Tasks, and Storage before provisioning another environment.
-- [ ] **Operational Runbook**: Use the read-only GCP diagnostics tool for readiness, revisions, and bounded error logs.
 
 ### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & RBAC)
 
-- [ ] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)**, **SQLite Mobile (`.db`)**, **Apache Parquet (`.parquet`)**, **Hugging Face SFT (`.jsonl`)**, and **CSV (`.csv`)**.
-- [ ] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (CC-BY-4.0, MIT), DOI, SHA-256 hash, and `validation_status`.
-- [ ] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, and `exported_by_username` in exported headers and manifest metadata.
+- [x] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (CC-BY-4.0, MIT), DOI, SHA-256 hash, and `validation_status` across schemas, models, and export headers.
+- [x] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, and `exported_by_username` in exported headers and manifest metadata.
+- [ ] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)** (Implemented), **Hugging Face SFT (`.jsonl`)** (Implemented), **SQLite Mobile (`.db`)**, **Apache Parquet (`.parquet`)**, and **CSV (`.csv`)**.
 - [ ] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search for offline iOS / Android / Flutter integration.
 - [ ] **Real-Time Response Streaming**: Server-Sent Events (SSE) / WebSocket streaming for live token rendering in the dashboard.
 - [ ] **Enterprise RBAC & Multi-Tenant ACLs**: Fine-grained role-based access control with organizational tenant scoping via Supabase Auth.
