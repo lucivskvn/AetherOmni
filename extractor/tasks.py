@@ -39,6 +39,8 @@ from extractor.utils import (
     generate_surreal_embeddings,
     log_audit_event,
     process_csv_local,
+    process_excel_local,
+    process_pdf_local,
     process_txt_local,
     run_stage1_multimodal_ocr,
     run_stage2_editorial_refinement,
@@ -381,15 +383,30 @@ def _acquire_stage1_raw_markdown(
     if cached_result:
         return cached_result
 
+    if lower_name.endswith((".txt", ".md", ".markdown")):
+        raw_md = process_txt_local(working_path)
+        return raw_md, "TXT", _determine_actual_page_count(working_path, "TXT"), Decimal("0.0"), 0, 0
+
     if lower_name.endswith(".csv"):
         raw_md = process_csv_local(working_path)
         return raw_md, "CSV", _determine_actual_page_count(working_path, "CSV"), Decimal("0.0"), 0, 0
 
-    if lower_name.endswith(".txt"):
-        raw_md = process_txt_local(working_path)
-        return raw_md, "TXT", _determine_actual_page_count(working_path, "TXT"), Decimal("0.0"), 0, 0
+    if lower_name.endswith((".xlsx", ".xls")):
+        raw_md = process_excel_local(working_path)
+        return raw_md, "EXCEL", _determine_actual_page_count(working_path, "EXCEL"), Decimal("0.0"), 0, 0
 
-    # Multimodal OCR
+    if lower_name.endswith(".pdf"):
+        # 1. Try zero-cost native digital text extraction first
+        local_pdf_text, pdf_pages = process_pdf_local(working_path)
+        if local_pdf_text:
+            logger.info(
+                "[Worker/Stage 1] Extracted native digital text from PDF at $0.00 cost (Doc: %s, Pages: %d)",
+                doc_id_display,
+                pdf_pages,
+            )
+            return local_pdf_text, "PDF", pdf_pages, Decimal("0.0"), 0, 0
+
+    # Multimodal OCR fallback for scanned PDFs or images
     doc_type = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
     from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
 

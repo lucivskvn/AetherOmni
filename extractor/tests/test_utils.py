@@ -13,13 +13,15 @@ from extractor.utils import (
     format_localized_cost,
     get_locale_currency_details,
     process_csv_local,
+    process_excel_local,
+    process_pdf_local,
     process_txt_local,
     validate_url_scheme,
 )
 
 
 class LocalParsersTestCase(TestCase):
-    """Verifies that offline CSV and TXT local parsers function flawlessly with $0 API cost."""
+    """Verifies that offline CSV, Excel, TXT, and digital PDF local parsers function with $0 API cost."""
 
     def test_csv_parser_success(self):
         # Create a temp CSV file
@@ -44,6 +46,48 @@ class LocalParsersTestCase(TestCase):
         try:
             content = process_txt_local(temp_path)
             self.assertEqual(content, "Islamic Knowledge Extract\nPage 1 Content")
+        finally:
+            os.unlink(temp_path)
+
+    def test_txt_parser_quran_arabic_and_translations(self):
+        # Test UTF-8 Quranic verses with Harakat and multi-language translations
+        quran_text = (
+            "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ (1)\n"
+            "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ (2)\n"
+            "Translation (EN): In the Name of Allah—the Most Compassionate, Most Merciful. (1)\n"
+            "Terjemahan (ID): Dengan nama Allah Yang Maha Pengasih, Maha Penyayang. (1)"
+        )
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".txt", encoding="utf-8") as f:
+            f.write(quran_text)
+            temp_path = f.name
+
+        try:
+            content = process_txt_local(temp_path)
+            self.assertIn("بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ", content)
+            self.assertIn("In the Name of Allah", content)
+            self.assertIn("Dengan nama Allah", content)
+        finally:
+            os.unlink(temp_path)
+
+    def test_excel_parser_empty(self):
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".xlsx") as f:
+            f.write("invalid binary data")
+            temp_path = f.name
+
+        try:
+            result = process_excel_local(temp_path)
+            self.assertIn("Empty or Unreadable", result)
+        finally:
+            os.unlink(temp_path)
+
+    def test_pdf_parser_uninstalled_or_empty(self):
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".pdf") as f:
+            f.write("plain binary")
+            temp_path = f.name
+
+        try:
+            text, _pages = process_pdf_local(temp_path)
+            self.assertEqual(text, "")
         finally:
             os.unlink(temp_path)
 

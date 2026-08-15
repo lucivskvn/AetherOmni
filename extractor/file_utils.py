@@ -183,7 +183,8 @@ def process_csv_local(file_path: str) -> str:
 
 def process_txt_local(file_path: str) -> str:
     """
-    Reads local TXT files, structures them with clean margins and sanitizes contents.
+    Reads local TXT and Markdown files (including Quran Arabic text with Harakat and translations),
+    preserving UTF-8 encoding and layout structure cleanly ($0 API cost).
     """
     try:
         with open(file_path, encoding="utf-8") as f:
@@ -192,6 +193,149 @@ def process_txt_local(file_path: str) -> str:
         with open(file_path, encoding="latin-1") as f:
             content = f.read()
     return content
+
+
+def _format_markdown_table_sheet(sheet_title: str, rows: list[list[str]]) -> str:
+    """Formats a matrix of cells into a GitHub Flavored Markdown table."""
+    if not rows:
+        return ""
+    headers = rows[0]
+    sheet_md = [f"### Sheet: {sheet_title}\n"]
+    sheet_md.append("| " + " | ".join([h.replace("|", "\\|") for h in headers]) + " |")
+    sheet_md.append("| " + " | ".join(["---" for _ in headers]) + " |")
+    for r in rows[1:]:
+        if len(r) < len(headers):
+            r += [""] * (len(headers) - len(r))
+        elif len(r) > len(headers):
+            r = r[: len(headers)]
+        sheet_md.append("| " + " | ".join([c.replace("|", "\\|").replace("\n", "<br>") for c in r]) + " |")
+    return "\n".join(sheet_md)
+
+
+def _parse_excel_openpyxl(file_path: str) -> str | None:
+    """Extracts tables from workbook using openpyxl."""
+    try:
+        import openpyxl  # type: ignore[import-untyped]
+
+        wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+        sheets_md: list[str] = []
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows: list[list[str]] = []
+            for row in ws.iter_rows(values_only=True):
+                str_row = [str(cell).strip() if cell is not None else "" for cell in row]
+                if any(str_row):
+                    rows.append(str_row)
+            formatted = _format_markdown_table_sheet(sheet_name, rows)
+            if formatted:
+                sheets_md.append(formatted)
+        wb.close()
+        return "\n\n".join(sheets_md) if sheets_md else None
+    except Exception as exc:
+        logger.debug("[Excel Parser] openpyxl extraction failed: %s", exc)
+        return None
+
+
+def _parse_excel_zipxml(file_path: str) -> str | None:
+    """Pure standard-library ZIP+XML fallback for .xlsx parsing."""
+    try:
+        import xml.etree.ElementTree as ET  # nosec B405
+
+        with zipfile.ZipFile(file_path, "r") as zf:
+            validate_zip(zf)
+            shared_strings: list[str] = []
+            if "xl/sharedStrings.xml" in zf.namelist():
+                ss_tree = ET.fromstring(zf.read("xl/sharedStrings.xml"))  # nosec B314 # noqa: S314
+                for si in ss_tree.findall(".//{*}si"):
+                    t_el = si.find(".//{*}t")
+                    shared_strings.append(t_el.text if t_el is not None and t_el.text else "")
+
+            sheet_files = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
+            sheets_md: list[str] = []
+            for s_idx, s_file in enumerate(sheet_files, 1):
+                sheet_tree = ET.fromstring(zf.read(s_file))  # nosec B314 # noqa: S314
+                rows: list[list[str]] = []
+                for row_el in sheet_tree.findall(".//{*}row"):
+                    row_cells = []
+                    for c_el in row_el.findall(".//{*}c"):
+                        cell_type = c_el.get("t")
+                        v_el = c_el.find(".//{*}v")
+                        val = ""
+                        if v_el is not None and v_el.text:
+                            if cell_type == "s" and v_el.text.isdigit():
+                                idx = int(v_el.text)
+                                val = shared_strings[idx] if idx < len(shared_strings) else v_el.text
+                            else:
+                                val = v_el.text
+                        row_cells.append(val)
+                    if any(row_cells):
+                        rows.append(row_cells)
+                formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows)
+                if formatted:
+                    sheets_md.append(formatted)
+            return "\n\n".join(sheets_md) if sheets_md else None
+    except Exception as exc:
+        logger.warning("[Excel Parser] Native XML extraction failed: %s", exc)
+        return None
+
+
+def process_excel_local(file_path: str) -> str:
+    """
+    Converts Excel spreadsheets (.xlsx, .xls) cleanly to Markdown tables locally ($0 API cost).
+    Supports multi-sheet workbooks using openpyxl or pure standard library XML parsing.
+    """
+    result = _parse_excel_openpyxl(file_path)
+    if result:
+        return result
+
+    result = _parse_excel_zipxml(file_path)
+    if result:
+        return result
+
+    return "*Empty or Unreadable Excel Document*"
+
+
+def process_pdf_local(file_path: str) -> tuple[str, int]:
+    """
+    Extracts native digital text and page structure from PDF pages locally ($0 API cost).
+    Returns a tuple of (extracted_markdown, page_count).
+    If no text or PyMuPDF/pypdf is uninstalled, returns ("", page_count).
+    """
+    try:
+        import fitz  # PyMuPDF
+
+        doc = fitz.open(file_path)
+        pages_md: list[str] = []
+        page_count = len(doc)
+        for page_num in range(page_count):
+            page = doc[page_num]
+            text = page.get_text("text").strip()
+            if text:
+                pages_md.append(f"## Page {page_num + 1}\n\n{text}")
+        doc.close()
+        if pages_md and len("".join(pages_md).strip()) > 30:
+            return "\n\n---\n\n".join(pages_md), page_count
+        return "", page_count
+    except Exception as exc:
+        logger.debug("[PDF Local] PyMuPDF local text extraction skipped (%s)", exc)
+
+    try:
+        import pypdf
+
+        reader = pypdf.PdfReader(file_path)
+        page_count = len(reader.pages)
+        pages_md = []
+        for p_idx, page in enumerate(reader.pages, 1):
+            text = (page.extract_text() or "").strip()
+            if text:
+                pages_md.append(f"## Page {p_idx}\n\n{text}")
+        if pages_md and len("".join(pages_md).strip()) > 30:
+            return "\n\n---\n\n".join(pages_md), page_count
+        return "", page_count
+    except Exception as exc:
+        logger.debug("[PDF Local] pypdf local text extraction skipped (%s)", exc)
+
+    return "", 0
 
 
 def clean_html_content(raw_html: str) -> str:

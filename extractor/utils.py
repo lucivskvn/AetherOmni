@@ -39,6 +39,8 @@ from extractor.file_utils import (
     get_google_oidc_token,
     get_locale_currency_details,
     process_csv_local,
+    process_excel_local,
+    process_pdf_local,
     process_txt_local,
     render_markdown_to_html,
 )
@@ -235,6 +237,8 @@ __all__ = [
     "get_locale_currency_details",
     "log_audit_event",
     "process_csv_local",
+    "process_excel_local",
+    "process_pdf_local",
     "process_txt_local",
     "query_semantic_knowledge_rag",
     "render_markdown_to_html",
