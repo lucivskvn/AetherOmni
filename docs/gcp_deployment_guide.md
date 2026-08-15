@@ -432,6 +432,7 @@ gcloud builds submit --config infra/gcp/cloudbuild.yaml \
 
 AI agents and platform operators leverage Model Context Protocol (MCP) servers for live, zero-overhead diagnostic triage across the deployment lifecycle:
 
+- **Sequential Thinking MCP (`sequential-thinking`)**: Deconstruct complex multi-stage deployment anomalies, trace inter-service race conditions between Cloud Tasks and SurrealDB transactions, and formulate deterministic root-cause hypotheses.
 - **Google Cloud Logging MCP (`google-cloud-logging`)**: Triage Cloud Run service logs (`get_service_log`, `list_log_entries`) to pinpoint unhandled container exceptions or startup timeouts without navigating the GCP web console.
 - **Google Cloud Monitoring MCP (`google-cloud-monitoring`)**: Query live Cloud Run latency percentiles, worker CPU/memory usage, and Cloud Tasks queue depths (`list_timeseries`, `list_alerts`).
 - **SonarQube MCP (`sonarqube`)**: Query real-time quality gate status, rule violations, and security hotspots (`get_project_quality_gate_status`, `search_sonar_issues_in_projects`).

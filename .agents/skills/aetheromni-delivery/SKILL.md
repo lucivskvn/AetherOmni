@@ -47,6 +47,7 @@ RBAC, graph RAG, or autonomous agents.
 
 Utilize specialized Model Context Protocol (MCP) servers for fast, grounded diagnostics:
 
+- **Sequential Thinking MCP**: Systematic step-by-step reasoning for architectural design, root-cause investigation, and complex refactors.
 - **SonarQube MCP**: Query live project issues, hotspots, and quality gate status (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`).
 - **Google Cloud Logging & Monitoring MCP**: Inspect live Cloud Run container logs and service performance metrics (`list_log_entries`, `get_service_log`, `list_timeseries`).
 - **Chrome DevTools MCP**: Diagnose UI/UX regressions, Lighthouse Core Web Vitals, accessibility standards (`a11y-debugging`), and browser console errors (`list_console_messages`).
