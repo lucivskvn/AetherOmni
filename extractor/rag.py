@@ -490,6 +490,24 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
 
 
 def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_block: str, selected_model: str) -> Any:
+    # Context Caching in SurrealDB:
+    import hashlib
+
+    from extractor import surreal_db
+
+    if context_str:
+        context_hash = hashlib.sha256(context_str.encode("utf-8")).hexdigest()
+        try:
+            cached_entry = surreal_db.context_cache_get(context_hash)
+            if not cached_entry:
+                surreal_db.context_cache_set(
+                    context_hash=context_hash,
+                    context_text=context_str,
+                    token_count=len(context_str) // 4,
+                )
+        except Exception as exc:
+            logger.debug("[Context Cache] surreal context cache check error: %s", exc)
+
     system_instruction = f"""
     You are a Digital Preservation Librarian and Archival Scholar.
     Your task is to answer the query accurately, grounding your answers ONLY in the validated source context block below.
