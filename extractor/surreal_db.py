@@ -1,11 +1,16 @@
 """
-SurrealDB REST Client Adapter — AetherOmni v2.0
+SurrealDB Multi-Model & Vector Engine Adapter — AetherOmni v2.0
 
-Implements a thread-safe connection pool using a single global httpx.Client
-instance to prevent socket exhaustion under concurrent request load.
+Implements an asynchronous SurrealDB client adapter powered by AsyncSurreal
+and async-to-sync boundaries for thread safety and high-throughput execution.
 
-All public methods execute SurrealQL via the /sql endpoint and return
-plain Python dicts/lists — no ORM coupling.
+Capabilities:
+  - Document metadata storage & transactional CRUD
+  - Vector embeddings & chunk storage with HNSW 768 cosine similarity index
+  - Tokenized prompt context cache (`context_cache`)
+  - Distributed atomic sliding-window rate limiting (`rate_limits`)
+  - Semantic user memories (`user_memories`)
+  - Offline fallback integration for unit testing and local development
 """
 
 from __future__ import annotations

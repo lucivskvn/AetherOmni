@@ -77,6 +77,7 @@ jobs:
             case "${status}" in
               202) echo "PR #${number} refresh accepted." ;;
               422) echo "PR #${number} needs no refresh or has a merge conflict: $(jq -r '.message // "unknown response"' response.json)" ;;
+              403|404) echo "::warning title=PR #${number} branch refresh skipped::$(jq -r '.message // "Insufficient token permissions or branch missing"' response.json)" ;;
               *) cat response.json; exit 1 ;;
             esac
           done < prs.tsv

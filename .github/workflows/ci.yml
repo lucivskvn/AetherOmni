@@ -85,6 +85,7 @@ jobs:
           yamllint bandit.yaml docker-compose.yml
           .ci-security-tools/bin/semgrep scan --config=auto --quiet --error
           .ci-security-tools/bin/bandit -c bandit.yaml -r core extractor
+          python scripts/verify_templates_and_assets.py
           python manage.py collectstatic --noinput
           coverage run --source='core,extractor' manage.py test --keepdb
         env:

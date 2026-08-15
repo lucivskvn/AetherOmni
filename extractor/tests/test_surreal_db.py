@@ -200,3 +200,17 @@ class SurrealDBClientTestCase(TestCase):
         # First request allowed (initial entry created)
         allowed = surreal_db.check_rate_limit_atomic("user:123", max_requests=5)
         self.assertTrue(allowed)
+
+    def test_update_document_offline_nonexistent(self):
+        res = surreal_db._update_document_offline("00000000-0000-0000-0000-000000000000", {"title": "New Title"})
+        self.assertEqual(res, {})
+
+    def test_delete_offline_document_nonexistent(self):
+        # Should not raise exception
+        surreal_db._delete_offline_document("00000000-0000-0000-0000-000000000000")
+        surreal_db._delete_offline_document("not-a-valid-int-or-uuid")
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    def test_find_chunk_embeddings_batch_offline(self):
+        res = surreal_db.find_chunk_embeddings_batch(["nonexistent-uuid-1", "nonexistent-uuid-2"])
+        self.assertEqual(res, {})

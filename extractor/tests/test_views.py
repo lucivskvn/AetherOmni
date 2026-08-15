@@ -1617,3 +1617,100 @@ class SupabaseSessionExchangeTestCase(TestCase):
             self.assertEqual(data["status"], "ok")
             self.assertEqual(data["user"], "oauth.user")
             self.assertEqual(self.client.session.get("supabase_user_id"), "oauth-uuid-123")
+
+
+class ViewsExceptionPathsTestCase(TestCase):
+    """Direct unit tests for helper functions and exception paths in views.py."""
+
+    def test_parse_datetime_variations(self):
+        from datetime import datetime
+
+        from django.utils import timezone
+
+        from extractor.views import parse_datetime
+
+        now = timezone.now()
+        # datetime object returned directly
+        self.assertEqual(parse_datetime(now), now)
+
+        # None/empty returns current time
+        self.assertIsInstance(parse_datetime(None), datetime)
+        self.assertIsInstance(parse_datetime(""), datetime)
+
+        # ISO format
+        dt_str = "2026-08-15T12:00:00Z"
+        parsed = parse_datetime(dt_str)
+        self.assertEqual(parsed.year, 2026)
+        self.assertEqual(parsed.month, 8)
+        self.assertEqual(parsed.day, 15)
+
+        # Django parse alternative format
+        alt_str = "2026-08-15 14:30:00"
+        parsed_alt = parse_datetime(alt_str)
+        self.assertEqual(parsed_alt.hour, 14)
+
+        # Completely invalid string returns current time
+        self.assertIsInstance(parse_datetime("invalid-date-string-xyz"), datetime)
+
+    def test_supabase_register_error_handling(self):
+        import io
+        import json
+        import urllib.error
+        from unittest.mock import patch
+
+        from extractor.views import _register_supabase_user
+
+        # Test HTTPError with JSON error body
+        err_json = json.dumps({"msg": "User already registered"}).encode("utf-8")
+        http_err = urllib.error.HTTPError("http://supabase", 400, "Bad Request", {}, io.BytesIO(err_json))
+        with patch("urllib.request.urlopen", side_effect=http_err):
+            success, msg = _register_supabase_user(
+                "https://sub.supabase.co", "key", "test@example.com", "pass", "http://app", ""
+            )
+            self.assertFalse(success)
+            self.assertIn("User already registered", msg)
+
+        # Test HTTPError with non-JSON body
+        non_json_err = urllib.error.HTTPError(
+            "http://supabase", 500, "Server Error", {}, io.BytesIO(b"Internal failure")
+        )
+        with patch("urllib.request.urlopen", side_effect=non_json_err):
+            success, msg = _register_supabase_user(
+                "https://sub.supabase.co", "key", "test@example.com", "pass", "http://app", ""
+            )
+            self.assertFalse(success)
+            self.assertIn("Internal failure", msg)
+
+        # Test generic Exception
+        with patch("urllib.request.urlopen", side_effect=ConnectionResetError("Connection lost")):
+            success, msg = _register_supabase_user(
+                "https://sub.supabase.co", "key", "test@example.com", "pass", "http://app", ""
+            )
+            self.assertFalse(success)
+            self.assertIn("Connection lost", msg)
+
+    def test_supabase_recovery_error_handling(self):
+        import io
+        import json
+        import urllib.error
+        from unittest.mock import patch
+
+        from extractor.views import _send_supabase_recovery
+
+        # Test HTTPError with JSON error body
+        err_json = json.dumps({"error_description": "Rate limit exceeded"}).encode("utf-8")
+        http_err = urllib.error.HTTPError("http://supabase", 429, "Too Many Requests", {}, io.BytesIO(err_json))
+        with patch("urllib.request.urlopen", side_effect=http_err):
+            success, msg = _send_supabase_recovery(
+                "test@example.com", "https://sub.supabase.co", "key", "http://app", ""
+            )
+            self.assertFalse(success)
+            self.assertIn("Rate limit exceeded", msg)
+
+        # Test generic Exception
+        with patch("urllib.request.urlopen", side_effect=TimeoutError("Request timed out")):
+            success, msg = _send_supabase_recovery(
+                "test@example.com", "https://sub.supabase.co", "key", "http://app", ""
+            )
+            self.assertFalse(success)
+            self.assertIn("timed out", msg)

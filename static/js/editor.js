@@ -90,9 +90,18 @@ function replaceMarkdownLinks(text) {
     return output;
 }
 
+/**
+ * Validates that a markdown preview URL string uses a safe HTTP or HTTPS protocol.
+ * @param {string} value - URL string to validate.
+ * @returns {boolean} True if safe, False otherwise.
+ */
 function isSafePreviewUrl(value) {
+    if (!value || typeof value !== 'string') {
+        return false;
+    }
     try {
-        const parsed = new URL(value, window.location.origin);
+        const baseOrigin = typeof globalThis.location !== 'undefined' && globalThis.location.origin ? globalThis.location.origin : 'https://aetheromni.local';
+        const parsed = new URL(value, baseOrigin);
         return parsed.protocol === 'https:' || parsed.protocol === 'http:';
     } catch {
         return false;

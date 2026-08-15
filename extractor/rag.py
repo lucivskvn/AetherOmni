@@ -15,6 +15,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with AetherOmni.  If not, see <https://www.gnu.org/licenses/>.
 
+"""
+Retrieval-Augmented Generation (RAG) & Semantic Search Engine — AetherOmni v2.0
+
+Provides:
+  - Semantic document chunking tailored for multilingual text (Latin, Arabic)
+  - HNSW 768 cosine vector similarity search via SurrealDB
+  - Dynamic reranking and context-aware citation synthesis
+  - Semantic query caching and token-budget aware context assembly
+"""
 
 from __future__ import annotations
 
