@@ -14,3 +14,6 @@
 ## 2026-08-15 - Add ARIA Labels to OAuth Buttons
 **Learning:** Icon-heavy third-party authentication buttons (like GitHub OAuth) lack clear accessible names if they rely solely on SVG content.
 **Action:** Add descriptive `aria-label` attributes to OAuth buttons (e.g., `Sign in with GitHub`) to ensure screen readers announce their function accurately.
+## 2026-08-15 - Add `:focus-visible` to OAuth Buttons
+**Learning:** Keyboard users navigating the authentication forms lack visual feedback when focusing on the GitHub OAuth buttons, as they don't inherit the global focus styles perfectly due to their border radius and specific styles.
+**Action:** Adding an explicit `.btn-github-auth:focus-visible` CSS rule in `login.html` and `register.html` fixes this by displaying a clear outline with the correct offset and border radius, improving accessibility and consistency.
