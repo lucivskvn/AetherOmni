@@ -377,10 +377,10 @@ for host in ALLOWED_HOSTS:
 
 # 4. Trust localhost and loopback — always needed for gcloud Run proxy / health checks
 local_origins = [
-    "http://localhost:8080",  # NOSONAR
-    "http://127.0.0.1:8080",  # NOSONAR
-    "http://localhost",  # NOSONAR
-    "http://127.0.0.1",  # NOSONAR
+    "http://localhost:8080",  # NOSONAR python:S5332 -- Local development origin allowlist
+    "http://127.0.0.1:8080",  # NOSONAR python:S5332 -- Local development origin allowlist
+    "http://localhost",  # NOSONAR python:S5332 -- Local development origin allowlist
+    "http://127.0.0.1",  # NOSONAR python:S5332 -- Local development origin allowlist
     "https://localhost:8080",
     "https://127.0.0.1:8080",
     "https://localhost",
@@ -395,11 +395,11 @@ for origin in local_origins:
 if DEBUG:
     tunnel_origins = [
         "https://*.ngrok-free.app",
-        "http://*.ngrok-free.app",  # NOSONAR
+        "http://*.ngrok-free.app",  # NOSONAR python:S5332 -- Local tunnel origin allowlist in DEBUG mode
         "https://*.trycloudflare.com",
-        "http://*.trycloudflare.com",  # NOSONAR
+        "http://*.trycloudflare.com",  # NOSONAR python:S5332 -- Local tunnel origin allowlist in DEBUG mode
         "https://*.localtunnel.me",
-        "http://*.localtunnel.me",  # NOSONAR
+        "http://*.localtunnel.me",  # NOSONAR python:S5332 -- Local tunnel origin allowlist in DEBUG mode
         "https://*.gitpod.io",
         "https://*.github.dev",
     ]

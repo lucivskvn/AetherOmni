@@ -83,16 +83,27 @@ function replaceMarkdownLinks(text) {
             continue;
         }
 
-        output += `${remaining.slice(0, start)}<a href="${url}" target="_blank" rel="noopener" class="preview-link">${label}</a>`;
+        const safeLabel = escapeHtml(label);
+        const safeUrl = escapeHtml(url);
+        output += `${remaining.slice(0, start)}<a href="${safeUrl}" target="_blank" rel="noopener" class="preview-link">${safeLabel}</a>`;
         remaining = remaining.slice(urlEnd + 1);
     }
 
     return output;
 }
 
+/**
+ * Validates that a markdown preview URL string uses a safe HTTP or HTTPS protocol.
+ * @param {string} value - URL string to validate.
+ * @returns {boolean} True if safe, False otherwise.
+ */
 function isSafePreviewUrl(value) {
+    if (!value || typeof value !== 'string') {
+        return false;
+    }
     try {
-        const parsed = new URL(value, window.location.origin);
+        const baseOrigin = typeof globalThis.location !== 'undefined' && globalThis.location.origin ? globalThis.location.origin : 'https://aetheromni.local';
+        const parsed = new URL(value, baseOrigin);
         return parsed.protocol === 'https:' || parsed.protocol === 'http:';
     } catch {
         return false;
@@ -167,6 +178,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Bi-directional proportional scroll synchronisation
         setupScrollSync(editor, preview);
+
+        // Listen for anchor hash changes dynamically
+        window.addEventListener('hashchange', () => {
+            initDeepLinkScroll(preview);
+        });
     }
 
     // ── 2. Markdown Toolbar Injections ───────────────────────────────────────
@@ -216,6 +232,54 @@ function applyPostRenderFeatures(container) {
     if (typeof lucide !== 'undefined' && lucide.createIcons) {
         try { lucide.createIcons(); } catch { /* ignore */ }
     }
+
+    initDeepLinkScroll(container);
+}
+
+function _escapeCssIdentifier(value) {
+    if (typeof globalThis.CSS !== 'undefined' && globalThis.CSS?.escape) {
+        return globalThis.CSS.escape(value);
+    }
+    return value.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+}
+
+/**
+ * Smoothly scrolls to the target anchor matching window.location.hash and triggers
+ * a temporary glowing pulse animation on the matching DOM element.
+ * @param {HTMLElement} container - The container element to search within.
+ */
+function initDeepLinkScroll(container) {
+    if (typeof globalThis.location === 'undefined' || !globalThis.location.hash) return;
+    const rawHash = globalThis.location.hash.replace(/^#/, '');
+    if (!rawHash) return;
+
+    try {
+        const decodedHash = decodeURIComponent(rawHash).toLowerCase();
+        const escaped = _escapeCssIdentifier(decodedHash);
+        const target = (container || document).querySelector(
+            `#${escaped}, [id*="${escaped}"]`
+        );
+        if (target) {
+            setTimeout(() => {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.classList.remove('deep-link-pulse');
+                void target.offsetWidth;
+                target.classList.add('deep-link-pulse');
+            }, 120);
+        }
+    } catch {
+        // Safe fallback for query selector escapes
+    }
+}
+
+function _slugifyHeading(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text.toLowerCase()
+        .replace(/[^a-z0-9\u0600-\u06FF\s-]/gu, '')
+        .trim()
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 50);
 }
 
 /**
@@ -309,7 +373,14 @@ function processBlockElement(line, state, htmlBuilder) {
     if (hMatch) {
         if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; }
         const level = hMatch[1].length;
-        pushHtml('<h' + level + '>' + parseInline(hMatch[2]) + '</h' + level + '>');
+        const headingText = hMatch[2];
+        let slug = _slugifyHeading(headingText);
+        const pageMatch = headingText.match(/^Page\s+(\d+)/i);
+        if (pageMatch) {
+            slug = `page-${pageMatch[1]}`;
+        }
+        const idAttr = slug ? ` id="${slug}" class="heading-anchor"` : '';
+        pushHtml(`<h${level}${idAttr}>${parseInline(headingText)}</h${level}>`);
         return;
     }
 

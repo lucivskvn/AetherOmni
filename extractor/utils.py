@@ -35,10 +35,15 @@ from extractor.file_utils import (
     clean_html_content,
     format_localized_cost,
     generate_curated_zip_bundle,
+    generate_sft_dataset_pairs,
+    generate_sft_jsonl_bundle,
     get_client_ip,
     get_google_oidc_token,
     get_locale_currency_details,
     process_csv_local,
+    process_excel_local,
+    process_json_local,
+    process_pdf_local,
     process_txt_local,
     render_markdown_to_html,
 )
@@ -145,9 +150,11 @@ def validate_url_scheme(url: str) -> None:
     """
     from django.conf import settings
 
-    if not url.startswith(("http://", "https://")):  # NOSONAR
+    if not url.startswith(("http://", "https://")):  # NOSONAR python:S5332 -- Protocol scheme validator
         raise ValueError("Invalid URL scheme. Only http and https schemes are permitted.")
-    if not getattr(settings, "DEBUG", True) and url.startswith("http://"):  # NOSONAR
+    if not getattr(settings, "DEBUG", True) and url.startswith(
+        "http://"
+    ):  # NOSONAR python:S5332 -- Enforcement of https in production
         raise ValueError("Insecure URL scheme. Production environments require https.")
 
 
@@ -227,12 +234,17 @@ __all__ = [
     "format_localized_cost",
     "generate_curated_zip_bundle",
     "generate_llm_content_unified",
+    "generate_sft_dataset_pairs",
+    "generate_sft_jsonl_bundle",
     "generate_surreal_embeddings",
     "get_client_ip",
     "get_google_oidc_token",
     "get_locale_currency_details",
     "log_audit_event",
     "process_csv_local",
+    "process_excel_local",
+    "process_json_local",
+    "process_pdf_local",
     "process_txt_local",
     "query_semantic_knowledge_rag",
     "render_markdown_to_html",

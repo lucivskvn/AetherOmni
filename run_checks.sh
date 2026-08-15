@@ -154,16 +154,17 @@ if [ "$DOCS_ONLY" = true ]; then
     fi
 
     # Perform fast Django system integrity & template check if Python or HTML files changed
-    CHANGED_TEMPLATES=$(echo "$CHANGED_FILES" | grep -E '\.(py|html)$' || true)
+    CHANGED_TEMPLATES=$(echo "$CHANGED_FILES" | grep -E '\.(py|html|js|css)$' || true)
     if [ -n "$CHANGED_TEMPLATES" ]; then
         echo -e "${YELLOW}[Diff Audit] Verifying Django System Integrity & Template Configuration...${NC}"
         $PYTHON_BIN manage.py check --deploy --fail-level=ERROR || exit 1
-        echo -e "${GREEN}✓ Django system check & deployment readiness passed cleanly (0 errors).${NC}"
+        $PYTHON_BIN scripts/verify_templates_and_assets.py || exit 1
+        echo -e "${GREEN}✓ Django system check & template asset integrity passed cleanly (0 errors).${NC}"
     fi
 
     # Filter changed SurrealQL files
     CHANGED_SURQL=$(echo "$CHANGED_FILES" | grep -E '\.surql$' || true)
-    if [ -n "$CHANGED_SURQL" ] && command -v surreal &> /dev/null; then
+    if [ -n "$CHANGED_SURQL" ] && command -v surreal &> /dev/null && surreal version &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Validating changed SurrealQL files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_SURQL holds space-separated filenames
         surreal validate $CHANGED_SURQL 2>&1 || exit 1
@@ -246,7 +247,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[SurrealQL] Validating SurrealQL schema syntax (surreal validate)...${NC}"
-if command -v surreal &> /dev/null; then
+if command -v surreal &> /dev/null && surreal version &> /dev/null; then
     SURQL_FILES=$(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" 2>/dev/null | tr '\n' ' ')
     if [ -n "$SURQL_FILES" ]; then
         # shellcheck disable=SC2086  # intentional word-splitting: SURQL_FILES holds space-separated filenames
@@ -260,8 +261,11 @@ if command -v surreal &> /dev/null; then
         echo -e "${GREEN}✓ No .surql files found (skipping).${NC}"
     fi
 else
-    echo -e "${YELLOW}⚠ surreal CLI not found (install: curl -sSf https://install.surrealdb.com | sh). Skipping SurrealQL validation.${NC}"
+    echo -e "${YELLOW}⚠ surreal CLI not found or executable (install: curl -sSf https://install.surrealdb.com | sh). Skipping SurrealQL validation.${NC}"
 fi
+
+echo -e "\n${YELLOW}[UI/UX Gatekeeper] Auditing Template & Static Asset Integrity...${NC}"
+$PYTHON_BIN scripts/verify_templates_and_assets.py || exit 1
 
 echo -e "\n${YELLOW}[Shell Security] Executing ShellCheck Shell Script Audit...${NC}"
 if command -v shellcheck &> /dev/null; then

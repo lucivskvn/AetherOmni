@@ -10,6 +10,7 @@ The task_handlers.TASK_REGISTRY maps task_name → function.
 
 import logging
 import os
+import re
 import tempfile
 import traceback
 from datetime import UTC, timedelta
@@ -20,6 +21,7 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
+from django.utils.text import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,9 @@ from extractor.utils import (
     generate_surreal_embeddings,
     log_audit_event,
     process_csv_local,
+    process_excel_local,
+    process_json_local,
+    process_pdf_local,
     process_txt_local,
     run_stage1_multimodal_ocr,
     run_stage2_editorial_refinement,
@@ -185,6 +190,11 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     Lock document row and transition status to EXTRACTING.
     Returns None if document is already finalised, doesn't exist, or budget is exceeded.
     """
+    doc = surreal_db.claim_document_for_processing(doc_uuid)
+    if not doc:
+        logger.info("[Worker] Document %s is not pending or is already claimed. Skipping.", doc_uuid)
+        return None
+
     try:
         check_budget_and_api_limit()
     except Exception as budget_err:
@@ -193,11 +203,6 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
             error_message=f"Budget Capped Halt: {budget_err!s}",
             details=f"Pipeline halted before start due to budget breach: {budget_err!s}",
         )
-        return None
-
-    doc = surreal_db.claim_document_for_processing(doc_uuid)
-    if not doc:
-        logger.info("[Worker] Document %s is not pending or is already claimed. Skipping.", doc_uuid)
         return None
 
     from django.contrib.auth import get_user_model
@@ -381,15 +386,34 @@ def _acquire_stage1_raw_markdown(
     if cached_result:
         return cached_result
 
+    if lower_name.endswith((".txt", ".md", ".markdown")):
+        raw_md = process_txt_local(working_path)
+        return raw_md, "TXT", _determine_actual_page_count(working_path, "TXT"), Decimal("0.0"), 0, 0
+
     if lower_name.endswith(".csv"):
         raw_md = process_csv_local(working_path)
         return raw_md, "CSV", _determine_actual_page_count(working_path, "CSV"), Decimal("0.0"), 0, 0
 
-    if lower_name.endswith(".txt"):
-        raw_md = process_txt_local(working_path)
-        return raw_md, "TXT", _determine_actual_page_count(working_path, "TXT"), Decimal("0.0"), 0, 0
+    if lower_name.endswith((".xlsx", ".xls")):
+        raw_md = process_excel_local(working_path)
+        return raw_md, "EXCEL", _determine_actual_page_count(working_path, "EXCEL"), Decimal("0.0"), 0, 0
 
-    # Multimodal OCR
+    if lower_name.endswith(".json"):
+        raw_md = process_json_local(working_path)
+        return raw_md, "JSON", _determine_actual_page_count(working_path, "JSON"), Decimal("0.0"), 0, 0
+
+    if lower_name.endswith(".pdf"):
+        # 1. Try zero-cost native digital text extraction first
+        local_pdf_text, pdf_pages = process_pdf_local(working_path)
+        if local_pdf_text:
+            logger.info(
+                "[Worker/Stage 1] Extracted native digital text from PDF at $0.00 cost (Doc: %s, Pages: %d)",
+                doc_id_display,
+                pdf_pages,
+            )
+            return local_pdf_text, "PDF", pdf_pages, Decimal("0.0"), 0, 0
+
+    # Multimodal OCR fallback for scanned PDFs or images
     doc_type = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
     from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
 
@@ -702,7 +726,9 @@ def _update_doc_metadata(doc_ref, parsed_meta: dict):
         _set_val(doc_ref, "license_type", _truncate(parsed_lic, 100))
 
     if parsed_doi and not _is_unknown_value(parsed_doi):
-        clean_doi = str(parsed_doi).replace("https://doi.org/", "").replace("http://doi.org/", "").strip()  # NOSONAR
+        clean_doi = (
+            str(parsed_doi).replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+        )  # NOSONAR python:S5332 -- Strip URL scheme from DOI identifier
         _set_val(doc_ref, "doi", _truncate(clean_doi, 255))
 
 
@@ -867,16 +893,32 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
     if chunks:
         embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
 
-        chunk_payloads = [
-            {
-                "chunk_index": i,
-                "content": chunk_text,
-                "token_count": len(chunk_text.split()),
-                "language": doc.get("language") or "",
-                "embedding": emb,
-            }
-            for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
-        ]
+        chunk_payloads = []
+        current_page = 1
+        current_chapter = ""
+        for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings)):
+            page_match = re.search(r"## Page (\d+)", chunk_text, re.IGNORECASE)
+            if page_match:
+                current_page = int(page_match.group(1))
+            chap_match = re.search(r"(?:###?|Chapter|Surah|Hadith)\s+([^\n]+)", chunk_text, re.IGNORECASE)
+            if chap_match:
+                current_chapter = chap_match.group(1).strip()
+            anchor_slug = (
+                f"page-{current_page}" if not current_chapter else f"p{current_page}-{slugify(current_chapter[:30])}"
+            )
+
+            chunk_payloads.append(
+                {
+                    "chunk_index": i,
+                    "content": chunk_text,
+                    "token_count": len(chunk_text.split()),
+                    "language": doc.get("language") or "",
+                    "page_number": current_page,
+                    "chapter_title": current_chapter,
+                    "anchor_id": anchor_slug,
+                    "embedding": emb,
+                }
+            )
 
         # Delete old SurrealDB chunks first, then insert new ones atomically
         surreal_db.recreate_chunks(doc_uuid, chunk_payloads)

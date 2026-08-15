@@ -183,7 +183,8 @@ def process_csv_local(file_path: str) -> str:
 
 def process_txt_local(file_path: str) -> str:
     """
-    Reads local TXT files, structures them with clean margins and sanitizes contents.
+    Reads local TXT and Markdown files (including Quran Arabic text with Harakat and translations),
+    preserving UTF-8 encoding and layout structure cleanly ($0 API cost).
     """
     try:
         with open(file_path, encoding="utf-8") as f:
@@ -192,6 +193,192 @@ def process_txt_local(file_path: str) -> str:
         with open(file_path, encoding="latin-1") as f:
             content = f.read()
     return content
+
+
+def _format_json_rows_as_table(title: str, items: list[dict]) -> str:
+    """Formats a list of dictionaries into a clean Markdown table."""
+    keys = list({k: True for item in items for k in item}.keys())
+    rows = []
+    for item in items:
+        rows.append([str(item.get(k, "")).strip().replace("\n", "<br>") for k in keys])
+    return _format_markdown_table_sheet(title, [keys, *rows])
+
+
+def process_json_local(file_path: str) -> str:
+    """
+    Parses local JSON documents (including Quran verse datasets, Hadith collections,
+    and structured JSON payloads) into structured Markdown sections and tables ($0 API cost).
+    """
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except UnicodeDecodeError:
+        with open(file_path, encoding="latin-1") as f:
+            data = json.load(f)
+
+    if isinstance(data, list):
+        if not data:
+            return "*Empty JSON List*"
+        if all(isinstance(item, dict) for item in data):
+            return _format_json_rows_as_table("Dataset", data)
+        return "\n\n".join(f"- {json.dumps(item, ensure_ascii=False)}" for item in data)
+
+    if isinstance(data, dict):
+        sections = []
+        for key, value in data.items():
+            title = str(key).replace("_", " ").title()
+            if isinstance(value, list) and all(isinstance(x, dict) for x in value):
+                sections.append(f"## {title}\n\n" + _format_json_rows_as_table(title, value))
+            elif isinstance(value, (dict, list)):
+                sections.append(f"## {title}\n\n```json\n{json.dumps(value, indent=2, ensure_ascii=False)}\n```")
+            else:
+                sections.append(f"## {title}\n\n{value}")
+        return "\n\n".join(sections) if sections else "*Empty JSON Object*"
+
+    return str(data)
+
+
+def _format_markdown_table_sheet(sheet_title: str, rows: list[list[str]]) -> str:
+    """Formats a matrix of cells into a GitHub Flavored Markdown table."""
+    if not rows:
+        return ""
+    headers = rows[0]
+    sheet_md = [f"### Sheet: {sheet_title}\n"]
+    sheet_md.append("| " + " | ".join([h.replace("|", "\\|") for h in headers]) + " |")
+    sheet_md.append("| " + " | ".join(["---" for _ in headers]) + " |")
+    for r in rows[1:]:
+        if len(r) < len(headers):
+            r += [""] * (len(headers) - len(r))
+        elif len(r) > len(headers):
+            r = r[: len(headers)]
+        sheet_md.append("| " + " | ".join([c.replace("|", "\\|").replace("\n", "<br>") for c in r]) + " |")
+    return "\n".join(sheet_md)
+
+
+def _parse_excel_openpyxl(file_path: str) -> str | None:
+    """Extracts tables from workbook using openpyxl."""
+    try:
+        import openpyxl  # type: ignore[import-untyped]
+
+        wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+        sheets_md: list[str] = []
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows: list[list[str]] = []
+            for row in ws.iter_rows(values_only=True):
+                str_row = [str(cell).strip() if cell is not None else "" for cell in row]
+                if any(str_row):
+                    rows.append(str_row)
+            formatted = _format_markdown_table_sheet(sheet_name, rows)
+            if formatted:
+                sheets_md.append(formatted)
+        wb.close()
+        return "\n\n".join(sheets_md) if sheets_md else None
+    except Exception as exc:
+        logger.debug("[Excel Parser] openpyxl extraction failed: %s", exc)
+        return None
+
+
+def _parse_excel_zipxml(file_path: str) -> str | None:
+    """Pure standard-library ZIP+XML fallback for .xlsx parsing."""
+    try:
+        import xml.etree.ElementTree as ET  # nosec B405
+
+        with zipfile.ZipFile(file_path, "r") as zf:
+            validate_zip(zf)
+            shared_strings: list[str] = []
+            if "xl/sharedStrings.xml" in zf.namelist():
+                ss_tree = ET.fromstring(zf.read("xl/sharedStrings.xml"))  # nosec B314 # noqa: S314
+                for si in ss_tree.findall(".//{*}si"):
+                    t_el = si.find(".//{*}t")
+                    shared_strings.append(t_el.text if t_el is not None and t_el.text else "")
+
+            sheet_files = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
+            sheets_md: list[str] = []
+            for s_idx, s_file in enumerate(sheet_files, 1):
+                sheet_tree = ET.fromstring(zf.read(s_file))  # nosec B314 # noqa: S314
+                rows: list[list[str]] = []
+                for row_el in sheet_tree.findall(".//{*}row"):
+                    row_cells = []
+                    for c_el in row_el.findall(".//{*}c"):
+                        cell_type = c_el.get("t")
+                        v_el = c_el.find(".//{*}v")
+                        val = ""
+                        if v_el is not None and v_el.text:
+                            if cell_type == "s" and v_el.text.isdigit():
+                                idx = int(v_el.text)
+                                val = shared_strings[idx] if idx < len(shared_strings) else v_el.text
+                            else:
+                                val = v_el.text
+                        row_cells.append(val)
+                    if any(row_cells):
+                        rows.append(row_cells)
+                formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows)
+                if formatted:
+                    sheets_md.append(formatted)
+            return "\n\n".join(sheets_md) if sheets_md else None
+    except Exception as exc:
+        logger.warning("[Excel Parser] Native XML extraction failed: %s", exc)
+        return None
+
+
+def process_excel_local(file_path: str) -> str:
+    """
+    Converts Excel spreadsheets (.xlsx, .xls) cleanly to Markdown tables locally ($0 API cost).
+    Supports multi-sheet workbooks using openpyxl or pure standard library XML parsing.
+    """
+    result = _parse_excel_openpyxl(file_path)
+    if result:
+        return result
+
+    result = _parse_excel_zipxml(file_path)
+    if result:
+        return result
+
+    return "*Empty or Unreadable Excel Document*"
+
+
+def process_pdf_local(file_path: str) -> tuple[str, int]:
+    """
+    Extracts native digital text and page structure from PDF pages locally ($0 API cost).
+    Returns a tuple of (extracted_markdown, page_count).
+    If no text or PyMuPDF/pypdf is uninstalled, returns ("", page_count).
+    """
+    try:
+        import fitz  # PyMuPDF
+
+        doc = fitz.open(file_path)
+        pages_md: list[str] = []
+        page_count = len(doc)
+        for page_num in range(page_count):
+            page = doc[page_num]
+            text = page.get_text("text").strip()
+            if text:
+                pages_md.append(f"## Page {page_num + 1}\n\n{text}")
+        doc.close()
+        if pages_md and len("".join(pages_md).strip()) > 30:
+            return "\n\n---\n\n".join(pages_md), page_count
+        return "", page_count
+    except Exception as exc:
+        logger.debug("[PDF Local] PyMuPDF local text extraction skipped (%s)", exc)
+
+    try:
+        import pypdf
+
+        reader = pypdf.PdfReader(file_path)
+        page_count = len(reader.pages)
+        pages_md = []
+        for p_idx, page in enumerate(reader.pages, 1):
+            text = (page.extract_text() or "").strip()
+            if text:
+                pages_md.append(f"## Page {p_idx}\n\n{text}")
+        if pages_md and len("".join(pages_md).strip()) > 30:
+            return "\n\n---\n\n".join(pages_md), page_count
+        return "", page_count
+    except Exception as exc:
+        logger.debug("[PDF Local] pypdf local text extraction skipped (%s)", exc)
+
+    return "", 0
 
 
 def clean_html_content(raw_html: str) -> str:
@@ -400,7 +587,15 @@ def _get_offline_docs(document_ids, user):
 
     from extractor.models import SourceDocument
 
-    docs = SourceDocument.objects.filter(id__in=document_ids, status="COMPLETED")
+    int_ids = []
+    uuid_strs = []
+    for item in document_ids:
+        try:
+            int_ids.append(int(item))
+        except (ValueError, TypeError):
+            uuid_strs.append(str(item))
+
+    docs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs), status="COMPLETED")
     if user and not (user.is_staff or user.is_superuser):
         docs = docs.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
     return list(docs)
@@ -489,6 +684,119 @@ def generate_curated_zip_bundle(
 
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
+
+
+def generate_sft_dataset_pairs(
+    document_ids: list[int] | list[str],
+    user: Any = None,
+    actor_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """
+    Generates structured instruction fine-tuning (SFT) prompt-completion and chat message pairs
+    from document chunks, respecting tenant isolation boundaries.
+    """
+    from django.conf import settings
+
+    from extractor import surreal_db
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        docs_list = _get_offline_docs(document_ids, user)
+    else:
+        docs_list = _get_surreal_docs(document_ids, user, actor_id=actor_id)
+
+    pairs: list[dict[str, Any]] = []
+
+    for doc in docs_list:
+        doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
+        title = getattr(doc, "title", None) or "Document"
+        author = getattr(doc, "author", None) or "Author"
+        language = getattr(doc, "language", None) or "en"
+
+        chunks: list[dict[str, Any]] = []
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor.rag import chunk_document_semantically
+
+            content = (
+                getattr(doc, "refined_markdown", None)
+                or getattr(doc, "cleaned_markdown", None)
+                or getattr(doc, "raw_markdown", None)
+                or ""
+            )
+            raw_chunks = chunk_document_semantically(content)
+            for idx, raw_text in enumerate(raw_chunks[:limit]):
+                chunks.append(
+                    {
+                        "content": raw_text,
+                        "chunk_index": idx,
+                        "page_number": 1,
+                        "chapter_title": "",
+                        "anchor_id": f"chunk-{idx}",
+                    }
+                )
+        else:
+            try:
+                chunks = surreal_db.get_document_chunks(doc_uuid)
+            except Exception as e:
+                logger.warning("[SFT Dataset] Failed to retrieve chunks for %s: %s", doc_uuid, e)
+                continue
+
+        for chunk_item in chunks[:limit]:
+            chunk_content = str(chunk_item.get("content") or "")
+            if not chunk_content.strip():
+                continue
+            page = chunk_item.get("page_number") or 1
+            chapter = chunk_item.get("chapter_title") or ""
+            anchor = chunk_item.get("anchor_id") or f"page-{page}"
+
+            user_prompt = (
+                f"Context from '{title}' by {author} (Page {page}"
+                + (f", {chapter}" if chapter else "")
+                + f"):\n\n{chunk_content}\n\n"
+                "Question: Explain the key context, teachings, and significance of this excerpt."
+            )
+            assistant_response = f"Based on '{title}', the text conveys:\n\n{chunk_content}"
+
+            pairs.append(
+                {
+                    "prompt": user_prompt,
+                    "completion": assistant_response,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a knowledgeable archival research assistant specializing in historical, literary, and classical religious documents.",
+                        },
+                        {"role": "user", "content": user_prompt},
+                        {"role": "assistant", "content": assistant_response},
+                    ],
+                    "metadata": {
+                        "doc_uuid": doc_uuid,
+                        "title": title,
+                        "author": author,
+                        "language": language,
+                        "page_number": page,
+                        "chapter_title": chapter,
+                        "anchor_id": anchor,
+                    },
+                }
+            )
+            if len(pairs) >= limit:
+                break
+        if len(pairs) >= limit:
+            break
+
+    return pairs
+
+
+def generate_sft_jsonl_bundle(
+    document_ids: list[int] | list[str],
+    user: Any = None,
+    actor_id: str | None = None,
+) -> bytes:
+    """Generates standard Hugging Face JSONL formatted SFT dataset as UTF-8 bytes."""
+    pairs = generate_sft_dataset_pairs(document_ids, user, actor_id=actor_id, limit=5000)
+    lines = [json.dumps(p, ensure_ascii=False) for p in pairs]
+    return ("\n".join(lines) + "\n").encode("utf-8")
 
 
 def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: int = 86400) -> int:
@@ -687,23 +995,22 @@ def extract_pdf_diagrams_with_vision(pdf_path: str, max_pages: int = 5) -> str:
 
     diagram_notes: list[str] = []
     try:
-        doc = fitz.open(pdf_path)
-        for page_num in range(min(len(doc), max_pages)):
-            page = doc[page_num]
-            image_list = page.get_images(full=True)
-            if image_list:
-                pix = page.get_pixmap(dpi=150)
-                img_bytes = pix.tobytes("jpeg")
-                ocr_result = generate_multimodal_vision_ocr(
-                    img_bytes,
-                    mime_type="image/jpeg",
-                    prompt=f"Page {page_num + 1} contains a diagram or schema. Describe the structure, nodes, flowchart connections, and text accurately in Markdown.",
-                )
-                if ocr_result:
-                    diagram_notes.append(
-                        f"\n### 📊 Page {page_num + 1} Visual Diagram & Schema Extraction\n{ocr_result}\n"
+        with fitz.open(pdf_path) as doc:
+            for page_num in range(min(len(doc), max_pages)):
+                page = doc[page_num]
+                image_list = page.get_images(full=True)
+                if image_list:
+                    pix = page.get_pixmap(dpi=150)
+                    img_bytes = pix.tobytes("jpeg")
+                    ocr_result = generate_multimodal_vision_ocr(
+                        img_bytes,
+                        mime_type="image/jpeg",
+                        prompt=f"Page {page_num + 1} contains a diagram or schema. Describe the structure, nodes, flowchart connections, and text accurately in Markdown.",
                     )
-        doc.close()
+                    if ocr_result:
+                        diagram_notes.append(
+                            f"\n### 📊 Page {page_num + 1} Visual Diagram & Schema Extraction\n{ocr_result}\n"
+                        )
     except Exception as exc:
         logger.warning("[Vision OCR] Failed to process PDF page diagrams: %s", exc)
     return "\n".join(diagram_notes)
