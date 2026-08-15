@@ -41,6 +41,17 @@ runbook. This file remains the authoritative cross-agent policy.
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
   - Cloud Build may construct the immutable image in parallel, but it must wait for a successful GitHub mainline SonarQube check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
 
+### 4.1 Native GitHub Auto-Merge & PR Creation Protocol
+
+- The repository is configured with `allow_auto_merge = true` and `allow_update_branch = true` alongside strict required status checks (`required_status_checks.strict = true`).
+- When the user commands opening a Pull Request, use the GitHub CLI with `--auto --squash --delete-branch`:
+
+  ```bash
+  gh pr create --title "<type>(<scope>): <description>" --body "<summary>" --auto --squash --delete-branch
+  ```
+
+- GitHub will automatically keep the PR branch synchronized with `main` and execute the squash-merge as soon as all checks pass.
+
 ### 5. Local-First Review & No Unsolicited Remote Pushing
 
 - **DO NOT AUTOMATICALLY PUSH INCREMENTAL EDITS TO REMOTE GITHUB**:

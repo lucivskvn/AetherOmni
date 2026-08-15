@@ -43,6 +43,17 @@ runbook. This file remains the authoritative cross-agent policy.
   - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
   - Pin every GitHub Action to a full commit SHA, retaining the reviewed release tag only as an adjacent comment.
 
+### 4.1 Native GitHub Auto-Merge & PR Creation Protocol
+
+- The repository is configured with `allow_auto_merge = true` and `allow_update_branch = true` alongside strict required status checks (`required_status_checks.strict = true`).
+- When the user commands opening a Pull Request, use the GitHub CLI with `--auto --squash --delete-branch`:
+
+  ```bash
+  gh pr create --title "<type>(<scope>): <description>" --body "<summary>" --auto --squash --delete-branch
+  ```
+
+- GitHub will automatically keep the PR branch synchronized with `main` and execute the squash-merge as soon as all checks pass.
+
 ### 5. Local-First Review & No Unsolicited Remote Pushing
 
 - **DO NOT AUTOMATICALLY PUSH INCREMENTAL EDITS TO REMOTE GITHUB**:

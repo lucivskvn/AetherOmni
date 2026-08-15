@@ -14,7 +14,9 @@ is the cross-agent source of truth.
 2. Run `bash run_checks.sh --fast` for documentation/chore-only work; run
    `bash run_checks.sh` for source, workflow, deployment, or security changes.
 3. Keep commits local unless the user explicitly authorizes a push. Target
-   `origin`, never an upstream parent.
+   `origin`, never an upstream parent. When instructed to create a PR, use:
+   `gh pr create --title "<title>" --body "<summary>" --auto --squash --delete-branch`
+   leveraging the repository's native auto-merge and auto branch refresh settings.
 4. On GitHub, treat the Actions summary as the agent hand-off: resolve the
    failing job and logs before changing code. Sonar failures must be visible as
    a failed check, not only in the Sonar dashboard.
