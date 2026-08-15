@@ -307,3 +307,18 @@ class CleanupExpiredDocumentsTestCase(TestCase):
         self.assertFalse(SourceDocument.objects.filter(id__in=[doc1.id, doc2.id, doc3.id, doc5.id]).exists())
         # Confirm document 6 still exists.
         self.assertTrue(SourceDocument.objects.filter(id=doc6.id).exists())
+
+    @patch("extractor.tasks.check_budget_and_api_limit")
+    @patch("extractor.surreal_db.claim_document_for_processing")
+    def test_prepare_document_skips_unclaimed_when_budget_exceeded(self, mock_claim, mock_budget):
+        from extractor.llm_gateway import BudgetExceededException
+        from extractor.tasks import _prepare_document_for_processing
+
+        # Simulate document already claimed / running
+        mock_claim.return_value = None
+        mock_budget.side_effect = BudgetExceededException("Budget limit reached")
+
+        res = _prepare_document_for_processing("test-doc-uuid-1234")
+        self.assertIsNone(res)
+        # Budget check shouldn't even be reached if document cannot be claimed
+        mock_budget.assert_not_called()

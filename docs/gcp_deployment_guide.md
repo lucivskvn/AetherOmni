@@ -11,10 +11,10 @@ The production system consists of:
 1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Production users, sessions, audit logs, spend history, and settings persist in Supabase PostgreSQL; document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
 2. **Cloud Run Service (`aether-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
 3. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
-4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (at `wss://surrealdb.fainko.cloud/rpc`). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
+4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (configured via `SURREAL_URL` WebSocket RPC). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
 5. **Vertex AI & Gemini Multi-Modal Gateway**: Direct Application Default Credentials (ADC) access (`roles/aiplatform.user`) for stable Vertex v1 Gemini 2.5 Flash / Flash-Lite and Vertex AI Vision.
 6. **Cloud Storage (GCS)**: Stores raw, uploaded PDF assets securely in GCP bucket (`GS_BUCKET_NAME`).
-7. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely on a self-hosted instance (at `https://supabase.fainko.cloud`).
+7. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely (configured via `SUPABASE_URL`).
 8. **Secret Manager**: Securely stores environment credentials (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`, `SUPABASE_DATABASE_URL`).
 
 ---
@@ -140,7 +140,7 @@ echo -n "YOUR_GEMINI_API_KEY" | gcloud secrets versions add GEMINI_API_KEY --dat
 
 # 3. SurrealDB Credentials
 gcloud secrets create SURREAL_URL --replication-policy="automatic"
-echo -n "wss://surrealdb.fainko.cloud/rpc" | gcloud secrets versions add SURREAL_URL --data-file=-
+echo -n "wss://<SURREALDB_HOST>/rpc" | gcloud secrets versions add SURREAL_URL --data-file=-
 
 gcloud secrets create SURREAL_USER --replication-policy="automatic"
 echo -n "admin" | gcloud secrets versions add SURREAL_USER --data-file=-
@@ -283,6 +283,9 @@ DEFINE FIELD IF NOT EXISTS chunk_index     ON chunks TYPE int;
 DEFINE FIELD IF NOT EXISTS content         ON chunks TYPE string;
 DEFINE FIELD IF NOT EXISTS token_count     ON chunks TYPE int    DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS language        ON chunks TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS page_number     ON chunks TYPE option<int> DEFAULT 1;
+DEFINE FIELD IF NOT EXISTS chapter_title   ON chunks TYPE option<string> DEFAULT "";
+DEFINE FIELD IF NOT EXISTS anchor_id       ON chunks TYPE option<string> DEFAULT "";
 DEFINE FIELD IF NOT EXISTS embedding       ON chunks TYPE array<float>;
 DEFINE FIELD IF NOT EXISTS created_at      ON chunks TYPE datetime DEFAULT time::now();
 
@@ -423,9 +426,15 @@ gcloud builds submit --config infra/gcp/cloudbuild.yaml \
   --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```
 
-## Protected PR branch refresh
+---
 
-The GitHub workflow `refresh-pr-branches.yml` updates eligible same-repository
-PR branches after `main` advances so protected checks run against the current
-base. It uses the dedicated `PR_AUTOMATION_TOKEN` repository secret and never
-performs deployments or merges pull requests.
+## 9. MCP Triage & Diagnostic Observability
+
+AI agents and platform operators leverage Model Context Protocol (MCP) servers for live, zero-overhead diagnostic triage across the deployment lifecycle:
+
+- **Sequential Thinking MCP (`sequential-thinking`)**: Deconstruct complex multi-stage deployment anomalies, trace inter-service race conditions between Cloud Tasks and SurrealDB transactions, and formulate deterministic root-cause hypotheses.
+- **Google Cloud Logging MCP (`google-cloud-logging`)**: Triage Cloud Run service logs (`get_service_log`, `list_log_entries`) to pinpoint unhandled container exceptions or startup timeouts without navigating the GCP web console.
+- **Google Cloud Monitoring MCP (`google-cloud-monitoring`)**: Query live Cloud Run latency percentiles, worker CPU/memory usage, and Cloud Tasks queue depths (`list_timeseries`, `list_alerts`).
+- **SonarQube MCP (`sonarqube`)**: Query real-time quality gate status, rule violations, and security hotspots (`get_project_quality_gate_status`, `search_sonar_issues_in_projects`).
+- **Chrome DevTools MCP (`chrome-devtools-mcp`)**: Audit production frontend performance, Core Web Vitals, accessibility compliance (`a11y-debugging`), and browser runtime console errors.
+- **Google Developer Knowledge MCP (`google-developer-knowledge`)**: Verify up-to-date Cloud Run and Vertex AI configuration blueprints.

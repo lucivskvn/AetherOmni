@@ -58,6 +58,9 @@ DEFINE FIELD IF NOT EXISTS chunk_index     ON chunks TYPE int;
 DEFINE FIELD IF NOT EXISTS content         ON chunks TYPE string;
 DEFINE FIELD IF NOT EXISTS token_count     ON chunks TYPE int    DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS language        ON chunks TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS page_number     ON chunks TYPE option<int> DEFAULT 1;
+DEFINE FIELD IF NOT EXISTS chapter_title   ON chunks TYPE option<string> DEFAULT "";
+DEFINE FIELD IF NOT EXISTS anchor_id       ON chunks TYPE option<string> DEFAULT "";
 DEFINE FIELD IF NOT EXISTS embedding       ON chunks TYPE array<float>;
 DEFINE FIELD IF NOT EXISTS created_at      ON chunks TYPE datetime DEFAULT time::now();
 

@@ -16,8 +16,8 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="AetherOmni - AI-Assisted Multilingual Knowledge Desk and Document Curation Engine.">
-    <title>{% block title %}Knowledge Desk{% endblock %} | Knowledge Desk - AI-Assisted Curator</title>
+    <meta name="description" content="AetherOmni — Enterprise Multi-Model RAG & Document Intelligence Platform.">
+    <title>{% block title %}Knowledge Desk{% endblock %} | AetherOmni — Enterprise Multi-Model RAG & Document Intelligence Platform</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -89,12 +89,12 @@
     <a href="#main-content" class="skip-to-main">Skip to main content</a>
     <header>
         <div class="nav-container">
-            <a href="{% url 'dashboard' %}" class="brand-logo">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <a href="{% url 'dashboard' %}" class="brand-logo" aria-label="AetherOmni Knowledge Desk Dashboard">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                     <path d="m9 12 2 2 4-4"/>
                 </svg>
-                <h1>KNOWLEDGE DESK</h1>
+                <h1>AETHEROMNI</h1>
                 <span class="release-badge" style="font-family: var(--font-mono, monospace); font-size: 9px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3); color: var(--text-glow, #a5b4fc); padding: 2px 6px; border-radius: 4px; font-weight: 700; letter-spacing: 0.05em; margin-left: 8px; display: inline-flex; align-items: center; align-self: center;">
                     v{{ RELEASE_VERSION }}
                 </span>
@@ -186,13 +186,11 @@
                 <div class="form-group">
                     <label for="selected_model">Default LLM & Intelligence Router</label>
                     <select id="selected_model" name="selected_model" aria-describedby="model-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
-                        <option value="auto" {% if system_settings.selected_model == "auto" %}selected{% endif %}>🤖 Auto-Intelligence Router (Recommended)</option>
-                        <option value="openrouter/free" {% if system_settings.selected_model == "openrouter/free" %}selected{% endif %}>🌐 OpenRouter Free Router (Auto-selects best available free model)</option>
-                        <option value="google/gemini-2.5-flash" {% if system_settings.selected_model == "google/gemini-2.5-flash" %}selected{% endif %}>🧠 Google Gemini 2.5 Flash (Stable Default)</option>
-                        <option value="google/gemini-2.5-flash-lite" {% if system_settings.selected_model == "google/gemini-2.5-flash-lite" %}selected{% endif %}>⚡ Google Gemini 2.5 Flash-Lite (Cost-Optimized)</option>
-                        <option value="meta-llama/llama-3-8b-instruct:free" {% if system_settings.selected_model == "meta-llama/llama-3-8b-instruct:free" %}selected{% endif %}>🦙 Meta Llama 3 8B Instruct (OpenRouter - Free)</option>
-                        <option value="google/gemma-2-9b-it:free" {% if system_settings.selected_model == "google/gemma-2-9b-it:free" %}selected{% endif %}>💎 Google Gemma 2 9B IT (OpenRouter - Free)</option>
-                        <option value="qwen/qwen-2-7b-instruct:free" {% if system_settings.selected_model == "qwen/qwen-2-7b-instruct:free" %}selected{% endif %}>🐉 Qwen 2 7B Instruct (OpenRouter - Free)</option>
+                        <option value="auto" {% if system_settings.selected_model == "auto" %}selected{% endif %}>🤖 Auto-Intelligence Router (Stage & Complexity Aware — EU Primary)</option>
+                        <option value="google/gemini-2.5-flash" {% if system_settings.selected_model == "google/gemini-2.5-flash" %}selected{% endif %}>✨ Google Gemini 2.5 Flash (Production Multimodal RAG — EU Primary)</option>
+                        <option value="google/gemini-2.5-flash-lite" {% if system_settings.selected_model == "google/gemini-2.5-flash-lite" %}selected{% endif %}>⚡ Google Gemini 2.5 Flash-Lite (High-Throughput Ingestion — EU Primary)</option>
+                        <option value="google/gemini-2.5-pro" {% if system_settings.selected_model == "google/gemini-2.5-pro" %}selected{% endif %}>🧠 Google Gemini 2.5 Pro (Deep Multilingual Synthesis — EU Primary)</option>
+                        <option value="openrouter/free" {% if system_settings.selected_model == "openrouter/free" %}selected{% endif %}>🌐 OpenRouter Free Router (Dynamic auto-selection of active free model)</option>
                     </select>
                     <small id="model-desc">Specifies the default LLM used for Stage 2 curation and Spotlight Search RAG. Auto-routing runs Stage 1 on Gemini and routes others dynamically with progressive deprecation fallbacks.</small>
                 </div>

@@ -211,9 +211,21 @@
         <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
             <i data-lucide="help-circle" class="meta-box-value-accent"></i> Supervised Fine-Tuning (SFT) Q&A Dataset
         </h3>
-        <button type="button" class="btn btn-secondary btn-copy-sft" id="btn-copy-sft" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
-            <i data-lucide="copy" style="width:14px; height:14px;"></i> Export SFT Dataset
-        </button>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary" id="btn-preview-sft" data-preview-url="{% url 'sft_dataset_preview' document.uuid %}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(99, 102, 241, 0.1); color: var(--accent); transition: all 0.2s;">
+                <i data-lucide="eye" style="width:14px; height:14px;"></i> Inspect Dataset Pairs
+            </button>
+            <form action="{% url 'export_sft_jsonl' %}" method="post" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="selected_documents" value="{{ document.uuid }}">
+                <button type="submit" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
+                    <i data-lucide="download" style="width:14px; height:14px;"></i> Download JSONL
+                </button>
+            </form>
+            <button type="button" class="btn btn-secondary btn-copy-sft" id="btn-copy-sft" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
+                <i data-lucide="copy" style="width:14px; height:14px;"></i> Copy JSON
+            </button>
+        </div>
     </div>
     <div class="qa-section-desc" style="margin-bottom: 16px; font-size: 0.90rem; color: var(--text-muted);">
         These high-quality dataset question-answer pairs were extracted by the Reasoning Curation Engine (Pass 2) to optimize downstream fine-tuning, training pipelines, and academic research synthesis.
@@ -346,10 +358,77 @@
     </div>
     {% endif %}
 {% endif %}
+
+<!-- SFT Dataset Interactive Preview Modal -->
+<dialog id="sft-preview-modal" style="border: 1px solid var(--border-glass); border-radius: 12px; background: rgba(15, 23, 42, 0.96); color: var(--text-main); max-width: 760px; width: 90%; max-height: 85vh; padding: 24px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px); margin: auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-glass); padding-bottom: 12px;">
+        <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.1rem;">
+            <i data-lucide="database" style="color: var(--accent);"></i> SFT Instruction Dataset Pairs
+        </h3>
+        <button type="button" id="btn-close-sft-modal" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; font-size: 18px; line-height: 1;">
+            ✕
+        </button>
+    </div>
+    <div id="sft-modal-body" style="max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
+        <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+            Click "Inspect Dataset Pairs" to load prompt-completion pairs.
+        </div>
+    </div>
+</dialog>
 {% endblock %}
 
 {% block extra_js %}
 <!-- Robust split-pane live editor, scroll synchronization and delete validation script -->
 {% static 'js/editor.js' as editor_js_url %}
 <script defer src="{{ editor_js_url|cache_bust }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const previewBtn = document.getElementById('btn-preview-sft');
+    const modal = document.getElementById('sft-preview-modal');
+    const closeBtn = document.getElementById('btn-close-sft-modal');
+    const modalBody = document.getElementById('sft-modal-body');
+
+    if (previewBtn && modal && modalBody) {
+        previewBtn.addEventListener('click', async () => {
+            modal.showModal();
+            modalBody.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted);">Loading dataset pairs...</div>';
+            try {
+                const url = previewBtn.dataset.previewUrl;
+                const resp = await fetch(url);
+                const data = await resp.json();
+                if (data.status === 'success' && data.pairs && data.pairs.length > 0) {
+                    let html = '';
+                    data.pairs.forEach((p, idx) => {
+                        const q = p.prompt || (p.messages && p.messages[1] ? p.messages[1].content : 'Question');
+                        const a = p.completion || (p.messages && p.messages[2] ? p.messages[2].content : 'Answer');
+                        const page = p.metadata?.page_number || 1;
+                        const anchor = p.metadata?.anchor_id || `page-${page}`;
+                        html += `
+                        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-glass); border-radius:8px; padding:12px; margin-bottom:8px;">
+                            <div style="font-size:11px; color:var(--accent); font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">
+                                <span>PAIR #${idx + 1} (Page ${page})</span>
+                                <span style="color:var(--text-muted); font-family:monospace;">#${anchor}</span>
+                            </div>
+                            <div style="font-size:13px; font-weight:600; color:var(--text-main); margin-bottom:6px; white-space:pre-wrap;">${q}</div>
+                            <div style="font-size:12px; color:var(--text-muted); background:rgba(0,0,0,0.2); padding:8px; border-radius:6px; white-space:pre-wrap;">${a}</div>
+                        </div>`;
+                    });
+                    modalBody.innerHTML = html;
+                } else {
+                    modalBody.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted);">No dataset pairs generated yet for this document.</div>';
+                }
+            } catch (err) {
+                modalBody.innerHTML = `<div style="text-align:center; padding:24px; color:#ef4444;">Failed to load preview: ${err.message}</div>`;
+            }
+        });
+    }
+
+    if (closeBtn && modal) {
+        closeBtn.addEventListener('click', () => modal.close());
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.close();
+        });
+    }
+});
+</script>
 {% endblock %}

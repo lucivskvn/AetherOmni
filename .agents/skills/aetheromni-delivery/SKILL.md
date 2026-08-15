@@ -14,7 +14,9 @@ is the cross-agent source of truth.
 2. Run `bash run_checks.sh --fast` for documentation/chore-only work; run
    `bash run_checks.sh` for source, workflow, deployment, or security changes.
 3. Keep commits local unless the user explicitly authorizes a push. Target
-   `origin`, never an upstream parent.
+   `origin`, never an upstream parent. When instructed to create a PR, use:
+   `gh pr create --title "<title>" --body "<summary>" --auto --squash --delete-branch`
+   leveraging the repository's native auto-merge and auto branch refresh settings.
 4. On GitHub, treat the Actions summary as the agent hand-off: resolve the
    failing job and logs before changing code. Sonar failures must be visible as
    a failed check, not only in the Sonar dashboard.
@@ -40,3 +42,13 @@ is the cross-agent source of truth.
 Prioritize functional login, safe document processing, reproducible releases,
 actionable CI/security findings, and production observability before enterprise
 RBAC, graph RAG, or autonomous agents.
+
+## MCP Triage & Diagnostic Tooling
+
+Utilize specialized Model Context Protocol (MCP) servers for fast, grounded diagnostics:
+
+- **Sequential Thinking MCP**: Systematic step-by-step reasoning for architectural design, root-cause investigation, and complex refactors.
+- **SonarQube MCP**: Query live project issues, hotspots, and quality gate status (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`).
+- **Google Cloud Logging & Monitoring MCP**: Inspect live Cloud Run container logs and service performance metrics (`list_log_entries`, `get_service_log`, `list_timeseries`).
+- **Chrome DevTools MCP**: Diagnose UI/UX regressions, Lighthouse Core Web Vitals, accessibility standards (`a11y-debugging`), and browser console errors (`list_console_messages`).
+- **Google Developer Knowledge MCP**: Verify official Cloud Run, GCP ADC keyless IAM, and Vertex AI architecture documentation.

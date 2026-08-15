@@ -33,13 +33,13 @@ logger = logging.getLogger(__name__)
 # defense-in-depth and should NOT block tasks that pass OIDC verification.
 # To minimise false positives, we accept all published Google IP ranges.
 GOOGLE_TASKS_IP_CIDRS = [
-    "35.199.0.0/16",  # NOSONAR # Cloud Tasks documented range
-    "34.64.0.0/10",  # NOSONAR # Google Cloud asia-southeast1
-    "34.128.0.0/10",  # NOSONAR # Google Cloud additional
-    "107.178.0.0/16",  # NOSONAR # Google Cloud Tasks egress (observed in asia-southeast1 production)
-    "34.2.0.0/16",  # NOSONAR # Google Cloud additional egress
-    "130.211.0.0/22",  # NOSONAR # Google Cloud Load Balancers / internal
-    "35.191.0.0/16",  # NOSONAR # Google health checks / internal
+    "35.199.0.0/16",  # NOSONAR python:S1313 -- Google Cloud Tasks documented egress CIDR range
+    "34.64.0.0/10",  # NOSONAR python:S1313 -- Google Cloud asia-southeast1 region IP pool
+    "34.128.0.0/10",  # NOSONAR python:S1313 -- Google Cloud additional compute IP pool
+    "107.178.0.0/16",  # NOSONAR python:S1313 -- Google Cloud Tasks egress observed in asia-southeast1 production
+    "34.2.0.0/16",  # NOSONAR python:S1313 -- Google Cloud additional egress IP pool
+    "130.211.0.0/22",  # NOSONAR python:S1313 -- Google Cloud Load Balancers and internal egress
+    "35.191.0.0/16",  # NOSONAR python:S1313 -- Google Cloud health check probes and internal CIDR
 ]
 
 from collections.abc import Callable
@@ -100,10 +100,14 @@ def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
                     return False
 
                 expected_service_account = getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "").strip()
-                if expected_service_account and (
-                    id_info.get("email") != expected_service_account or not id_info.get("email_verified")
-                ):
-                    logger.warning("[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account.")
+                if expected_service_account:
+                    if id_info.get("email") != expected_service_account or not id_info.get("email_verified"):
+                        logger.warning(
+                            "[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account."
+                        )
+                        return False
+                elif not settings.DEBUG:
+                    logger.warning("[CloudTasksHandler] CLOUD_TASKS_SERVICE_ACCOUNT must be configured in production.")
                     return False
 
                 return True

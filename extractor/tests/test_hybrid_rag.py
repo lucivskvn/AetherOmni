@@ -38,3 +38,39 @@ class HybridRAGTestCase(TestCase):
         )
         self.assertEqual(answer, "This is a verified RAG answer [Smith, 2026].")
         mock_generate.assert_called_once()
+
+    def test_generate_deterministic_embedding(self):
+        import math
+
+        from extractor.rag import generate_deterministic_embedding
+
+        vec1 = generate_deterministic_embedding("Surah Al-Fatiha verse 1")
+        self.assertEqual(len(vec1), 768)
+        norm1 = math.sqrt(sum(x * x for x in vec1))
+        self.assertTrue(math.isclose(norm1, 1.0, rel_tol=1e-5))
+
+        # Deterministic reproducibility
+        vec2 = generate_deterministic_embedding("Surah Al-Fatiha verse 1")
+        self.assertEqual(vec1, vec2)
+
+        # Distinct text produces distinct vector
+        vec3 = generate_deterministic_embedding("Surah Al-Baqarah verse 255")
+        self.assertNotEqual(vec1, vec3)
+
+        # Empty string handling
+        empty_vec = generate_deterministic_embedding("")
+        self.assertEqual(len(empty_vec), 768)
+        self.assertEqual(sum(empty_vec), 0.0)
+
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback", side_effect=RuntimeError("API Quota Limit"))
+    def test_fetch_missing_embeddings_fallback(self, mock_embed):
+        from extractor.rag import _fetch_missing_embeddings
+
+        missing_indices = [0, 1]
+        missing_texts = ["First chunk", "Second chunk"]
+        result = _fetch_missing_embeddings(missing_indices, missing_texts, "text-embedding-004")
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(len(result[0]), 768)
+        self.assertEqual(len(result[1]), 768)
+        mock_embed.assert_called_once()

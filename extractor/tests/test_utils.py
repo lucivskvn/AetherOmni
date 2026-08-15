@@ -13,13 +13,16 @@ from extractor.utils import (
     format_localized_cost,
     get_locale_currency_details,
     process_csv_local,
+    process_excel_local,
+    process_json_local,
+    process_pdf_local,
     process_txt_local,
     validate_url_scheme,
 )
 
 
 class LocalParsersTestCase(TestCase):
-    """Verifies that offline CSV and TXT local parsers function flawlessly with $0 API cost."""
+    """Verifies that offline CSV, Excel, JSON, TXT, and digital PDF local parsers function with $0 API cost."""
 
     def test_csv_parser_success(self):
         # Create a temp CSV file
@@ -46,6 +49,101 @@ class LocalParsersTestCase(TestCase):
             self.assertEqual(content, "Islamic Knowledge Extract\nPage 1 Content")
         finally:
             os.unlink(temp_path)
+
+    def test_txt_parser_quran_arabic_and_translations(self):
+        # Test UTF-8 Quranic verses with Harakat and multi-language translations
+        quran_text = (
+            "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ (1)\n"
+            "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ (2)\n"
+            "Translation (EN): In the Name of Allah—the Most Compassionate, Most Merciful. (1)\n"
+            "Terjemahan (ID): Dengan nama Allah Yang Maha Pengasih, Maha Penyayang. (1)"
+        )
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".txt", encoding="utf-8") as f:
+            f.write(quran_text)
+            temp_path = f.name
+
+        try:
+            content = process_txt_local(temp_path)
+            self.assertIn("بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ", content)
+            self.assertIn("In the Name of Allah", content)
+            self.assertIn("Dengan nama Allah", content)
+        finally:
+            os.unlink(temp_path)
+
+    def test_excel_parser_empty(self):
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".xlsx") as f:
+            f.write("invalid binary data")
+            temp_path = f.name
+
+        try:
+            result = process_excel_local(temp_path)
+            self.assertIn("Empty or Unreadable", result)
+        finally:
+            os.unlink(temp_path)
+
+    def test_pdf_parser_uninstalled_or_empty(self):
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".pdf") as f:
+            f.write("plain binary")
+            temp_path = f.name
+
+        try:
+            text, _pages = process_pdf_local(temp_path)
+            self.assertEqual(text, "")
+        finally:
+            os.unlink(temp_path)
+
+    def test_json_parser_dataset_and_dict(self):
+        # 1. Test tabular JSON list (e.g., Quran verse dataset)
+        verse_data = [
+            {"surah": "1", "ayah": "1", "text_ar": "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ", "text_en": "In the Name of Allah"},
+            {"surah": "1", "ayah": "2", "text_ar": "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ", "text_en": "Praise be to Allah"},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json", encoding="utf-8") as f:
+            import json
+
+            json.dump(verse_data, f)
+            temp_path = f.name
+
+        try:
+            result = process_json_local(temp_path)
+            self.assertIn("| surah | ayah | text_ar | text_en |", result)
+            self.assertIn("بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ", result)
+        finally:
+            os.unlink(temp_path)
+
+        # 2. Test structured JSON dict
+        hadith_dict = {
+            "book_title": "Sahih Hadith Collection",
+            "narrator": "Abu Hurairah",
+            "hadith_text": "Actions are judged by intentions.",
+        }
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json", encoding="utf-8") as f:
+            json.dump(hadith_dict, f)
+            temp_path = f.name
+
+        try:
+            result_dict = process_json_local(temp_path)
+            self.assertIn("## Book Title", result_dict)
+            self.assertIn("Sahih Hadith Collection", result_dict)
+            self.assertIn("Actions are judged by intentions.", result_dict)
+        finally:
+            os.unlink(temp_path)
+
+    def test_semantic_chunking_islamic_structural_boundaries(self):
+        text = (
+            "## Page 1\n\n"
+            "### Surah Al-Fatiha\n\n"
+            "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ (1)\n"
+            "ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَـٰلَمِينَ (2)\n\n"
+            "### Surah Al-Baqarah\n\n"
+            "الم (1)\n"
+            "ذَٰلِكَ ٱلْكِتَـٰبُ لَا رَيْبَ ۛ فِيهِ ۛ هُدًۭى لِّلْمُتَّقِينَ (2)"
+        )
+        chunks = chunk_document_semantically(text, max_chunk_size=150)
+        self.assertGreaterEqual(len(chunks), 2)
+        # Verify Surah headers remain grouped with their verses
+        self.assertTrue(any("Surah Al-Fatiha" in c for c in chunks))
+        self.assertTrue(any("Surah Al-Baqarah" in c for c in chunks))
 
 
 class ContentAddressingTestCase(TestCase):
@@ -384,6 +482,34 @@ class ZipExportBundleTestCase(TestCase):
         # If user2 tries to export doc1, it should raise ValueError
         with self.assertRaises(ValueError):
             generate_curated_zip_bundle([doc1.id], user=user2)
+
+    def test_generate_sft_dataset_pairs_and_jsonl(self):
+        from extractor.models import SourceDocument
+        from extractor.utils import generate_sft_dataset_pairs, generate_sft_jsonl_bundle
+
+        doc = SourceDocument.objects.create(
+            original_filename="sft_test.txt",
+            file_hash="sft-hash-12345",
+            title="Tafsir Book",
+            author="Scholar",
+            language="Arabic",
+            refined_markdown="## Page 1\n### Surah Al-Fatiha\nIn the name of God, Most Gracious, Most Merciful.",
+            status="COMPLETED",
+        )
+
+        pairs = generate_sft_dataset_pairs([doc.id], limit=5)
+        self.assertGreaterEqual(len(pairs), 1)
+        first_pair = pairs[0]
+        self.assertIn("prompt", first_pair)
+        self.assertIn("completion", first_pair)
+        self.assertIn("messages", first_pair)
+        self.assertEqual(len(first_pair["messages"]), 3)
+        self.assertEqual(first_pair["metadata"]["title"], "Tafsir Book")
+
+        jsonl_bytes = generate_sft_jsonl_bundle([doc.id])
+        self.assertIsInstance(jsonl_bytes, bytes)
+        self.assertIn(b"Tafsir Book", jsonl_bytes)
+        self.assertIn(b"messages", jsonl_bytes)
 
 
 class LLMGatewayBackoffTestCase(TestCase):
