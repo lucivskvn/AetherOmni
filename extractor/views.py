@@ -158,6 +158,8 @@ from extractor.utils import (
     clean_html_content,
     format_localized_cost,
     generate_curated_zip_bundle,
+    generate_sft_dataset_pairs,
+    generate_sft_jsonl_bundle,
     get_client_ip,
     get_locale_currency_details,
     query_semantic_knowledge_rag,
@@ -1124,6 +1126,71 @@ class ExportZipView(LoginRequiredMixin, View):
             return response
         except Exception as e:
             messages.error(request, f"Export failure: {e!s}")
+            return redirect("dashboard")
+
+
+class SFTDatasetPreviewView(LoginRequiredMixin, View):
+    """Returns a JSON payload with SFT prompt-completion dataset preview pairs for a document."""
+
+    def get(self, request, doc_uuid):
+        try:
+            actor_id = get_request_actor_id(request)
+            pairs = generate_sft_dataset_pairs(
+                [doc_uuid],
+                user=request.user,
+                actor_id=actor_id,
+                limit=25,
+            )
+            return JsonResponse(
+                {
+                    "status": "success",
+                    "count": len(pairs),
+                    "pairs": pairs,
+                }
+            )
+        except Exception as e:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "message": str(e),
+                },
+                status=400,
+            )
+
+
+class ExportSftJsonlView(LoginRequiredMixin, View):
+    """Exports structured instruction fine-tuning dataset in Hugging Face / OpenAI JSONL format."""
+
+    def post(self, request):
+        from django.core.cache import cache
+
+        user_key = f"export_ratelimit_{get_request_actor_id(request)}"
+        ip_key = f"export_ratelimit_{get_client_ip(request)}"
+
+        if cache.get(user_key) or cache.get(ip_key):
+            messages.error(request, "Export rate limit exceeded. Please wait 60 seconds before trying again.")
+            return redirect("dashboard")
+
+        cache.set(user_key, True, 60)
+        cache.set(ip_key, True, 60)
+
+        document_ids = request.POST.getlist("selected_documents")
+        if not document_ids:
+            messages.error(request, "No documents selected for SFT JSONL export.")
+            return redirect("dashboard")
+
+        try:
+            jsonl_data = generate_sft_jsonl_bundle(
+                document_ids,
+                user=request.user,
+                actor_id=get_request_actor_id(request),
+            )
+            response = HttpResponse(jsonl_data, content_type="application/x-jsonlines")
+            filename = f"sft_dataset_{timezone.now().strftime('%Y%m%d%H%M')}.jsonl"
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            messages.error(request, f"SFT Export failure: {e!s}")
             return redirect("dashboard")
 
 

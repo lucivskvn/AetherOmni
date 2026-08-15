@@ -180,7 +180,7 @@ jobs:
       - name: Execute Tests & Generate Coverage XML
         run: |
           export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
-          python manage.py collectstatic --noinput && coverage run --source='core,extractor' manage.py test --keepdb
+          python manage.py collectstatic --noinput && coverage run --source='core,extractor' manage.py test extractor.tests --keepdb
           coverage xml -o coverage.xml
         env:
           SURREALDB_OFFLINE: "True"

@@ -876,6 +876,7 @@ def _flush_document_cost(doc) -> bool:
 def _delete_offline_document(doc_uuid: str) -> None:
     from extractor.models import SourceDocument
 
+    _test_chunks.pop(str(doc_uuid), None)
     try:
         import uuid
 
@@ -884,6 +885,10 @@ def _delete_offline_document(doc_uuid: str) -> None:
             doc = SourceDocument.objects.get(uuid=doc_uuid)
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
+        if doc and hasattr(doc, "uuid"):
+            _test_chunks.pop(str(doc.uuid), None)
+        if doc and hasattr(doc, "id"):
+            _test_chunks.pop(str(doc.id), None)
         doc.delete()
     except (SourceDocument.DoesNotExist, ValueError):
         pass
@@ -1006,6 +1011,26 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
     if results:
         return _parse_chunk_counts(results, doc_uuids)
     return dict.fromkeys(doc_uuids, 0)
+
+
+def get_document_chunks(doc_uuid: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Retrieve chunks for a document ordered by chunk_index."""
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit;"
+        result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit}))
+        if isinstance(result, list) and result:
+            return result
+        chunks = _test_chunks.get(doc_uuid, [])
+        return sorted(chunks, key=lambda x: int(x.get("chunk_index", 0)))[:limit]
+
+    sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit;"
+    result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit}))
+    if isinstance(result, list):
+        return result
+    return []
 
 
 def clone_chunks(source_uuid: str, target_uuid: str) -> None:

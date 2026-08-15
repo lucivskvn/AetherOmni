@@ -145,6 +145,41 @@ class ViewsTestCase(TestCase):
         self.assertEqual(response["Content-Type"], "application/zip")
         self.assertEqual(response.content, b"fake-zip-data")
 
+    def test_export_sft_jsonl_empty(self):
+        response = self.client.post(reverse("export_sft_jsonl"))
+        self.assertEqual(response.status_code, 302)
+
+    @patch("extractor.views.generate_sft_jsonl_bundle")
+    def test_export_sft_jsonl_success(self, mock_jsonl):
+        from django.core.cache import cache
+
+        cache.clear()
+        mock_jsonl.return_value = b'{"prompt": "Q", "completion": "A"}\n'
+        response = self.client.post(reverse("export_sft_jsonl"), {"selected_documents": [str(self.doc.uuid)]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/x-jsonlines")
+        self.assertIn(b'{"prompt": "Q"', response.content)
+
+    @patch("extractor.views.generate_sft_dataset_pairs")
+    def test_sft_dataset_preview_success(self, mock_pairs):
+        mock_pairs.return_value = [
+            {"prompt": "Test Question", "completion": "Test Answer", "metadata": {"page_number": 1}}
+        ]
+        response = self.client.get(reverse("sft_dataset_preview", args=[self.doc.uuid]))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["pairs"][0]["prompt"], "Test Question")
+
+    @patch("extractor.views.generate_sft_dataset_pairs")
+    def test_sft_dataset_preview_error(self, mock_pairs):
+        mock_pairs.side_effect = ValueError("Document chunk not found")
+        response = self.client.get(reverse("sft_dataset_preview", args=[self.doc.uuid]))
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertEqual(data["status"], "error")
+
     def test_upload_view_post_empty(self):
         response = self.client.post(reverse("upload_document"))
         self.assertEqual(response.status_code, 302)

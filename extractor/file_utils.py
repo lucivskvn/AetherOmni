@@ -678,6 +678,119 @@ def generate_curated_zip_bundle(
     return zip_buffer.getvalue()
 
 
+def generate_sft_dataset_pairs(
+    document_ids: list[int] | list[str],
+    user: Any = None,
+    actor_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """
+    Generates structured instruction fine-tuning (SFT) prompt-completion and chat message pairs
+    from document chunks, respecting tenant isolation boundaries.
+    """
+    from django.conf import settings
+
+    from extractor import surreal_db
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        docs_list = _get_offline_docs(document_ids, user)
+    else:
+        docs_list = _get_surreal_docs(document_ids, user, actor_id=actor_id)
+
+    pairs: list[dict[str, Any]] = []
+
+    for doc in docs_list:
+        doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
+        title = getattr(doc, "title", None) or "Document"
+        author = getattr(doc, "author", None) or "Author"
+        language = getattr(doc, "language", None) or "en"
+
+        chunks: list[dict[str, Any]] = []
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor.rag import chunk_document_semantically
+
+            content = (
+                getattr(doc, "refined_markdown", None)
+                or getattr(doc, "cleaned_markdown", None)
+                or getattr(doc, "raw_markdown", None)
+                or ""
+            )
+            raw_chunks = chunk_document_semantically(content)
+            for idx, raw_text in enumerate(raw_chunks[:limit]):
+                chunks.append(
+                    {
+                        "content": raw_text,
+                        "chunk_index": idx,
+                        "page_number": 1,
+                        "chapter_title": "",
+                        "anchor_id": f"chunk-{idx}",
+                    }
+                )
+        else:
+            try:
+                chunks = surreal_db.get_document_chunks(doc_uuid)
+            except Exception as e:
+                logger.warning("[SFT Dataset] Failed to retrieve chunks for %s: %s", doc_uuid, e)
+                continue
+
+        for chunk_item in chunks[:limit]:
+            chunk_content = str(chunk_item.get("content") or "")
+            if not chunk_content.strip():
+                continue
+            page = chunk_item.get("page_number") or 1
+            chapter = chunk_item.get("chapter_title") or ""
+            anchor = chunk_item.get("anchor_id") or f"page-{page}"
+
+            user_prompt = (
+                f"Context from '{title}' by {author} (Page {page}"
+                + (f", {chapter}" if chapter else "")
+                + f"):\n\n{chunk_content}\n\n"
+                "Question: Explain the key context, teachings, and significance of this excerpt."
+            )
+            assistant_response = f"Based on '{title}', the text conveys:\n\n{chunk_content}"
+
+            pairs.append(
+                {
+                    "prompt": user_prompt,
+                    "completion": assistant_response,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a knowledgeable archival research assistant specializing in historical, literary, and classical religious documents.",
+                        },
+                        {"role": "user", "content": user_prompt},
+                        {"role": "assistant", "content": assistant_response},
+                    ],
+                    "metadata": {
+                        "doc_uuid": doc_uuid,
+                        "title": title,
+                        "author": author,
+                        "language": language,
+                        "page_number": page,
+                        "chapter_title": chapter,
+                        "anchor_id": anchor,
+                    },
+                }
+            )
+            if len(pairs) >= limit:
+                break
+        if len(pairs) >= limit:
+            break
+
+    return pairs
+
+
+def generate_sft_jsonl_bundle(
+    document_ids: list[int] | list[str],
+    user: Any = None,
+    actor_id: str | None = None,
+) -> bytes:
+    """Generates standard Hugging Face JSONL formatted SFT dataset as UTF-8 bytes."""
+    pairs = generate_sft_dataset_pairs(document_ids, user, actor_id=actor_id, limit=5000)
+    lines = [json.dumps(p, ensure_ascii=False) for p in pairs]
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: int = 86400) -> int:
     """Automated cleanup policy per DevSecOps best practices.
 
@@ -874,23 +987,22 @@ def extract_pdf_diagrams_with_vision(pdf_path: str, max_pages: int = 5) -> str:
 
     diagram_notes: list[str] = []
     try:
-        doc = fitz.open(pdf_path)
-        for page_num in range(min(len(doc), max_pages)):
-            page = doc[page_num]
-            image_list = page.get_images(full=True)
-            if image_list:
-                pix = page.get_pixmap(dpi=150)
-                img_bytes = pix.tobytes("jpeg")
-                ocr_result = generate_multimodal_vision_ocr(
-                    img_bytes,
-                    mime_type="image/jpeg",
-                    prompt=f"Page {page_num + 1} contains a diagram or schema. Describe the structure, nodes, flowchart connections, and text accurately in Markdown.",
-                )
-                if ocr_result:
-                    diagram_notes.append(
-                        f"\n### 📊 Page {page_num + 1} Visual Diagram & Schema Extraction\n{ocr_result}\n"
+        with fitz.open(pdf_path) as doc:
+            for page_num in range(min(len(doc), max_pages)):
+                page = doc[page_num]
+                image_list = page.get_images(full=True)
+                if image_list:
+                    pix = page.get_pixmap(dpi=150)
+                    img_bytes = pix.tobytes("jpeg")
+                    ocr_result = generate_multimodal_vision_ocr(
+                        img_bytes,
+                        mime_type="image/jpeg",
+                        prompt=f"Page {page_num + 1} contains a diagram or schema. Describe the structure, nodes, flowchart connections, and text accurately in Markdown.",
                     )
-        doc.close()
+                    if ocr_result:
+                        diagram_notes.append(
+                            f"\n### 📊 Page {page_num + 1} Visual Diagram & Schema Extraction\n{ocr_result}\n"
+                        )
     except Exception as exc:
         logger.warning("[Vision OCR] Failed to process PDF page diagrams: %s", exc)
     return "\n".join(diagram_notes)

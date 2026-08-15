@@ -124,6 +124,18 @@ class TaskHandlersTestCase(TestCase):
         request.META["HTTP_AUTHORIZATION"] = "Bearer token123"
         self.assertFalse(task_handlers._verify_oidc_token(request, "audience"))
 
+    @override_settings(DEBUG=False, CLOUD_TASKS_SERVICE_ACCOUNT="")
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_verify_oidc_token_rejects_empty_service_account_in_production(self, mock_verify):
+        mock_verify.return_value = {
+            "iss": "https://accounts.google.com",
+            "email": "attacker@example.com",
+            "email_verified": True,
+        }
+        request = self.factory.post("/internal/tasks/test_task/")
+        request.META["HTTP_AUTHORIZATION"] = "Bearer token123"
+        self.assertFalse(task_handlers._verify_oidc_token(request, "audience"))
+
     @override_settings(DEBUG=False)
     @patch("google.auth.transport.requests.Request", side_effect=RuntimeError("Auth init failed"))
     def test_verify_oidc_token_top_level_exception(self, _mock_request):

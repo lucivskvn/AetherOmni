@@ -483,6 +483,34 @@ class ZipExportBundleTestCase(TestCase):
         with self.assertRaises(ValueError):
             generate_curated_zip_bundle([doc1.id], user=user2)
 
+    def test_generate_sft_dataset_pairs_and_jsonl(self):
+        from extractor.models import SourceDocument
+        from extractor.utils import generate_sft_dataset_pairs, generate_sft_jsonl_bundle
+
+        doc = SourceDocument.objects.create(
+            original_filename="sft_test.txt",
+            file_hash="sft-hash-12345",
+            title="Tafsir Book",
+            author="Scholar",
+            language="Arabic",
+            refined_markdown="## Page 1\n### Surah Al-Fatiha\nIn the name of God, Most Gracious, Most Merciful.",
+            status="COMPLETED",
+        )
+
+        pairs = generate_sft_dataset_pairs([doc.id], limit=5)
+        self.assertGreaterEqual(len(pairs), 1)
+        first_pair = pairs[0]
+        self.assertIn("prompt", first_pair)
+        self.assertIn("completion", first_pair)
+        self.assertIn("messages", first_pair)
+        self.assertEqual(len(first_pair["messages"]), 3)
+        self.assertEqual(first_pair["metadata"]["title"], "Tafsir Book")
+
+        jsonl_bytes = generate_sft_jsonl_bundle([doc.id])
+        self.assertIsInstance(jsonl_bytes, bytes)
+        self.assertIn(b"Tafsir Book", jsonl_bytes)
+        self.assertIn(b"messages", jsonl_bytes)
+
 
 class LLMGatewayBackoffTestCase(TestCase):
     """Verifies that the LLM gateway exponential and dynamic backoff works properly."""

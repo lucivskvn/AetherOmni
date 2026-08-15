@@ -214,3 +214,21 @@ class SurrealDBClientTestCase(TestCase):
     def test_find_chunk_embeddings_batch_offline(self):
         res = surreal_db.find_chunk_embeddings_batch(["nonexistent-uuid-1", "nonexistent-uuid-2"])
         self.assertEqual(res, {})
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    def test_delete_offline_document_purges_chunks(self):
+        from extractor.models import SourceDocument
+
+        doc = SourceDocument.objects.create(
+            original_filename="offline_test.pdf",
+            file_hash="offline_hash_123",
+            title="Offline Test Doc",
+        )
+        doc_uuid = str(doc.uuid)
+        chunks = [{"chunk_index": 0, "content": "Sample offline text", "embedding": [0.0] * 768}]
+        surreal_db.recreate_chunks(doc_uuid, chunks)
+        self.assertEqual(surreal_db.count_document_chunks(doc_uuid), 1)
+
+        surreal_db.delete_document(doc_uuid)
+        self.assertEqual(surreal_db.count_document_chunks(doc_uuid), 0)
+        self.assertFalse(SourceDocument.objects.filter(uuid=doc_uuid).exists())

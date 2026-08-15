@@ -100,10 +100,14 @@ def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
                     return False
 
                 expected_service_account = getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "").strip()
-                if expected_service_account and (
-                    id_info.get("email") != expected_service_account or not id_info.get("email_verified")
-                ):
-                    logger.warning("[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account.")
+                if expected_service_account:
+                    if id_info.get("email") != expected_service_account or not id_info.get("email_verified"):
+                        logger.warning(
+                            "[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account."
+                        )
+                        return False
+                elif not settings.DEBUG:
+                    logger.warning("[CloudTasksHandler] CLOUD_TASKS_SERVICE_ACCOUNT must be configured in production.")
                     return False
 
                 return True
