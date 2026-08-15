@@ -41,15 +41,6 @@ runbook. This file remains the authoritative cross-agent policy.
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
   - Cloud Build may construct the immutable image in parallel, but it must wait for a successful GitHub mainline SonarQube check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
 
-### 4.1 Protected PR Branch Refresh
-
-- `.github/workflows/refresh-pr-branches.yml` refreshes only open, non-draft,
-  same-repository PRs targeting `main` after a mainline push or manual dispatch.
-- It never merges PRs or relaxes required checks. Configure
-  `PR_AUTOMATION_TOKEN` as a dedicated fine-grained GitHub App/PAT token with
-  only `contents: write` and `pull-requests: write` repository access so its
-  branch updates trigger fresh PR checks.
-
 ### 5. Local-First Review & No Unsolicited Remote Pushing
 
 - **DO NOT AUTOMATICALLY PUSH INCREMENTAL EDITS TO REMOTE GITHUB**:
@@ -113,7 +104,7 @@ runbook. This file remains the authoritative cross-agent policy.
 
 7. **Dual-Tier State Architecture & Ephemeral Cloud Run Persistence**:
    - Relational Identity & Auth: Supabase PostgreSQL (`SUPABASE_DATABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`) securely manages users, sessions, and administrative privileges.
-   - High-Throughput & Vector Engine: Remote SurrealDB (`wss://surrealdb.fainko.cloud/rpc`) manages documents, vector chunks (HNSW 768 cosine), tokenized prompt caches (`context_cache`), distributed atomic sliding-window quotas (`rate_limits`), user memories (`user_memories`), and compliance audit logs.
+   - High-Throughput & Vector Engine: Remote SurrealDB (`SURREAL_URL` WebSocket RPC) manages documents, vector chunks (HNSW 768 cosine), tokenized prompt caches (`context_cache`), distributed atomic sliding-window quotas (`rate_limits`), user memories (`user_memories`), and compliance audit logs.
    - Zero Ephemeral State Loss: Cloud Run container instances remain strictly stateless, eliminating data loss on container restarts. Local SQLite is restricted to offline testing (`SURREALDB_OFFLINE=True`).
 
 ---

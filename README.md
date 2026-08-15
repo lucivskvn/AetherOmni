@@ -258,7 +258,7 @@ flowchart LR
 - [x] **Release Traceability**: SonarQube and Cloud Build derive the same commit-count release from full Git history, then propagate it to the immutable image tag, Cloud Run, and application UI. Cloud Build waits for the exact commit's successful mainline SonarQube check before deployment.
 - [x] **Worker-Only Ingestion Dispatch**: Production uploads enqueue OIDC-authenticated work for the worker service only. Cloud Build resolves worker routing and the Vertex project identity at deploy time; an optional public-origin substitution keeps Supabase confirmation redirects on the browser-facing application URL.
 - [x] **On-Demand Worker Processing**: Cloud Tasks wakes a bounded zero-minimum worker only for queued ingestion; periodic maintenance is disabled by default and can be enabled only with an explicit always-on operating decision. Spend-ledger persistence is validated before document deletion.
-- [x] **Protected Delivery Path & PR Branch Refresh**: Automatic PR branch refresh workflow (`refresh-pr-branches.yml`) and CLI helper (`scripts/refresh_pr_branches.sh`) keeping open PR branches synchronized against `main`.
+- [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
 
 ### 📈 Milestone 3.7 (MVP Reliability — Operations & Multi-MCP Triage)
 
@@ -313,7 +313,7 @@ flowchart LR
 | **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast1` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
 | **Asynchronous Task Queue** | GCP Cloud Tasks | OIDC Authenticated Worker Tasks | Production asynchronous document processing queue with localized thread fallbacks |
 | **Cloud Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw documents and curated export bundles |
-| **CI/CD & Git Automation** | GitHub Actions / GitHub CLI | Pinned commit SHAs · `gh` CLI | 3-Phase Shift-Left validation, automated PR branch refresh (`refresh-pr-branches.yml`), CodeQL, and Dependabot security |
+| **CI/CD & Git Automation** | GitHub Actions / GitHub CLI | Pinned commit SHAs · `gh` CLI | 3-Phase Shift-Left validation, CodeQL, and Dependabot security |
 | **Container Runtime & Build** | Docker / Kaniko | Multi-stage OWASP non-root build · Kaniko debug image | Immutable digest-pinned containers with zero shell footprint in the application startup path |
 | **DevSecOps & SAST Suite** | SonarQube / Bandit / Hadolint / Semgrep / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | Sonar MQR Gate, SurrealQL syntax validation | Shift-left security verification, static typing, regex ReDoS prevention, and continuous codebase health |
 | **AI Agent Tooling & MCP** | SonarQube / Google Cloud Logging / Chrome DevTools / Google Dev Knowledge | Model Context Protocol (MCP) servers | Fast grounded triage, live quality gate queries, Cloud Run log inspection, and UI/UX accessibility auditing |
@@ -405,7 +405,7 @@ SURREAL_PASS="root"
 SURREALDB_OFFLINE=False
 ```
 
-> Note: production and remote SurrealDB connections must use a WebSocket RPC URL such as `wss://surrealdb.fainko.cloud/rpc`.
+> Note: production and remote SurrealDB connections must use a WebSocket RPC URL configured via `SURREAL_URL` (e.g. `wss://<surrealdb-host>/rpc`).
 
 ### 3. Install Dependencies & Initialize Database
 
@@ -461,12 +461,3 @@ bash scripts/gcp-diagnostics.sh --service all
 ## 📄 License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [`LICENSE`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/LICENSE) for full details.
-
-## Protected PR branch refresh
-
-After a push to `main`, the `Refresh protected PR branches` workflow updates
-eligible same-repository PR branches so protected checks rerun against the latest
-base. It never merges a PR. Configure `PR_AUTOMATION_TOKEN` as a dedicated
-fine-grained GitHub App or PAT with only repository `contents: write` and
-`pull-requests: write` access, then enable GitHub native auto-merge separately
-if automatic final merging is desired.
