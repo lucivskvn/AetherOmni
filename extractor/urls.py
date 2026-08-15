@@ -44,4 +44,10 @@ urlpatterns = [
     ),
     # Cloud Tasks internal webhook receiver (CSRF-exempt, OIDC-verified)
     path("internal/tasks/<str:task_name>/", task_handlers.CloudTaskHandlerView.as_view(), name="cloud_task_handler"),
+    # Client-side Supabase OAuth session exchange endpoint
+    path(
+        "api/auth/supabase-session/",
+        views.SupabaseSessionExchangeView.as_view(),
+        name="supabase_session_exchange",
+    ),
 ]

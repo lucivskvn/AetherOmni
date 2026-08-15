@@ -163,7 +163,7 @@ def _get_surreal_url() -> str:
 
 
 def _get_surreal_auth() -> dict:
-    user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", "root"))
+    user = getattr(settings, "SURREAL_USER", os.getenv("SURREAL_USER", ""))
     password = getattr(settings, "SURREAL_PASS", os.getenv("SURREAL_PASS", ""))
 
     # SEC-04 fix: removed the `DEBUG=True` shortcut that defaulted to "root".
@@ -176,21 +176,20 @@ def _get_surreal_auth() -> dict:
     is_testing = "test" in sys.argv
     if (
         not getattr(settings, "DEBUG", True)
-        and password in ("", "root")
+        and (password in ("", "root") or user in ("", "root"))
         and not getattr(settings, "SURREALDB_OFFLINE", False)
         and not is_testing
     ):
         raise ImproperlyConfigured(
-            "[SurrealDB] Connecting with default 'root' credentials in a non-debug environment is forbidden. "
+            "[SurrealDB] Connecting with default or empty credentials in a non-debug environment is forbidden. "
             "Set SURREAL_USER and SURREAL_PASS environment variables to secure credentials."
         )
 
-    # Also reject empty passwords in DEBUG mode unless explicitly offline or testing
-    if not password and not getattr(settings, "SURREALDB_OFFLINE", False) and not is_testing:
+    # Also reject empty credentials in DEBUG mode unless explicitly offline or testing
+    if (not user or not password) and not getattr(settings, "SURREALDB_OFFLINE", False) and not is_testing:
         raise ImproperlyConfigured(
-            "[SurrealDB] SURREAL_PASS is not set. "
-            "Set SURREAL_PASS via environment variable or GCP Secret Manager. "
-            "For local development without SurrealDB, set SURREALDB_OFFLINE=True."
+            "[SurrealDB] SURREAL_USER and SURREAL_PASS cannot be empty. "
+            "Set SURREALDB_OFFLINE=True in settings/env if running without a live SurrealDB instance."
         )
 
     return {"username": user, "password": password}  # NOSONAR
@@ -493,18 +492,10 @@ def create_document(data: dict) -> dict:
     }
 
     payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
-    fields = []
-    params = {}
-    for k, v in payload.items():
+    for k in payload:
         _validate_field_name(k)
-        if k in ("created_at", "updated_at", "expires_at"):
-            fields.append(f"{k}: <datetime> ${k}")
-            params[k] = v
-        else:
-            fields.append(f"{k}: ${k}")
-            params[k] = v
-    sql = f"INSERT INTO documents {{ {', '.join(fields)} }};"
-    rows = _first_result(_run(sql, params))
+    sql = "INSERT INTO documents $payload;"
+    rows = _first_result(_run(sql, {"payload": payload}))
     return rows[0] if rows else {}
 
 
@@ -551,7 +542,7 @@ def _update_document_offline(doc_uuid, data):
             doc = SourceDocument.objects.get(uuid=doc_uuid)
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
-    except SourceDocument.DoesNotExist, ValueError:
+    except (SourceDocument.DoesNotExist, ValueError):
         return {}
 
     _apply_offline_doc_update(doc, data, user_model)
@@ -640,7 +631,7 @@ def get_document(doc_uuid: str) -> dict | None:
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(doc_uuid))
             return _model_to_dict(doc)
-        except SourceDocument.DoesNotExist, ValueError:
+        except (SourceDocument.DoesNotExist, ValueError):
             return None
 
     sql = "SELECT * FROM documents WHERE doc_uuid = $doc_uuid;"
@@ -848,7 +839,7 @@ def _delete_offline_document(doc_uuid: str) -> None:
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
         doc.delete()
-    except SourceDocument.DoesNotExist, ValueError:
+    except (SourceDocument.DoesNotExist, ValueError):
         pass
 
 
@@ -1160,7 +1151,7 @@ def kv_cache_get(key: str) -> Any | None:
                 if isinstance(val_data, str):
                     return json.loads(val_data)
                 return val_data
-            except json.JSONDecodeError, ValueError:
+            except (json.JSONDecodeError, ValueError):
                 return val_data
     return None
 
@@ -1287,6 +1278,26 @@ def find_chunk_embedding(text: str) -> list[float] | None:
     return None
 
 
+def find_chunk_embeddings_batch(texts: list[str]) -> dict[str, list[float]]:
+    """
+    Finds existing embeddings for a batch of text blocks in a single SurrealDB query.
+    Returns a mapping of {content: embedding}.
+    """
+    if not texts:
+        return {}
+    unique_texts = [t for t in set(texts) if t]
+    if not unique_texts:
+        return {}
+    sql = "SELECT content, embedding FROM chunks WHERE content IN $texts;"
+    results = _first_result(_run(sql, {"texts": unique_texts}))
+    mapping: dict[str, list[float]] = {}
+    if results and isinstance(results, list):
+        for row in results:
+            if isinstance(row, dict) and "content" in row and "embedding" in row:
+                mapping[row["content"]] = row["embedding"]
+    return mapping
+
+
 def count_user_memories(user_id: str) -> int:
     """Count user memories in SurrealDB."""
     sql = "SELECT count() AS n FROM user_memories WHERE user_id = $user_id GROUP ALL;"
@@ -1300,3 +1311,57 @@ def clear_user_memories(user_id: str) -> None:
     """Clear all memories for a user in SurrealDB."""
     sql = "DELETE FROM user_memories WHERE user_id = $user_id;"
     _run(sql, {"user_id": user_id})
+
+
+# ── Context Caching & High-Throughput Rate Limits ───────────────────────────
+
+
+def context_cache_get(context_hash: str) -> dict[str, Any] | None:
+    """Retrieve cached context prefix or prompt by hash and increment hit counter."""
+    sql = "SELECT * FROM context_cache WHERE context_hash = $context_hash AND expires_at > time::now() LIMIT 1;"
+    rows = _first_result(_run(sql, {"context_hash": context_hash}))
+    if rows and isinstance(rows, list) and len(rows) > 0:
+        _run(
+            "UPDATE context_cache SET hit_count += 1, updated_at = time::now() WHERE context_hash = $context_hash;",
+            {"context_hash": context_hash},
+        )
+        return rows[0]
+    return None
+
+
+def context_cache_set(
+    context_hash: str,
+    context_text: str,
+    token_count: int = 0,
+    doc_uuid: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Store or update context cache entry with TTL."""
+    payload = {
+        "context_hash": context_hash,
+        "context_text": context_text,
+        "token_count": token_count,
+        "doc_uuid": doc_uuid,
+        "user_id": user_id,
+        "hit_count": 0,
+    }
+    sql = "INSERT INTO context_cache $payload;"
+    _run(sql, {"payload": payload})
+
+
+def check_rate_limit_atomic(key: str, max_requests: int) -> bool:
+    """
+    Atomic sliding-window rate limit checker in SurrealDB.
+    Returns True if request is allowed, False if quota exceeded.
+    """
+    sql = "SELECT * FROM rate_limits WHERE key = $key AND expires_at > time::now() LIMIT 1;"
+    res = _first_result(_run(sql, {"key": key}))
+    if not res:
+        insert_sql = "INSERT INTO rate_limits { key: $key, request_count: 1, window_start: time::now(), expires_at: time::now() + 1h };"
+        _run(insert_sql, {"key": key})
+        return True
+    current = res[0]
+    if current.get("request_count", 0) >= max_requests:
+        return False
+    _run("UPDATE rate_limits SET request_count += 1 WHERE key = $key;", {"key": key})
+    return True

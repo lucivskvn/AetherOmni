@@ -45,6 +45,10 @@ if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))'
     exit 1
 fi
 
+echo -e "${YELLOW}[Bytecode] Validating Python syntax & compilation across codebase...${NC}"
+$PYTHON_BIN -m compileall -q core extractor scripts manage.py
+echo -e "${GREEN}✓ Python bytecode compiled cleanly with 0 syntax errors.${NC}"
+
 APP_VERSION=$($PYTHON_BIN scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
 
 echo -e "${CYAN}======================================================================${NC}"
@@ -266,6 +270,15 @@ if command -v shellcheck &> /dev/null; then
 else
     echo -e "${YELLOW}⚠ ShellCheck not found in PATH (skipping).${NC}"
 fi
+
+echo -e "\n${YELLOW}[Template Audit] Checking HTML templates for SRI integrity and security standards...${NC}"
+MISSING_SRI=$(grep -rnE '<script[^>]+src="https?://' extractor/templates/ | grep -v 'integrity=' | grep -v 'challenges.cloudflare.com/turnstile' || true)
+if [ -n "$MISSING_SRI" ]; then
+    echo -e "${RED}✗ External scripts in templates missing Subresource Integrity (SRI) 'integrity' attribute:${NC}"
+    echo "$MISSING_SRI"
+    exit 1
+fi
+echo -e "${GREEN}✓ HTML templates verified for SRI integrity compliance.${NC}"
 
 # ── PHASE 3: DEEP SECURITY & DATA FLOW SAST ───────────────────────────────────
 

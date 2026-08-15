@@ -16,6 +16,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AetherOmni - AI-Assisted Multilingual Knowledge Desk and Document Curation Engine.">
     <title>{% block title %}Knowledge Desk{% endblock %} | Knowledge Desk - AI-Assisted Curator</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -48,7 +49,7 @@
     
     <!-- Conditionally load Supabase Realtime client if credentials exist -->
     {% if SUPABASE_URL and SUPABASE_PUBLIC_KEY %}
-    <script src="https://unpkg.com/@supabase/supabase-js@2.43.4/dist/umd/supabase.js" integrity="sha384-H6N0+i9QWJgqFzI+F67E8/R6y8E5S0w6/FvQ92mP94f0S6N5J+34hK5Y1m1R5S9R" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js" integrity="sha384-qafw21c/iciq0VXsi9FzkfoQv5I/V0iqE4lSNcKXPnW9/UTJLnv5CcN4FHxVLnKg" crossorigin="anonymous"></script>
     {% endif %}
 
     {% if CF_TURNSTILE_SITE_KEY %}
@@ -186,6 +187,7 @@
                     <label for="selected_model">Default LLM & Intelligence Router</label>
                     <select id="selected_model" name="selected_model" aria-describedby="model-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
                         <option value="auto" {% if system_settings.selected_model == "auto" %}selected{% endif %}>🤖 Auto-Intelligence Router (Recommended)</option>
+                        <option value="openrouter/free" {% if system_settings.selected_model == "openrouter/free" %}selected{% endif %}>🌐 OpenRouter Free Router (Auto-selects best available free model)</option>
                         <option value="google/gemini-2.5-flash" {% if system_settings.selected_model == "google/gemini-2.5-flash" %}selected{% endif %}>🧠 Google Gemini 2.5 Flash (Stable Default)</option>
                         <option value="google/gemini-2.5-flash-lite" {% if system_settings.selected_model == "google/gemini-2.5-flash-lite" %}selected{% endif %}>⚡ Google Gemini 2.5 Flash-Lite (Cost-Optimized)</option>
                         <option value="meta-llama/llama-3-8b-instruct:free" {% if system_settings.selected_model == "meta-llama/llama-3-8b-instruct:free" %}selected{% endif %}>🦙 Meta Llama 3 8B Instruct (OpenRouter - Free)</option>

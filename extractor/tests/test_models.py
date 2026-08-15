@@ -32,7 +32,8 @@ class AuditLogSignalsTestCase(TestCase):
 
     def test_user_login_signal(self):
         user = User.objects.create_user(username="signaltestuser", password="password123")
-        self.client.login(username="signaltestuser", password="password123")
+        with self.settings(SUPABASE_URL="", SUPABASE_PUBLIC_KEY=""):
+            self.client.login(username="signaltestuser", password="password123")
 
         logs = AuditLog.objects.filter(user=user, action="LOGIN")
         self.assertTrue(logs.exists())
@@ -41,8 +42,9 @@ class AuditLogSignalsTestCase(TestCase):
 
     def test_user_logout_signal(self):
         user = User.objects.create_user(username="signaltestuser", password="password123")
-        self.client.login(username="signaltestuser", password="password123")
-        self.client.logout()
+        with self.settings(SUPABASE_URL="", SUPABASE_PUBLIC_KEY=""):
+            self.client.login(username="signaltestuser", password="password123")
+            self.client.logout()
 
         logs = AuditLog.objects.filter(user=user, action="LOGOUT")
         self.assertTrue(logs.exists())
@@ -71,7 +73,7 @@ class GdrpReferenceCountingTestCase(TestCase):
         self.password = "T00rP@ssw0rd!"
         self.username = "gdpr.test"
         self.user = User.objects.create_user(username=self.username, password=self.password)
-        self.client.login(username=self.username, password=self.password)
+        self.client.force_login(self.user)
 
         file_hash = "gdpr-sample-hash-abc"
 

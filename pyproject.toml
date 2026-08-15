@@ -18,7 +18,7 @@ exclude = [
 ]
 
 line-length = 120
-target-version = "py314"  # Standardized on Python 3.14
+target-version = "py314"
 
 
 [tool.ruff.lint]

@@ -83,7 +83,7 @@ def parse_datetime(val):
         return val
     try:
         return datetime.strptime(val, ISO_8601_FORMAT).replace(tzinfo=timezone.UTC)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         try:
             from django.utils.dateparse import parse_datetime as django_parse
 
@@ -92,7 +92,7 @@ def parse_datetime(val):
                 if parsed.tzinfo is None:
                     parsed = parsed.replace(tzinfo=timezone.UTC)
                 return parsed
-        except ValueError, TypeError, AttributeError:
+        except (ValueError, TypeError, AttributeError):
             pass
     return timezone.now()
 
@@ -1314,6 +1314,10 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
         # Strict validation whitelist for SystemSettings selected_model to prevent unauthorized/expensive models
         ALLOWED_MODELS = {
             "auto",
+            "openrouter/free",
+            "openrouter/auto",
+            "google/gemini-2.5-flash",
+            "google/gemini-2.5-flash-lite",
             "google/gemini-3.5-flash",
             "google/gemini-3.1-flash-lite",
             "google/gemini-3.1-flash",
@@ -1333,7 +1337,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             budget_val = Decimal(monthly_budget_usd)
             if budget_val < 0:
                 raise ValueError("Budget cannot be negative.")
-        except ValueError, ArithmeticError:
+        except (ValueError, ArithmeticError):
             messages.error(request, "Invalid budget value provided. Must be a valid positive number.")
             return redirect("dashboard")
 
@@ -1843,7 +1847,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         target_service = "aether-worker"
         try:
             get_service_config("aether-worker")
-        except OSError, ValueError, RuntimeError:
+        except (OSError, ValueError, RuntimeError):
             try:
                 get_service_config("aether-web")
                 target_service = "aether-web"
@@ -1925,7 +1929,7 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
         body_bytes = e.read().decode("utf-8")
         try:
             err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
-        except json.JSONDecodeError, KeyError, AttributeError:
+        except (json.JSONDecodeError, KeyError, AttributeError):
             err_msg = body_bytes
         return False, f"Supabase Signup Failed: {err_msg}"
     except Exception as e:
@@ -1994,7 +1998,7 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_
         body_bytes = e.read().decode("utf-8")
         try:
             err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
-        except json.JSONDecodeError, KeyError, AttributeError:
+        except (json.JSONDecodeError, KeyError, AttributeError):
             err_msg = body_bytes
         return False, f"Supabase Recovery Failed: {err_msg}"
     except Exception as e:
@@ -2056,3 +2060,50 @@ def reset_password_confirm_view(request):
         "supabase_key": supabase_key,
     }
     return render(request, "extractor/reset_password_confirm.html", context)
+
+
+class SupabaseSessionExchangeView(View):
+    """
+    Exchanges a client-side Supabase access_token for an authenticated Django session.
+    Validates the token against Supabase /auth/v1/user, synchronizes the user via _sync_supabase_user,
+    and establishes the Django session with request.session["supabase_user_id"].
+    """
+
+    def post(self, request):
+        try:
+            import json
+            import urllib.request
+
+            from django.contrib.auth import login
+
+            from extractor.auth import _sync_supabase_user
+            from extractor.utils import APPLICATION_JSON, validate_url_scheme
+
+            body = json.loads(request.body.decode("utf-8")) if request.body else {}
+            access_token = body.get("access_token", "").strip()
+            if not access_token:
+                return JsonResponse({"error": "Missing access token."}, status=400)
+
+            supabase_url = getattr(settings, "SUPABASE_URL", "").strip()
+            supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "").strip()
+            if not supabase_url or not supabase_key:
+                return JsonResponse({"error": "Supabase integration not configured."}, status=503)
+
+            url = f"{supabase_url.rstrip('/')}/auth/v1/user"
+            validate_url_scheme(url)
+            headers = {
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": APPLICATION_JSON,
+            }
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
+                user_info = json.loads(response.read().decode("utf-8"))
+
+            user = _sync_supabase_user(request, {"user": user_info}, user_info.get("email"))
+            user.backend = "extractor.auth.SupabaseAuthBackend"
+            login(request, user)
+            return JsonResponse({"status": "ok", "user": user.username})
+        except Exception as exc:
+            logger.warning("[Auth] Supabase session exchange failed: %s", exc)
+            return JsonResponse({"error": "Authentication failed."}, status=401)

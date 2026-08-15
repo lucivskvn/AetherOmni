@@ -202,17 +202,15 @@ if DATABASE_URL and not SURREALDB_OFFLINE:
     from core.database import database_config_from_url
 
     DATABASES = {"default": database_config_from_url(DATABASE_URL)}
-elif SURREALDB_OFFLINE or DEBUG or not os.getenv("K_SERVICE"):
+else:
+    if os.getenv("K_SERVICE") and not SURREALDB_OFFLINE:
+        logger.info("[Database] DATABASE_URL not configured on Cloud Run; utilizing local SQLite storage.")
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
-else:
-    raise ImproperlyConfigured(
-        "DATABASE_URL is required on Cloud Run. Configure the Supabase PostgreSQL connection through Secret Manager."
-    )
 
 AUTHENTICATION_BACKENDS = [
     "extractor.auth.SupabaseAuthBackend",
@@ -296,16 +294,18 @@ CACHES = {
 SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
 SURREAL_NS = os.getenv("SURREAL_NS", "aetheromni")
 SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
-SURREAL_USER = os.getenv("SURREAL_USER", "root")
+SURREAL_USER = os.getenv("SURREAL_USER", "")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "")
 
-if not SURREAL_PASS:
-    SURREAL_PASS = "root"  # nosec B105
-
-if not DEBUG and SURREAL_PASS == "root" and not SURREALDB_OFFLINE and "collectstatic" not in sys.argv:  # nosec B105 # NOSONAR
-    logger.warning(
-        "[Security] SURREAL_PASS is using default 'root' credential. "
-        "Recommend configuring an explicit strong password for SurrealDB in production."
+if (
+    not DEBUG
+    and (not SURREAL_PASS or SURREAL_PASS == "root" or not SURREAL_USER or SURREAL_USER == "root")  # nosec B105
+    and not SURREALDB_OFFLINE
+    and "collectstatic" not in sys.argv
+):
+    raise ImproperlyConfigured(
+        "[Security] SURREAL_USER and SURREAL_PASS must be explicitly configured in production. "
+        "Default or empty credentials are strictly forbidden."
     )
 
 

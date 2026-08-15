@@ -133,9 +133,26 @@ class SupabaseAuthBackend(ModelBackend):
             logger.warning("[Auth] Supabase auth rejected: '%s' is not a valid email format.", target_email)
             return None
 
-        return self._do_supabase_auth(request, target_email, password, supabase_url, supabase_key)
+        return self._do_supabase_auth(request, target_email, password, (supabase_url, supabase_key))
 
-    def _do_supabase_auth(self, request, target_email, password, supabase_url, supabase_key):
+    def _do_supabase_auth(
+        self,
+        request: HttpRequest | None,
+        target_email: str,
+        password: str | None = None,
+        config: tuple[str, str] | None = None,
+    ) -> User | None:
+        if not password:
+            return None
+
+        supabase_url, supabase_key = (
+            config
+            if config
+            else (
+                getattr(settings, "SUPABASE_URL", ""),
+                getattr(settings, "SUPABASE_PUBLIC_KEY", ""),
+            )
+        )
         url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
         headers = {
             "apikey": supabase_key,

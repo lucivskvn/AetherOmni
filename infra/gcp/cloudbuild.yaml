@@ -163,54 +163,31 @@ steps:
         raise SystemExit(1)
         PY
 
-  # 3. Production GCP Cloud Run Web Service Deployment
+  # 3. Validate Production Prerequisites & Secrets
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
-    id: 'deploy-web'
+    id: 'validate-prerequisites'
     waitFor: ['wait-for-quality-gate']
     entrypoint: bash
     args:
       - '-euc'
       - |
-        if [ -f /workspace/release_version.env ]; then
-          . /workspace/release_version.env
-        else
-          echo "Missing computed release version metadata" >&2
-          exit 1
-        fi
-        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
-        IMAGE_TAG="$${IMAGE_TAG//+/-}"
-        WEB_URL="$$(gcloud run services describe aether-web --region=${_REGION} --format='value(status.url)')"
-        WORKER_URL="$$(gcloud run services describe aether-worker --region=${_REGION} --format='value(status.url)')"
-        APP_URL='${_APP_URL}'
-        APP_URL="$${APP_URL:-$${WEB_URL}}"
-        test -n "$${WEB_URL}" && test -n "$${WORKER_URL}" && test -n "$${APP_URL}"
-        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=2"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
-        ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
-        ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks"
-        ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
-        ENV_VARS="$${ENV_VARS},SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
-        ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-2.5-flash,GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
-        SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
-        SECRETS="$${SECRETS},SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest"
-        SECRETS="$${SECRETS},SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
-        SECRETS="$${SECRETS}"
-        SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
-        SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
-        SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
-        gcloud run deploy aether-web \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
-          --region=${_REGION} \
-          --platform=managed \
-          --allow-unauthenticated \
-          --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
-          --set-env-vars="$${ENV_VARS}" \
-          --set-secrets="$${SECRETS}"
+        echo "Validating Secret Manager prerequisites..."
+        required_secrets="DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER"
+        required_secrets="$${required_secrets} SURREAL_PASS ADMIN_EMAIL SUPABASE_URL"
+        required_secrets="$${required_secrets} SUPABASE_PUBLIC_KEY SUPABASE_SERVICE_ROLE_KEY CF_TURNSTILE_SITE_KEY"
+        for secret in $${required_secrets}; do
+          if ! gcloud secrets describe "$${secret}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+            echo "ERROR: Required secret '$${secret}' is missing in project '${PROJECT_ID}'." >&2
+            echo "Please create '$${secret}' in GCP Secret Manager before triggering deployment." >&2
+            exit 1
+          fi
+        done
+        echo "All required secrets verified in GCP Secret Manager."
 
   # 4. Production GCP Cloud Run Worker Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-worker'
-    waitFor: ['wait-for-quality-gate']
+    waitFor: ['validate-prerequisites']
     entrypoint: bash
     args:
       - '-euc'
@@ -223,11 +200,10 @@ steps:
         fi
         IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
         IMAGE_TAG="$${IMAGE_TAG//+/-}"
-        WEB_URL="$$(gcloud run services describe aether-web --region=${_REGION} --format='value(status.url)')"
-        WORKER_URL="$$(gcloud run services describe aether-worker --region=${_REGION} --format='value(status.url)')"
+        WEB_URL="$$(gcloud run services describe aether-web --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
+        WORKER_URL="$$(gcloud run services describe aether-worker --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         APP_URL='${_APP_URL}'
         APP_URL="$${APP_URL:-$${WEB_URL}}"
-        test -n "$${WEB_URL}" && test -n "$${WORKER_URL}" && test -n "$${APP_URL}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=1"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
@@ -238,10 +214,12 @@ steps:
         SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
         SECRETS="$${SECRETS},SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest"
         SECRETS="$${SECRETS},SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
-        SECRETS="$${SECRETS}"
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
-        SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
+        SECRETS="$${SECRETS},SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
+        if gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null 2>&1; then
+          SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
+        fi
         gcloud run deploy aether-worker \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
           --region=${_REGION} \
@@ -249,6 +227,51 @@ steps:
           --allow-unauthenticated \
           --min-instances=0 \
           --max-instances=5 \
+          --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+          --set-env-vars="$${ENV_VARS}" \
+          --set-secrets="$${SECRETS}"
+
+  # 5. Production GCP Cloud Run Web Service Deployment
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
+    id: 'deploy-web'
+    waitFor: ['deploy-worker']
+    entrypoint: bash
+    args:
+      - '-euc'
+      - |
+        if [ -f /workspace/release_version.env ]; then
+          . /workspace/release_version.env
+        else
+          echo "Missing computed release version metadata" >&2
+          exit 1
+        fi
+        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
+        IMAGE_TAG="$${IMAGE_TAG//+/-}"
+        WEB_URL="$$(gcloud run services describe aether-web --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
+        WORKER_URL="$$(gcloud run services describe aether-worker --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
+        APP_URL='${_APP_URL}'
+        APP_URL="$${APP_URL:-$${WEB_URL}}"
+        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=2"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
+        ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
+        ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks"
+        ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
+        ENV_VARS="$${ENV_VARS},SURREAL_NS=aetheromni,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
+        ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-2.5-flash,GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
+        SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+        SECRETS="$${SECRETS},SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest"
+        SECRETS="$${SECRETS},SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
+        SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
+        SECRETS="$${SECRETS},SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest"
+        SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
+        if gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null 2>&1; then
+          SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
+        fi
+        gcloud run deploy aether-web \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
+          --region=${_REGION} \
+          --platform=managed \
+          --allow-unauthenticated \
           --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"

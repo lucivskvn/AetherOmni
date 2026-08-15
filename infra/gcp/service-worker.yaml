@@ -97,10 +97,10 @@ spec:
             secretKeyRef:
               name: SUPABASE_PUBLIC_KEY
               key: "latest"
-        - name: DATABASE_URL
+        - name: SUPABASE_SERVICE_ROLE_KEY
           valueFrom:
             secretKeyRef:
-              name: SUPABASE_DATABASE_URL
+              name: SUPABASE_SERVICE_ROLE_KEY
               key: "latest"
         - name: CF_TURNSTILE_SITE_KEY
           valueFrom:

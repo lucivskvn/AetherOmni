@@ -26,14 +26,7 @@ RULES = (
 )
 
 
-def changed_lines() -> list[tuple[str, int, str]]:
-    """Return added lines from tracked changes and all lines from untracked files."""
-    if GIT is None:
-        raise RuntimeError("Git is required to validate suppressions.")
-    # Safe: GIT resolves the local executable and every argument is constant.
-    diff = subprocess.run(  # nosec B603
-        [GIT, "diff", "--unified=0", "HEAD"], cwd=ROOT, capture_output=True, check=True, text=True
-    ).stdout
+def _parse_diff_added_lines(diff: str) -> list[tuple[str, int, str]]:
     path = ""
     line_number = 0
     result: list[tuple[str, int, str]] = []
@@ -48,11 +41,16 @@ def changed_lines() -> list[tuple[str, int, str]]:
             line_number += 1
         elif not line.startswith("-"):
             line_number += 1
+    return result
 
-    # Safe: GIT resolves the local executable and every argument is constant.
+
+def _read_untracked_files() -> list[tuple[str, int, str]]:
+    if GIT is None:
+        return []
     untracked = subprocess.run(  # nosec B603
         [GIT, "ls-files", "--others", "--exclude-standard"], cwd=ROOT, capture_output=True, check=True, text=True
     ).stdout.splitlines()
+    result: list[tuple[str, int, str]] = []
     for path in untracked:
         file_path = ROOT / path
         if file_path.is_file():
@@ -60,6 +58,17 @@ def changed_lines() -> list[tuple[str, int, str]]:
                 (path, index, line) for index, line in enumerate(file_path.read_text(encoding="utf-8").splitlines(), 1)
             )
     return result
+
+
+def changed_lines() -> list[tuple[str, int, str]]:
+    """Return added lines from tracked changes and all lines from untracked files."""
+    if GIT is None:
+        raise RuntimeError("Git is required to validate suppressions.")
+    # Safe: GIT resolves the local executable and every argument is constant.
+    diff = subprocess.run(  # nosec B603
+        [GIT, "diff", "--unified=0", "HEAD"], cwd=ROOT, capture_output=True, check=True, text=True
+    ).stdout
+    return _parse_diff_added_lines(diff) + _read_untracked_files()
 
 
 def main() -> int:

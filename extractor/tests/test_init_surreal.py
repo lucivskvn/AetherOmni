@@ -93,3 +93,23 @@ class InitSurrealTestCase(TestCase):
             init_surreal._create_local_superuser_stub(admin_email)
 
         self.assertNotIn(admin_email, "\n".join(logs.output))
+
+    @patch("extractor.surreal_db.get_system_settings")
+    @patch("extractor.surreal_db.save_system_settings")
+    def test_migrate_system_settings(self, mock_save, mock_get):
+        from extractor.models import SystemSettings
+
+        mock_get.return_value = {"selected_model": "gemini-1.5-flash"}
+        SystemSettings.objects.all().delete()
+        stg = SystemSettings.objects.create(selected_model="gemini-1.5-flash")
+
+        init_surreal._migrate_system_settings()
+
+        mock_save.assert_called_once_with({"selected_model": "gemini-2.5-flash"})
+        stg.refresh_from_db()
+        self.assertEqual(stg.selected_model, "gemini-2.5-flash")
+
+    @patch("extractor.surreal_db.get_system_settings", side_effect=RuntimeError("SurrealDB down"))
+    def test_migrate_system_settings_error_graceful(self, mock_get):
+        # Should not raise exception
+        init_surreal._migrate_system_settings()

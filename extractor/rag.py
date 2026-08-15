@@ -116,14 +116,22 @@ def _lookup_cached_embeddings(chunks_list, surreal_db):
     missing_indices = []
     missing_texts = []
 
+    cleaned_texts = [text.strip() for text in chunks_list]
+    cached_map: dict[str, list[float]] = {}
+    if hasattr(surreal_db, "find_chunk_embeddings_batch"):
+        try:
+            cached_map = surreal_db.find_chunk_embeddings_batch(cleaned_texts)
+        except Exception as e:
+            logger.debug("[Embeddings Cache] Failed batch lookup of chunk embeddings: %s", e)
+
     for idx, text in enumerate(chunks_list):
-        cleaned_text = text.strip()
-        cached_vector = None
-        if cleaned_text:
+        cleaned_text = cleaned_texts[idx]
+        cached_vector = cached_map.get(cleaned_text)
+        if not cached_vector and cleaned_text:
             try:
                 cached_vector = surreal_db.find_chunk_embedding(cleaned_text)
             except Exception as e:
-                logger.debug("[Embeddings Cache] Failed to look up chunk embedding: %s", e)
+                logger.debug("[Embeddings Cache] Failed fallback lookup of chunk embedding: %s", e)
 
         if cached_vector:
             final_embeddings[idx] = cached_vector
@@ -146,7 +154,7 @@ def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
             try:
                 response = execute_embed_content_with_fallback(model_name=model_name, contents=[chunks_list[idx]])
                 final_embeddings[idx] = response.embeddings[0].values
-            except RuntimeError, ValueError, AttributeError:
+            except (RuntimeError, ValueError, AttributeError):
                 # EDGE-01 fix: do NOT store a zero-vector — it has cosine similarity 0
                 # against all real vectors and would corrupt HNSW search results.
                 # Mark as None so the caller can tag the SurrealDB chunk for retry.
@@ -391,7 +399,7 @@ def query_semantic_knowledge_rag(
     if user and user.is_authenticated and is_preference_signal(query_cleaned):
         try:
             cloud_tasks.enqueue("store_user_memory", {"user_id": str(user.id), "text": query_cleaned})
-        except OSError, RuntimeError, ValueError:
+        except (OSError, RuntimeError, ValueError):
             logger.debug("[Memory] Failed to enqueue memory task.")
 
     # ── 4. Fetch user memories from SurrealDB ─────────────────────────────────
@@ -410,7 +418,7 @@ def query_semantic_knowledge_rag(
         dense_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
         sparse_chunks = surreal_db.search_chunks_bm25(query_cleaned, limit=top_k, allowed_doc_uuids=allowed_uuids)
         matching_chunks = reciprocal_rank_fusion(dense_chunks, sparse_chunks, k=60, top_k=top_k)
-    except ConnectionError, OSError, RuntimeError, TimeoutError:
+    except (ConnectionError, OSError, RuntimeError, TimeoutError):
         logger.exception("[RAG Search] Connection error to SurrealDB.")
         matching_chunks = []
 
@@ -423,7 +431,7 @@ def query_semantic_knowledge_rag(
     try:
         settings_obj = SystemSettings.get_settings()
         selected_model = settings_obj.selected_model
-    except SystemSettings.DoesNotExist, AttributeError, RuntimeError:
+    except (SystemSettings.DoesNotExist, AttributeError, RuntimeError):
         selected_model = "auto"
 
     # ── 8. Generate answer ────────────────────────────────────────────────────
@@ -482,6 +490,24 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
 
 
 def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_block: str, selected_model: str) -> Any:
+    # Context Caching in SurrealDB:
+    import hashlib
+
+    from extractor import surreal_db
+
+    if context_str:
+        context_hash = hashlib.sha256(context_str.encode("utf-8")).hexdigest()
+        try:
+            cached_entry = surreal_db.context_cache_get(context_hash)
+            if not cached_entry:
+                surreal_db.context_cache_set(
+                    context_hash=context_hash,
+                    context_text=context_str,
+                    token_count=len(context_str) // 4,
+                )
+        except Exception as exc:
+            logger.debug("[Context Cache] surreal context cache check error: %s", exc)
+
     system_instruction = f"""
     You are a Digital Preservation Librarian and Archival Scholar.
     Your task is to answer the query accurately, grounding your answers ONLY in the validated source context block below.

@@ -128,7 +128,7 @@ class ResilienceAndSafetyTestCase(TestCase):
     @patch("extractor.cloud_tasks.enqueue")
     def test_document_retry_view(self, mock_enqueue):
         user = User.objects.create_user(username="retrytestuser", password="password123")
-        self.client.login(username="retrytestuser", password="password123")
+        self.client.force_login(user)
 
         doc = SourceDocument.objects.create(
             original_filename="failed_booklet.pdf",
@@ -162,7 +162,7 @@ class ResilienceAndSafetyTestCase(TestCase):
     @patch("extractor.cloud_tasks.enqueue")
     def test_document_retry_limit_exceeded(self, mock_enqueue):
         user = User.objects.create_user(username="retrytestuser2", password="password123")
-        self.client.login(username="retrytestuser2", password="password123")
+        self.client.force_login(user)
 
         doc = SourceDocument.objects.create(
             original_filename="failed_booklet.pdf",
