@@ -283,6 +283,9 @@ DEFINE FIELD IF NOT EXISTS chunk_index     ON chunks TYPE int;
 DEFINE FIELD IF NOT EXISTS content         ON chunks TYPE string;
 DEFINE FIELD IF NOT EXISTS token_count     ON chunks TYPE int    DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS language        ON chunks TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS page_number     ON chunks TYPE option<int> DEFAULT 1;
+DEFINE FIELD IF NOT EXISTS chapter_title   ON chunks TYPE option<string> DEFAULT "";
+DEFINE FIELD IF NOT EXISTS anchor_id       ON chunks TYPE option<string> DEFAULT "";
 DEFINE FIELD IF NOT EXISTS embedding       ON chunks TYPE array<float>;
 DEFINE FIELD IF NOT EXISTS created_at      ON chunks TYPE datetime DEFAULT time::now();
 
@@ -429,3 +432,15 @@ The GitHub workflow `refresh-pr-branches.yml` updates eligible same-repository
 PR branches after `main` advances so protected checks run against the current
 base. It uses the dedicated `PR_AUTOMATION_TOKEN` repository secret and never
 performs deployments or merges pull requests.
+
+---
+
+## 9. MCP Triage & Diagnostic Observability
+
+AI agents and platform operators leverage Model Context Protocol (MCP) servers for live, zero-overhead diagnostic triage across the deployment lifecycle:
+
+- **Google Cloud Logging MCP (`google-cloud-logging`)**: Triage Cloud Run service logs (`get_service_log`, `list_log_entries`) to pinpoint unhandled container exceptions or startup timeouts without navigating the GCP web console.
+- **Google Cloud Monitoring MCP (`google-cloud-monitoring`)**: Query live Cloud Run latency percentiles, worker CPU/memory usage, and Cloud Tasks queue depths (`list_timeseries`, `list_alerts`).
+- **SonarQube MCP (`sonarqube`)**: Query real-time quality gate status, rule violations, and security hotspots (`get_project_quality_gate_status`, `search_sonar_issues_in_projects`).
+- **Chrome DevTools MCP (`chrome-devtools-mcp`)**: Audit production frontend performance, Core Web Vitals, accessibility compliance (`a11y-debugging`), and browser runtime console errors.
+- **Google Developer Knowledge MCP (`google-developer-knowledge`)**: Verify up-to-date Cloud Run and Vertex AI configuration blueprints.

@@ -40,3 +40,12 @@ is the cross-agent source of truth.
 Prioritize functional login, safe document processing, reproducible releases,
 actionable CI/security findings, and production observability before enterprise
 RBAC, graph RAG, or autonomous agents.
+
+## MCP Triage & Diagnostic Tooling
+
+Utilize specialized Model Context Protocol (MCP) servers for fast, grounded diagnostics:
+
+- **SonarQube MCP**: Query live project issues, hotspots, and quality gate status (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`).
+- **Google Cloud Logging & Monitoring MCP**: Inspect live Cloud Run container logs and service performance metrics (`list_log_entries`, `get_service_log`, `list_timeseries`).
+- **Chrome DevTools MCP**: Diagnose UI/UX regressions, Lighthouse Core Web Vitals, accessibility standards (`a11y-debugging`), and browser console errors (`list_console_messages`).
+- **Google Developer Knowledge MCP**: Verify official Cloud Run, GCP ADC keyless IAM, and Vertex AI architecture documentation.

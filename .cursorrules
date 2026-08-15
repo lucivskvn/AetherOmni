@@ -73,7 +73,17 @@ runbook. This file remains the authoritative cross-agent policy.
 - Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do not reintroduce secret-retrieval or imperative provisioning scripts.
   - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
   - Pin every GitHub Action to a full commit SHA, retaining the reviewed release tag only as an adjacent comment.
-- Use Pulumi for new or rebuilt GCP environments; import and preview existing infrastructure before applying changes.
+- Use Pulumi for new or rebuilt GCP environments. Import and preview existing
+  infrastructure before applying changes.
+
+### 8. Proper Tooling Utilization & Multi-MCP Triage Protocols
+
+- **Mandatory Tooling & Multi-MCP Integration for Fast Triage**:
+  - **SonarQube MCP (`sonarqube`)**: Proactively query live quality gate status, rule violations, cognitive complexity hotspots, and security findings (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`, `show_security_hotspot`, `analyze_code_snippet`) during investigation and verification turns.
+  - **Google Cloud Logging & Monitoring MCP (`google-cloud-logging`, `google-cloud-monitoring`, `cloudrun`)**: Triage Cloud Run deployment health, container logs, worker queue execution traces, and performance metric timeseries (`list_log_entries`, `get_service_log`, `list_timeseries`) directly without manual console lookup.
+  - **Chrome DevTools MCP (`chrome-devtools-mcp`)**: Audit UI/UX regressions, Lighthouse Core Web Vitals, accessibility tree standards (`a11y-debugging`), browser console errors (`list_console_messages`), and network payload bottlenecks (`list_network_requests`).
+  - **Google Developer Knowledge MCP (`google-developer-knowledge`)**: Fetch authoritative documentation and architecture guidelines for Cloud Run, IAM keyless authentication, and Vertex AI integrations.
+  - Always prioritize deep programmatic inspection and MCP-grounded evidence over speculative diagnostics.
 
 ---
 

@@ -315,6 +315,7 @@ flowchart LR
 | **Auth** | Supabase Auth Platform (Supabase Cloud) | GoTrue REST API · `SupabaseAuthBackend` | User authentication, login, and registration |
 | **Container Runtime** | Docker · digest-pinned Python slim image | Multi-stage, shell-free OWASP non-root build | Minimal production container, non-root runtime user |
 | **DevSecOps & SAST** | SonarQube / Bandit / Hadolint / Semgrep / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | Sonar MQR Gate, SurrealQL syntax validation | Complete shift-left security verification and code quality gate |
+| **AI Agent Tooling & MCP** | SonarQube / Google Cloud Logging / Chrome DevTools / Google Dev Knowledge | Model Context Protocol (MCP) servers | Fast grounded triage, live quality gate queries, Cloud Run log inspection, and UI/UX accessibility auditing |
 
 ---
 
