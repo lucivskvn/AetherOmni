@@ -28,14 +28,15 @@ jobs:
       REPOSITORY: ${{ github.repository }}
       TARGET_PR: ${{ inputs.pr_number }}
     steps:
-      - name: Require dedicated automation token
+      - name: Check automation token
         run: |
           if [ -z "${GH_TOKEN}" ]; then
-            echo "::error title=Missing PR automation token::Configure PR_AUTOMATION_TOKEN with contents:write and pull-requests:write access."
-            exit 1
+            echo "::notice title=PR branch refresh skipped::PR_AUTOMATION_TOKEN secret is not configured in this repository. Skipping automated branch refresh."
+            exit 0
           fi
 
       - name: Update same-repository branches
+        if: env.GH_TOKEN != ''
         shell: bash
         run: |
           set -euo pipefail

@@ -414,39 +414,40 @@ function setFormSubmitLoadingState(form) {
     const btn = form.querySelector('button[type="submit"]');
     if (!btn) return;
 
-            let text = 'Processing...';
-            if (btn.classList.contains('btn-login-submit')) {
-                text = 'Unlocking Dashboard...';
-            } else if (btn.classList.contains('btn-register-submit')) {
-                text = 'Creating Account...';
-            } else if (btn.classList.contains('btn-forgot-submit')) {
-                text = 'Sending Recovery Link...';
-            } else if (btn.classList.contains('btn-password-submit')) {
-                text = 'Updating Credentials...';
-            } else if (btn.classList.contains('btn-save-curation')) {
-                text = 'Saving Curation...';
-            } else if (btn.classList.contains('btn-confirm-submit')) {
-                text = 'Updating Password...';
-            } else if (form.id === 'settings-form') {
-                text = 'Saving Configurations...';
-            } else if (form.classList.contains('full-width-form')) {
-                text = 'Wiping Database...';
-            }
+    let text = 'Processing...';
+    if (btn.classList.contains('btn-login-submit')) {
+        text = 'Unlocking Dashboard...';
+    } else if (btn.classList.contains('btn-register-submit')) {
+        text = 'Creating Account...';
+    } else if (btn.classList.contains('btn-forgot-submit')) {
+        text = 'Sending Recovery Link...';
+    } else if (btn.classList.contains('btn-password-submit')) {
+        text = 'Updating Credentials...';
+    } else if (btn.classList.contains('btn-save-curation')) {
+        text = 'Saving Curation...';
+    } else if (btn.classList.contains('btn-confirm-submit')) {
+        text = 'Updating Password...';
+    } else if (form.id === 'settings-form') {
+        text = 'Saving Configurations...';
+    } else if (form.id === 'purge-all-form' || form.dataset.action === 'purge') {
+        text = 'Wiping Database...';
+    }
 
-            const spinnerSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spinner" style="margin-right: 8px;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
+    btn.dataset.originalHtml = btn.innerHTML;
+    const spinnerSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spinner" style="margin-right: 8px;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
 
-            btn.innerHTML = `${spinnerSvg} ${text}`;
-            btn.style.pointerEvents = 'none';
-            btn.style.opacity = '0.85';
+    btn.innerHTML = `${spinnerSvg} ${text}`;
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '0.85';
 }
 
 /**
  * Attaches real-time, context-specific loading spinners to standard form submission buttons
- * across authentication and security credentials views.
+ * across authentication and security credentials views with bfcache restoration support.
  */
 function initializeFormSubmitSpinners() {
     const forms = document.querySelectorAll(
-        '.login-card form, .register-card form, .forgot-card form, .password-change-card form, #editor-form, #settings-form, .confirm-card form, .full-width-form'
+        '.login-card form, .register-card form, .forgot-card form, .password-change-card form, #editor-form, #settings-form, .confirm-card form, #purge-all-form, form[data-action="purge"]'
     );
 
     forms.forEach(form => {
@@ -454,6 +455,19 @@ function initializeFormSubmitSpinners() {
             if (event.defaultPrevented) return;
             setFormSubmitLoadingState(form);
         });
+    });
+
+    globalThis.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            forms.forEach(form => {
+                const btn = form.querySelector('button[type="submit"]');
+                if (btn && btn.dataset.originalHtml) {
+                    btn.innerHTML = btn.dataset.originalHtml;
+                    btn.style.pointerEvents = '';
+                    btn.style.opacity = '';
+                }
+            });
+        }
     });
 }
 /**
@@ -1016,11 +1030,22 @@ function initializeRAGSearch() {
                     data.sources.forEach(src => {
                         const li = document.createElement('li');
                         li.style.marginBottom = '6px';
-                        li.innerHTML = `<a href="/document/${src.uuid}/" style="color:var(--accent); text-decoration:none; font-weight:600;">${src.title}</a> (Lang: ${src.language}, Chunk: #${src.chunk_index+1})`;
+                        const a = document.createElement('a');
+                        a.href = `/document/${encodeURIComponent(src.uuid)}/`;
+                        a.style.color = 'var(--accent)';
+                        a.style.textDecoration = 'none';
+                        a.style.fontWeight = '600';
+                        a.textContent = src.title || 'Untitled Document';
+                        li.appendChild(a);
+                        const span = document.createElement('span');
+                        span.textContent = ` (Lang: ${src.language || 'auto'}, Chunk: #${Number(src.chunk_index) + 1})`;
+                        li.appendChild(span);
                         ragSourcesList.appendChild(li);
                     });
                 } else {
-                    ragSourcesList.innerHTML = '<li>No sources linked</li>';
+                    const li = document.createElement('li');
+                    li.textContent = 'No sources linked';
+                    ragSourcesList.appendChild(li);
                 }
             })
             .catch(err => {

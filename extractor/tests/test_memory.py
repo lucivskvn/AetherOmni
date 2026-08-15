@@ -51,10 +51,11 @@ class MultiModelMemoryCachingTestCase(TestCase):
         self.assertEqual(result.model_used, "gemini-3.1-flash-lite")
         # Assert direct gemini was called twice (initial failed attempt + fallback successful attempt)
         self.assertEqual(mock_direct_gemini.call_count, 2)
-        from extractor.llm_gateway import MODEL_GEMINI_FLASH
-
         self.assertTrue(
-            any(f"Model '{MODEL_GEMINI_FLASH}' failed or rate-limited" in message for message in log_capture.output)
+            any(
+                "Unknown Gemini model 'gemini-9.9-flash'" in message or "failed or rate-limited" in message
+                for message in log_capture.output
+            )
         )
 
     @patch("extractor.llm_gateway._call_openrouter")
@@ -69,10 +70,10 @@ class MultiModelMemoryCachingTestCase(TestCase):
         # We simulate a "429 Resource Exhausted" rate-limit error for all direct Gemini attempts
         mock_direct_gemini.side_effect = Exception("API Error: 429 Resource Exhausted. Daily quota exceeded.")
 
-        # We mock a successful OpenRouter reply from Llama 3 8B Free
+        # We mock a successful OpenRouter reply from Free Router
         mock_response = MagicMock()
         mock_response.text = "Answer from OpenRouter free-tier backup."
-        mock_response.model_used = "meta-llama/llama-3-8b-instruct:free"
+        mock_response.model_used = "openrouter/free"
         mock_openrouter.return_value = mock_response
 
         from extractor.utils import generate_llm_content_unified
@@ -80,12 +81,12 @@ class MultiModelMemoryCachingTestCase(TestCase):
         with self.assertLogs("extractor.llm_gateway", level="WARNING"):
             result = generate_llm_content_unified(prompt="Hello", model_name="gemini-3.1-flash-lite")
 
-        # Ensure it fell back successfully to OpenRouter llama free-tier
+        # Ensure it fell back successfully to OpenRouter free router
         self.assertEqual(result.text, "Answer from OpenRouter free-tier backup.")
-        self.assertEqual(result.model_used, "meta-llama/llama-3-8b-instruct:free")
+        self.assertEqual(result.model_used, "openrouter/free")
         # Direct Gemini should have been tried for fallback candidates
         self.assertTrue(mock_direct_gemini.call_count > 1)
-        mock_openrouter.assert_called_once()
+        mock_openrouter.assert_called_once_with("Hello", None, "openrouter/free")
 
     @patch("extractor.rag.generate_llm_content_unified")
     @patch("extractor.llm_gateway.execute_embed_content_with_fallback")

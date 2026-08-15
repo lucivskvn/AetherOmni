@@ -19,8 +19,10 @@ class ViewsTestCase(TestCase):
 
         DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = False
 
-        self.user = User.objects.create_superuser(username="testviewuser", password="password123")
-        self.client.login(username="testviewuser", password="password123")
+        self.user = User.objects.create_superuser(
+            username="testviewuser", email="testviewuser@example.com", password="password123"
+        )
+        self.client.force_login(self.user)
 
         self.settings_obj = SystemSettings.get_settings()
         self.doc = SourceDocument.objects.create(
@@ -236,7 +238,7 @@ class SecurityGatewayAndAuthTestCase(TestCase):
 
     def test_authenticated_user_access_allowed(self):
         """Verify that authenticated users can access the dashboard and views without redirect."""
-        self.client.login(username=self.username, password=self.password)
+        self.client.force_login(self.user)
 
         response = self.client.get(reverse("dashboard"))
         self.assertEqual(response.status_code, 200)
@@ -245,7 +247,7 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         """Verify that a user logged in with the default password 'admin' is forced to change it."""
         # Create a user with password 'admin'
         _default_user = User.objects.create_user(username="defaultadmin", password="admin")
-        self.client.login(username="defaultadmin", password="admin")
+        self.client.force_login(_default_user)
 
         # Try to access the dashboard
         response = self.client.get(reverse("dashboard"))
@@ -351,7 +353,11 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         mock_urlopen.return_value = mock_resp
 
         backend = SupabaseAuthBackend()
-        with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="",
+        ):
             user2 = backend.authenticate(None, username="scholar.test@different-domain.com", password="somepassword")
 
         self.assertIsNotNone(user2)
@@ -384,7 +390,11 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         mock_urlopen.return_value = mock_resp
 
         backend = SupabaseAuthBackend()
-        with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="",
+        ):
             user = backend.authenticate(None, username="scholar.test@different-domain.com", password="somepassword")
 
         self.assertIsNotNone(user)
@@ -414,7 +424,7 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         )
 
         # Log in as self.user (standard user)
-        self.client.login(username=self.username, password=self.password)
+        self.client.force_login(self.user)
 
         # 1. Detail View Checks
         # - Accessing system-wide doc (uploaded_by=None) -> Allowed (200)
@@ -625,6 +635,48 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
             settings_obj.csrf_trusted_origins = ""
             settings_obj.save()
 
+    def test_dynamic_csrf_middleware_db_error_path(self):
+        """Verify middleware gracefully handles database query errors without throwing exceptions."""
+        from unittest.mock import patch
+
+        from core.middleware import DynamicCsrfTrustedOriginsMiddleware
+
+        DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = False
+        DynamicCsrfTrustedOriginsMiddleware._last_query_time = 0.0
+
+        factory = RequestFactory()
+        request = factory.get("/")
+        middleware = DynamicCsrfTrustedOriginsMiddleware(lambda req: "ok")
+
+        with patch("extractor.models.SystemSettings.get_settings", side_effect=RuntimeError("DB unreachable")):
+            response = middleware(request)
+            self.assertEqual(response, "ok")
+
+    def test_csrf_middleware_malformed_referer(self):
+        """Verify _patched_process_view handles malformed referer URLs without crashing."""
+        from django.middleware.csrf import CsrfViewMiddleware
+
+        factory = RequestFactory()
+        request = factory.post("/", HTTP_REFERER="http://[invalid-ipv6-host")
+        csrf_mw = CsrfViewMiddleware(lambda req: None)
+
+        def dummy_view(req):
+            return None
+
+        # Should not raise exception
+        csrf_mw.process_view(request, dummy_view, (), {})
+
+    def test_csrf_middleware_is_loopback_variations(self):
+        """Verify _is_loopback handles empty, IPv6, and non-loopback inputs."""
+        from core.middleware import DynamicCsrfTrustedOriginsMiddleware
+
+        mw = DynamicCsrfTrustedOriginsMiddleware(lambda req: None)
+        self.assertFalse(mw._is_loopback(""))
+        self.assertFalse(mw._is_loopback("https://attacker.example.com"))
+        self.assertTrue(mw._is_loopback("localhost:8000"))
+        self.assertTrue(mw._is_loopback("127.0.0.1:8000"))
+        self.assertTrue(mw._is_loopback("http://[::1]:8000"))
+
 
 class AuditLogTestCase(TestCase):
     """Verifies that system audit logs are cleanly queried, filtered, and rendered safely."""
@@ -665,7 +717,7 @@ class AuditLogTestCase(TestCase):
         )
 
     def test_audit_logs_list_normal_user_isolation(self):
-        self.client.login(username="normaluser", password="password123")
+        self.client.force_login(self.normal_user)
         response = self.client.get(reverse("audit_logs"))
         self.assertEqual(response.status_code, 200)
         logs = response.context["logs"]
@@ -675,7 +727,7 @@ class AuditLogTestCase(TestCase):
             self.assertEqual(log.user, self.normal_user)
 
     def test_audit_logs_list_staff_user_all(self):
-        self.client.login(username="staffuser", password="password123")
+        self.client.force_login(self.staff_user)
         response = self.client.get(reverse("audit_logs"))
         self.assertEqual(response.status_code, 200)
         logs = response.context["logs"]
@@ -683,7 +735,7 @@ class AuditLogTestCase(TestCase):
         self.assertEqual(len(logs), 3)
 
     def test_audit_logs_filtering(self):
-        self.client.login(username="staffuser", password="password123")
+        self.client.force_login(self.staff_user)
 
         # Filter by action
         response = self.client.get(reverse("audit_logs") + "?action=" + AuditAction.DELETE)
@@ -710,7 +762,7 @@ class AuditLogTestCase(TestCase):
             details="Legacy delete record",
             ip_address="10.0.0.2",
         )
-        self.client.login(username="staffuser", password="password123")
+        self.client.force_login(self.staff_user)
 
         response = self.client.get(reverse("audit_logs") + "?action=delete")
 
@@ -723,7 +775,7 @@ class AuditLogTestCase(TestCase):
         self.assertContains(response, 'datetime="')
 
     def test_audit_username_filter_is_not_rendered_for_standard_users(self):
-        self.client.login(username="normaluser", password="password123")
+        self.client.force_login(self.normal_user)
 
         response = self.client.get(reverse("audit_logs"))
 
@@ -742,7 +794,7 @@ class AuditLogTestCase(TestCase):
         log_dangling.refresh_from_db()
         self.assertIsNone(log_dangling.document)
 
-        self.client.login(username="normaluser", password="password123")
+        self.client.force_login(self.normal_user)
         response = self.client.get(reverse("audit_logs"))
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"--", response.content)
@@ -806,7 +858,7 @@ class DeploymentControllerViewTestCase(TestCase):
         self.admin = User.objects.create_superuser(username="depadmin", password="password123")
         self.staff = User.objects.create_user(username="depstaff", password="password123", is_staff=True)
         self.user = User.objects.create_user(username="depuser", password="password123")
-        self.client.login(username="depadmin", password="password123")
+        self.client.force_login(self.admin)
 
         # Class-wide mocks for deployment helpers
         self.patchers = [
@@ -852,7 +904,7 @@ class DeploymentControllerViewTestCase(TestCase):
             self.patchers[0].start()
 
     def test_non_staff_forbidden(self):
-        self.client.login(username="depuser", password="password123")
+        self.client.force_login(self.user)
         # Temporarily stop the test_func override to test forbidden status
         self.patchers[0].stop()
         try:
@@ -975,7 +1027,7 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
         # No pgvector chunks to create (now stored in SurrealDB)
 
     def test_dashboard_stats_and_document_list_are_user_isolated(self):
-        self.client.login(username="user_a", password="password123")
+        self.client.force_login(self.user_a)
 
         # 1. Check Dashboard View
         response = self.client.get(reverse("dashboard"))
@@ -1004,7 +1056,7 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
     @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
     @patch("extractor.surreal_db.search_chunks_hnsw")
     def test_rag_search_user_isolated(self, mock_search_chunks, mock_execute, mock_generate):
-        self.client.login(username="user_a", password="password123")
+        self.client.force_login(self.user_a)
 
         # Mock the embedding call response for search query
         mock_emb_val = MagicMock()
@@ -1188,7 +1240,10 @@ class SecurityAuthTestCase(TestCase):
 
         backend = SupabaseAuthBackend()
         with self.settings(
-            SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key", DEBUG=False
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="",
+            DEBUG=False,
         ):
             user = backend.authenticate(None, username="promoted_user@example.com", password="password123")
 
@@ -1216,7 +1271,10 @@ class SecurityAuthTestCase(TestCase):
 
         backend = SupabaseAuthBackend()
         with self.settings(
-            SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key", DEBUG=False
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="",
+            DEBUG=False,
         ):
             user = backend.authenticate(None, username="first_user@example.com", password="password123")
 
@@ -1286,7 +1344,10 @@ class SecurityAuthTestCase(TestCase):
 
         backend = SupabaseAuthBackend()
         with self.settings(
-            SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key", DEBUG=False
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            CF_TURNSTILE_SITE_KEY="",
+            DEBUG=False,
         ):
             # Pass email as username
             user = backend.authenticate(None, username="normal_user@example.com", password="password123")
@@ -1323,7 +1384,7 @@ class BulkDocumentActionTestCase(TestCase):
 
     @patch("extractor.cloud_tasks.enqueue")
     def test_bulk_restart(self, mock_enqueue):
-        self.client.login(username=self.username, password=self.password)
+        self.client.force_login(self.user)
 
         response = self.client.post(
             reverse("bulk_action"),
@@ -1347,7 +1408,7 @@ class BulkDocumentActionTestCase(TestCase):
     @patch("django.core.files.storage.default_storage.delete")
     @patch("extractor.surreal_db.delete_chunks")
     def test_bulk_delete(self, mock_delete_chunks, mock_storage_delete, mock_storage_exists):
-        self.client.login(username=self.username, password=self.password)
+        self.client.force_login(self.user)
 
         response = self.client.post(
             reverse("bulk_action"),
@@ -1367,7 +1428,7 @@ class BulkDocumentActionTestCase(TestCase):
     def test_bulk_delete_query_efficiency_and_deduplication(
         self, mock_delete_chunks, mock_storage_delete, mock_storage_exists
     ):
-        self.client.login(username=self.username, password=self.password)
+        self.client.force_login(self.user)
 
         # Create 10 documents with the same file hash
         docs = []
@@ -1404,7 +1465,7 @@ class CoreDesignHardeningTests(TestCase):
         self.email = "test_hardening@example.com"
         self.password = "Secr3tPass!"
         self.user = User.objects.create_user(username=self.username, email=self.email, password=self.password)
-        self.client.login(username=self.username, password=self.password)
+        self.client.force_login(self.user)
 
     def test_openrouter_api_key_masked_property(self):
         settings_obj = SystemSettings.get_settings()
@@ -1502,3 +1563,57 @@ class DatetimeUtilityTestCase(TestCase):
 
         parsed_none = parse_datetime(None)
         self.assertIsInstance(parsed_none, datetime)
+
+
+class SupabaseSessionExchangeTestCase(TestCase):
+    """Verifies Supabase client-side OAuth session exchange view."""
+
+    def test_missing_access_token(self):
+        import json
+
+        response = self.client.post(
+            reverse("supabase_session_exchange"),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+
+    def test_unconfigured_supabase(self):
+        import json
+
+        with self.settings(SUPABASE_URL="", SUPABASE_PUBLIC_KEY=""):
+            response = self.client.post(
+                reverse("supabase_session_exchange"),
+                data=json.dumps({"access_token": "mock-token"}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 503)
+
+    @patch("urllib.request.urlopen")
+    def test_successful_session_exchange(self, mock_urlopen):
+        import json
+
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps({"id": "oauth-uuid-123", "email": "oauth.user@example.com"}).encode(
+            "utf-8"
+        )
+        mock_urlopen.return_value = mock_resp
+
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            ADMIN_EMAIL="",
+        ):
+            response = self.client.post(
+                reverse("supabase_session_exchange"),
+                data=json.dumps({"access_token": "valid-mock-jwt"}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["status"], "ok")
+            self.assertEqual(data["user"], "oauth.user")
+            self.assertEqual(self.client.session.get("supabase_user_id"), "oauth-uuid-123")

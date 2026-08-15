@@ -318,8 +318,6 @@
         </p>
     </div>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" integrity="sha384-N/qS5v5lH3o9O+X5X2wOqS2oOQ+T8M9i8cE2Z7G+p6G9qXvJz6JkH7pE4w+FwQ/w" crossorigin="anonymous"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const hash = globalThis.location.hash;
@@ -332,6 +330,27 @@
                 sessionStorage.setItem('supabase_recovery_token', accessToken);
                 globalThis.history.replaceState(null, null, globalThis.location.pathname);
                 globalThis.location.href = "{% url 'reset_password_confirm' %}";
+            } else if (accessToken) {
+                const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+                const csrfToken = csrfInput ? csrfInput.value : '';
+                fetch("{% url 'supabase_session_exchange' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: JSON.stringify({ access_token: accessToken })
+                }).then(async res => {
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok) {
+                        globalThis.history.replaceState(null, null, globalThis.location.pathname);
+                        globalThis.location.href = "{% url 'dashboard' %}";
+                    } else if (typeof globalThis.showClientSideAlert === 'function') {
+                        globalThis.showClientSideAlert(data.error || 'OAuth authentication failed.', 'error');
+                    }
+                }).catch(err => {
+                    console.error('OAuth session exchange failed:', err);
+                });
             }
         }
 
@@ -350,19 +369,25 @@
                     return;
                 }
 
-                const supabase = supabase.createClient(supabaseUrl, supabaseKey);
-                const { error } = await supabase.auth.signInWithOAuth({
+                const client = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
+                if (!client) {
+                    if (typeof globalThis.showClientSideAlert === 'function') {
+                        globalThis.showClientSideAlert('Supabase SDK failed to load.', 'error');
+                    } else {
+                        alert('Supabase SDK failed to load.');
+                    }
+                    return;
+                }
+
+                const { error } = await client.auth.signInWithOAuth({
                     provider: 'github',
                     options: {
-                        redirectTo: globalThis.location.origin + "{% url 'dashboard' %}"
+                        redirectTo: globalThis.location.origin + "{% url 'login' %}"
                     }
                 });
 
-                if (error) {
-
-                    if (typeof globalThis.showClientSideAlert === 'function') {
-                        globalThis.showClientSideAlert(error.message, 'error');
-                    }
+                if (error && typeof globalThis.showClientSideAlert === 'function') {
+                    globalThis.showClientSideAlert(error.message, 'error');
                 }
             });
         }

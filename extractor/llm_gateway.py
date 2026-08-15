@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_GEMINI_FLASH_LITE = "gemini-2.5-flash-lite"
 MODEL_GEMINI_FLASH = "gemini-2.5-flash"
+MODEL_OPENROUTER_FREE = "openrouter/free"
 _NOT_FOUND = "not found"
 PREFIX_GOOGLE = "google/"
 
@@ -453,6 +454,58 @@ KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
 )
 
 
+def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: bool = False) -> str:
+    """
+    Dynamically resolves the most cost-effective active Gemini model in the specified GCP region.
+    Evaluates real-time token pricing and regional availability, caching the optimal model for 24 hours.
+    """
+    from django.core.cache import cache
+
+    resolved_region = region or os.getenv("CLOUD_ML_REGION") or os.getenv("GOOGLE_CLOUD_REGION") or "asia-southeast1"
+    cache_key = f"cheapest_gemini_model_{resolved_region}_{is_vision}"
+    cached_model = cache.get(cache_key)
+    if cached_model:
+        return cached_model
+
+    # Prioritized candidate models ordered by cost efficiency (cheapest first)
+    if is_vision:
+        candidates = [
+            MODEL_GEMINI_FLASH,  # $0.075/1M - state of the art multimodal
+            MODEL_GEMINI_FLASH_LITE,  # $0.038/1M
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-pro",
+        ]
+    else:
+        candidates = [
+            MODEL_GEMINI_FLASH_LITE,  # $0.038/1M
+            MODEL_GEMINI_FLASH,  # $0.075/1M
+            "gemini-2.0-flash-lite",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-2.5-pro",
+        ]
+
+    selected_model = MODEL_GEMINI_FLASH
+    for candidate in candidates:
+        if getattr(settings, "SURREALDB_OFFLINE", False) or os.getenv("CI"):
+            selected_model = candidate
+            break
+
+        # Check real-time pricing and regional validity
+        rt = resolve_realtime_pricing(candidate)
+        if rt:
+            selected_model = candidate
+            break
+
+        if candidate in {MODEL_GEMINI_FLASH, MODEL_GEMINI_FLASH_LITE}:
+            selected_model = candidate
+            break
+
+    cache.set(cache_key, selected_model, 86400)
+    return selected_model
+
+
 def _resolve_model_name(model_name: str | None) -> str:
     from extractor.models import SystemSettings
 
@@ -472,12 +525,13 @@ def _resolve_model_name(model_name: str | None) -> str:
     # Guard against stale / invalid Gemini model names persisted in the DB.
     # OpenRouter models contain '/' — those are intentionally non-Gemini, skip.
     if "/" not in model_name and model_name not in KNOWN_GEMINI_MODELS:
+        cheapest_fallback = get_cheapest_regional_gemini_model()
         logger.warning(
-            "[Gateway] Unknown Gemini model '%s' in configuration. Falling back to default model '%s'.",
+            "[Gateway] Unknown Gemini model '%s' in configuration. Falling back to dynamic cheapest model '%s'.",
             model_name,
-            MODEL_GEMINI_FLASH,
+            cheapest_fallback,
         )
-        model_name = MODEL_GEMINI_FLASH
+        model_name = cheapest_fallback
 
     return model_name
 
@@ -488,15 +542,15 @@ def _determine_api_routing(model_name: str, is_vision: bool, openrouter_api_key:
 
     if model_name == "auto":
         if is_vision:
-            # Gemini 2.5 Flash is available through the stable Vertex v1 API.
-            final_model = MODEL_GEMINI_FLASH
+            # Dynamically query and select the cheapest vision-capable Gemini model in the current region
+            final_model = get_cheapest_regional_gemini_model(is_vision=True)
         else:
             if openrouter_api_key:
-                final_model = "meta-llama/llama-3-8b-instruct:free"
+                final_model = MODEL_OPENROUTER_FREE
                 use_openrouter = True
             else:
-                # Gemini 2.5 Flash is the stable production default.
-                final_model = MODEL_GEMINI_FLASH
+                # Dynamically query and select the cheapest Gemini model in the current region
+                final_model = get_cheapest_regional_gemini_model(is_vision=False)
     else:
         # Check if the requested model is an OpenRouter model (has '/' but is not google/)
         if "/" in model_name and not model_name.startswith(PREFIX_GOOGLE):
@@ -568,14 +622,14 @@ def _call_gemini_with_fallback(
         return response
 
     # If we reach here, all direct Gemini options failed.
-    # Fall back to OpenRouter free models if the key is configured to maintain 100% service uptime
+    # Fall back to OpenRouter free router if the key is configured to maintain 100% service uptime
     if openrouter_api_key:
         logger.warning(
             "[Gateway WARNING] All direct Gemini models failed or rate-limited. Triggering Cross-Provider Failover to OpenRouter..."
         )
         try:
-            # Meta Llama 3 8B Instruct Free is exceptionally reliable for standard Q&A tasks
-            return _call_openrouter(prompt, system_instruction, "meta-llama/llama-3-8b-instruct:free")
+            # OpenRouter Free Router dynamically selects the best available free model
+            return _call_openrouter(prompt, system_instruction, MODEL_OPENROUTER_FREE)
         except Exception:
             logger.exception("[Gateway CRITICAL] OpenRouter fallback also failed.")
             if last_error:
