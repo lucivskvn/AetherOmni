@@ -77,7 +77,7 @@ function replaceMarkdownLinks(text) {
 
         const label = remaining.slice(start + 1, labelEnd);
         const url = remaining.slice(labelEnd + 2, urlEnd);
-        if (!label || /[\r\n]/.test(label) || /[\s()]/.test(url)) {
+        if (!label || /[\r\n]/.test(label) || /[\s()]/.test(url) || !isSafePreviewUrl(url)) {
             output += remaining.slice(0, start + 1);
             remaining = remaining.slice(start + 1);
             continue;
@@ -88,6 +88,15 @@ function replaceMarkdownLinks(text) {
     }
 
     return output;
+}
+
+function isSafePreviewUrl(value) {
+    try {
+        const parsed = new URL(value, window.location.origin);
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch {
+        return false;
+    }
 }
 
 // ── Markdown Formatting Insertion ───────────────────────────────────────────
