@@ -319,6 +319,7 @@ CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME"
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")
 # WORKER_URL is the fully-qualified URL of the aether-worker service
 WORKER_URL = os.getenv("WORKER_URL", "")
+CLOUD_TASKS_SERVICE_ACCOUNT = os.getenv("CLOUD_TASKS_SERVICE_ACCOUNT", "")
 
 
 # ── Supabase Realtime ─────────────────────────────────────────────────────────

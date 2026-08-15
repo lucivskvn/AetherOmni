@@ -614,6 +614,45 @@ def update_document(doc_uuid: str, data: dict) -> dict:
     return _update_document_surreal(doc_uuid, data)
 
 
+def claim_document_for_processing(doc_uuid: str) -> dict | None:
+    """Atomically claim a pending document for a single processing attempt."""
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            import uuid
+
+            try:
+                document_id = (
+                    SourceDocument.objects.filter(uuid=uuid.UUID(doc_uuid), status="PENDING")
+                    .values_list("id", flat=True)
+                    .first()
+                )
+            except ValueError:
+                document_id = (
+                    SourceDocument.objects.filter(id=int(doc_uuid), status="PENDING")
+                    .values_list("id", flat=True)
+                    .first()
+                )
+        except (TypeError, ValueError):
+            return None
+        if document_id is None:
+            return None
+        if SourceDocument.objects.filter(id=document_id, status="PENDING").update(status="EXTRACTING") != 1:
+            return None
+        return _model_to_dict(SourceDocument.objects.get(id=document_id))
+
+    sql = (
+        "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now() "
+        "WHERE doc_uuid = $doc_uuid AND status = 'PENDING' RETURN AFTER;"
+    )
+    rows = _first_result(_run(sql, {"doc_uuid": doc_uuid}))
+    return rows[0] if rows else None
+
+
 def get_document(doc_uuid: str) -> dict | None:
     """Retrieve a single document record by UUID."""
     doc_uuid = str(doc_uuid)

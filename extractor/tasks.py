@@ -185,14 +185,6 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     Lock document row and transition status to EXTRACTING.
     Returns None if document is already finalised, doesn't exist, or budget is exceeded.
     """
-    doc = surreal_db.get_document(doc_uuid)
-    if not doc:
-        logger.error("[Worker] Document %s does not exist.", doc_uuid)
-        return None
-    if doc.get("status") in ["COMPLETED", "FAILED"]:
-        logger.info("[Worker] Document %s already finalised. Skipping.", doc_uuid)
-        return None
-
     try:
         check_budget_and_api_limit()
     except Exception as budget_err:
@@ -203,7 +195,10 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
         )
         return None
 
-    doc = surreal_db.update_document(doc_uuid, {"status": "EXTRACTING"})
+    doc = surreal_db.claim_document_for_processing(doc_uuid)
+    if not doc:
+        logger.info("[Worker] Document %s is not pending or is already claimed. Skipping.", doc_uuid)
+        return None
 
     from django.contrib.auth import get_user_model
 
