@@ -1148,11 +1148,12 @@ class SFTDatasetPreviewView(LoginRequiredMixin, View):
                     "pairs": pairs,
                 }
             )
-        except Exception as e:
+        except Exception as exc:
+            logger.warning("[SFTPreview] Failed to generate dataset preview: %s", exc)
             return JsonResponse(
                 {
                     "status": "error",
-                    "message": str(e),
+                    "message": "Failed to generate dataset preview.",
                 },
                 status=400,
             )

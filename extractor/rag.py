@@ -52,7 +52,8 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
     # 1. Normalize line endings and extract structural blocks
     # Break on major structural delimiters (page dividers, markdown headings, chapters)
     raw_blocks = re.split(
-        r"(?:\n\s*---\s*\n|\n(?=##\s+Page\s+\d+)|\n(?=###?\s+(?:Surah|Hadith|Chapter|Section|Bab)\b))", text
+        r"(?:\n[ \t]*---[ \t]*\n|\n(?=##[ \t]+Page[ \t]+\d+)|\n(?=#{2,3}[ \t]+(?:Surah|Hadith|Chapter|Section|Bab)\b))",
+        text,
     )
     blocks = [b.strip() for b in raw_blocks if b.strip()]
 

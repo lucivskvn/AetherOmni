@@ -587,7 +587,15 @@ def _get_offline_docs(document_ids, user):
 
     from extractor.models import SourceDocument
 
-    docs = SourceDocument.objects.filter(id__in=document_ids, status="COMPLETED")
+    int_ids = []
+    uuid_strs = []
+    for item in document_ids:
+        try:
+            int_ids.append(int(item))
+        except (ValueError, TypeError):
+            uuid_strs.append(str(item))
+
+    docs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs), status="COMPLETED")
     if user and not (user.is_staff or user.is_superuser):
         docs = docs.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
     return list(docs)
