@@ -269,6 +269,7 @@ def main():
         base_url=http_url,
         auth=(SURREAL_USER, SURREAL_PASS),
         timeout=10.0,
+        verify=True,
     )
 
     if wait_for_surreal(client):

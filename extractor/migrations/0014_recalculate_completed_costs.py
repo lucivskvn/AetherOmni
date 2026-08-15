@@ -8,12 +8,15 @@ from django.db import migrations
 def recalculate_costs(apps, schema_editor):
     SourceDocument = apps.get_model("extractor", "SourceDocument")
     # Verified July 2025 Gemini 2.5 rates (standard baseline model): input = $0.30/1M, output = $2.50/1M
+    docs_to_update = []
     for doc in SourceDocument.objects.filter(status="COMPLETED"):
         if doc.cost_usd > Decimal("0.00"):
             input_cost = Decimal(doc.input_tokens) * Decimal("0.00000030")
             output_cost = Decimal(doc.output_tokens) * Decimal("0.00000250")
             doc.cost_usd = input_cost + output_cost
-            doc.save()
+            docs_to_update.append(doc)
+    if docs_to_update:
+        SourceDocument.objects.bulk_update(docs_to_update, ["cost_usd"])
 
 
 class Migration(migrations.Migration):

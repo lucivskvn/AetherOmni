@@ -460,7 +460,6 @@ bash scripts/gcp-diagnostics.sh --service all
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [`LICENSE`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/LICENSE) for full details.
 
-
 ## Protected PR branch refresh
 
 After a push to `main`, the `Refresh protected PR branches` workflow updates

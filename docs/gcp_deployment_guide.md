@@ -392,8 +392,6 @@ gcloud builds submit --config infra/gcp/cloudbuild.yaml \
   --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```
 
-
-
 ## Protected PR branch refresh
 
 The GitHub workflow `refresh-pr-branches.yml` updates eligible same-repository

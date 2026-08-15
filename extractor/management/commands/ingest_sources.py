@@ -147,21 +147,23 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("   - [SUCCESS] Duplicated reference created in DB at $0.00 cost.\n"))
 
+    def _cleanup_force_mode_duplicates(self, file_hash: str) -> None:
+        """Deletes existing documents with the same file_hash when force mode is active."""
+        for old_doc in SourceDocument.objects.filter(file_hash=file_hash):
+            try:
+                old_doc.file.delete(save=False)
+            except Exception as exc:
+                self.stdout.write(self.style.WARNING(f"   - [WARNING] Failed to delete old file: {exc}"))
+            old_doc.delete()
+
     def _create_pending_document(self, file_path, filename, file_hash, force_mode):
         """Create document record and handle force mode deletions."""
+        if force_mode:
+            self._cleanup_force_mode_duplicates(file_hash)
 
         with open(file_path, "rb") as f:
             django_file = File(f, name=filename)
-
             with transaction.atomic():
-                if force_mode:
-                    for old_doc in SourceDocument.objects.filter(file_hash=file_hash):
-                        try:
-                            old_doc.file.delete(save=False)
-                        except Exception as exc:
-                            self.stdout.write(self.style.WARNING(f"   - [WARNING] Failed to delete old file: {exc}"))
-                        old_doc.delete()
-
                 return SourceDocument.objects.create(
                     file=django_file, original_filename=filename, file_hash=file_hash, status="PENDING"
                 )

@@ -68,10 +68,10 @@ def _register():
 # ── OIDC Bearer token verification ───────────────────────────────────────────
 
 
-def _verify_oidc_token(request: HttpRequest, audience: str) -> bool:
+def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
     """
     Verify the Google OIDC Bearer token in the Authorization header.
-    Returns True if valid, False otherwise.
+    Returns True if valid against any accepted audience URL, False otherwise.
     Always returns True in DEBUG mode.
     """
     if settings.DEBUG:
@@ -83,16 +83,25 @@ def _verify_oidc_token(request: HttpRequest, audience: str) -> bool:
         return False
 
     token = auth_header.split(" ", 1)[1]
+    audiences = [audience] if isinstance(audience, str) else list(audience)
+
     try:
         import google.auth.transport.requests
         import google.oauth2.id_token
 
         request_obj = google.auth.transport.requests.Request()
-        id_info = google.oauth2.id_token.verify_oauth2_token(token, request_obj, audience)
-        if id_info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
-            logger.warning("[CloudTasksHandler] OIDC issuer unexpected: %s", id_info.get("iss"))
-            return False
-        return True
+        for aud in audiences:
+            if not aud:
+                continue
+            try:
+                id_info = google.oauth2.id_token.verify_oauth2_token(token, request_obj, aud)
+                if id_info.get("iss") in ("accounts.google.com", "https://accounts.google.com"):
+                    return True
+            except Exception as aud_err:
+                logger.debug("[CloudTasksHandler] Candidate audience '%s' rejected: %s", aud, aud_err)
+
+        logger.warning("[CloudTasksHandler] OIDC verification failed for all candidate audiences.")
+        return False
     except Exception as exc:
         logger.warning("[CloudTasksHandler] OIDC verification failed: %s", exc)
         return False
@@ -106,21 +115,25 @@ def _verify_source_ip(request: HttpRequest) -> bool:
     if settings.DEBUG:
         return True
 
+    raw_remote = request.META.get("REMOTE_ADDR", "").strip()
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    candidate_ips: list[str] = []
+    if raw_remote:
+        candidate_ips.append(raw_remote)
     if x_forwarded_for:
-        raw_ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        raw_ip = request.META.get("REMOTE_ADDR", "")
+        # Check all verifiable proxy hops rather than trusting raw leftmost header
+        candidate_ips.extend([ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()])
 
-    try:
-        client_ip = ipaddress.ip_address(raw_ip)
-        for cidr in GOOGLE_TASKS_IP_CIDRS:
-            if client_ip in ipaddress.ip_network(cidr, strict=False):
-                return True
-    except ValueError:
-        pass
+    for ip_str in candidate_ips:
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            for cidr in GOOGLE_TASKS_IP_CIDRS:
+                if ip in ipaddress.ip_network(cidr, strict=False):
+                    return True
+        except ValueError:
+            continue
 
-    logger.warning("[CloudTasksHandler] Request from unrecognised IP: %s", raw_ip)
+    logger.warning("[CloudTasksHandler] Request from unrecognised IP: %s (remote: %s)", x_forwarded_for, raw_remote)
     return False
 
 
@@ -146,9 +159,14 @@ class CloudTaskHandlerView(View):
         # ── Security checks (production only) ─────────────────────────────
         worker_url = getattr(settings, "WORKER_URL", "").rstrip("/")
         app_url = getattr(settings, "APP_URL", "http://localhost:8080").rstrip("/")
-        audience = f"{(worker_url or app_url)}/internal/tasks/{task_name}/"
 
-        if not _verify_oidc_token(request, audience):
+        audiences = [f"{(worker_url or app_url)}/internal/tasks/{task_name}/"]
+        if worker_url:
+            audiences.append(f"{worker_url}/internal/tasks/{task_name}/")
+        if app_url:
+            audiences.append(f"{app_url}/internal/tasks/{task_name}/")
+
+        if not _verify_oidc_token(request, audiences):
             return HttpResponse("Unauthorized", status=401)
 
         if not _verify_source_ip(request):

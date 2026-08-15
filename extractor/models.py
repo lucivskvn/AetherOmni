@@ -242,69 +242,71 @@ class MonthlySpendLog(models.Model):
         ordering = ["-year", "-month"]
 
     @classmethod
-    def add_cost(cls, date, cost: Decimal, in_tok: int = 0, out_tok: int = 0) -> bool:
-        """Thread-safe upsert: add cost to the specified year/month bucket."""
+    def _add_cost_surreal(cls, year: int, month: int, cost: Decimal, in_tok: int, out_tok: int) -> bool:
+        import json
         from decimal import Decimal as D
 
-        from django.conf import settings
+        from extractor import surreal_db
 
-        year, month = date.year, date.month
-
-        if not getattr(settings, "SURREALDB_OFFLINE", False):
-            import json
-
-            from extractor import surreal_db
-
-            key = f"monthly_spend_log:{year}:{month}"
-            try:
-                existing = surreal_db.kv_cache_get(key)
-                if isinstance(existing, dict):
-                    data = existing
-                elif isinstance(existing, str):
-                    try:
-                        data = json.loads(existing)
-                    except Exception:
-                        data = {
-                            "accumulated_cost_usd": 0.0,
-                            "accumulated_input_tokens": 0,
-                            "accumulated_output_tokens": 0,
-                        }
-                else:
+        key = f"monthly_spend_log:{year}:{month}"
+        try:
+            existing = surreal_db.kv_cache_get(key)
+            if isinstance(existing, dict):
+                data = existing
+            elif isinstance(existing, str):
+                try:
+                    data = json.loads(existing)
+                except Exception:
                     data = {"accumulated_cost_usd": 0.0, "accumulated_input_tokens": 0, "accumulated_output_tokens": 0}
+            else:
+                data = {"accumulated_cost_usd": 0.0, "accumulated_input_tokens": 0, "accumulated_output_tokens": 0}
 
-                accumulated_cost = D(str(data.get("accumulated_cost_usd", 0.0))) + D(str(cost))
-                accumulated_in = int(data.get("accumulated_input_tokens", 0)) + in_tok
-                accumulated_out = int(data.get("accumulated_output_tokens", 0)) + out_tok
+            accumulated_cost = D(str(data.get("accumulated_cost_usd", 0.0))) + D(str(cost))
+            accumulated_in = int(data.get("accumulated_input_tokens", 0)) + in_tok
+            accumulated_out = int(data.get("accumulated_output_tokens", 0)) + out_tok
 
-                new_data = {
-                    "accumulated_cost_usd": float(accumulated_cost),
-                    "accumulated_input_tokens": accumulated_in,
-                    "accumulated_output_tokens": accumulated_out,
-                }
-                surreal_db.kv_cache_set(key, new_data)
-                return True
-            except Exception as exc:
-                logger.warning("[SurrealDB] Failed to add cost to KV cache monthly log: %s", exc)
+            new_data = {
+                "accumulated_cost_usd": float(accumulated_cost),
+                "accumulated_input_tokens": accumulated_in,
+                "accumulated_output_tokens": accumulated_out,
+            }
+            surreal_db.kv_cache_set(key, new_data)
+            return True
+        except Exception as exc:
+            logger.warning("[SurrealDB] Failed to add cost to KV cache monthly log: %s", exc)
+            return False
+
+    @classmethod
+    def _add_cost_django(cls, year: int, month: int, cost: Decimal, in_tok: int, out_tok: int) -> bool:
+        from decimal import Decimal as D
+
+        from django.db import IntegrityError
 
         try:
-            from django.db import IntegrityError
-
             try:
                 cls.objects.get_or_create(year=year, month=month)
             except IntegrityError:
-                # Concurrent thread inserted it, so we can ignore and proceed to update
                 pass
 
-            # Use F-expression to avoid race conditions on concurrent workers
             updated = cls.objects.filter(year=year, month=month).update(
                 accumulated_cost_usd=models.F("accumulated_cost_usd") + D(str(cost)),
                 accumulated_input_tokens=models.F("accumulated_input_tokens") + in_tok,
                 accumulated_output_tokens=models.F("accumulated_output_tokens") + out_tok,
             )
             return updated == 1
-        except Exception as exc:  # pragma: no cover — handles pre-migration state
-            logger.warning("[MonthlyLog] add_cost skipped (table may not exist yet): %s", exc)
+        except Exception as exc:  # pragma: no cover
+            logger.warning("[MonthlyLog] add_cost skipped: %s", exc)
             return False
+
+    @classmethod
+    def add_cost(cls, date, cost: Decimal, in_tok: int = 0, out_tok: int = 0) -> bool:
+        """Thread-safe upsert: add cost to the specified year/month bucket."""
+        from django.conf import settings
+
+        year, month = date.year, date.month
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            return cls._add_cost_surreal(year, month, cost, in_tok, out_tok)
+        return cls._add_cost_django(year, month, cost, in_tok, out_tok)
 
     @classmethod
     def total_for_month(cls, year: int, month: int) -> Decimal:

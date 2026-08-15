@@ -31,12 +31,11 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.WARNING(f"Found {count} documents missing metadata. Re-queueing..."))
 
-        for doc in docs:
-            # Set status back to pending to re-trigger Stage 2 pipeline
-            doc.status = "PENDING"
-            doc.error_message = ""
-            doc.save()
+        doc_list = list(docs)
+        # Optimization: Perform single batch update instead of individual doc.save() calls
+        docs.update(status="PENDING", error_message="")
 
+        for doc in doc_list:
             # Send to background worker queue
             enqueue("extractor.tasks.process_document_task", payload={"doc_uuid": str(doc.uuid)})
             self.stdout.write(f"Re-queued document: {doc.uuid} ({doc.title})")

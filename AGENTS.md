@@ -151,7 +151,7 @@ As an AI coding assistant, execute the requested task following these strict rep
 ```
 
 <!-- sonar:begin:codex-secrets-on-read -->
-# SonarQube secrets scanning for files protocol
+## 🔒 SonarQube Secrets Scanning for Files Protocol
 
 Before reading any file in this workspace, scan it for secrets with the deterministic scanner:
 

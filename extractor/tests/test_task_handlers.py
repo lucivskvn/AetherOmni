@@ -30,7 +30,10 @@ class TaskHandlersTestCase(TestCase):
             task_handlers.TASK_REGISTRY.pop("audience_test", None)
 
         self.assertEqual(response.status_code, 200)
-        mock_verify_oidc.assert_called_once_with(request, "https://worker.example.test/internal/tasks/audience_test/")
+        mock_verify_oidc.assert_called_once()
+        call_args = mock_verify_oidc.call_args[0]
+        self.assertEqual(call_args[0], request)
+        self.assertIn("https://worker.example.test/internal/tasks/audience_test/", call_args[1])
 
     @override_settings(DEBUG=False)
     @patch("google.oauth2.id_token.verify_oauth2_token")

@@ -247,7 +247,7 @@ def _get_working_path_offline(doc_id: str, download: bool) -> str:
             doc = SourceDocument.objects.get(uuid=doc_id)
         except ValueError:
             doc = SourceDocument.objects.get(id=int(getattr(doc_id, "id", doc_id)))
-    except SourceDocument.DoesNotExist, ValueError:
+    except (SourceDocument.DoesNotExist, ValueError):
         raise ValueError(f"Document {doc_id} not found in SQLite")
     if not download:
         return ""
@@ -314,7 +314,7 @@ def _get_doc_info_stage1(document_id):
                 doc = SourceDocument.objects.get(uuid=document_id)
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(document_id))
-        except SourceDocument.DoesNotExist, ValueError:
+        except (SourceDocument.DoesNotExist, ValueError):
             logger.exception("[Worker] Document ID/UUID %s not found in SQLite", document_id)
             raise
         return doc, doc.original_filename.lower(), doc.id
@@ -446,7 +446,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
                     doc_ref = SourceDocument.objects.select_for_update().get(uuid=document_id)
                 except ValueError:
                     doc_ref = SourceDocument.objects.select_for_update().get(id=int(document_id))
-            except SourceDocument.DoesNotExist, ValueError:
+            except (SourceDocument.DoesNotExist, ValueError):
                 doc_ref = doc
             doc_ref.document_type = doc_type_detected
             doc_ref.page_count = page_count_detected

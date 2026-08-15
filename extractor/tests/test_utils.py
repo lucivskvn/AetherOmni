@@ -703,3 +703,113 @@ class UrlSchemeValidationTestCase(TestCase):
             with self.assertRaises(ValueError) as ctx:
                 validate_url_scheme("ftp://example.com")
             self.assertEqual(str(ctx.exception), "Invalid URL scheme. Only http and https schemes are permitted.")
+
+
+class ArabicLayoutTestCase(TestCase):
+    """Tests the Arabic and RTL typography layout parser."""
+
+    def test_parse_arabic_layout_detection(self):
+        from extractor.file_utils import parse_arabic_layout
+
+        arabic_html = "<p>مرحبا بكم في منصة إيثير أومني</p>"
+        result = parse_arabic_layout(arabic_html)
+        self.assertIn('dir="rtl"', result)
+        self.assertIn('class="arabic-text"', result)
+
+    def test_parse_arabic_layout_latin_passthrough(self):
+        from extractor.file_utils import parse_arabic_layout
+
+        english_html = "<p>Welcome to AetherOmni Platform</p>"
+        result = parse_arabic_layout(english_html)
+        self.assertNotIn('dir="rtl"', result)
+        self.assertNotIn('class="arabic-text"', result)
+
+
+class GoogleOIDCTestCase(TestCase):
+    """Tests GCP metadata server OIDC ID token retrieval and debug bypass."""
+
+    def test_oidc_token_debug_mode_bypass(self):
+        from extractor.file_utils import get_google_oidc_token
+
+        with self.settings(DEBUG=True):
+            token = get_google_oidc_token("https://worker.internal")
+            self.assertIsNone(token)
+
+    @patch("urllib.request.urlopen")
+    def test_oidc_token_production_retrieval(self, mock_urlopen):
+        from extractor.file_utils import get_google_oidc_token
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"eySampleToken12345\n"
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        with self.settings(DEBUG=False):
+            token = get_google_oidc_token("https://worker.internal")
+            self.assertEqual(token, "eySampleToken12345")
+
+
+class SurrealDocsTestCase(TestCase):
+    """Tests SurrealDB document retrieval helper."""
+
+    @patch("extractor.surreal_db.get_documents")
+    def test_get_surreal_docs_filtering(self, mock_get_docs):
+        from django.contrib.auth.models import User
+
+        from extractor.file_utils import _get_surreal_docs
+
+        user = User.objects.create_user(username="surrealdocuser", password="password123")
+        mock_get_docs.return_value = [
+            {"id": "doc1", "title": "Doc 1", "uploaded_by_id": str(user.id), "status": "COMPLETED"},
+            {"id": "doc2", "title": "Doc 2", "uploaded_by_id": "other_user", "status": "COMPLETED"},
+        ]
+
+        docs = _get_surreal_docs(["doc1", "doc2"], user, actor_id=str(user.id))
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0].title, "Doc 1")
+
+    @patch("extractor.surreal_db.get_documents")
+    def test_get_surreal_docs_staff_bypass(self, mock_get_docs):
+        from django.contrib.auth.models import User
+
+        from extractor.file_utils import _get_surreal_docs
+
+        staff_user = User.objects.create_user(username="staffuser", password="password123", is_staff=True)
+        mock_get_docs.return_value = [
+            {"id": "doc1", "title": "Doc 1", "uploaded_by_id": "user1", "status": "COMPLETED"},
+            {"id": "doc2", "title": "Doc 2", "uploaded_by_id": "user2", "status": "COMPLETED"},
+        ]
+
+        docs = _get_surreal_docs(["doc1", "doc2"], staff_user)
+        self.assertEqual(len(docs), 2)
+
+    @patch("extractor.surreal_db.get_documents")
+    def test_get_surreal_docs_ignores_incomplete(self, mock_get_docs):
+        from django.contrib.auth.models import User
+
+        from extractor.file_utils import _get_surreal_docs
+
+        user = User.objects.create_user(username="normaluser", password="password123")
+        mock_get_docs.return_value = [
+            {"id": "doc1", "title": "Pending Doc", "uploaded_by_id": str(user.id), "status": "PENDING"},
+            {"id": "doc2", "title": "Failed Doc", "uploaded_by_id": str(user.id), "status": "FAILED"},
+        ]
+
+        docs = _get_surreal_docs(["doc1", "doc2"], user, actor_id=str(user.id))
+        self.assertEqual(len(docs), 0)
+
+
+class RegionalModelTestCase(TestCase):
+    """Tests dynamic cheapest regional Gemini model resolution."""
+
+    def test_cheapest_regional_model_text(self):
+        from extractor.llm_gateway import get_cheapest_regional_gemini_model
+
+        model = get_cheapest_regional_gemini_model(region="asia-southeast1", is_vision=False)
+        self.assertTrue(model in {"gemini-2.5-flash-lite", "gemini-2.5-flash"})
+
+    def test_cheapest_regional_model_vision(self):
+        from extractor.llm_gateway import get_cheapest_regional_gemini_model
+
+        model = get_cheapest_regional_gemini_model(region="asia-southeast1", is_vision=True)
+        self.assertTrue(model in {"gemini-2.5-flash", "gemini-2.5-flash-lite"})

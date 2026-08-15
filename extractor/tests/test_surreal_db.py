@@ -148,12 +148,15 @@ class SurrealDBClientTestCase(TestCase):
         res = surreal_db.create_document(data)
         self.assertEqual(res, {"doc_uuid": "123", "title": "Test"})
 
-        # Check that the sql does not contain malicious_key
+        # Check that the payload parameters do not contain malicious_key
         call_args = mock_db.query.call_args[0]
         sql = call_args[0]
-        self.assertNotIn("malicious_key", sql)
-        self.assertIn("doc_uuid", sql)
-        self.assertIn("title", sql)
+        params = call_args[1] if len(call_args) > 1 else mock_db.query.call_args[1].get("params", {})
+        payload = params.get("payload", params)
+        self.assertNotIn("malicious_key", str(sql))
+        self.assertNotIn("malicious_key", payload)
+        self.assertIn("doc_uuid", payload)
+        self.assertIn("title", payload)
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
