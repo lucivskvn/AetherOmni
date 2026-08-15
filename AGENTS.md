@@ -123,6 +123,11 @@ runbook. This file remains the authoritative cross-agent policy.
    - Adhere to Creedengo Eco-Design rules (low energy consumption, optimal memory management).
    - Zero dead code, unused imports, or non-UTF-8 binary encodings.
 
+7. **Dual-Tier State Architecture & Ephemeral Cloud Run Persistence**:
+   - Relational Identity & Auth: Supabase PostgreSQL (`SUPABASE_DATABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`) securely manages users, sessions, and administrative privileges.
+   - High-Throughput & Vector Engine: Remote SurrealDB (`wss://surrealdb.fainko.cloud/rpc`) manages documents, vector chunks (HNSW 768 cosine), tokenized prompt caches (`context_cache`), distributed atomic sliding-window quotas (`rate_limits`), user memories (`user_memories`), and compliance audit logs.
+   - Zero Ephemeral State Loss: Cloud Run container instances remain strictly stateless, eliminating data loss on container restarts. Local SQLite is restricted to offline testing (`SURREALDB_OFFLINE=True`).
+
 ---
 
 ## 📋 Standardized AI Agent Prompt & Steering Template

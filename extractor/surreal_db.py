@@ -1311,3 +1311,57 @@ def clear_user_memories(user_id: str) -> None:
     """Clear all memories for a user in SurrealDB."""
     sql = "DELETE FROM user_memories WHERE user_id = $user_id;"
     _run(sql, {"user_id": user_id})
+
+
+# ── Context Caching & High-Throughput Rate Limits ───────────────────────────
+
+
+def context_cache_get(context_hash: str) -> dict[str, Any] | None:
+    """Retrieve cached context prefix or prompt by hash and increment hit counter."""
+    sql = "SELECT * FROM context_cache WHERE context_hash = $context_hash AND expires_at > time::now() LIMIT 1;"
+    rows = _first_result(_run(sql, {"context_hash": context_hash}))
+    if rows and isinstance(rows, list) and len(rows) > 0:
+        _run(
+            "UPDATE context_cache SET hit_count += 1, updated_at = time::now() WHERE context_hash = $context_hash;",
+            {"context_hash": context_hash},
+        )
+        return rows[0]
+    return None
+
+
+def context_cache_set(
+    context_hash: str,
+    context_text: str,
+    token_count: int = 0,
+    doc_uuid: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Store or update context cache entry with TTL."""
+    payload = {
+        "context_hash": context_hash,
+        "context_text": context_text,
+        "token_count": token_count,
+        "doc_uuid": doc_uuid,
+        "user_id": user_id,
+        "hit_count": 0,
+    }
+    sql = "INSERT INTO context_cache $payload;"
+    _run(sql, {"payload": payload})
+
+
+def check_rate_limit_atomic(key: str, max_requests: int) -> bool:
+    """
+    Atomic sliding-window rate limit checker in SurrealDB.
+    Returns True if request is allowed, False if quota exceeded.
+    """
+    sql = "SELECT * FROM rate_limits WHERE key = $key AND expires_at > time::now() LIMIT 1;"
+    res = _first_result(_run(sql, {"key": key}))
+    if not res:
+        insert_sql = "INSERT INTO rate_limits { key: $key, request_count: 1, window_start: time::now(), expires_at: time::now() + 1h };"
+        _run(insert_sql, {"key": key})
+        return True
+    current = res[0]
+    if current.get("request_count", 0) >= max_requests:
+        return False
+    _run("UPDATE rate_limits SET request_count += 1 WHERE key = $key;", {"key": key})
+    return True

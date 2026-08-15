@@ -177,3 +177,26 @@ class SurrealDBClientTestCase(TestCase):
         sql = call_args[0]
         self.assertNotIn("malicious_key", sql)
         self.assertIn("title", sql)
+
+    @override_settings(DEBUG=True)
+    @patch("extractor.surreal_db.AsyncSurreal")
+    def test_context_cache_flow(self, mock_surreal):
+        mock_db = self._create_mock_db(
+            [{"result": [{"context_hash": "abc", "context_text": "sample text", "hit_count": 0}]}]
+        )
+        mock_surreal.return_value = mock_db
+
+        surreal_db.context_cache_set("abc", "sample text", token_count=10)
+        res = surreal_db.context_cache_get("abc")
+        self.assertIsNotNone(res)
+        self.assertEqual(res.get("context_hash"), "abc")
+
+    @override_settings(DEBUG=True)
+    @patch("extractor.surreal_db.AsyncSurreal")
+    def test_rate_limiting_flow(self, mock_surreal):
+        mock_db = self._create_mock_db([[]])
+        mock_surreal.return_value = mock_db
+
+        # First request allowed (initial entry created)
+        allowed = surreal_db.check_rate_limit_atomic("user:123", max_requests=5)
+        self.assertTrue(allowed)

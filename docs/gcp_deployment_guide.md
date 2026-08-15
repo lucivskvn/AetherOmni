@@ -329,13 +329,17 @@ DEFINE INDEX IF NOT EXISTS idx_audit_time  ON audit_logs FIELDS timestamp;
 -- ── 6. user_memories ─────────────────────────────────────────
 DEFINE TABLE IF NOT EXISTS user_memories SCHEMAFULL;
 
-DEFINE FIELD IF NOT EXISTS user_id         ON user_memories TYPE string;
-DEFINE FIELD IF NOT EXISTS memory_text     ON user_memories TYPE string;
-DEFINE FIELD IF NOT EXISTS embedding       ON user_memories TYPE array<float>;
-DEFINE FIELD IF NOT EXISTS created_at      ON user_memories TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS user_id          ON user_memories TYPE string;
+DEFINE FIELD IF NOT EXISTS memory_text      ON user_memories TYPE string;
+DEFINE FIELD IF NOT EXISTS category         ON user_memories TYPE string DEFAULT "general";
+DEFINE FIELD IF NOT EXISTS confidence       ON user_memories TYPE float DEFAULT 1.0;
+DEFINE FIELD IF NOT EXISTS embedding        ON user_memories TYPE array<float>;
+DEFINE FIELD IF NOT EXISTS last_accessed_at ON user_memories TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS created_at       ON user_memories TYPE datetime DEFAULT time::now();
 
-DEFINE INDEX IF NOT EXISTS idx_mem_user    ON user_memories FIELDS user_id;
-DEFINE INDEX IF NOT EXISTS idx_mem_hnsw    ON user_memories FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS idx_mem_user     ON user_memories FIELDS user_id;
+DEFINE INDEX IF NOT EXISTS idx_mem_cat      ON user_memories FIELDS category;
+DEFINE INDEX IF NOT EXISTS idx_mem_hnsw     ON user_memories FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
 
 -- ── 7. system_settings ───────────────────────────────────────
 DEFINE TABLE IF NOT EXISTS system_settings SCHEMAFULL;
@@ -343,6 +347,33 @@ DEFINE FIELD IF NOT EXISTS monthly_budget_usd ON system_settings TYPE float DEFA
 DEFINE FIELD IF NOT EXISTS selected_model     ON system_settings TYPE string DEFAULT "auto";
 DEFINE FIELD IF NOT EXISTS currency           ON system_settings TYPE string DEFAULT "auto";
 DEFINE FIELD IF NOT EXISTS openrouter_api_key ON system_settings TYPE string DEFAULT "";
+
+-- ── 8. context_cache ─────────────────────────────────────────
+DEFINE TABLE IF NOT EXISTS context_cache SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS context_hash    ON context_cache TYPE string;
+DEFINE FIELD IF NOT EXISTS doc_uuid        ON context_cache TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS user_id         ON context_cache TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS context_text    ON context_cache TYPE string;
+DEFINE FIELD IF NOT EXISTS token_count     ON context_cache TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS hit_count       ON context_cache TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS expires_at      ON context_cache TYPE datetime DEFAULT time::now() + 3d;
+DEFINE FIELD IF NOT EXISTS created_at      ON context_cache TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at      ON context_cache TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_context_hash ON context_cache FIELDS context_hash UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_context_doc  ON context_cache FIELDS doc_uuid;
+DEFINE INDEX IF NOT EXISTS idx_context_exp  ON context_cache FIELDS expires_at;
+
+-- ── 9. rate_limits ───────────────────────────────────────────
+DEFINE TABLE IF NOT EXISTS rate_limits SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS key             ON rate_limits TYPE string;
+DEFINE FIELD IF NOT EXISTS request_count   ON rate_limits TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS token_count     ON rate_limits TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS window_start    ON rate_limits TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS expires_at      ON rate_limits TYPE datetime DEFAULT time::now() + 1h;
+
+DEFINE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits FIELDS key UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_rate_limits_exp ON rate_limits FIELDS expires_at;
 ```
 
 ---
