@@ -10,6 +10,7 @@ The task_handlers.TASK_REGISTRY maps task_name → function.
 
 import logging
 import os
+import re
 import tempfile
 import traceback
 from datetime import UTC, timedelta
