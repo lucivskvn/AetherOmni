@@ -2339,3 +2339,12 @@ class SupabaseSessionExchangeView(View):
         except Exception as exc:
             logger.warning("[Auth] Supabase session exchange failed: %s", exc)
             return JsonResponse({"error": "Authentication failed."}, status=401)
+
+
+def sentry_debug_view(request):
+    """Verification endpoint for testing Sentry exception and trace ingestion during development."""
+    if not settings.DEBUG and not request.user.is_superuser:
+        from django.http import HttpResponseForbidden
+
+        return HttpResponseForbidden("Sentry debug endpoint is restricted.")
+    raise ZeroDivisionError("Sentry verification debug error: division by zero trigger.")

@@ -55,4 +55,6 @@ urlpatterns = [
         views.SupabaseSessionExchangeView.as_view(),
         name="supabase_session_exchange",
     ),
+    # Sentry verification debug endpoint (development / superuser restricted)
+    path("sentry-debug/", views.sentry_debug_view, name="sentry_debug"),
 ]

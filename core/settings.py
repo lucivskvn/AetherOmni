@@ -500,14 +500,23 @@ if SENTRY_DSN:
                 )
             release_ver = "0.0.0"
 
-        sentry_sdk.init(
-            dsn=SENTRY_DSN,
-            integrations=[DjangoIntegration()],
-            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
-            send_default_pii=False,
-            release=f"aetheromni@{release_ver}",
-            environment="production" if not DEBUG else "development",
-        )
+        send_pii = os.getenv("SENTRY_SEND_DEFAULT_PII", "false").lower() in ("true", "1", "t")
+        traces_rate = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0" if DEBUG else "0.1"))
+        profile_session_rate = float(os.getenv("SENTRY_PROFILE_SESSION_SAMPLE_RATE", "0.0"))
+
+        sentry_kwargs = {
+            "dsn": SENTRY_DSN,
+            "integrations": [DjangoIntegration()],
+            "traces_sample_rate": traces_rate,
+            "send_default_pii": send_pii,
+            "release": f"aetheromni@{release_ver}",
+            "environment": "production" if not DEBUG else "development",
+        }
+        if profile_session_rate > 0.0:
+            sentry_kwargs["profile_session_sample_rate"] = profile_session_rate
+            sentry_kwargs["profile_lifecycle"] = os.getenv("SENTRY_PROFILE_LIFECYCLE", "trace")
+
+        sentry_sdk.init(**sentry_kwargs)
         logger.info("[Observability] Sentry release tracking active (release=%s).", release_ver)
     except ImportError:
         logger.debug("[Observability] sentry-sdk not installed; skipping Sentry initialization.")
