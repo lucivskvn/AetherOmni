@@ -911,6 +911,29 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
     return updated
 
 
+def _build_chunk_payload(
+    chunk_index: int, chunk_text: str, emb: list[float], doc_language: str
+) -> tuple[dict, int, str]:
+    """Helper to parse chunk markers and construct SurrealDB chunk payload."""
+    page_match = re.search(r"## Page (\d+)", chunk_text, re.IGNORECASE)
+    current_page = int(page_match.group(1)) if page_match else 1
+    chap_match = re.search(r"(?:###?|Chapter|Surah|Hadith)\s+([^\n]+)", chunk_text, re.IGNORECASE)
+    current_chapter = chap_match.group(1).strip() if chap_match else ""
+    anchor_slug = f"page-{current_page}" if not current_chapter else f"p{current_page}-{slugify(current_chapter[:30])}"
+
+    payload = {
+        "chunk_index": chunk_index,
+        "content": chunk_text,
+        "token_count": len(chunk_text.split()),
+        "language": doc_language,
+        "page_number": current_page,
+        "chapter_title": current_chapter,
+        "anchor_id": anchor_slug,
+        "embedding": emb,
+    }
+    return payload, current_page, current_chapter
+
+
 def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
     """
     Stage 3: Semantic chunking and SurrealDB HNSW vector embedding.
@@ -928,33 +951,11 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
 
     if chunks:
         embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
-
-        chunk_payloads = []
-        current_page = 1
-        current_chapter = ""
-        for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings)):
-            page_match = re.search(r"## Page (\d+)", chunk_text, re.IGNORECASE)
-            if page_match:
-                current_page = int(page_match.group(1))
-            chap_match = re.search(r"(?:###?|Chapter|Surah|Hadith)\s+([^\n]+)", chunk_text, re.IGNORECASE)
-            if chap_match:
-                current_chapter = chap_match.group(1).strip()
-            anchor_slug = (
-                f"page-{current_page}" if not current_chapter else f"p{current_page}-{slugify(current_chapter[:30])}"
-            )
-
-            chunk_payloads.append(
-                {
-                    "chunk_index": i,
-                    "content": chunk_text,
-                    "token_count": len(chunk_text.split()),
-                    "language": doc.get("language") or "",
-                    "page_number": current_page,
-                    "chapter_title": current_chapter,
-                    "anchor_id": anchor_slug,
-                    "embedding": emb,
-                }
-            )
+        doc_lang = doc.get("language") or ""
+        chunk_payloads = [
+            _build_chunk_payload(i, chunk_text, emb, doc_lang)[0]
+            for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
+        ]
 
         # Delete old SurrealDB chunks first, then insert new ones atomically
         surreal_db.recreate_chunks(doc_uuid, chunk_payloads)

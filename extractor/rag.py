@@ -40,6 +40,24 @@ logger = logging.getLogger(__name__)
 GEMINI_API_KEY_ERROR = "GEMINI_API_KEY is not configured."
 
 
+def _ingest_paragraph_into_chunks(
+    p: str, max_chunk_size: int, current_chunk: list[str], current_size: int, chunks: list[str]
+) -> tuple[list[str], int]:
+    """Helper to append a paragraph to the active chunk or split long paragraphs."""
+    p_len = len(p)
+    if current_size + p_len <= max_chunk_size:
+        current_chunk.append(p)
+        return current_chunk, current_size + p_len + 2
+
+    if current_chunk:
+        chunks.append("\n\n".join(current_chunk))
+
+    if p_len > max_chunk_size:
+        return _chunk_long_paragraph(p, max_chunk_size, chunks)
+
+    return [p], p_len
+
+
 def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[str]:
     """
     Chunks large documents on natural structural boundaries (chapters, Surahs, Hadiths,
@@ -49,12 +67,7 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
     if not text or not text.strip():
         return []
 
-    # 1. Normalize line endings and extract structural blocks
-    # Break on major structural delimiters (page dividers, markdown headings, chapters)
-    raw_blocks = re.split(
-        r"\n[ \t]*---[ \t]*\n|\n(?=#{2,3}\s)",
-        text,
-    )
+    raw_blocks = re.split(r"\n[ \t]*---[ \t]*\n|\n(?=#{2,3}\s)", text)
     blocks = [b.strip() for b in raw_blocks if b.strip()]
 
     chunks: list[str] = []
@@ -64,21 +77,9 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
     for block in blocks:
         paragraphs = [p.strip() for p in block.split("\n\n") if p.strip()]
         for p in paragraphs:
-            p_len = len(p)
-            if current_size + p_len <= max_chunk_size:
-                current_chunk.append(p)
-                current_size += p_len + 2  # account for double newline
-            else:
-                if current_chunk:
-                    chunks.append("\n\n".join(current_chunk))
-
-                if p_len > max_chunk_size:
-                    sub_chunk, sub_size = _chunk_long_paragraph(p, max_chunk_size, chunks)
-                    current_chunk = sub_chunk
-                    current_size = sub_size
-                else:
-                    current_chunk = [p]
-                    current_size = p_len
+            current_chunk, current_size = _ingest_paragraph_into_chunks(
+                p, max_chunk_size, current_chunk, current_size, chunks
+            )
 
     if current_chunk:
         chunks.append("\n\n".join(current_chunk))
