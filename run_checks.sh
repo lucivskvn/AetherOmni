@@ -75,13 +75,15 @@ if [[ "$DOCS_ONLY" = true ]]; then
         exit 0
     fi
     
-    # Filter changed markdown files
+    # Filter changed Markdown files
     CHANGED_MD=$(echo "$CHANGED_FILES" | grep -E '\.(md|markdown)$' || true)
     if [[ -n "$CHANGED_MD" ]] && command -v markdownlint &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed Markdown files...${NC}"
+        if [[ "$AUTOFIX" = true ]]; then
+            # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_MD holds space-separated filenames
+            markdownlint --fix $CHANGED_MD 2>/dev/null || true
+        fi
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_MD holds space-separated filenames
-        markdownlint --fix $CHANGED_MD 2>/dev/null || true
-        # shellcheck disable=SC2086
         markdownlint $CHANGED_MD || exit 1
         echo -e "${GREEN}✓ Changed Markdown files verified cleanly.${NC}"
     fi
@@ -107,6 +109,12 @@ if [[ "$DOCS_ONLY" = true ]]; then
     CHANGED_PY=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
     if [[ -n "$CHANGED_PY" ]] && $PYTHON_BIN -m ruff --version &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST & Django Linters...${NC}"
+        if [[ "$AUTOFIX" = true ]]; then
+            # shellcheck disable=SC2086
+            $PYTHON_BIN -m ruff check --fix $CHANGED_PY 2>/dev/null || true
+            # shellcheck disable=SC2086
+            $PYTHON_BIN -m ruff format $CHANGED_PY 2>/dev/null || true
+        fi
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
         $PYTHON_BIN -m ruff check $CHANGED_PY
         # shellcheck disable=SC2086
@@ -384,7 +392,7 @@ TEST_COUNT=$(grep -oP '(?<=Ran )\d+' /tmp/test_output.txt 2>/dev/null | tail -1 
 if [[ -n "$TEST_COUNT" ]]; then echo "$TEST_COUNT" > .test_count; fi
 echo -e "${GREEN}✓ Automated unit test suite executed successfully with coverage.xml generated.${NC}"
 
-# ── PHASE 5: DOCUMENTATION GOVERNANCE & RELEASE SYNCHRONIZATION ─────────────
+# ── PHASE 5: DOCUMENTATION GOVERNANCE & DESLOPPIFY HEALTH AUDIT ─────────────
 
 echo -e "\n${YELLOW}[Documentation] Auditing Markdown Formatting & Structure...${NC}"
 if command -v markdownlint &> /dev/null; then
@@ -392,6 +400,14 @@ if command -v markdownlint &> /dev/null; then
     echo -e "${GREEN}✓ Documentation syntax & markdown standards verified.${NC}"
 else
     echo -e "${YELLOW}⚠ markdownlint not found in PATH (skipping).${NC}"
+fi
+
+echo -e "\n${YELLOW}[Codebase Health] Running Desloppify Structural & Complexity Audit...${NC}"
+if command -v desloppify &> /dev/null; then
+    desloppify scan --path . || true
+    echo -e "${GREEN}✓ Desloppify scan complete and scorecard updated in docs/scorecard.png.${NC}"
+else
+    echo -e "${YELLOW}⚠ desloppify not found in PATH (skipping).${NC}"
 fi
 
 echo -e "\n${YELLOW}[Release Governance] Synchronizing Documentation & Version Metadata...${NC}"
