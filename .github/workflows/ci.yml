@@ -208,14 +208,13 @@ jobs:
             echo "::error title=Missing SONAR_TOKEN::Generate a User Token at https://sonarcloud.io/account/security and store it as the SONAR_TOKEN repository secret."
             exit 1
           fi
-          http_code=$(curl --silent --output /dev/null --write-out "%{http_code}" \
-            -H "Authorization: Bearer ${SONAR_TOKEN}" \
-            "https://sonarcloud.io/api/authentication/validate")
-          if [[ "$http_code" != "200" ]]; then
-            echo "::error title=Invalid SONAR_TOKEN::Token rejected (HTTP ${http_code}). Regenerate at https://sonarcloud.io/account/security"
+          resp=$(curl --silent --show-error --user "${SONAR_TOKEN}:" "https://sonarcloud.io/api/authentication/validate" || true)
+          is_valid=$(echo "$resp" | jq -r '.valid // false')
+          if [[ "$is_valid" != "true" ]]; then
+            echo "::error title=Invalid SONAR_TOKEN::Token rejected by SonarCloud (response: ${resp}). Regenerate at https://sonarcloud.io/account/security"
             exit 1
           fi
-          echo "SONAR_TOKEN validated (HTTP 200)"
+          echo "SONAR_TOKEN validated (valid=true)"
 
       - name: Run SonarCloud Analysis
         uses: SonarSource/sonarcloud-github-action@383f7e52eae3ab0510c3cb0e7d9d150bbaeab838 # v3.1.0
