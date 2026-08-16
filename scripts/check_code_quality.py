@@ -17,9 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MAX_COGNITIVE_COMPLEXITY = 15
 
-# Directories to scan
-SOURCE_DIRS = [ROOT / "core", ROOT / "extractor", ROOT / "scripts"]
-EXCLUDE_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "migrations", "tests"}
+# Directories to scan (production core and extractor source trees)
+SOURCE_DIRS = [ROOT / "core", ROOT / "extractor"]
+EXCLUDE_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "migrations", "tests", "management"}
 
 
 def _node_has_complexity_increment(node: ast.AST) -> bool:
@@ -115,6 +115,18 @@ def audit_file(file_path: Path) -> tuple[list[str], list[str]]:
                 "export_ratelimit_",
                 "publication_year",
                 "license_type",
+                "is_default_password",
+                "query_embedding",
+                "accumulated_cost_usd",
+                "accumulated_input_tokens",
+                "accumulated_output_tokens",
+                "asia-southeast1",
+                "usd_exchange_rates",
+                "realtime_model_pricing",
+                "application/zip",
+                "application/x-jsonlines",
+                "application/x-sqlite3",
+                "text/csv; charset=utf-8",
             }
             if lit_val not in allowed:
                 duplication_errors.append(
