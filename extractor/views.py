@@ -58,6 +58,11 @@ def _validate_email_format(email: str) -> bool:
         return False
 
 
+def favicon_view(_request):
+    """Serve a lightweight transparent 204 No Content for favicon.ico requests."""
+    return HttpResponse(status=204, content_type="image/x-icon")
+
+
 from types import SimpleNamespace
 
 from extractor import surreal_db
