@@ -1161,6 +1161,25 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
             self.assertIn("deep_link", src)
             self.assertIn(f"/document/{self.doc_a.uuid}/", src["deep_link"])
 
+    def test_export_sqlite_view(self):
+        self.client.force_login(self.user_a)
+        response = self.client.post(reverse("export_sqlite"), {"selected_documents": [self.doc_a.id]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/x-sqlite3")
+        self.assertIn("attachment; filename=", response["Content-Disposition"])
+        self.assertTrue(len(response.content) > 0)
+
+    def test_export_csv_view(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.client.force_login(self.user_a)
+        response = self.client.post(reverse("export_csv"), {"selected_documents": [self.doc_a.id]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("attachment; filename=", response["Content-Disposition"])
+        self.assertIn(self.doc_a.title, response.content.decode("utf-8"))
+
 
 class SecurityAuthTestCase(TestCase):
     """Verifies that various authentication, registration, recovery, and settings input checks are secure."""

@@ -482,3 +482,26 @@ LOGOUT_REDIRECT_URL = "login"
 # ── Primary Key Field ─────────────────────────────────────────────────────────
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ── Observability & Monitoring (Sentry) ───────────────────────────────────────
+
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+
+        release_ver = os.getenv("RELEASE_VERSION", "0.0.0")
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[DjangoIntegration()],
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            send_default_pii=False,
+            release=f"aetheromni@{release_ver}",
+            environment="production" if not DEBUG else "development",
+        )
+        logger.info("[Observability] Sentry release tracking active (release=%s).", release_ver)
+    except ImportError:
+        logger.debug("[Observability] sentry-sdk not installed; skipping Sentry initialization.")
+    except Exception as exc:
+        logger.warning("[Observability] Failed to initialize Sentry: %s", exc)

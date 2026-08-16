@@ -34,8 +34,8 @@ is the cross-agent source of truth.
 - Use Pulumi for any new or rebuilt GCP environment. Import and preview first;
   do not replace live Cloud Run or Secret Manager resources with an imperative
   script.
-- Treat Sentry as a planned release-observability integration: use the same
-  computed release version and deploy metadata, with DSN stored as a secret.
+- Sentry release observability correlates production issues and deployments
+  with the computed release version, keeping personal data disabled by default and DSN stored in Secret Manager.
 
 ## MVP priority
 

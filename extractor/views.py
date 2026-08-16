@@ -193,6 +193,8 @@ from extractor.utils import (
     calculate_file_sha256,
     clean_html_content,
     format_localized_cost,
+    generate_curated_csv_bundle,
+    generate_curated_sqlite_bundle,
     generate_curated_zip_bundle,
     generate_sft_dataset_pairs,
     generate_sft_jsonl_bundle,
@@ -1228,6 +1230,78 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
             return response
         except Exception as e:
             messages.error(request, f"SFT Export failure: {e!s}")
+            return redirect("dashboard")
+
+
+class ExportSqliteView(LoginRequiredMixin, View):
+    """Exports standalone SQLite database with FTS5 search index for offline mobile/desktop integration."""
+
+    def post(self, request):
+        from django.core.cache import cache
+
+        user_key = f"export_ratelimit_{get_request_actor_id(request)}"
+        ip_key = f"export_ratelimit_{get_client_ip(request)}"
+
+        if cache.get(user_key) or cache.get(ip_key):
+            messages.error(request, "Export rate limit exceeded. Please wait 60 seconds before trying again.")
+            return redirect("dashboard")
+
+        cache.set(user_key, True, 60)
+        cache.set(ip_key, True, 60)
+
+        document_ids = request.POST.getlist("selected_documents")
+        if not document_ids:
+            messages.error(request, "No documents selected for SQLite database export.")
+            return redirect("dashboard")
+
+        try:
+            sqlite_data = generate_curated_sqlite_bundle(
+                document_ids,
+                user=request.user,
+                actor_id=get_request_actor_id(request),
+            )
+            response = HttpResponse(sqlite_data, content_type="application/x-sqlite3")
+            filename = f"curated_knowledge_{timezone.now().strftime('%Y%m%d%H%M')}.db"
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            messages.error(request, f"SQLite Export failure: {e!s}")
+            return redirect("dashboard")
+
+
+class ExportCsvView(LoginRequiredMixin, View):
+    """Exports structured tabular CSV summary of document metadata, copyright, and content excerpts."""
+
+    def post(self, request):
+        from django.core.cache import cache
+
+        user_key = f"export_ratelimit_{get_request_actor_id(request)}"
+        ip_key = f"export_ratelimit_{get_client_ip(request)}"
+
+        if cache.get(user_key) or cache.get(ip_key):
+            messages.error(request, "Export rate limit exceeded. Please wait 60 seconds before trying again.")
+            return redirect("dashboard")
+
+        cache.set(user_key, True, 60)
+        cache.set(ip_key, True, 60)
+
+        document_ids = request.POST.getlist("selected_documents")
+        if not document_ids:
+            messages.error(request, "No documents selected for CSV export.")
+            return redirect("dashboard")
+
+        try:
+            csv_data = generate_curated_csv_bundle(
+                document_ids,
+                user=request.user,
+                actor_id=get_request_actor_id(request),
+            )
+            response = HttpResponse(csv_data, content_type="text/csv; charset=utf-8")
+            filename = f"curated_metadata_{timezone.now().strftime('%Y%m%d%H%M')}.csv"
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            messages.error(request, f"CSV Export failure: {e!s}")
             return redirect("dashboard")
 
 
