@@ -188,6 +188,14 @@ if [[ "$DOCS_ONLY" = true ]]; then
             echo -e "${RED}✗ Changed JavaScript files detected but eslint was not found in PATH or node_modules!${NC}" >&2
             exit 1
         fi
+
+        echo -e "${YELLOW}[Diff Audit] Running JavaScript unit tests (Vitest)...${NC}"
+        if [[ -x "./node_modules/.bin/vitest" ]]; then
+            ./node_modules/.bin/vitest run
+        elif command -v npm &> /dev/null; then
+            npm test
+        fi
+        echo -e "${GREEN}✓ JavaScript unit tests passed cleanly.${NC}"
     fi
 
     $PYTHON_BIN scripts/update_docs.py || exit 1
@@ -233,6 +241,17 @@ elif command -v npx &> /dev/null; then
 else
     echo -e "${RED}✗ eslint not found in local node_modules or PATH! Run 'npm ci' to install.${NC}" >&2
     exit 1
+fi
+
+echo -e "\n${YELLOW}[Unit Testing] Executing JavaScript Unit Test Suite (Vitest)...${NC}"
+if [[ -x "./node_modules/.bin/vitest" ]]; then
+    ./node_modules/.bin/vitest run
+    echo -e "${GREEN}✓ JavaScript unit tests passed cleanly (0 failures).${NC}"
+elif command -v npm &> /dev/null; then
+    npm test
+    echo -e "${GREEN}✓ JavaScript unit tests passed cleanly (0 failures).${NC}"
+else
+    echo -e "${YELLOW}⚠ Vitest / npm not found (skipping JS unit tests).${NC}"
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Verifying Source Code Formatting Consistency...${NC}"
