@@ -110,9 +110,7 @@ jobs:
           cache: "npm"
 
       - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip==26.0.1
-          pip install --only-binary :all: -r requirements.txt coverage==7.15.4 ruff==0.16.2 --quiet
+        run: pip install --no-cache-dir --only-binary :all: --upgrade pip==26.0.1 -r requirements.txt coverage==7.15.4 ruff==0.16.2 --quiet
 
       - name: Install Node Dependencies
         run: |

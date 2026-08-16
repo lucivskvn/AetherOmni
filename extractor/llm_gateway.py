@@ -475,7 +475,7 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
             MODEL_GEMINI_FLASH_LITE,  # $0.038/1M
             "gemini-2.0-flash",
             "gemini-1.5-flash",
-            "gemini-2.5-pro",
+            MODEL_GEMINI_PRO,
         ]
     else:
         candidates = [
@@ -484,7 +484,7 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
             "gemini-2.0-flash-lite",
             "gemini-2.0-flash",
             "gemini-1.5-flash",
-            "gemini-2.5-pro",
+            MODEL_GEMINI_PRO,
         ]
 
     selected_model = MODEL_GEMINI_FLASH
