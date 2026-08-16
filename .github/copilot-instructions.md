@@ -141,6 +141,6 @@ As an AI coding assistant, execute the requested task following these strict rep
    files without exception.
 6. Dynamic Documentation: Avoid static version/score numbers in Markdown text or tables;
    use dynamic scorecard images (scorecard.png) and badges.
-   Release versions must be computed as MAJOR.MINOR.PATCH before SonarQube analysis and deployment.
+   Release versions must be computed as MAJOR.MINOR.PATCH before SonarCloud analysis and deployment.
 7. Standardized Model & Auth Naming: Use Gemini 2.5 Flash / 2.5 Flash-Lite for the stable Vertex v1 production path; preview-model adoption requires an availability check. Refer to Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
 ```
