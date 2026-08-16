@@ -218,7 +218,7 @@ jobs:
           echo "SONAR_TOKEN validated (HTTP 200)"
 
       - name: Run SonarCloud Analysis
-        uses: SonarSource/sonarcloud-github-action@cb25290b224249a4329d4949a2a4b82d3345d3ae # v3.1.0
+        uses: SonarSource/sonarcloud-github-action@383f7e52eae3ab0510c3cb0e7d9d150bbaeab838 # v3.1.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
