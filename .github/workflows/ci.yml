@@ -1,12 +1,12 @@
 # ==============================================================================
-# GITHUB ACTIONS ENTERPRISE CI PIPELINE
+# GITHUB ACTIONS ENTERPRISE CI PIPELINE (SONARCLOUD + GITHUB PUBLIC REPO)
 # ==============================================================================
 # Security & Performance Standards:
 # - Pinned action releases maintained by Dependabot
-# - Least-privilege repository token (contents: read)
+# - Least-privilege repository token (contents: read, pull-requests: write)
 # - Bounded job execution time
-# - Dual-Layer Caching (Dependency & Sonar Engine)
-# - 3-Phase Gatekeeper (Pre-Scan -> SonarQube SAST -> Post-Scan Quality Gate)
+# - Dual-Layer Caching (Dependency & SonarCloud Engine)
+# - 3-Phase Gatekeeper (Pre-Scan -> SonarCloud SAST & Tests -> Quality Gate)
 # ==============================================================================
 name: DevSecOps CI Pipeline
 
@@ -24,6 +24,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   pre-scan-validation:
@@ -53,92 +54,8 @@ jobs:
             bash -n scripts/verify-pipeline.sh
           fi
 
-  pr-shift-left-security:
-    name: 2. PR Shift-Left Security Gate
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: pre-scan-validation
-    steps:
-      - name: Checkout Codebase
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.14"
-
-      - name: Install PR verification tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt coverage==7.15.4 --quiet
-          python -m venv .ci-security-tools
-          .ci-security-tools/bin/pip install --upgrade pip --quiet
-          .ci-security-tools/bin/pip install ast-grep-cli==0.45.1 ruff==0.16.2 bandit==1.9.4 semgrep==1.172.0 --quiet
-
-      - name: Run PR security and test gate
-        run: |
-          export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
-          .ci-security-tools/bin/ruff check .
-          npx -y eslint --max-warnings 0 static/js/**/*.js
-          .ci-security-tools/bin/ast-grep scan --color never
-          yamllint bandit.yaml docker-compose.yml
-          .ci-security-tools/bin/semgrep scan --config=auto --quiet --error
-          .ci-security-tools/bin/bandit -c bandit.yaml -r core extractor
-          python scripts/verify_templates_and_assets.py
-          python manage.py collectstatic --noinput
-          coverage run --source='core,extractor' manage.py test --keepdb
-        env:
-          SURREALDB_OFFLINE: "True"
-          DATABASE_URL: "sqlite:///:memory:"
-
-      - name: Explain Community Edition scope
-        if: always()
-        run: |
-          {
-            echo '### Community Edition PR gate'
-            echo
-            echo 'SonarQube Community Edition does not support pull-request analysis.'
-            echo 'This PR is protected by repository-native Ruff, ESLint, Semgrep, Bandit, tests, CodeQL, and the external security checks.'
-            echo 'SonarQube performs its authoritative project analysis and quality gate only after a push to `main`.'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Publish SonarQube mainline baseline
-        if: always()
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarqube.fainko.cloud
-        run: |
-          set -euo pipefail
-
-          quality_gate_url="${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=aetheromni"
-          {
-            echo
-            echo '### SonarQube Community Edition mainline baseline'
-            echo
-            echo 'This is the current `main` project status, not a pull-request analysis.'
-            echo '| Status | Dashboard |'
-            echo '| --- | --- |'
-
-            if gate_payload=$(curl --fail --silent --show-error --user "${SONAR_TOKEN}:" "$quality_gate_url"); then
-              gate_status=$(jq -r '.projectStatus.status // "UNAVAILABLE"' <<< "$gate_payload")
-              echo "| ${gate_status} | [Open SonarQube dashboard](${SONAR_HOST_URL}/dashboard?id=aetheromni) |"
-              echo
-              echo '| Metric | Status | Threshold | Actual |'
-              echo '| --- | --- | --- | --- |'
-              jq -r '.projectStatus.conditions[]? | "| \(.metricKey) | \(.status) | \(.errorThreshold // "—") | \(.actualValue // "—") |"' <<< "$gate_payload"
-            else
-              echo "| UNAVAILABLE | [Open SonarQube dashboard](${SONAR_HOST_URL}/dashboard?id=aetheromni) |"
-              echo
-              echo '| Metric | Status | Threshold | Actual |'
-              echo '| --- | --- | --- | --- |'
-              echo '| Server response unavailable | — | — | — |'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  sonarqube-mainline-analysis:
-    name: 2. SonarQube Community Mainline Gate
-    if: github.event_name == 'push'
+  sonarcloud-quality-gate:
+    name: 2. SonarCloud Quality Gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: pre-scan-validation
@@ -148,12 +65,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache SonarQube Engine
+      - name: Cache SonarCloud Engine & Dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.sonar/cache
-          key: ${{ runner.os }}-sonar
-          restore-keys: ${{ runner.os }}-sonar
+          path: |
+            ~/.cache/pip
+            ~/.npm
+            ~/.sonar/cache
+          key: ${{ runner.os }}-sonar-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-sonar-
 
       - name: Compute canonical analysis version
         id: release-version
@@ -172,49 +92,63 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install Dependencies for Coverage
+      - name: Install Dependencies & Security Tools
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt coverage --quiet
+          pip install -r requirements.txt coverage==7.15.4 --quiet
+          python -m venv .ci-security-tools
+          .ci-security-tools/bin/pip install --upgrade pip --quiet
+          .ci-security-tools/bin/pip install ast-grep-cli==0.45.1 ruff==0.16.2 bandit==1.9.4 semgrep==1.172.0 --quiet
 
-      - name: Execute Tests & Generate Coverage XML
+      - name: Execute Shift-Left Security & Automated Tests
         run: |
           export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
-          python manage.py collectstatic --noinput && coverage run --source='core,extractor' manage.py test extractor.tests --keepdb
+          .ci-security-tools/bin/ruff check .
+          npx -y eslint --max-warnings 0 static/js/**/*.js
+          .ci-security-tools/bin/ast-grep scan --color never
+          yamllint bandit.yaml docker-compose.yml
+          .ci-security-tools/bin/semgrep scan --config=auto --quiet --error
+          .ci-security-tools/bin/bandit -c bandit.yaml -r core extractor
+          python scripts/verify_templates_and_assets.py
+          python manage.py collectstatic --noinput
+          coverage run --source='core,extractor' manage.py test extractor.tests --keepdb
           coverage xml -o coverage.xml
         env:
           SURREALDB_OFFLINE: "True"
           DATABASE_URL: "sqlite:///:memory:"
 
-      - name: Run SonarQube Analysis
+      - name: Run SonarCloud Analysis
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarqube.fainko.cloud
+          SONAR_HOST_URL: https://sonarcloud.io
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: >
+            -Dsonar.organization=lucivskvn
+            -Dsonar.projectKey=lucivskvn_AetherOmni
+            -Dsonar.projectName=AetherOmni
             -Dsonar.scm.provider=git
             -Dsonar.projectVersion=${{ steps.release-version.outputs.version }}
             -Dsonar.threads=4
             -Dsonar.analysis.cache.enabled=true
 
-      - name: 3. SonarQube Quality Gate Status Check
+      - name: 3. SonarCloud Quality Gate Status Check
         id: quality-gate
         continue-on-error: true
         uses: SonarSource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa # v1.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarqube.fainko.cloud
+          SONAR_HOST_URL: https://sonarcloud.io
 
-      - name: Publish SonarQube quality gate result
+      - name: Publish SonarCloud quality gate result
         if: always()
         env:
           QUALITY_GATE_STATUS: ${{ steps.quality-gate.outputs.quality-gate-status }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_DASHBOARD_URL: https://sonarqube.fainko.cloud/dashboard?id=aetheromni
-          SONAR_HOST_URL: https://sonarqube.fainko.cloud
-          SONAR_PULL_REQUEST: ''
+          SONAR_DASHBOARD_URL: https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_PULL_REQUEST: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
@@ -226,10 +160,10 @@ jobs:
             result="failed"
           fi
 
-          summary_file="${RUNNER_TEMP}/sonarqube-quality-gate.md"
+          summary_file="${RUNNER_TEMP}/sonarcloud-quality-gate.md"
           gate_payload=""
           if [ -n "$QUALITY_GATE_STATUS" ]; then
-            quality_gate_url="${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=aetheromni"
+            quality_gate_url="${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=lucivskvn_AetherOmni"
             if [ -n "$SONAR_PULL_REQUEST" ]; then
               quality_gate_url="${quality_gate_url}&pullRequest=${SONAR_PULL_REQUEST}"
             fi
@@ -237,11 +171,11 @@ jobs:
           fi
 
           {
-            echo "### SonarQube Quality Gate: ${result}"
+            echo "### SonarCloud Quality Gate: ${result}"
             echo
             echo "| Status | Dashboard |"
             echo "| --- | --- |"
-            echo "| ${QUALITY_GATE_STATUS:-UNAVAILABLE} | [Open SonarQube dashboard](${SONAR_DASHBOARD_URL}) |"
+            echo "| ${QUALITY_GATE_STATUS:-UNAVAILABLE} | [Open SonarCloud dashboard](${SONAR_DASHBOARD_URL}) |"
 
             if [ -n "$QUALITY_GATE_STATUS" ]; then
               echo
@@ -259,11 +193,11 @@ jobs:
             jq -r '
               .projectStatus.conditions[]?
               | select(.status != "OK")
-              | "::error title=SonarQube \(.metricKey)::Threshold \(.errorThreshold // "not reported"), actual \(.actualValue // "not reported")"
+              | "::error title=SonarCloud \(.metricKey)::Threshold \(.errorThreshold // "not reported"), actual \(.actualValue // "not reported")"
             ' <<< "$gate_payload"
           fi
 
           if [ "$QUALITY_GATE_STATUS" != "PASSED" ]; then
-            echo "::error title=SonarQube Quality Gate ${result}::Review ${SONAR_DASHBOARD_URL}"
+            echo "::error title=SonarCloud Quality Gate ${result}::Review ${SONAR_DASHBOARD_URL}"
             exit 1
           fi

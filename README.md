@@ -7,16 +7,15 @@
 [![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-[![Quality gate status](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=alert_status&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Coverage](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=coverage&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Security Hotspots](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=security_hotspots&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Reliability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_issues&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Maintainability Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_issues&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Security Issues](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_security_issues&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Maintainability Rating](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_rating&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Reliability Rating](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_reliability_rating&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Security Rating](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_security_rating&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
-[![Technical Debt](https://sonarqube.fainko.cloud/api/project_badges/measure?project=aetheromni&metric=software_quality_maintainability_remediation_effort&token=sqb_40c4698633b475e6b783b6a5b75a38e62c340bd1)](https://sonarqube.fainko.cloud/dashboard?id=aetheromni)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=coverage)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=bugs)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Desloppify Codebase Health](docs/scorecard.png)](docs/scorecard.png)
 
 ---
@@ -373,8 +372,8 @@ bash scripts/verify-pipeline.sh
 Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (`.github/workflows/ci.yml`):
 
 1. **Pre-Scan Validation**: Blocks on shell-script or container-file lint failures (`hadolint`).
-2. **Community Edition PR Gate and SonarQube Deep SAST**: Pull requests use the repository-native shift-left gate and GitHub security checks, then show a read-only table of the current `main` SonarQube quality-gate baseline. SonarQube scans `main` on pushes at `https://sonarqube.fainko.cloud` using Sonar rules with coverage.
-3. **Quality Gate Gatekeeper**: Publishes the condition table to the Actions log and summary, annotates failing metrics for Jules, and blocks failed gates. Cloud Build independently waits for that exact commit check before mutating Cloud Run.
+2. **SonarCloud Deep SAST & Multi-Language Quality Gate**: Runs SonarCloud code analysis, test execution with coverage, Ruff, ESLint, Semgrep, and Bandit across both pull requests and mainline pushes with native GitHub PR annotations.
+3. **Quality Gate Gatekeeper**: Publishes the actionable condition table to the Actions log and summary, annotates failing metrics, and blocks failed gates. Cloud Build independently waits for that exact commit check before mutating Cloud Run.
 
 Cloud Build uses Kaniko's BusyBox-enabled debug image, pinned by immutable
 digest, when a build step must source computed release metadata. The standard

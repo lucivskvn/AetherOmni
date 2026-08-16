@@ -84,31 +84,29 @@ else
     EXIT_CODE=1
 fi
 
-# ── STEP 2: REMOTE SONARQUBE SAST ANALYSIS ───────────────────────────────────
+# ── STEP 2: REMOTE SONARCLOUD SAST ANALYSIS ──────────────────────────────────
 echo ""
-echo "📊 [Step 2] Submitting to Remote SonarQube MQR Quality Gate..."
+echo "📊 [Step 2] Submitting to Remote SonarCloud Quality Gate..."
 
-SONAR_HOST="https://sonarqube.fainko.cloud"
-if curl -s -H "User-Agent: Mozilla/5.0" "$SONAR_HOST/api/system/status" | grep -q "UP"; then
-    TOKEN="${SONAR_REMOTE_TOKEN:-${SONAR_TOKEN:-}}"
+SONAR_HOST="https://sonarcloud.io"
+TOKEN="${SONAR_REMOTE_TOKEN:-${SONAR_TOKEN:-}}"
 
-    if [ -n "$TOKEN" ]; then
-        NPROC=$(nproc 2>/dev/null || echo "4")
-        LIMITED_THREADS=$(( NPROC > 4 ? 4 : NPROC ))
+if [ -n "$TOKEN" ]; then
+    NPROC=$(nproc 2>/dev/null || echo "4")
+    LIMITED_THREADS=$(( NPROC > 4 ? 4 : NPROC ))
 
-        docker run --rm \
-          -e SONAR_HOST_URL="$SONAR_HOST" \
-          -v "$(pwd):/usr/src" \
-          -v "$(pwd)/.sonar-cache:/opt/sonar-scanner/.sonar/cache" \
-          sonarsource/sonar-scanner-cli -Dsonar.scm.provider=git \
-          -Dsonar.token="$TOKEN" \
-          -Dsonar.threads="$LIMITED_THREADS" \
-          -Dsonar.userHome="/opt/sonar-scanner/.sonar" || EXIT_CODE=1
-    else
-        echo "   ⚠️ SONAR_TOKEN / SONAR_REMOTE_TOKEN not provided (skipping remote scan)."
-    fi
+    docker run --rm \
+      -e SONAR_HOST_URL="$SONAR_HOST" \
+      -v "$(pwd):/usr/src" \
+      -v "$(pwd)/.sonar-cache:/opt/sonar-scanner/.sonar/cache" \
+      sonarsource/sonar-scanner-cli -Dsonar.scm.provider=git \
+      -Dsonar.token="$TOKEN" \
+      -Dsonar.threads="$LIMITED_THREADS" \
+      -Dsonar.organization="lucivskvn" \
+      -Dsonar.projectKey="lucivskvn_AetherOmni" \
+      -Dsonar.userHome="/opt/sonar-scanner/.sonar" || EXIT_CODE=1
 else
-    echo "   ⚠️ Remote SonarQube server is offline at $SONAR_HOST (skipping)."
+    echo "   ⚠️ SONAR_TOKEN not provided (skipping remote scan)."
 fi
 
 # ── STEP 3: GITHUB CI/CD INTEGRATION ─────────────────────────────────────────

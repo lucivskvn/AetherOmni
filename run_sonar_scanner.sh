@@ -1,8 +1,9 @@
 #!/bin/bash
 # =====================================================================
-# SonarQube Remote Scanner Launcher
-# Target: https://sonarqube.fainko.cloud (self-hosted via Coolify/Cloudflare Tunnel)
-# Project key: aetheromni
+# SonarCloud Remote Scanner Launcher
+# Target: https://sonarcloud.io
+# Organization: lucivskvn
+# Project key: lucivskvn_AetherOmni
 # =====================================================================
 # NOTE: This script is a manual fallback for local submission.
 # The primary scan path is the GitHub Actions CI pipeline (.github/workflows/ci.yml)
@@ -14,13 +15,15 @@
 #   - coverage.xml must exist (run `bash run_checks.sh` first)
 # =====================================================================
 
-SONAR_HOST="https://sonarqube.fainko.cloud"
-SONAR_PROJECT_KEY="aetheromni"
+SONAR_HOST="https://sonarcloud.io"
+SONAR_PROJECT_KEY="lucivskvn_AetherOmni"
+SONAR_ORGANIZATION="lucivskvn"
 
 echo "========================================================"
-echo "  AetherOmni — SonarQube Remote Scanner"
-echo "  Host   : $SONAR_HOST"
-echo "  Project: $SONAR_PROJECT_KEY"
+echo "  AetherOmni — SonarCloud Remote Scanner"
+echo "  Host        : $SONAR_HOST"
+echo "  Organization: $SONAR_ORGANIZATION"
+echo "  Project     : $SONAR_PROJECT_KEY"
 echo "========================================================"
 echo ""
 

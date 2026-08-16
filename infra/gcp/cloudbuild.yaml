@@ -141,7 +141,12 @@ steps:
                 "User-Agent": "AetherOmni-CloudBuild-Gate",
             },
         )
-        check_name = "2. SonarQube Community Mainline Gate"
+        target_check_names = (
+            "2. SonarCloud Quality Gate",
+            "SonarCloud Code Analysis",
+            "SonarCloud Quality Gate",
+            "2. SonarQube Community Mainline Gate",
+        )
 
         for attempt in range(30):
             try:
@@ -150,16 +155,19 @@ steps:
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
                 print(f"GitHub quality-gate query attempt {attempt + 1} failed: {type(exc).__name__}")
             else:
-                checks = [item for item in payload.get("check_runs", []) if item.get("name") == check_name]
+                checks = [
+                    item for item in payload.get("check_runs", [])
+                    if item.get("name") in target_check_names
+                ]
                 completed = [item for item in checks if item.get("status") == "completed"]
                 if completed:
                     conclusion = completed[0].get("conclusion")
-                    print(f"GitHub mainline quality gate concluded: {conclusion}")
+                    print(f"GitHub quality gate ({completed[0].get('name')}) concluded: {conclusion}")
                     raise SystemExit(0 if conclusion == "success" else 1)
-                print(f"Waiting for GitHub mainline quality gate (attempt {attempt + 1}/30)")
+                print(f"Waiting for GitHub quality gate (attempt {attempt + 1}/30)")
             time.sleep(30)
 
-        print("Timed out waiting for the GitHub mainline quality gate", file=sys.stderr)
+        print("Timed out waiting for the GitHub quality gate", file=sys.stderr)
         raise SystemExit(1)
         PY
 
