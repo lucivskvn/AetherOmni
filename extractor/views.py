@@ -97,6 +97,7 @@ AUDIT_ACTION_CHOICES = (
     (AuditAction.DOCUMENT_EDITED, "Document edited"),
     (AuditAction.DOCUMENT_REQUEUED, "Document requeued"),
     (AuditAction.SYSTEM_CONTROL, "System control"),
+    (AuditAction.EXPORT, "Export dataset"),
 )
 AUDIT_ACTION_ALIASES = {
     "UPLOAD_FRESH": AuditAction.UPLOAD,
@@ -1262,6 +1263,17 @@ class ExportSqliteView(LoginRequiredMixin, View):
                 user=request.user,
                 actor_id=get_request_actor_id(request),
             )
+            from extractor.utils import AuditEvent, log_audit_event
+
+            log_audit_event(
+                AuditEvent(
+                    action=AuditAction.EXPORT,
+                    user=request.user,
+                    actor_id=get_request_actor_id(request),
+                    details=f"Exported {len(document_ids)} documents as SQLite FTS5 database.",
+                    ip_address=get_client_ip(request),
+                )
+            )
             response = HttpResponse(sqlite_data, content_type="application/x-sqlite3")
             filename = f"curated_knowledge_{timezone.now().strftime('%Y%m%d%H%M')}.db"
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -1297,6 +1309,17 @@ class ExportCsvView(LoginRequiredMixin, View):
                 document_ids,
                 user=request.user,
                 actor_id=get_request_actor_id(request),
+            )
+            from extractor.utils import AuditEvent, log_audit_event
+
+            log_audit_event(
+                AuditEvent(
+                    action=AuditAction.EXPORT,
+                    user=request.user,
+                    actor_id=get_request_actor_id(request),
+                    details=f"Exported {len(document_ids)} documents as CSV summary.",
+                    ip_address=get_client_ip(request),
+                )
             )
             response = HttpResponse(csv_data, content_type="text/csv; charset=utf-8")
             filename = f"curated_metadata_{timezone.now().strftime('%Y%m%d%H%M')}.csv"
