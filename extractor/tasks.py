@@ -77,6 +77,37 @@ def _count_pages_pass1(working_path, chunk_size, overlap, pages_pattern, parent_
     return pages_count, parent_count
 
 
+def _extract_count_from_pages_node(content: bytes, pages_idx: int) -> int | None:
+    """Helper to extract /Count digits following a /Type/Pages token."""
+    type_slice = content[pages_idx : pages_idx + 30].replace(b" ", b"")
+    if not type_slice.startswith(b"/Type/Pages"):
+        return None
+    count_idx = content.find(b"/Count", pages_idx)
+    if count_idx == -1 or count_idx - pages_idx >= 200:
+        return None
+    after_count = content[count_idx + 6 : count_idx + 30].lstrip()
+    digits = []
+    for b in after_count:
+        if 48 <= b <= 57:
+            digits.append(b)
+        else:
+            break
+    return int(bytes(digits)) if digits else None
+
+
+def _find_pages_count_in_chunk(content: bytes) -> int | None:
+    """Scan chunk for /Type/Pages and parse its /Count."""
+    idx = 0
+    while True:
+        pages_idx = content.find(b"/Type", idx)
+        if pages_idx == -1:
+            return None
+        count = _extract_count_from_pages_node(content, pages_idx)
+        if count is not None:
+            return count
+        idx = pages_idx + 5
+
+
 def _count_pages_pass2(working_path, chunk_size, overlap, _unused_pattern=None):
     with open(working_path, "rb") as f:
         buffer = b""
@@ -85,29 +116,10 @@ def _count_pages_pass2(working_path, chunk_size, overlap, _unused_pattern=None):
             if not chunk:
                 break
             content = buffer + chunk
-            idx = 0
-            while True:
-                pages_idx = content.find(b"/Type", idx)
-                if pages_idx == -1:
-                    break
-                type_slice = content[pages_idx : pages_idx + 30].replace(b" ", b"")
-                if type_slice.startswith(b"/Type/Pages"):
-                    count_idx = content.find(b"/Count", pages_idx)
-                    if count_idx != -1 and count_idx - pages_idx < 200:
-                        after_count = content[count_idx + 6 : count_idx + 30].lstrip()
-                        digits = b""
-                        for b in after_count:
-                            if 48 <= b <= 57:
-                                digits += bytes([b])
-                            else:
-                                break
-                        if digits:
-                            return int(digits)
-                idx = pages_idx + 5
-            if len(content) > overlap:
-                buffer = content[-overlap:]
-            else:
-                buffer = content
+            count = _find_pages_count_in_chunk(content)
+            if count is not None:
+                return count
+            buffer = content[-overlap:] if len(content) > overlap else content
     return 1
 
 
