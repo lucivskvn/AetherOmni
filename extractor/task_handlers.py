@@ -68,6 +68,24 @@ def _register():
 # ── OIDC Bearer token verification ───────────────────────────────────────────
 
 
+def _validate_oidc_claims(id_info: dict) -> bool:
+    """Helper to validate issuer and email claims on verified OIDC token."""
+    if id_info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        logger.warning("[CloudTasksHandler] OIDC issuer unexpected: %s", id_info.get("iss"))
+        return False
+
+    expected_service_account = getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "").strip()
+    if expected_service_account:
+        if id_info.get("email") != expected_service_account or not id_info.get("email_verified"):
+            logger.warning("[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account.")
+            return False
+    elif not settings.DEBUG:
+        logger.warning("[CloudTasksHandler] CLOUD_TASKS_SERVICE_ACCOUNT must be configured in production.")
+        return False
+
+    return True
+
+
 def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
     """
     Verify the Google OIDC Bearer token in the Authorization header.
@@ -95,22 +113,7 @@ def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
                 continue
             try:
                 id_info = google.oauth2.id_token.verify_oauth2_token(token, request_obj, aud)
-                if id_info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
-                    logger.warning("[CloudTasksHandler] OIDC issuer unexpected: %s", id_info.get("iss"))
-                    return False
-
-                expected_service_account = getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "").strip()
-                if expected_service_account:
-                    if id_info.get("email") != expected_service_account or not id_info.get("email_verified"):
-                        logger.warning(
-                            "[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account."
-                        )
-                        return False
-                elif not settings.DEBUG:
-                    logger.warning("[CloudTasksHandler] CLOUD_TASKS_SERVICE_ACCOUNT must be configured in production.")
-                    return False
-
-                return True
+                return _validate_oidc_claims(id_info)
             except Exception as aud_err:
                 logger.debug("[CloudTasksHandler] Candidate audience '%s' rejected: %s", aud, aud_err)
 
