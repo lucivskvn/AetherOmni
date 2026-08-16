@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import subprocess  # nosec B404
 import sys
 import urllib.request
@@ -8,6 +9,20 @@ import urllib.request
 from extractor.utils import APPLICATION_JSON, KNATIVE_MIN_SCALE
 
 logger = logging.getLogger(__name__)
+
+_GCP_TOKEN_RE = re.compile(r"^[a-z0-9][-a-z0-9_]{0,62}$")
+
+
+def _sanitize_gcp_token(val: str | None, default: str = "") -> str:
+    """Sanitize GCP project, region, or service identifier to safe alphanumeric tokens."""
+    if not val:
+        return default
+    token = str(val).strip().lower()
+    if _GCP_TOKEN_RE.match(token):
+        return token
+    # Strip any non-allowed characters
+    cleaned = re.sub(r"[^a-z0-9_-]", "", token)[:63]
+    return cleaned if cleaned else default
 
 
 def _get_subprocess_env():
@@ -185,10 +200,12 @@ def get_service_config(service_name):
     Fetches the active Knative service JSON configuration.
     Uses Google REST API in production or falls back to 'gcloud' CLI locally.
     """
+    safe_service = _sanitize_gcp_token(service_name, "aether-web")
     details = get_gcp_project_details()
-    project_id = details["project_id"]
-    project_namespace = details.get("project_number") or project_id
-    region = details["region"]
+    project_id = _sanitize_gcp_token(details.get("project_id"))
+    raw_namespace = details.get("project_number") or details.get("project_id")
+    project_namespace = _sanitize_gcp_token(raw_namespace)
+    region = _sanitize_gcp_token(details.get("region"), "asia-southeast1")
 
     if not project_id:
         raise ValueError("GCP Project ID is not configured.")
@@ -196,17 +213,17 @@ def get_service_config(service_name):
     token = get_gcp_access_token()
     if token:
         # GCP REST API (Knative v1)
-        url = f"https://{region}-run.googleapis.com/apis/serving.knative.dev/v1/namespaces/{project_namespace}/services/{service_name}"
+        url = f"https://{region}-run.googleapis.com/apis/serving.knative.dev/v1/namespaces/{project_namespace}/services/{safe_service}"
         try:
             req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Accept": APPLICATION_JSON})
             with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
             body = he.read().decode("utf-8") if he.fp else ""
-            logger.exception("GCP REST API describe HTTPError %d: %s for %s", he.code, body, service_name)
+            logger.exception("GCP REST API describe HTTPError %d: %s for %s", he.code, body, safe_service)
             raise he
         except Exception as e:
-            logger.exception(f"GCP REST API describe failed for {service_name}.")
+            logger.exception(f"GCP REST API describe failed for {safe_service}.")
             raise e
     else:
         # Local development fallback using gcloud CLI
@@ -216,7 +233,7 @@ def get_service_config(service_name):
                 "run",
                 "services",
                 "describe",
-                service_name,
+                safe_service,
                 "--region",
                 region,
                 "--project",
@@ -227,7 +244,7 @@ def get_service_config(service_name):
             output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=_get_subprocess_env(), timeout=30)  # nosec B603
             return json.loads(output.decode("utf-8"))
         except Exception as e:
-            logger.warning(f"Local gcloud describe failed for {service_name}: {e}")
+            logger.warning(f"Local gcloud describe failed for {safe_service}: {e}")
             raise e
 
 
@@ -268,13 +285,15 @@ def update_service_scale(service_name, min_scale, max_scale):
     Updates the scaling settings of a Cloud Run service (min and max scale).
     Uses GCP REST PUT API in production or falls back to local gcloud updates.
     """
+    safe_service = _sanitize_gcp_token(service_name, "aether-web")
     details = get_gcp_project_details()
-    project_id = details["project_id"]
-    project_namespace = details.get("project_number") or project_id
-    region = details["region"]
+    project_id = _sanitize_gcp_token(details.get("project_id"))
+    raw_namespace = details.get("project_number") or details.get("project_id")
+    project_namespace = _sanitize_gcp_token(raw_namespace)
+    region = _sanitize_gcp_token(details.get("region"), "asia-southeast1")
 
     # 1. Fetch current service config first (required for Knative PUT updates)
-    service_json = get_service_config(service_name)
+    service_json = get_service_config(safe_service)
 
     # Clean read-only status and metadata fields GCP rejects on PUT
     _clean_read_only_metadata(service_json)
@@ -290,7 +309,7 @@ def update_service_scale(service_name, min_scale, max_scale):
     token = get_gcp_access_token()
     if token:
         # GCP REST API (Knative PUT update)
-        url = f"https://{region}-run.googleapis.com/apis/serving.knative.dev/v1/namespaces/{project_namespace}/services/{service_name}"
+        url = f"https://{region}-run.googleapis.com/apis/serving.knative.dev/v1/namespaces/{project_namespace}/services/{safe_service}"
         try:
             data = json.dumps(service_json).encode("utf-8")
             req = urllib.request.Request(
@@ -307,10 +326,10 @@ def update_service_scale(service_name, min_scale, max_scale):
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
             body = he.read().decode("utf-8") if he.fp else ""
-            logger.exception("GCP REST API update HTTPError %d: %s for %s", he.code, body, service_name)
+            logger.exception("GCP REST API update HTTPError %d: %s for %s", he.code, body, safe_service)
             raise he
         except Exception as e:
-            logger.exception(f"GCP REST API update failed for {service_name}.")
+            logger.exception(f"GCP REST API update failed for {safe_service}.")
             raise e
     else:
         # Local development fallback using gcloud CLI
@@ -320,7 +339,7 @@ def update_service_scale(service_name, min_scale, max_scale):
                 "run",
                 "services",
                 "update",
-                service_name,
+                safe_service,
                 "--min-instances",
                 str(min_scale),
                 "--max-instances",
@@ -334,7 +353,7 @@ def update_service_scale(service_name, min_scale, max_scale):
             output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=_get_subprocess_env(), timeout=30)  # nosec B603
             return {"status": "success", "output": output.decode("utf-8")}
         except Exception as e:
-            logger.exception(f"Local gcloud update failed for {service_name}.")
+            logger.exception(f"Local gcloud update failed for {safe_service}.")
             raise e
 
 
@@ -368,6 +387,9 @@ def _parse_text_payload(entry):
 
 
 def _fallback_local_run_logs(service_name, region, project_id, limit):
+    safe_service = _sanitize_gcp_token(service_name, "aether-web")
+    safe_region = _sanitize_gcp_token(region, "asia-southeast1")
+    safe_project = _sanitize_gcp_token(project_id)
     try:
         cmd = [
             "gcloud",
@@ -375,13 +397,13 @@ def _fallback_local_run_logs(service_name, region, project_id, limit):
             "services",
             "logs",
             "read",
-            service_name,
+            safe_service,
             "--region",
-            region,
+            safe_region,
             "--project",
-            project_id,
+            safe_project,
             "--limit",
-            str(limit),
+            str(int(limit)),
         ]
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=_get_subprocess_env(), timeout=30)  # nosec B603
         lines = output.decode("utf-8").split("\n")
@@ -395,12 +417,14 @@ def _fallback_local_run_logs(service_name, region, project_id, limit):
 
 
 def _get_service_logs_gcp(service_name, project_id, limit, token):
+    safe_service = _sanitize_gcp_token(service_name, "aether-web")
+    safe_project = _sanitize_gcp_token(project_id)
     url = "https://logging.googleapis.com/v2/entries:list"
     body = {
-        "resourceNames": [f"projects/{project_id}"],
-        "filter": f'resource.type="cloud_run_revision" AND resource.labels.service_name="{service_name}"',
+        "resourceNames": [f"projects/{safe_project}"],
+        "filter": f'resource.type="cloud_run_revision" AND resource.labels.service_name="{safe_service}"',
         "orderBy": "timestamp desc",
-        "pageSize": limit,
+        "pageSize": int(limit),
     }
     try:
         data = json.dumps(body).encode("utf-8")
@@ -435,16 +459,19 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
 
 
 def _get_service_logs_local(service_name, project_id, region, limit):
+    safe_service = _sanitize_gcp_token(service_name, "aether-web")
+    safe_project = _sanitize_gcp_token(project_id)
+    safe_region = _sanitize_gcp_token(region, "asia-southeast1")
     try:
         cmd = [
             "gcloud",
             "logging",
             "read",
-            f'resource.type="cloud_run_revision" AND resource.labels.service_name="{service_name}"',
+            f'resource.type="cloud_run_revision" AND resource.labels.service_name="{safe_service}"',
             "--limit",
-            str(limit),
+            str(int(limit)),
             "--project",
-            project_id,
+            safe_project,
             "--format",
             "json",
         ]
@@ -461,7 +488,7 @@ def _get_service_logs_local(service_name, project_id, region, limit):
         return list(reversed(logs_parsed))
 
     except Exception:
-        return _fallback_local_run_logs(service_name, region, project_id, limit)
+        return _fallback_local_run_logs(safe_service, safe_region, safe_project, limit)
 
 
 def get_service_logs(service_name, limit=50):
