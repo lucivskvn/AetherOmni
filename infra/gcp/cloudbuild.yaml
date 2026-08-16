@@ -153,6 +153,12 @@ steps:
             "semgrep-cloud-platform",
             "semgrep",
         }
+        codeql_names = {
+            "CodeQL",
+            "Analyze (python)",
+            "Analyze (javascript-typescript)",
+            "Analyze (actions)",
+        }
 
         for attempt in range(30):
             try:
@@ -164,8 +170,9 @@ steps:
                 check_runs = payload.get("check_runs", [])
                 sonar_runs = [item for item in check_runs if item.get("name") in sonar_names]
                 semgrep_runs = [item for item in check_runs if item.get("name") in semgrep_names]
+                codeql_runs = [item for item in check_runs if item.get("name") in codeql_names]
 
-                all_tracked = sonar_runs + semgrep_runs
+                all_tracked = sonar_runs + semgrep_runs + codeql_runs
                 completed = [item for item in all_tracked if item.get("status") == "completed"]
                 failed = [item for item in completed if item.get("conclusion") not in ("success", "neutral")]
                 if failed:
@@ -179,15 +186,20 @@ steps:
                     if semgrep_runs
                     else True
                 )
+                codeql_passed = (
+                    any(item.get("status") == "completed" and item.get("conclusion") in ("success", "neutral") for item in codeql_runs)
+                    if codeql_runs
+                    else False
+                )
 
-                if sonar_passed and semgrep_passed:
-                    print("GitHub quality gate passed across SonarCloud and SAST checks.")
+                if sonar_passed and semgrep_passed and codeql_passed:
+                    print("GitHub quality gate passed across SonarCloud, CodeQL, and SAST checks.")
                     raise SystemExit(0)
 
-                print(f"Waiting for GitHub quality gate: SonarCloud passed={sonar_passed}, Semgrep passed={semgrep_passed} (attempt {attempt + 1}/30)")
+                print(f"Waiting for GitHub quality gate: SonarCloud passed={sonar_passed}, Semgrep passed={semgrep_passed}, CodeQL passed={codeql_passed} (attempt {attempt + 1}/30)")
             time.sleep(30)
 
-        print("Timed out waiting for mandatory SonarCloud and Semgrep quality gates to pass", file=sys.stderr)
+        print("Timed out waiting for mandatory SonarCloud, CodeQL, and Semgrep quality gates to pass", file=sys.stderr)
         raise SystemExit(1)
         PY
 
