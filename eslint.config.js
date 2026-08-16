@@ -52,6 +52,7 @@ export default [
         Chart: "readonly",
         supabase: "readonly",
         DataTransfer: "readonly",
+        module: "readonly",
       },
     },
     rules: {

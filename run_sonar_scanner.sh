@@ -33,7 +33,8 @@ echo ""
 
 # Use env var first, prompt only if not set
 if [[ -z "${SONAR_TOKEN:-}" ]]; then
-    read -rp "Enter your SonarCloud User Token: " SONAR_TOKEN
+    read -rsp "Enter your SonarCloud User Token: " SONAR_TOKEN
+    echo ""
 fi
 
 if [[ -z "${SONAR_TOKEN:-}" ]]; then

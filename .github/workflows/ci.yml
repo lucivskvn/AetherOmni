@@ -45,6 +45,8 @@ jobs:
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Dockerfile & Script Validation
         run: |
@@ -74,6 +76,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # Required for SonarCloud SCM blame data
+          persist-credentials: false
 
       - name: Cache Dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -137,7 +140,7 @@ jobs:
         run: ruff check .
 
       - name: JavaScript Lint (eslint)
-        run: ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+        run: ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"
 
       - name: Python Tests → coverage.xml
         run: |

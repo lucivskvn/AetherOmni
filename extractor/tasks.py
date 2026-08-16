@@ -79,7 +79,16 @@ def _count_pages_pass1(working_path, chunk_size, overlap, pages_pattern, parent_
 
 def _extract_count_from_pages_node(content: bytes, pages_idx: int) -> int | None:
     """Helper to extract /Count digits following a /Type/Pages token."""
-    type_slice = content[pages_idx : pages_idx + 30].replace(b" ", b"")
+    # Strip all standard PDF whitespace characters (ASCII 0, 9, 10, 12, 13, 32)
+    type_slice = (
+        content[pages_idx : pages_idx + 30]
+        .replace(b" ", b"")
+        .replace(b"\t", b"")
+        .replace(b"\n", b"")
+        .replace(b"\r", b"")
+        .replace(b"\x0c", b"")
+        .replace(b"\x00", b"")
+    )
     if not type_slice.startswith(b"/Type/Pages"):
         return None
     count_idx = content.find(b"/Count", pages_idx)
@@ -108,7 +117,7 @@ def _find_pages_count_in_chunk(content: bytes) -> int | None:
         idx = pages_idx + 5
 
 
-def _count_pages_pass2(working_path, chunk_size, overlap, _unused_pattern=None):
+def _count_pages_pass2(working_path, chunk_size, overlap):
     with open(working_path, "rb") as f:
         buffer = b""
         while True:
@@ -135,7 +144,6 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
 
         pages_pattern = re.compile(rb"/Type\s*/Page\b")
         parent_pattern = re.compile(rb"/Parent\s+\d+\s+\d+\s+R")
-        count_pattern = re.compile(rb"/Type\s*/Pages(?:(?!/Type)[^>])*?/Count\s*(\d+)")
 
         with open(working_path, "rb") as f:
             header = f.read(1024)
@@ -149,7 +157,7 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
         if pages_count > 0:
             return pages_count
 
-        return _count_pages_pass2(working_path, chunk_size, overlap, count_pattern)
+        return _count_pages_pass2(working_path, chunk_size, overlap)
     except Exception as e:
         logger.debug("[Worker] Failed to determine real page count for %s: %s", working_path, e)
         return 1
