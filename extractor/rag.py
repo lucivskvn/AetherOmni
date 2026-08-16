@@ -548,7 +548,7 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
         context_blocks.append(f"--- BLOCK {idx + 1} [{doc_info}] ---\n{chunk.get('content', '')}")
         sources.append(
             {
-                "id": str(doc_meta["id"]) if doc_meta.get("id") is not None else doc_uuid_str,
+                "id": doc_meta["id"],
                 "uuid": doc_uuid_str,
                 "title": str(doc_meta.get("title", "Unknown")),
                 "author": str(doc_meta.get("author", "Unknown")),
@@ -707,8 +707,13 @@ def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
         doc = surreal_db.get_document(doc_uuid)
         if doc:
             raw_id = doc.get("id") if doc.get("id") is not None else doc.get("doc_uuid")
+            # If raw_id is already an integer (e.g. from Django model), keep it; otherwise str
+            if isinstance(raw_id, int):
+                doc_id = raw_id
+            else:
+                doc_id = str(raw_id) if raw_id is not None else doc_uuid
             return {
-                "id": str(raw_id) if raw_id is not None else doc_uuid,
+                "id": doc_id,
                 "title": str(doc.get("title", "Unknown") or "Unknown"),
                 "author": str(doc.get("author", "Unknown") or "Unknown"),
                 "language": str(doc.get("language", "Unknown") or "Unknown"),
