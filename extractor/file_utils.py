@@ -132,12 +132,25 @@ def calculate_file_sha256(file_handle_or_path: str | IO[bytes]) -> str:
 
     sha256 = hashlib.sha256()
     if isinstance(file_handle_or_path, str):
-        safe_path = Path(file_handle_or_path).resolve()
-        if not safe_path.is_file():
+        import os
+        from pathlib import Path
+
+        target_path = Path(file_handle_or_path).resolve()
+        if not target_path.is_file():
             raise ValueError(f"Path is not a valid file: {file_handle_or_path}")
-        with safe_path.open("rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                sha256.update(chunk)
+
+        # Secure file reading using file descriptor with O_NOFOLLOW to block symlink traversal
+        fd = os.open(str(target_path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
+        try:
+            with open(fd, "rb", closefd=True) as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    sha256.update(chunk)
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            raise
     else:
         file_handle_or_path.seek(0)
         for chunk in iter(lambda: file_handle_or_path.read(65536), b""):
