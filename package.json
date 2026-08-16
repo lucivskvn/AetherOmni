@@ -1,0 +1,19 @@
+{
+  "name": "aetheromni-js",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JavaScript unit tests and coverage for AetherOmni static assets",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --coverage --reporter=verbose"
+  },
+  "devDependencies": {
+    "@vitest/browser": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.10",
+    "jsdom": "^26.1.0",
+    "vitest": "^4.1.10"
+  }
+}
