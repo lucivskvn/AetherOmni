@@ -103,9 +103,11 @@ def _model_to_dict(doc) -> dict:
         "cost_usd": float(doc.cost_usd),
         "semantic_signature": doc.semantic_signature,
         "retry_count": doc.retry_count,
-        "created_at": doc.created_at.strftime(ISO8601_FMT) if doc.created_at else None,
-        "updated_at": doc.updated_at.strftime(ISO8601_FMT) if doc.updated_at else None,
-        "expires_at": doc.expires_at.strftime(ISO8601_FMT) if doc.expires_at else None,
+        # Pass datetime objects directly — SurrealDB 2.x requires Python datetime for
+        # datetime-typed schema fields; ISO-8601 strings fail coercion on INSERT.
+        "created_at": doc.created_at if doc.created_at else None,
+        "updated_at": doc.updated_at if doc.updated_at else None,
+        "expires_at": doc.expires_at if doc.expires_at else None,
     }
 
 
@@ -1260,10 +1262,12 @@ def kv_cache_get(key: str) -> Any | None:
 
 def kv_cache_set(key: str, value: Any, ttl_seconds: int | None = None) -> None:
     """Store a value in the KV cache with optional TTL."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     if ttl_seconds is not None:
-        expires_at_val = (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).isoformat()
+        # Pass a Python datetime object — not an ISO string — so the SurrealDB 2.x driver
+        # serialises it as a native datetime type and schema coercion succeeds.
+        expires_at_val: datetime | None = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
     else:
         expires_at_val = None
 

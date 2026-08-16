@@ -97,7 +97,6 @@ steps:
         /kaniko/executor \
           --context=dir:///workspace \
           --dockerfile=/workspace/Dockerfile \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$SHORT_SHA \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
           --cache=true \
@@ -196,7 +195,10 @@ steps:
                     print("GitHub quality gate passed across SonarCloud, CodeQL, and SAST checks.")
                     raise SystemExit(0)
 
-                print(f"Waiting for GitHub quality gate: SonarCloud passed={sonar_passed}, Semgrep passed={semgrep_passed}, CodeQL passed={codeql_passed} (attempt {attempt + 1}/30)")
+                print(
+                    f"Waiting for GitHub quality gate: SonarCloud passed={sonar_passed}, "
+                    f"Semgrep passed={semgrep_passed}, CodeQL passed={codeql_passed} (attempt {attempt + 1}/30)"
+                )
             time.sleep(30)
 
         print("Timed out waiting for mandatory SonarCloud, CodeQL, and Semgrep quality gates to pass", file=sys.stderr)
