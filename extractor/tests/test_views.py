@@ -1162,6 +1162,9 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
             self.assertIn(f"/document/{self.doc_a.uuid}/", src["deep_link"])
 
     def test_export_sqlite_view(self):
+        from django.core.cache import cache
+
+        cache.clear()
         self.client.force_login(self.user_a)
         response = self.client.post(reverse("export_sqlite"), {"selected_documents": [self.doc_a.id]})
         self.assertEqual(response.status_code, 200)

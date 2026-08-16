@@ -1,5 +1,7 @@
 ISO_8601_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DOCUMENT_NOT_FOUND_MSG = "Document not found."
+EXPORT_RATE_LIMIT_MSG = "Export rate limit exceeded. Please wait 60 seconds before trying again."
+
 import json
 import logging
 from datetime import datetime
@@ -1142,7 +1144,7 @@ class ExportZipView(LoginRequiredMixin, View):
         ip_key = f"export_ratelimit_{get_client_ip(request)}"
 
         if cache.get(user_key) or cache.get(ip_key):
-            messages.error(request, "Export rate limit exceeded. Please wait 60 seconds before trying again.")
+            messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
         cache.set(user_key, True, 60)
@@ -1207,7 +1209,7 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
         ip_key = f"export_ratelimit_{get_client_ip(request)}"
 
         if cache.get(user_key) or cache.get(ip_key):
-            messages.error(request, "Export rate limit exceeded. Please wait 60 seconds before trying again.")
+            messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
         cache.set(user_key, True, 60)
@@ -1243,7 +1245,7 @@ class ExportSqliteView(LoginRequiredMixin, View):
         ip_key = f"export_ratelimit_{get_client_ip(request)}"
 
         if cache.get(user_key) or cache.get(ip_key):
-            messages.error(request, "Export rate limit exceeded. Please wait 60 seconds before trying again.")
+            messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
         cache.set(user_key, True, 60)
@@ -1279,7 +1281,7 @@ class ExportCsvView(LoginRequiredMixin, View):
         ip_key = f"export_ratelimit_{get_client_ip(request)}"
 
         if cache.get(user_key) or cache.get(ip_key):
-            messages.error(request, "Export rate limit exceeded. Please wait 60 seconds before trying again.")
+            messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
         cache.set(user_key, True, 60)
