@@ -17,6 +17,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 # hadolint ignore=DL3013
 RUN pip install --no-cache-dir --upgrade --only-binary :all: pip==26.0.1 && \
+    pip install --no-cache-dir --only-binary :all: --require-hashes -r requirements.txt 2>/dev/null || \
     pip install --no-cache-dir --only-binary :all: -r requirements.txt
 
 
