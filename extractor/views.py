@@ -1771,12 +1771,19 @@ class AuditLogListView(LoginRequiredMixin, View):
             action_filter = ""
         user_query = request.GET.get("user", "").strip()
         search_query = request.GET.get("q", "").strip()
-        from django.conf import settings
-
-        if getattr(settings, "SURREALDB_OFFLINE", False):
+        try:
+            if getattr(settings, "SURREALDB_OFFLINE", False):
+                context = _get_offline_audit_logs(
+                    request, is_staff_or_superuser, action_filter, user_query, search_query
+                )
+            else:
+                context = _get_surreal_audit_logs(
+                    request, is_staff_or_superuser, action_filter, user_query, search_query
+                )
+        except Exception as exc:
+            logger.warning("[Audit Logs] Failed to retrieve SurrealDB logs, falling back to local store: %s", exc)
             context = _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query)
-        else:
-            context = _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query)
+
         return render(request, "extractor/audit_logs.html", context)
 
 
