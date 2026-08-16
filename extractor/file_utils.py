@@ -313,28 +313,39 @@ def _extract_sheet_rows_from_xml(sheet_tree, shared_strings: list[str]) -> list[
     return rows
 
 
+def _load_zipxml_shared_strings(zf: Any) -> list[str]:
+    import xml.etree.ElementTree as ET  # nosec B405
+
+    shared_strings: list[str] = []
+    if "xl/sharedStrings.xml" in zf.namelist():
+        ss_tree = ET.fromstring(zf.read("xl/sharedStrings.xml"))  # nosec B314 # noqa: S314
+        for si in ss_tree.findall(".//{*}si"):
+            t_el = si.find(".//{*}t")
+            shared_strings.append(t_el.text if t_el is not None and t_el.text else "")
+    return shared_strings
+
+
+def _parse_zipxml_sheets(zf: Any, shared_strings: list[str]) -> list[str]:
+    import xml.etree.ElementTree as ET  # nosec B405
+
+    sheet_files = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
+    sheets_md: list[str] = []
+    for s_idx, s_file in enumerate(sheet_files, 1):
+        sheet_tree = ET.fromstring(zf.read(s_file))  # nosec B314 # noqa: S314
+        rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings)
+        formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows)
+        if formatted:
+            sheets_md.append(formatted)
+    return sheets_md
+
+
 def _parse_excel_zipxml(file_path: str) -> str | None:
     """Pure standard-library ZIP+XML fallback for .xlsx parsing."""
     try:
-        import xml.etree.ElementTree as ET  # nosec B405
-
         with zipfile.ZipFile(file_path, "r") as zf:
             validate_zip(zf)
-            shared_strings: list[str] = []
-            if "xl/sharedStrings.xml" in zf.namelist():
-                ss_tree = ET.fromstring(zf.read("xl/sharedStrings.xml"))  # nosec B314 # noqa: S314
-                for si in ss_tree.findall(".//{*}si"):
-                    t_el = si.find(".//{*}t")
-                    shared_strings.append(t_el.text if t_el is not None and t_el.text else "")
-
-            sheet_files = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
-            sheets_md: list[str] = []
-            for s_idx, s_file in enumerate(sheet_files, 1):
-                sheet_tree = ET.fromstring(zf.read(s_file))  # nosec B314 # noqa: S314
-                rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings)
-                formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows)
-                if formatted:
-                    sheets_md.append(formatted)
+            shared_strings = _load_zipxml_shared_strings(zf)
+            sheets_md = _parse_zipxml_sheets(zf, shared_strings)
             return "\n\n".join(sheets_md) if sheets_md else None
     except Exception as exc:
         logger.warning("[Excel Parser] Native XML extraction failed: %s", exc)
@@ -880,10 +891,17 @@ def _init_sqlite_export_schema(cursor: Any) -> None:
     """)
 
 
+def _get_doc_field_str(doc: Any, attr: str, default: str = "") -> str:
+    val = getattr(doc, attr, None)
+    return str(val) if val is not None and val != "" else default
+
+
 def _insert_sqlite_document(cursor: Any, doc: Any) -> str:
     doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
-    title = str(getattr(doc, "title", None) or "Untitled")
-    author = str(getattr(doc, "author", None) or "Unknown")
+    title = _get_doc_field_str(doc, "title", "Untitled")
+    author = _get_doc_field_str(doc, "author", "Unknown")
+    created_at_val = _get_doc_field_str(doc, "created_at", datetime.now(UTC).isoformat())
+
     cursor.execute(
         """
         INSERT INTO documents (
@@ -895,17 +913,17 @@ def _insert_sqlite_document(cursor: Any, doc: Any) -> str:
         (
             doc_uuid,
             title,
-            str(getattr(doc, "original_filename", None) or ""),
+            _get_doc_field_str(doc, "original_filename"),
             author,
-            str(getattr(doc, "language", None) or "en"),
-            str(getattr(doc, "publisher", None) or ""),
-            str(getattr(doc, "publication_year", None) or ""),
-            str(getattr(doc, "doi", None) or ""),
-            str(getattr(doc, "license_type", None) or ""),
-            str(getattr(doc, "file_hash", None) or ""),
+            _get_doc_field_str(doc, "language", "en"),
+            _get_doc_field_str(doc, "publisher"),
+            _get_doc_field_str(doc, "publication_year"),
+            _get_doc_field_str(doc, "doi"),
+            _get_doc_field_str(doc, "license_type"),
+            _get_doc_field_str(doc, "file_hash"),
             int(getattr(doc, "page_count", 1) or 1),
             float(getattr(doc, "cost_usd", 0.0) or 0.0),
-            datetime.now(UTC).isoformat(),
+            created_at_val,
         ),
     )
     return doc_uuid
@@ -991,6 +1009,9 @@ def generate_curated_sqlite_bundle(
     if not docs_list:
         raise ValueError(NO_COMPLETED_DOCS_MSG)
 
+    if len(docs_list) > 1000:
+        raise ValueError("Export batch exceeds maximum document limit of 1000 items.")
+
     conn = sqlite3.connect(":memory:")
     cursor = conn.cursor()
     _init_sqlite_export_schema(cursor)
@@ -1003,8 +1024,13 @@ def generate_curated_sqlite_bundle(
     return _serialize_sqlite_conn(conn)
 
 
-def _build_csv_row_for_doc(doc: Any) -> list[Any]:
-    doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
+def _sanitize_csv_cell(val: Any) -> Any:
+    if isinstance(val, str) and val.lstrip().startswith(("=", "+", "-", "@")):
+        return f"'{val}"
+    return val
+
+
+def _extract_doc_excerpt(doc: Any) -> str:
     raw_content = (
         getattr(doc, "refined_markdown", None)
         or getattr(doc, "cleaned_markdown", None)
@@ -1012,26 +1038,30 @@ def _build_csv_row_for_doc(doc: Any) -> list[Any]:
         or ""
     )
     excerpt = (raw_content[:500] + "...") if len(raw_content) > 500 else raw_content
-    clean_excerpt = " ".join(excerpt.split())
+    return " ".join(excerpt.split())
 
-    return [
+
+def _build_csv_row_for_doc(doc: Any) -> list[Any]:
+    doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
+    raw_row = [
         doc_uuid,
-        getattr(doc, "title", None) or "Untitled",
-        getattr(doc, "author", None) or "Unknown",
-        getattr(doc, "language", None) or "en",
-        getattr(doc, "document_type", None) or "PDF",
-        getattr(doc, "publisher", None) or "",
-        getattr(doc, "publication_year", None) or "",
-        getattr(doc, "doi", None) or "",
-        getattr(doc, "license_type", None) or "",
-        getattr(doc, "file_hash", None) or "",
+        _get_doc_field_str(doc, "title", "Untitled"),
+        _get_doc_field_str(doc, "author", "Unknown"),
+        _get_doc_field_str(doc, "language", "en"),
+        _get_doc_field_str(doc, "document_type", "PDF"),
+        _get_doc_field_str(doc, "publisher"),
+        _get_doc_field_str(doc, "publication_year"),
+        _get_doc_field_str(doc, "doi"),
+        _get_doc_field_str(doc, "license_type"),
+        _get_doc_field_str(doc, "file_hash"),
         int(getattr(doc, "page_count", 1) or 1),
         float(getattr(doc, "cost_usd", 0.0) or 0.0),
         int(getattr(doc, "input_tokens", 0) or 0),
         int(getattr(doc, "output_tokens", 0) or 0),
-        str(getattr(doc, "created_at", "")),
-        clean_excerpt,
+        _get_doc_field_str(doc, "created_at"),
+        _extract_doc_excerpt(doc),
     ]
+    return [_sanitize_csv_cell(c) for c in raw_row]
 
 
 def generate_curated_csv_bundle(

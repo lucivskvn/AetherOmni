@@ -2,21 +2,18 @@
 
 > **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
+<!-- auto:badges -->
 [![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)
-
-[![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Semgrep SAST](https://img.shields.io/badge/Semgrep-Cloud%20SAST-4B2BFF.svg?logo=semgrep)](https://semgrep.dev)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=coverage)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=bugs)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Version](https://img.shields.io/badge/version-v1.5.561-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-f34c291-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+<!-- /auto:badges -->
+
 [![Desloppify Codebase Health](docs/scorecard.png)](docs/scorecard.png)
 
 ---
@@ -215,8 +212,8 @@ flowchart LR
     M2 --> M3["✅ Milestone 3.0 MVP<br>Hybrid RAG & Vision OCR"]
     M3 --> M35["✅ Milestone 3.5 MVP<br>DevSecOps Hardening & SurrealQL"]
     M35 --> M36["✅ Milestone 3.6 MVP<br>Auth & Release Reliability"]
-    M36 --> M37["📈 Milestone 3.7 MVP<br>Observability & Multi-MCP Triage"]
-    M37 --> M4["📦 Milestone 4.0 Enterprise<br>SSE Streaming & Parquet Export"]
+    M36 --> M37["✅ Milestone 3.7 MVP<br>Observability & Sentry Release"]
+    M37 --> M4["📈 Milestone 4.0 Enterprise<br>Multi-Format Export & SQLite FTS5"]
     M4 --> M5["🚀 Milestone 5.0 Enterprise<br>Graph RAG & Agent Tools"]
 ```
 
@@ -260,19 +257,19 @@ flowchart LR
 - [x] **On-Demand Worker Processing**: Cloud Tasks wakes a bounded zero-minimum worker only for queued ingestion; periodic maintenance is disabled by default and can be enabled only with an explicit always-on operating decision. Spend-ledger persistence is validated before document deletion.
 - [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
 
-### 📈 Milestone 3.7 (MVP Reliability — Operations & Multi-MCP Triage)
+### ✅ Milestone 3.7 (MVP Reliability — Operations & Multi-MCP Triage)
 
 - [x] **Multi-MCP Triage & Observability**: Dedicated Model Context Protocol server workflows for SonarQube quality gates, Google Cloud Logging container inspections, Google Cloud Monitoring metrics, Chrome DevTools accessibility testing, and Google Developer Knowledge.
 - [x] **Operational Runbook & Diagnostic Tools**: Read-only GCP diagnostics CLI (`scripts/gcp-diagnostics.sh`) for Cloud Run revisions, readiness status, and bounded error log inspection.
-- [ ] **Sentry Release Observability**: Correlate errors and deployments with the computed release version while keeping the DSN in Secret Manager and personal data disabled by default.
+- [x] **Sentry Release Observability**: Correlated errors, performance tracing, profiling, and deployments with computed `RELEASE_VERSION` and verification test route (`/sentry-debug/`).
 - [ ] **Pulumi Foundation**: Model and import Cloud Run, Secret Manager, IAM, Artifact Registry, Cloud Tasks, and Storage before provisioning another environment.
 
 ### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & RBAC)
 
 - [x] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (CC-BY-4.0, MIT), DOI, SHA-256 hash, and `validation_status` across schemas, models, and export headers.
 - [x] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, and `exported_by_username` in exported headers and manifest metadata.
-- [ ] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)** (Implemented), **Hugging Face SFT (`.jsonl`)** (Implemented), **SQLite Mobile (`.db`)**, **Apache Parquet (`.parquet`)**, and **CSV (`.csv`)**.
-- [ ] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search for offline iOS / Android / Flutter integration.
+- [x] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)**, **Hugging Face SFT (`.jsonl`)**, **SQLite Mobile (`.db`)**, and **CSV Summary (`.csv`)** with formula injection sanitization.
+- [x] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search index for offline iOS / Android / Flutter integration.
 - [ ] **Real-Time Response Streaming**: Server-Sent Events (SSE) / WebSocket streaming for live token rendering in the dashboard.
 - [ ] **Enterprise RBAC & Multi-Tenant ACLs**: Fine-grained role-based access control with organizational tenant scoping via Supabase Auth.
 - [ ] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness via RAGAS and TruLens.

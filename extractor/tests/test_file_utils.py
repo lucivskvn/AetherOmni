@@ -185,53 +185,74 @@ class FileUtilsTestCase(TestCase):
     def test_generate_curated_sqlite_bundle(self):
         import sqlite3
 
-        doc = SourceDocument.objects.create(
-            original_filename="sqlite_test.pdf",
-            file_hash="sqlite_hash_123",
-            title="The Art of Creed",
-            author="Scholar Ali",
-            language="ar",
-            status="COMPLETED",
-            refined_markdown="This is the foundational chapter on divine attributes and guidance.",
-        )
-        raw_db_bytes = file_utils.generate_curated_sqlite_bundle([doc.id])
-        self.assertIsInstance(raw_db_bytes, bytes)
-        self.assertTrue(len(raw_db_bytes) > 0)
+        with self.settings(SURREALDB_OFFLINE=True):
+            doc = SourceDocument.objects.create(
+                original_filename="sqlite_test.pdf",
+                file_hash="sqlite_hash_123",
+                title="The Art of Creed",
+                author="Scholar Ali",
+                language="ar",
+                status="COMPLETED",
+                refined_markdown="This is the foundational chapter on divine attributes and guidance.",
+            )
+            raw_db_bytes = file_utils.generate_curated_sqlite_bundle([doc.id])
+            self.assertIsInstance(raw_db_bytes, bytes)
+            self.assertTrue(len(raw_db_bytes) > 0)
 
-        # Connect and verify schema and FTS5 search
-        conn = sqlite3.connect(":memory:")
-        if hasattr(conn, "deserialize"):
-            conn.deserialize(raw_db_bytes)
-        else:
-            # Fallback for Python versions without deserialize
-            pass
+            # Connect and verify schema and FTS5 search
+            conn = sqlite3.connect(":memory:")
+            if hasattr(conn, "deserialize"):
+                conn.deserialize(raw_db_bytes)
+            else:
+                # Fallback for Python versions without deserialize
+                pass
 
-        # If deserialize succeeded, verify tables and FTS5 index
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = [r[0] for r in cursor.fetchall()]
-        self.assertIn("documents", tables)
-        self.assertIn("chunks", tables)
-        self.assertIn("chunks_fts", tables)
+            # If deserialize succeeded, verify tables and FTS5 index
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = [r[0] for r in cursor.fetchall()]
+            self.assertIn("documents", tables)
+            self.assertIn("chunks", tables)
+            self.assertIn("chunks_fts", tables)
 
-        cursor.execute("SELECT * FROM chunks_fts WHERE chunks_fts MATCH 'attributes';")
-        fts_results = cursor.fetchall()
-        self.assertEqual(len(fts_results), 1)
-        conn.close()
+            cursor.execute("SELECT * FROM chunks_fts WHERE chunks_fts MATCH 'attributes';")
+            fts_results = cursor.fetchall()
+            self.assertEqual(len(fts_results), 1)
+            conn.close()
 
     def test_generate_curated_csv_bundle(self):
-        doc = SourceDocument.objects.create(
-            original_filename="csv_test.pdf",
-            file_hash="csv_hash_123",
-            title="Historical Chronicles",
-            author="Historian Ahmad",
-            language="en",
-            status="COMPLETED",
-            raw_markdown="Chronicles of ancient kingdoms.",
+        with self.settings(SURREALDB_OFFLINE=True):
+            doc = SourceDocument.objects.create(
+                original_filename="csv_test.pdf",
+                file_hash="csv_hash_123",
+                title="Historical Chronicles",
+                author="Historian Ahmad",
+                language="en",
+                status="COMPLETED",
+                raw_markdown="Chronicles of ancient kingdoms.",
+            )
+            csv_bytes = file_utils.generate_curated_csv_bundle([doc.id])
+            self.assertIsInstance(csv_bytes, bytes)
+            csv_text = csv_bytes.decode("utf-8")
+            self.assertIn("Historical Chronicles", csv_text)
+            self.assertIn("Historian Ahmad", csv_text)
+            self.assertIn("csv_hash_123", csv_text)
+
+    def test_sanitize_csv_cell_formula_injection(self):
+        # Standard formula prefixes
+        self.assertEqual(file_utils._sanitize_csv_cell("=SUM(A1:A10)"), "'=SUM(A1:A10)")
+        self.assertEqual(file_utils._sanitize_csv_cell("+cmd|' /C calc'!A0"), "'+cmd|' /C calc'!A0")
+        self.assertEqual(file_utils._sanitize_csv_cell("-2+3+cmd|' /C calc'!A0"), "'-2+3+cmd|' /C calc'!A0")
+        self.assertEqual(file_utils._sanitize_csv_cell("@SUM(1,2)"), "'@SUM(1,2)")
+
+        # Whitespace-prefixed formula payloads (space, tab, newline)
+        self.assertEqual(file_utils._sanitize_csv_cell("  =1+1"), "'  =1+1")
+        self.assertEqual(
+            file_utils._sanitize_csv_cell('\t=HYPERLINK("http://evil.com")'), '\'\t=HYPERLINK("http://evil.com")'
         )
-        csv_bytes = file_utils.generate_curated_csv_bundle([doc.id])
-        self.assertIsInstance(csv_bytes, bytes)
-        csv_text = csv_bytes.decode("utf-8")
-        self.assertIn("Historical Chronicles", csv_text)
-        self.assertIn("Historian Ahmad", csv_text)
-        self.assertIn("csv_hash_123", csv_text)
+        self.assertEqual(file_utils._sanitize_csv_cell("   +1234"), "'   +1234")
+
+        # Safe values should remain unchanged
+        self.assertEqual(file_utils._sanitize_csv_cell("Normal Document Title"), "Normal Document Title")
+        self.assertEqual(file_utils._sanitize_csv_cell(12345), 12345)
+        self.assertIsNone(file_utils._sanitize_csv_cell(None))
