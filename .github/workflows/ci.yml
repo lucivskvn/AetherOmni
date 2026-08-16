@@ -10,12 +10,11 @@
 #   Phase 2 ─ Tests & Coverage  → ruff (linting) + eslint (linting)
 #                                  Python tests → coverage.xml
 #                                  JS tests     → coverage/js/lcov.info
-#   Phase 3 ─ SonarCloud Gate   → Full SAST (3000+ rules) + coverage
-#                                  ingestion + quality gate enforcement
-#   Phase 4 ─ Semgrep Cloud     → Pro rules + secrets detection + custom
-#   (parallel to 3)               policies → SARIF → GitHub Advanced Security
+#   Phase 3 ─ SonarCloud Gate   → Full SAST + coverage ingestion + quality gate
 #
-# Required secrets: SONAR_TOKEN, SEMGREP_APP_TOKEN
+# Note: Semgrep Cloud SAST is executed directly via Semgrep GitHub App.
+#
+# Required secrets: SONAR_TOKEN
 # ==============================================================================
 name: DevSecOps CI Pipeline
 
@@ -243,55 +242,3 @@ jobs:
             echo "::error title=SonarCloud Quality Gate ${status}::Quality Gate failed. Review ${SONAR_DASHBOARD_URL}"
             exit 1
           fi
-
-  # ============================================================================
-  # Phase 4: Semgrep Cloud SAST (runs in parallel with SonarCloud)
-  # Pro rules (3500+), secrets detection, and organization custom policies
-  # configured in the Semgrep Cloud dashboard. Results uploaded as SARIF to
-  # GitHub Advanced Security for inline PR annotations.
-  # ============================================================================
-  semgrep-cloud-sast:
-    name: 4. Semgrep Cloud SAST
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: pre-scan-validation
-    permissions:
-      contents: read
-      pull-requests: read
-      security-events: write
-    # Skip on Dependabot PRs — SEMGREP_APP_TOKEN unavailable in forked PRs
-    if: |
-      github.actor != 'dependabot[bot]' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    steps:
-      - name: Checkout Codebase
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Validate SEMGREP_APP_TOKEN
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${SEMGREP_APP_TOKEN:-}" ]; then
-            echo "::error title=Missing SEMGREP_APP_TOKEN::Generate a token at https://semgrep.dev/orgs/-/settings/tokens and store it as the SEMGREP_APP_TOKEN repository secret."
-            exit 1
-          fi
-          echo "SEMGREP_APP_TOKEN is present"
-
-      - name: Run Semgrep Cloud Analysis
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/src" \
-            -e SEMGREP_APP_TOKEN \
-            semgrep/semgrep@sha256:65dcd4408adda7c183a6b4550cb1e9b19f7f627a6fbb7e0559bd466bedc44d7b semgrep ci --sarif --output=semgrep.sarif || true
-
-      - name: Upload Semgrep SARIF to GitHub Advanced Security
-        uses: github/codeql-action/upload-sarif@67ba681cdcbc95ed0371c210ccf82c4d968ae5eb # v3.37.7
-        if: always()
-        with:
-          sarif_file: semgrep.sarif
-        continue-on-error: true
