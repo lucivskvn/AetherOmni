@@ -30,11 +30,11 @@ echo "========================================================"
 echo ""
 
 # Use env var first, prompt only if not set
-if [ -z "${SONAR_TOKEN:-}" ]; then
+if [[ -z "${SONAR_TOKEN:-}" ]]; then
     read -rp "Enter your SonarCloud User Token: " SONAR_TOKEN
 fi
 
-if [ -z "${SONAR_TOKEN:-}" ]; then
+if [[ -z "${SONAR_TOKEN:-}" ]]; then
     echo ""
     echo "[ERROR] Token cannot be empty. Generate one at: $SONAR_HOST/account/security"
     echo ""
@@ -42,7 +42,7 @@ if [ -z "${SONAR_TOKEN:-}" ]; then
 fi
 
 # Verify coverage.xml exists (required for coverage import)
-if [ ! -f "coverage.xml" ]; then
+if [[ ! -f "coverage.xml" ]]; then
     echo "[WARN] coverage.xml not found. Run 'bash run_checks.sh' first to generate it."
     echo "       Continuing without coverage data..."
 fi
