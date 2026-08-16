@@ -10,6 +10,7 @@ Verifies that:
 from __future__ import annotations
 
 import ast
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -141,11 +142,22 @@ def audit_file(file_path: Path) -> tuple[list[str], list[str]]:
     return complexity_errors, duplication_errors
 
 
-def _resolve_safe_file(p: Path) -> Path | None:
+def _resolve_safe_file(raw_path: str | Path) -> Path | None:
+    """Validate and sanitize file path strictly within repository boundaries."""
     try:
-        resolved = (ROOT / p).resolve() if not p.is_absolute() else p.resolve()
-        if resolved.is_file() and resolved.suffix == ".py" and (resolved == ROOT or ROOT in resolved.parents):
-            return resolved
+        norm = os.path.normpath(str(raw_path))
+        if os.path.isabs(norm):
+            full_path = os.path.realpath(norm)
+        else:
+            full_path = os.path.realpath(os.path.join(str(ROOT), norm))
+
+        # Enforce boundary check before accessing file system
+        if not full_path.startswith(str(ROOT) + os.sep) and full_path != str(ROOT):
+            return None
+
+        p = Path(full_path)
+        if p.is_file() and p.suffix == ".py":
+            return p
     except (OSError, RuntimeError, ValueError):
         return None
     return None
