@@ -117,6 +117,24 @@ jobs:
           SURREALDB_OFFLINE: "True"
           DATABASE_URL: "sqlite:///:memory:"
 
+      - name: Validate SONAR_TOKEN against SonarCloud
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SONAR_TOKEN:-}" ]; then
+            echo "::error title=Missing SONAR_TOKEN::Generate a User Token at https://sonarcloud.io/account/security and store it as the SONAR_TOKEN repository secret."
+            exit 1
+          fi
+          http_code=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+            -H "Authorization: Bearer ${SONAR_TOKEN}" \
+            "https://sonarcloud.io/api/authentication/validate")
+          if [ "$http_code" != "200" ]; then
+            echo "::error title=Invalid SONAR_TOKEN (HTTP ${http_code})::The SONAR_TOKEN secret was rejected by SonarCloud (HTTP ${http_code}). Regenerate a User Token scoped to the 'lucivskvn' organization at https://sonarcloud.io/account/security and update the SONAR_TOKEN repository secret."
+            exit 1
+          fi
+          echo "SONAR_TOKEN validated successfully (HTTP 200)"
+
       - name: Run SonarCloud Analysis
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
@@ -135,7 +153,6 @@ jobs:
 
       - name: 3. SonarCloud Quality Gate Status Check
         id: quality-gate
-        continue-on-error: true
         uses: SonarSource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa # v1.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
