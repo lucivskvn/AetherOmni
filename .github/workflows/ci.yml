@@ -216,87 +216,48 @@ jobs:
           fi
           echo "SONAR_TOKEN validated (valid=true)"
 
-      - name: Run SonarCloud Analysis
-        uses: SonarSource/sonarcloud-github-action@383f7e52eae3ab0510c3cb0e7d9d150bbaeab838 # v3.1.0
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: >
-            -Dsonar.organization=esbpcs
-            -Dsonar.projectKey=lucivskvn_AetherOmni
-            -Dsonar.projectName=AetherOmni
-            -Dsonar.scm.provider=git
-            -Dsonar.projectVersion=${{ needs.tests-and-coverage.outputs.version }}
-            -Dsonar.threads=4
-            -Dsonar.analysis.cache.enabled=true
-
-      - name: SonarCloud Quality Gate Check
+      - name: Fetch and Verify SonarCloud Quality Gate
         id: quality-gate
-        uses: SonarSource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa # v1.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: lucivskvn_AetherOmni
           SONAR_HOST_URL: https://sonarcloud.io
-
-      - name: Publish Quality Gate Result
-        if: always()
-        env:
-          QUALITY_GATE_STATUS: ${{ steps.quality-gate.outputs.quality-gate-status }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_DASHBOARD_URL: https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni
-          SONAR_HOST_URL: https://sonarcloud.io
           SONAR_PULL_REQUEST: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
-          if [ "$QUALITY_GATE_STATUS" = "PASSED" ]; then
-            result="passed"
-          elif [ "$QUALITY_GATE_STATUS" = "WARN" ]; then
-            result="warning"
-          else
-            result="failed"
+          quality_gate_url="${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}"
+          if [ -n "$SONAR_PULL_REQUEST" ]; then
+            quality_gate_url="${quality_gate_url}&pullRequest=${SONAR_PULL_REQUEST}"
           fi
+          echo "Querying SonarCloud Quality Gate from: ${quality_gate_url}"
+          gate_payload=$(curl --fail --silent --show-error --user "${SONAR_TOKEN}:" "$quality_gate_url")
+          status=$(echo "$gate_payload" | jq -r '.projectStatus.status // "UNAVAILABLE"')
+          echo "quality-gate-status=${status}" >> "$GITHUB_OUTPUT"
+          echo "SonarCloud Quality Gate Status: ${status}"
 
           summary_file="${RUNNER_TEMP}/sonarcloud-quality-gate.md"
-          gate_payload=""
-          if [ -n "$QUALITY_GATE_STATUS" ]; then
-            quality_gate_url="${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=lucivskvn_AetherOmni"
-            if [ -n "$SONAR_PULL_REQUEST" ]; then
-              quality_gate_url="${quality_gate_url}&pullRequest=${SONAR_PULL_REQUEST}"
-            fi
-            gate_payload=$(curl --fail --silent --show-error --user "${SONAR_TOKEN}:" "$quality_gate_url" || true)
-          fi
-
           {
-            echo "### SonarCloud Quality Gate: ${result}"
+            echo "### SonarCloud Quality Gate: ${status}"
             echo
             echo "| Status | Dashboard |"
             echo "| --- | --- |"
-            echo "| ${QUALITY_GATE_STATUS:-UNAVAILABLE} | [Open SonarCloud dashboard](${SONAR_DASHBOARD_URL}) |"
-
-            if [ -n "$QUALITY_GATE_STATUS" ]; then
-              echo
-              echo "| Metric | Status | Threshold | Actual |"
-              echo "| --- | --- | --- | --- |"
-              if [ -n "$gate_payload" ]; then
-                jq -r '.projectStatus.conditions[]? | "| \(.metricKey) | \(.status) | \(.errorThreshold // "—") | \(.actualValue // "—") |"' <<< "$gate_payload"
-              else
-                echo "| Quality-gate details unavailable | — | — | — |"
-              fi
-            fi
+            echo "| ${status} | [Open SonarCloud dashboard](${SONAR_DASHBOARD_URL}) |"
+            echo
+            echo "| Metric | Status | Threshold | Actual |"
+            echo "| --- | --- | --- | --- |"
+            jq -r '.projectStatus.conditions[]? | "| \(.metricKey) | \(.status) | \(.errorThreshold // "—") | \(.actualValue // "—") |"' <<< "$gate_payload"
           } | tee "$summary_file"
           cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
-          if [ -n "$gate_payload" ]; then
+
+          if [ "$status" != "OK" ]; then
             jq -r '
               .projectStatus.conditions[]?
               | select(.status != "OK")
               | "::error title=SonarCloud \(.metricKey)::Threshold \(.errorThreshold // "not reported"), actual \(.actualValue // "not reported")"
             ' <<< "$gate_payload"
-          fi
-
-          if [ "$QUALITY_GATE_STATUS" != "PASSED" ]; then
-            echo "::error title=SonarCloud Quality Gate ${result}::Review ${SONAR_DASHBOARD_URL}"
+            echo "::error title=SonarCloud Quality Gate ${status}::Quality Gate failed. Review ${SONAR_DASHBOARD_URL}"
             exit 1
           fi
 
