@@ -275,11 +275,15 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
 
     # Badge block — use sentinel if present, else inline patch
     badge_block = (
-        f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)]"
-        f"(https://github.com/lucivskvn/AetherOmni)\n"
-        f"[![Last Updated](https://img.shields.io/badge/last%20updated-"
-        f"{v['today'].replace('-', '--')}-green.svg)](#)\n"
-        f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](#)"
+        f"[![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)\n"
+        f"[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=coverage)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)\n"
+        f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)\n"
+        f"[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)"
     )
 
     text, replaced = _replace_sentinel(text, "badges", badge_block)

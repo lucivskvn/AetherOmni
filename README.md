@@ -2,21 +2,18 @@
 
 > **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
+<!-- auto:badges -->
 [![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)
-
-[![Django Version](https://img.shields.io/badge/Django-6.0%2B-092E20.svg)](https://www.djangoproject.com/)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Semgrep SAST](https://img.shields.io/badge/Semgrep-Cloud%20SAST-4B2BFF.svg?logo=semgrep)](https://semgrep.dev)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=coverage)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=bugs)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Version](https://img.shields.io/badge/version-v1.5.557-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-ae2820b-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+<!-- /auto:badges -->
+
 [![Desloppify Codebase Health](docs/scorecard.png)](docs/scorecard.png)
 
 ---
