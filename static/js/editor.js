@@ -278,21 +278,24 @@ function _slugifyHeading(text) {
         .replace(/[^a-z0-9\u0600-\u06FF\s-]/gu, '')
         .trim()
         .replace(/[\s_-]+/g, '-')
-        .replace(/^-+|-+$/g, '')
+        .replace(/^-+/, '')
+        .replace(/-+$/, '')
         .slice(0, 50);
 }
 
-/**
- * Robust line-by-line Markdown compiler.
- * Parses the full CommonMark subset used by our pipeline:
- *   - Headings h1–h4, Paragraphs, Blank lines
- *   - Fenced code blocks (with optional language label)
- *   - Blockquotes, Unordered lists, Ordered lists
- *   - Pipe tables (GitHub-flavoured)
- *   - Horizontal rules
- *   - Inline: bold, italic, inline-code, links, images, strikethrough
- * Returns sanitised HTML (XSS-safe via upfront escaping).
- */
+function _handleHeading(line, state, pushHtml) {
+    const hMatch = line.match(/^(#{1,6})\s+(.*)/);
+    if (!hMatch) return false;
+
+    if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; }
+    const level = hMatch[1].length;
+    const headingText = hMatch[2];
+    const pageMatch = headingText.match(/^Page\s+(\d+)/i);
+    const slug = pageMatch ? `page-${pageMatch[1]}` : _slugifyHeading(headingText);
+    const idAttr = slug ? ` id="${slug}" class="heading-anchor"` : '';
+    pushHtml(`<h${level}${idAttr}>${parseInline(headingText)}</h${level}>`);
+    return true;
+}
 
 function _handleBlockquote(line, state, pushHtml) {
     if (line.startsWith('> ')) {
@@ -354,13 +357,17 @@ function _handleTable(line, state, pushHtml) {
     return false;
 }
 
+function _closeOpenBlocks(state, pushHtml) {
+    if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; state.listType = null; }
+    if (state.inBlockquote) { pushHtml('</blockquote>'); state.inBlockquote = false; }
+    if (state.inTable) { pushHtml('</tbody></table></div>'); state.inTable = false; state.tableHasHead = false; }
+}
+
 function processBlockElement(line, state, htmlBuilder) {
     const pushHtml = (str) => { htmlBuilder.html += str + '\n'; };
 
     if (!line) {
-        if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; state.listType = null; }
-        if (state.inBlockquote) { pushHtml('</blockquote>'); state.inBlockquote = false; }
-        if (state.inTable) { pushHtml('</tbody></table></div>'); state.inTable = false; state.tableHasHead = false; }
+        _closeOpenBlocks(state, pushHtml);
         return;
     }
 
@@ -369,21 +376,7 @@ function processBlockElement(line, state, htmlBuilder) {
         return;
     }
 
-    const hMatch = line.match(/^(#{1,6})\s+(.*)/);
-    if (hMatch) {
-        if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; }
-        const level = hMatch[1].length;
-        const headingText = hMatch[2];
-        let slug = _slugifyHeading(headingText);
-        const pageMatch = headingText.match(/^Page\s+(\d+)/i);
-        if (pageMatch) {
-            slug = `page-${pageMatch[1]}`;
-        }
-        const idAttr = slug ? ` id="${slug}" class="heading-anchor"` : '';
-        pushHtml(`<h${level}${idAttr}>${parseInline(headingText)}</h${level}>`);
-        return;
-    }
-
+    if (_handleHeading(line, state, pushHtml)) return;
     if (_handleBlockquote(line, state, pushHtml)) return;
     if (_handleList(line, state, pushHtml)) return;
     if (_handleTable(line, state, pushHtml)) return;

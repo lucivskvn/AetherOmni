@@ -209,6 +209,15 @@ def _format_json_rows_as_table(title: str, items: list[dict]) -> str:
     return _format_markdown_table_sheet(title, [keys, *rows])
 
 
+def _format_json_dict_section(key: Any, value: Any) -> str:
+    title = str(key).replace("_", " ").title()
+    if isinstance(value, list) and all(isinstance(x, dict) for x in value):
+        return f"## {title}\n\n" + _format_json_rows_as_table(title, value)
+    if isinstance(value, (dict, list)):
+        return f"## {title}\n\n```json\n{json.dumps(value, indent=2, ensure_ascii=False)}\n```"
+    return f"## {title}\n\n{value}"
+
+
 def process_json_local(file_path: str) -> str:
     """
     Parses local JSON documents (including Quran verse datasets, Hadith collections,
@@ -229,15 +238,7 @@ def process_json_local(file_path: str) -> str:
         return "\n\n".join(f"- {json.dumps(item, ensure_ascii=False)}" for item in data)
 
     if isinstance(data, dict):
-        sections = []
-        for key, value in data.items():
-            title = str(key).replace("_", " ").title()
-            if isinstance(value, list) and all(isinstance(x, dict) for x in value):
-                sections.append(f"## {title}\n\n" + _format_json_rows_as_table(title, value))
-            elif isinstance(value, (dict, list)):
-                sections.append(f"## {title}\n\n```json\n{json.dumps(value, indent=2, ensure_ascii=False)}\n```")
-            else:
-                sections.append(f"## {title}\n\n{value}")
+        sections = [_format_json_dict_section(k, v) for k, v in data.items()]
         return "\n\n".join(sections) if sections else "*Empty JSON Object*"
 
     return str(data)
@@ -284,6 +285,17 @@ def _parse_excel_openpyxl(file_path: str) -> str | None:
         return None
 
 
+def _extract_zipxml_cell_value(c_el: Any, shared_strings: list[str]) -> str:
+    cell_type = c_el.get("t")
+    v_el = c_el.find(".//{*}v")
+    if v_el is None or not v_el.text:
+        return ""
+    if cell_type == "s" and v_el.text.isdigit():
+        idx = int(v_el.text)
+        return shared_strings[idx] if idx < len(shared_strings) else v_el.text
+    return v_el.text
+
+
 def _parse_excel_zipxml(file_path: str) -> str | None:
     """Pure standard-library ZIP+XML fallback for .xlsx parsing."""
     try:
@@ -304,18 +316,7 @@ def _parse_excel_zipxml(file_path: str) -> str | None:
                 sheet_tree = ET.fromstring(zf.read(s_file))  # nosec B314 # noqa: S314
                 rows: list[list[str]] = []
                 for row_el in sheet_tree.findall(".//{*}row"):
-                    row_cells = []
-                    for c_el in row_el.findall(".//{*}c"):
-                        cell_type = c_el.get("t")
-                        v_el = c_el.find(".//{*}v")
-                        val = ""
-                        if v_el is not None and v_el.text:
-                            if cell_type == "s" and v_el.text.isdigit():
-                                idx = int(v_el.text)
-                                val = shared_strings[idx] if idx < len(shared_strings) else v_el.text
-                            else:
-                                val = v_el.text
-                        row_cells.append(val)
+                    row_cells = [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")]
                     if any(row_cells):
                         rows.append(row_cells)
                 formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows)
@@ -691,6 +692,79 @@ def generate_curated_zip_bundle(
     return zip_buffer.getvalue()
 
 
+def _build_sft_pair(doc_info: tuple[str, str, str, str], chunk_item: dict[str, Any]) -> dict[str, Any] | None:
+    doc_uuid, title, author, language = doc_info
+    chunk_content = str(chunk_item.get("content") or "")
+    if not chunk_content.strip():
+        return None
+    page = chunk_item.get("page_number") or 1
+    chapter = chunk_item.get("chapter_title") or ""
+    anchor = chunk_item.get("anchor_id") or f"page-{page}"
+
+    user_prompt = (
+        f"Context from '{title}' by {author} (Page {page}"
+        + (f", {chapter}" if chapter else "")
+        + f"):\n\n{chunk_content}\n\n"
+        "Question: Explain the key context, teachings, and significance of this excerpt."
+    )
+    assistant_response = f"Based on '{title}', the text conveys:\n\n{chunk_content}"
+
+    return {
+        "prompt": user_prompt,
+        "completion": assistant_response,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a knowledgeable archival research assistant specializing in historical, literary, and classical religious documents.",
+            },
+            {"role": "user", "content": user_prompt},
+            {"role": "assistant", "content": assistant_response},
+        ],
+        "metadata": {
+            "doc_uuid": doc_uuid,
+            "title": title,
+            "author": author,
+            "language": language,
+            "page_number": page,
+            "chapter_title": chapter,
+            "anchor_id": anchor,
+        },
+    }
+
+
+def _get_doc_chunks(doc: Any, doc_uuid: str, limit: int) -> list[dict[str, Any]]:
+    from django.conf import settings
+
+    from extractor import surreal_db
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.rag import chunk_document_semantically
+
+        content = (
+            getattr(doc, "refined_markdown", None)
+            or getattr(doc, "cleaned_markdown", None)
+            or getattr(doc, "raw_markdown", None)
+            or ""
+        )
+        raw_chunks = chunk_document_semantically(content)
+        return [
+            {
+                "content": raw_text,
+                "chunk_index": idx,
+                "page_number": 1,
+                "chapter_title": "",
+                "anchor_id": f"chunk-{idx}",
+            }
+            for idx, raw_text in enumerate(raw_chunks[:limit])
+        ]
+
+    try:
+        return surreal_db.get_document_chunks(doc_uuid)
+    except Exception as e:
+        logger.warning("[SFT Dataset] Failed to retrieve chunks for %s: %s", doc_uuid, e)
+        return []
+
+
 def generate_sft_dataset_pairs(
     document_ids: list[int] | list[str],
     user: Any = None,
@@ -703,8 +777,6 @@ def generate_sft_dataset_pairs(
     """
     from django.conf import settings
 
-    from extractor import surreal_db
-
     if getattr(settings, "SURREALDB_OFFLINE", False):
         docs_list = _get_offline_docs(document_ids, user)
     else:
@@ -714,77 +786,18 @@ def generate_sft_dataset_pairs(
 
     for doc in docs_list:
         doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
-        title = getattr(doc, "title", None) or "Document"
-        author = getattr(doc, "author", None) or "Author"
-        language = getattr(doc, "language", None) or "en"
+        doc_info = (
+            doc_uuid,
+            getattr(doc, "title", None) or "Document",
+            getattr(doc, "author", None) or "Author",
+            getattr(doc, "language", None) or "en",
+        )
 
-        chunks: list[dict[str, Any]] = []
-        if getattr(settings, "SURREALDB_OFFLINE", False):
-            from extractor.rag import chunk_document_semantically
-
-            content = (
-                getattr(doc, "refined_markdown", None)
-                or getattr(doc, "cleaned_markdown", None)
-                or getattr(doc, "raw_markdown", None)
-                or ""
-            )
-            raw_chunks = chunk_document_semantically(content)
-            for idx, raw_text in enumerate(raw_chunks[:limit]):
-                chunks.append(
-                    {
-                        "content": raw_text,
-                        "chunk_index": idx,
-                        "page_number": 1,
-                        "chapter_title": "",
-                        "anchor_id": f"chunk-{idx}",
-                    }
-                )
-        else:
-            try:
-                chunks = surreal_db.get_document_chunks(doc_uuid)
-            except Exception as e:
-                logger.warning("[SFT Dataset] Failed to retrieve chunks for %s: %s", doc_uuid, e)
-                continue
-
+        chunks = _get_doc_chunks(doc, doc_uuid, limit)
         for chunk_item in chunks[:limit]:
-            chunk_content = str(chunk_item.get("content") or "")
-            if not chunk_content.strip():
-                continue
-            page = chunk_item.get("page_number") or 1
-            chapter = chunk_item.get("chapter_title") or ""
-            anchor = chunk_item.get("anchor_id") or f"page-{page}"
-
-            user_prompt = (
-                f"Context from '{title}' by {author} (Page {page}"
-                + (f", {chapter}" if chapter else "")
-                + f"):\n\n{chunk_content}\n\n"
-                "Question: Explain the key context, teachings, and significance of this excerpt."
-            )
-            assistant_response = f"Based on '{title}', the text conveys:\n\n{chunk_content}"
-
-            pairs.append(
-                {
-                    "prompt": user_prompt,
-                    "completion": assistant_response,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are a knowledgeable archival research assistant specializing in historical, literary, and classical religious documents.",
-                        },
-                        {"role": "user", "content": user_prompt},
-                        {"role": "assistant", "content": assistant_response},
-                    ],
-                    "metadata": {
-                        "doc_uuid": doc_uuid,
-                        "title": title,
-                        "author": author,
-                        "language": language,
-                        "page_number": page,
-                        "chapter_title": chapter,
-                        "anchor_id": anchor,
-                    },
-                }
-            )
+            pair = _build_sft_pair(doc_info, chunk_item)
+            if pair:
+                pairs.append(pair)
             if len(pairs) >= limit:
                 break
         if len(pairs) >= limit:

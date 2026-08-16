@@ -21,12 +21,14 @@ SONAR_HOST="https://sonarcloud.io"
 SONAR_PROJECT_KEY="lucivskvn_AetherOmni"
 SONAR_ORGANIZATION="lucivskvn"
 
-echo "========================================================"
+SEPARATOR_BANNER="========================================================"
+
+echo "$SEPARATOR_BANNER"
 echo "  AetherOmni — SonarCloud Remote Scanner"
 echo "  Host        : $SONAR_HOST"
 echo "  Organization: $SONAR_ORGANIZATION"
 echo "  Project     : $SONAR_PROJECT_KEY"
-echo "========================================================"
+echo "$SEPARATOR_BANNER"
 echo ""
 
 # Use env var first, prompt only if not set
@@ -36,7 +38,7 @@ fi
 
 if [[ -z "${SONAR_TOKEN:-}" ]]; then
     echo ""
-    echo "[ERROR] Token cannot be empty. Generate one at: $SONAR_HOST/account/security"
+    echo "[ERROR] Token cannot be empty. Generate one at: $SONAR_HOST/account/security" >&2
     echo ""
     exit 1
 fi
@@ -77,7 +79,7 @@ docker run --rm \
   -Dsonar.analysis.cache.enabled=true
 
 echo ""
-echo "========================================================"
+echo "$SEPARATOR_BANNER"
 echo "  Analysis complete!"
 echo "  Dashboard: $SONAR_HOST/dashboard?id=$SONAR_PROJECT_KEY"
-echo "========================================================"
+echo "$SEPARATOR_BANNER"

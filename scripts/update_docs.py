@@ -228,7 +228,7 @@ def get_health_scores() -> dict[str, str]:
                     "strict": str(round(float(data.get("strict_score", 0)), 1)),
                     "overall": str(round(float(data.get("overall_score", 0)), 1)),
                 }
-        except (json.JSONDecodeError, OSError, ValueError):
+        except (OSError, ValueError):
             pass
 
     if score_file.exists():
@@ -240,7 +240,7 @@ def get_health_scores() -> dict[str, str]:
                 "objective": str(round(float(data.get("objective", 0)), 1)),
                 "strict": str(round(float(data.get("strict", 0)), 1)),
             }
-        except (json.JSONDecodeError, OSError, ValueError):
+        except (OSError, ValueError):
             pass
 
     return {}

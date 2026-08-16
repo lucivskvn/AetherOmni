@@ -42,23 +42,27 @@ def verify_static_references() -> list[str]:
     return errors
 
 
+def _check_file_sri(path: Path, allowed_unhashed: tuple[str, ...]) -> list[str]:
+    rel_path = path.relative_to(ROOT)
+    content = path.read_text(encoding="utf-8")
+    file_errors: list[str] = []
+    for match in EXTERNAL_SCRIPT_PATTERN.finditer(content):
+        script_tag = match.group(0)
+        src = match.group(1)
+        if any(allowed in src for allowed in allowed_unhashed):
+            continue
+        if "integrity=" not in script_tag:
+            file_errors.append(f"{rel_path}: External script '{src}' is missing SRI 'integrity' attribute")
+    return file_errors
+
+
 def verify_sri_attributes() -> list[str]:
     errors: list[str] = []
     allowed_unhashed = ("challenges.cloudflare.com/turnstile",)
     for root, _, files in os.walk(TEMPLATES_DIR):
         for file in files:
-            if not file.endswith(".html"):
-                continue
-            path = Path(root) / file
-            rel_path = path.relative_to(ROOT)
-            content = path.read_text(encoding="utf-8")
-            for match in EXTERNAL_SCRIPT_PATTERN.finditer(content):
-                script_tag = match.group(0)
-                src = match.group(1)
-                if any(allowed in src for allowed in allowed_unhashed):
-                    continue
-                if "integrity=" not in script_tag:
-                    errors.append(f"{rel_path}: External script '{src}' is missing SRI 'integrity' attribute")
+            if file.endswith(".html"):
+                errors.extend(_check_file_sri(Path(root) / file, allowed_unhashed))
     return errors
 
 
