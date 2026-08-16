@@ -478,7 +478,7 @@ def query_semantic_knowledge_rag(
         dense_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
         sparse_chunks = surreal_db.search_chunks_bm25(query_cleaned, limit=top_k, allowed_doc_uuids=allowed_uuids)
         matching_chunks = reciprocal_rank_fusion(dense_chunks, sparse_chunks, k=60, top_k=top_k)
-    except (ConnectionError, OSError, RuntimeError, TimeoutError):
+    except (OSError, RuntimeError):
         logger.exception("[RAG Search] Connection error to SurrealDB.")
         matching_chunks = []
 

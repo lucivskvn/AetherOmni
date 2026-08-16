@@ -1225,7 +1225,7 @@ def kv_cache_get(key: str) -> Any | None:
                 if isinstance(val_data, str):
                     return json.loads(val_data)
                 return val_data
-            except (json.JSONDecodeError, ValueError):
+            except ValueError:
                 return val_data
     return None
 

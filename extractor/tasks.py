@@ -256,8 +256,8 @@ def _get_working_path_offline(doc_id: str, download: bool) -> str:
     try:
         with doc.file.open("rb") as f:
             content = f.read()
-    except Exception as e:
-        logger.error("[Worker] Failed to read file from SQLite storage: %s", e)
+    except Exception:
+        logger.exception("[Worker] Failed to read file from SQLite storage")
         raise
     import os
 

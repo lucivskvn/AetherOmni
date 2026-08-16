@@ -102,7 +102,7 @@ function isSafePreviewUrl(value) {
         return false;
     }
     try {
-        const baseOrigin = typeof globalThis.location !== 'undefined' && globalThis.location.origin ? globalThis.location.origin : 'https://aetheromni.local';
+        const baseOrigin = globalThis.location?.origin || 'https://aetheromni.local';
         const parsed = new URL(value, baseOrigin);
         return parsed.protocol === 'https:' || parsed.protocol === 'http:';
     } catch {
@@ -237,10 +237,10 @@ function applyPostRenderFeatures(container) {
 }
 
 function _escapeCssIdentifier(value) {
-    if (typeof globalThis.CSS !== 'undefined' && globalThis.CSS?.escape) {
+    if (globalThis.CSS?.escape) {
         return globalThis.CSS.escape(value);
     }
-    return value.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+    return value.replace(/[^a-zA-Z0-9_-]/g, String.raw`\$&`);
 }
 
 /**
@@ -249,7 +249,7 @@ function _escapeCssIdentifier(value) {
  * @param {HTMLElement} container - The container element to search within.
  */
 function initDeepLinkScroll(container) {
-    if (typeof globalThis.location === 'undefined' || !globalThis.location.hash) return;
+    if (!globalThis.location?.hash) return;
     const rawHash = globalThis.location.hash.replace(/^#/, '');
     if (!rawHash) return;
 
@@ -263,7 +263,7 @@ function initDeepLinkScroll(container) {
             setTimeout(() => {
                 target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 target.classList.remove('deep-link-pulse');
-                void target.offsetWidth;
+                target.getBoundingClientRect();
                 target.classList.add('deep-link-pulse');
             }, 120);
         }

@@ -20,9 +20,9 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = ROOT / "extractor" / "templates"
 STATIC_DIR = ROOT / "static"
 
-STATIC_PATTERN = re.compile(r"{%\s*static\s+['\"]([^'\"]+)['\"]\s*(?:as\s+\w+)?\s*%}")
-URL_PATTERN = re.compile(r"{%\s*url\s+['\"]([^'\"]+)['\"]")
-EXTERNAL_SCRIPT_PATTERN = re.compile(r"<script[^>]+src=[\"'](https?://[^\"']+)[\"'][^>]*>", re.IGNORECASE)
+STATIC_PATTERN = re.compile(r"{%\s*static\s+['\"]([^'\"\s]+)['\"](?:\s+as\s+\w+)?\s*%}")
+URL_PATTERN = re.compile(r"{%\s*url\s+['\"]([^'\"\s]+)['\"]")
+EXTERNAL_SCRIPT_PATTERN = re.compile(r"<script\b[^>]*?\bsrc=[\"'](https?://[^'\"\s>]+)[\"'][^>]*>", re.IGNORECASE)
 
 
 def verify_static_references() -> list[str]:

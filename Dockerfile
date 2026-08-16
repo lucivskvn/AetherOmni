@@ -15,7 +15,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install dependencies inside the virtual environment
 COPY requirements.txt .
 # hadolint ignore=DL3013
-RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    (pip install --no-cache-dir --only-binary :all: -r requirements.txt || \
+     pip install --no-cache-dir -r requirements.txt)
 
 
 # ==========================================
