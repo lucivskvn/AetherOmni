@@ -58,6 +58,7 @@ def _validate_email_format(email: str) -> bool:
         return False
 
 
+@require_http_methods(["GET", "HEAD"])
 def favicon_view(_request):
     """Serve a lightweight transparent 204 No Content for favicon.ico requests."""
     return HttpResponse(status=204, content_type="image/x-icon")
@@ -2032,6 +2033,7 @@ def _register_supabase_user(supabase_url, supabase_key, email, password, app_url
         return False, f"Network error during registration: {e!s}"
 
 
+@require_http_methods(["GET", "POST"])
 def register_view(request):
     """
     Handles new user signups via Supabase Auth.
@@ -2101,6 +2103,7 @@ def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_
         return False, f"Network error: {e!s}"
 
 
+@require_http_methods(["GET", "POST"])
 def forgot_password_view(request):
     """
     Dispatches a password recovery email via Supabase Auth.
