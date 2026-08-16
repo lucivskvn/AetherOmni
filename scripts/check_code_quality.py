@@ -4,7 +4,7 @@ Code Quality, Cognitive Complexity & Literal Deduplication Gatekeeper — Aether
 
 Verifies that:
 1. No function or method exceeds Cognitive Complexity of 15 (aligned with SonarQube rules).
-2. No long string literals (>=15 chars) are duplicated within the same file or across non-trivial contexts.
+2. No long string literals (>=15 chars) are duplicated across files or within the same file.
 """
 
 from __future__ import annotations
@@ -22,27 +22,78 @@ MAX_COGNITIVE_COMPLEXITY = 15
 SOURCE_DIRS = [ROOT / "core", ROOT / "extractor"]
 EXCLUDE_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "migrations", "tests", "management"}
 
+ALLOWED_LITERALS = {
+    "Content-Disposition",
+    "application/json",
+    "original_filename",
+    "refined_markdown",
+    "SURREALDB_OFFLINE",
+    "SUPABASE_PUBLIC_KEY",
+    "monthly_budget_usd",
+    "total_spent_usd",
+    "candidates_tokens",
+    "total_tokens_spent",
+    "budget_exceeded",
+    "formatted_monthly_spent",
+    "formatted_total_spent",
+    "formatted_budget_cap",
+    "currency_details",
+    "process_document",
+    "selected_documents",
+    "semantic_signature",
+    "export_ratelimit_",
+    "publication_year",
+    "license_type",
+    "is_default_password",
+    "query_embedding",
+    "accumulated_cost_usd",
+    "accumulated_input_tokens",
+    "accumulated_output_tokens",
+    "asia-southeast1",
+    "usd_exchange_rates",
+    "realtime_model_pricing",
+    "application/zip",
+    "application/x-jsonlines",
+    "application/x-sqlite3",
+    "text/csv; charset=utf-8",
+    "http://localhost:8080",
+    "autoscaling.knative.dev/maxScale",
+    "Metadata-Flavor",
+    "/internal/tasks/",
+    "password_change",
+    "%Y-%m-%dT%H:%M:%SZ",
+    "openrouter_api_key",
+    "text-embedding-004",
+    "supabase_user_id",
+    "cf-turnstile-response",
+    "CF_TURNSTILE_SITE_KEY",
+    "RELEASE_VERSION",
+}
 
-def _node_has_complexity_increment(node: ast.AST) -> bool:
-    return isinstance(
-        node,
-        (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.With, ast.AsyncWith, ast.IfExp),
-    )
 
-
-def _is_nested_callable(node: ast.AST, func_node: ast.AST) -> bool:
-    return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node != func_node
-
-
-def _calculate_sub_complexity(node: ast.AST, current_nesting: int, func_node: ast.AST) -> int:
+def _calculate_sub_complexity(node: ast.AST, current_nesting: int, func_node: ast.AST, is_elif: bool = False) -> int:
     added = 0
-    if _node_has_complexity_increment(node) or _is_nested_callable(node, func_node):
+    if isinstance(node, ast.If):
+        added += 1 if is_elif else (1 + current_nesting)
+        added += _calculate_sub_complexity(node.test, current_nesting, func_node)
+        for child in node.body:
+            added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
+        if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
+            added += _calculate_sub_complexity(node.orelse[0], current_nesting, func_node, is_elif=True)
+        elif node.orelse:
+            added += 1
+            for child in node.orelse:
+                added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
+    elif isinstance(node, (ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.With, ast.AsyncWith, ast.IfExp)):
         added += 1 + current_nesting
         for child in ast.iter_child_nodes(node):
             added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
-    elif isinstance(node, ast.BoolOp):
-        added += len(node.values) - 1
+    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node != func_node:
         for child in ast.iter_child_nodes(node):
+            added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
+    elif isinstance(node, ast.BoolOp):
+        added += 1
+        for child in node.values:
             added += _calculate_sub_complexity(child, current_nesting, func_node)
     else:
         for child in ast.iter_child_nodes(node):
@@ -54,88 +105,58 @@ def get_cognitive_complexity(func_node: ast.FunctionDef | ast.AsyncFunctionDef) 
     return sum(_calculate_sub_complexity(stmt, 0, func_node) for stmt in func_node.body)
 
 
+def _check_func_complexity(node: ast.AST, rel_path: str) -> str | None:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        cc = get_cognitive_complexity(node)
+        if cc > MAX_COGNITIVE_COMPLEXITY:
+            return (
+                f"{rel_path}:{node.lineno}: Function '{node.name}' has Cognitive Complexity of {cc} "
+                f"(maximum allowed: {MAX_COGNITIVE_COMPLEXITY})."
+            )
+    return None
+
+
+def _check_constant_literal(node: ast.AST, file_literals: dict[str, list[int]]) -> None:
+    if isinstance(node, ast.Constant):
+        val = node.value
+        if (
+            isinstance(val, str)
+            and len(val) >= 15
+            and "\n" not in val
+            and not val.startswith(("SELECT", "INSERT", "CREATE", "ALTER", "UPDATE", "DELETE"))
+        ):
+            file_literals[val].append(node.lineno)
+
+
 def _check_ast_nodes_for_quality(tree: ast.AST, rel_path: str) -> tuple[list[str], dict[str, list[int]]]:
     complexity_errors: list[str] = []
     file_literals: dict[str, list[int]] = defaultdict(list)
 
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            cc = get_cognitive_complexity(node)
-            if cc > MAX_COGNITIVE_COMPLEXITY:
-                complexity_errors.append(
-                    f"{rel_path}:{node.lineno}: Function '{node.name}' has Cognitive Complexity of {cc} "
-                    f"(maximum allowed: {MAX_COGNITIVE_COMPLEXITY})."
-                )
-        elif isinstance(node, ast.Constant):
-            val = node.value
-            if (
-                isinstance(val, str)
-                and len(val) >= 15
-                and "\n" not in val
-                and not val.startswith(("SELECT", "INSERT", "CREATE", "ALTER", "UPDATE", "DELETE"))
-            ):
-                file_literals[val].append(node.lineno)
+        err = _check_func_complexity(node, rel_path)
+        if err:
+            complexity_errors.append(err)
+        _check_constant_literal(node, file_literals)
 
     return complexity_errors, file_literals
 
 
-def audit_file(file_path: Path) -> tuple[list[str], list[str]]:
+def audit_file(file_path: Path) -> tuple[list[str], dict[str, list[str]]]:
     rel_path = str(file_path.relative_to(ROOT))
     try:
         content = file_path.read_text(encoding="utf-8")
         tree = ast.parse(content, filename=str(file_path))
     except Exception as exc:
-        return [f"{rel_path}: Failed to parse AST ({exc})"], []
+        return [f"{rel_path}: Failed to parse AST ({exc})"], {}
 
     complexity_errors, file_literals = _check_ast_nodes_for_quality(tree, rel_path)
-
-    # Check for in-file literal duplication (repeating the exact same UI/error/log string >= 3 times in 1 file)
-    duplication_errors: list[str] = []
+    literal_locations: dict[str, list[str]] = defaultdict(list)
     for lit_val, lines in file_literals.items():
-        if len(lines) >= 4:
-            # Check if this literal is an allowed structural keyword
-            allowed = {
-                "Content-Disposition",
-                "application/json",
-                "original_filename",
-                "refined_markdown",
-                "SURREALDB_OFFLINE",
-                "SUPABASE_PUBLIC_KEY",
-                "monthly_budget_usd",
-                "total_spent_usd",
-                "candidates_tokens",
-                "total_tokens_spent",
-                "budget_exceeded",
-                "formatted_monthly_spent",
-                "formatted_total_spent",
-                "formatted_budget_cap",
-                "currency_details",
-                "process_document",
-                "selected_documents",
-                "semantic_signature",
-                "export_ratelimit_",
-                "publication_year",
-                "license_type",
-                "is_default_password",
-                "query_embedding",
-                "accumulated_cost_usd",
-                "accumulated_input_tokens",
-                "accumulated_output_tokens",
-                "asia-southeast1",
-                "usd_exchange_rates",
-                "realtime_model_pricing",
-                "application/zip",
-                "application/x-jsonlines",
-                "application/x-sqlite3",
-                "text/csv; charset=utf-8",
-            }
-            if lit_val not in allowed:
-                duplication_errors.append(
-                    f"{rel_path}: Literal '{lit_val[:40]}...' is duplicated {len(lines)} times on lines {lines}. "
-                    "Extract to a module-level constant."
-                )
+        if lit_val not in ALLOWED_LITERALS:
+            for line_no in lines:
+                literal_locations[lit_val].append(f"{rel_path}:{line_no}")
 
-    return complexity_errors, duplication_errors
+    return complexity_errors, literal_locations
 
 
 def _get_all_tracked_python_files() -> dict[str, Path]:
@@ -154,26 +175,40 @@ def _get_all_tracked_python_files() -> dict[str, Path]:
     return file_map
 
 
+def _match_target_file(f_str: str, allowed_map: dict[str, Path]) -> Path | None:
+    clean_str = os.path.normpath(f_str.strip())
+    if clean_str in allowed_map:
+        return allowed_map[clean_str]
+    try:
+        resolved = os.path.realpath(clean_str if os.path.isabs(clean_str) else os.path.join(str(ROOT), clean_str))
+        if resolved in allowed_map:
+            return allowed_map[resolved]
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def collect_target_files(target_files: list[str] | None) -> list[Path]:
-    """Filter requested files strictly against canonical allowed repository files."""
     allowed_map = _get_all_tracked_python_files()
     if target_files:
         valid_files: list[Path] = []
         for f_str in target_files:
-            clean_str = os.path.normpath(str(f_str).strip())
-            if clean_str in allowed_map:
-                valid_files.append(allowed_map[clean_str])
-            else:
-                try:
-                    resolved_str = os.path.realpath(
-                        clean_str if os.path.isabs(clean_str) else os.path.join(str(ROOT), clean_str)
-                    )
-                    if resolved_str in allowed_map:
-                        valid_files.append(allowed_map[resolved_str])
-                except (OSError, ValueError):
-                    continue
+            matched = _match_target_file(f_str, allowed_map)
+            if matched:
+                valid_files.append(matched)
         return valid_files
     return list(set(allowed_map.values()))
+
+
+def _aggregate_duplicate_literals(all_literals: dict[str, list[str]]) -> list[str]:
+    dup_errors: list[str] = []
+    for lit_val, locs in all_literals.items():
+        if len(locs) >= 4:
+            dup_errors.append(
+                f"Literal '{lit_val[:40]}...' repeated {len(locs)} times across {locs[:3]}...\n"
+                f"  Extract to a shared constant."
+            )
+    return dup_errors
 
 
 def main(target_files: list[str] | None = None) -> int:
@@ -181,10 +216,16 @@ def main(target_files: list[str] | None = None) -> int:
     files_to_check = collect_target_files(target_files)
 
     all_failures: list[str] = []
+    repo_literals: dict[str, list[str]] = defaultdict(list)
+
     for py_file in files_to_check:
-        comp_errs, dup_errs = audit_file(py_file)
+        comp_errs, file_lit_locs = audit_file(py_file)
         all_failures.extend(comp_errs)
-        all_failures.extend(dup_errs)
+        for lit_val, locs in file_lit_locs.items():
+            repo_literals[lit_val].extend(locs)
+
+    dup_failures = _aggregate_duplicate_literals(repo_literals)
+    all_failures.extend(dup_failures)
 
     if all_failures:
         print(f"FAILED: Found {len(all_failures)} code quality issue(s):", file=sys.stderr)

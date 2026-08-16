@@ -492,7 +492,7 @@ if SENTRY_DSN:
         from django.core.exceptions import ImproperlyConfigured
         from sentry_sdk.integrations.django import DjangoIntegration
 
-        release_ver = os.getenv("RELEASE_VERSION")
+        release_ver = os.getenv("RELEASE_VERSION", "").strip()
         if not release_ver:
             if not DEBUG:
                 raise ImproperlyConfigured(

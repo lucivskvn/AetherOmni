@@ -237,3 +237,22 @@ class FileUtilsTestCase(TestCase):
             self.assertIn("Historical Chronicles", csv_text)
             self.assertIn("Historian Ahmad", csv_text)
             self.assertIn("csv_hash_123", csv_text)
+
+    def test_sanitize_csv_cell_formula_injection(self):
+        # Standard formula prefixes
+        self.assertEqual(file_utils._sanitize_csv_cell("=SUM(A1:A10)"), "'=SUM(A1:A10)")
+        self.assertEqual(file_utils._sanitize_csv_cell("+cmd|' /C calc'!A0"), "'+cmd|' /C calc'!A0")
+        self.assertEqual(file_utils._sanitize_csv_cell("-2+3+cmd|' /C calc'!A0"), "'-2+3+cmd|' /C calc'!A0")
+        self.assertEqual(file_utils._sanitize_csv_cell("@SUM(1,2)"), "'@SUM(1,2)")
+
+        # Whitespace-prefixed formula payloads (space, tab, newline)
+        self.assertEqual(file_utils._sanitize_csv_cell("  =1+1"), "'  =1+1")
+        self.assertEqual(
+            file_utils._sanitize_csv_cell('\t=HYPERLINK("http://evil.com")'), '\'\t=HYPERLINK("http://evil.com")'
+        )
+        self.assertEqual(file_utils._sanitize_csv_cell("   +1234"), "'   +1234")
+
+        # Safe values should remain unchanged
+        self.assertEqual(file_utils._sanitize_csv_cell("Normal Document Title"), "Normal Document Title")
+        self.assertEqual(file_utils._sanitize_csv_cell(12345), 12345)
+        self.assertIsNone(file_utils._sanitize_csv_cell(None))

@@ -9,8 +9,8 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.558-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-1b4ce2f-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.559-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-c5ff200-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -212,8 +212,8 @@ flowchart LR
     M2 --> M3["✅ Milestone 3.0 MVP<br>Hybrid RAG & Vision OCR"]
     M3 --> M35["✅ Milestone 3.5 MVP<br>DevSecOps Hardening & SurrealQL"]
     M35 --> M36["✅ Milestone 3.6 MVP<br>Auth & Release Reliability"]
-    M36 --> M37["📈 Milestone 3.7 MVP<br>Observability & Multi-MCP Triage"]
-    M37 --> M4["📦 Milestone 4.0 Enterprise<br>SSE Streaming & Parquet Export"]
+    M36 --> M37["✅ Milestone 3.7 MVP<br>Observability & Sentry Release"]
+    M37 --> M4["📈 Milestone 4.0 Enterprise<br>Multi-Format Export & SQLite FTS5"]
     M4 --> M5["🚀 Milestone 5.0 Enterprise<br>Graph RAG & Agent Tools"]
 ```
 

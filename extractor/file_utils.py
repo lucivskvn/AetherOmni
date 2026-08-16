@@ -1025,7 +1025,7 @@ def generate_curated_sqlite_bundle(
 
 
 def _sanitize_csv_cell(val: Any) -> Any:
-    if isinstance(val, str) and val.startswith(("=", "+", "-", "@")):
+    if isinstance(val, str) and val.lstrip().startswith(("=", "+", "-", "@")):
         return f"'{val}"
     return val
 
