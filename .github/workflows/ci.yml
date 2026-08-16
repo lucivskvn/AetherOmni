@@ -68,7 +68,7 @@ jobs:
       - name: AST-Grep Custom Pattern Scan
         run: |
           if ! command -v ast-grep &>/dev/null; then
-            npm install -g @ast-grep/cli --silent
+            npm install -g --ignore-scripts @ast-grep/cli@0.45.1 --silent
           fi
           AST_OUTPUT=$(ast-grep scan --color never 2>&1)
           AST_ERRORS=$(echo "$AST_OUTPUT" | grep -c '^error' || true)
@@ -86,7 +86,7 @@ jobs:
 
       - name: Supply Chain Audit (pip-audit)
         run: |
-          pip install --no-cache-dir pip-audit==2.10.1 --quiet
+          pip install --no-cache-dir --only-binary :all: pip-audit==2.10.1 --quiet
           pip-audit -r requirements.txt
 
       - name: SurrealQL Schema Validation
