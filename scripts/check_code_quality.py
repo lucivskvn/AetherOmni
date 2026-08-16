@@ -71,34 +71,39 @@ ALLOWED_LITERALS = {
 }
 
 
+def _calc_if_complexity(node: ast.If, current_nesting: int, func_node: ast.AST, is_elif: bool) -> int:
+    score = 1 if is_elif else (1 + current_nesting)
+    score += _calculate_sub_complexity(node.test, current_nesting, func_node)
+    for child in node.body:
+        score += _calculate_sub_complexity(child, current_nesting + 1, func_node)
+    if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
+        score += _calculate_sub_complexity(node.orelse[0], current_nesting, func_node, is_elif=True)
+    elif node.orelse:
+        score += 1
+        for child in node.orelse:
+            score += _calculate_sub_complexity(child, current_nesting + 1, func_node)
+    return score
+
+
+def _calc_loop_complexity(node: ast.AST, current_nesting: int, func_node: ast.AST) -> int:
+    score = 1 + current_nesting
+    for child in ast.iter_child_nodes(node):
+        score += _calculate_sub_complexity(child, current_nesting + 1, func_node)
+    return score
+
+
 def _calculate_sub_complexity(node: ast.AST, current_nesting: int, func_node: ast.AST, is_elif: bool = False) -> int:
-    added = 0
     if isinstance(node, ast.If):
-        added += 1 if is_elif else (1 + current_nesting)
-        added += _calculate_sub_complexity(node.test, current_nesting, func_node)
-        for child in node.body:
-            added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
-        if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
-            added += _calculate_sub_complexity(node.orelse[0], current_nesting, func_node, is_elif=True)
-        elif node.orelse:
-            added += 1
-            for child in node.orelse:
-                added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
-    elif isinstance(node, (ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.With, ast.AsyncWith, ast.IfExp)):
-        added += 1 + current_nesting
-        for child in ast.iter_child_nodes(node):
-            added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
-    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node != func_node:
-        for child in ast.iter_child_nodes(node):
-            added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
-    elif isinstance(node, ast.BoolOp):
-        added += 1
-        for child in node.values:
-            added += _calculate_sub_complexity(child, current_nesting, func_node)
-    else:
-        for child in ast.iter_child_nodes(node):
-            added += _calculate_sub_complexity(child, current_nesting, func_node)
-    return added
+        return _calc_if_complexity(node, current_nesting, func_node, is_elif)
+    if isinstance(node, (ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.With, ast.AsyncWith, ast.IfExp)):
+        return _calc_loop_complexity(node, current_nesting, func_node)
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node != func_node:
+        return sum(
+            _calculate_sub_complexity(child, current_nesting + 1, func_node) for child in ast.iter_child_nodes(node)
+        )
+    if isinstance(node, ast.BoolOp):
+        return 1 + sum(_calculate_sub_complexity(child, current_nesting, func_node) for child in node.values)
+    return sum(_calculate_sub_complexity(child, current_nesting, func_node) for child in ast.iter_child_nodes(node))
 
 
 def get_cognitive_complexity(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
