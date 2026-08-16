@@ -1,5 +1,8 @@
 export default [
   {
+    ignores: ["static/js/tests/**", "coverage/**", "node_modules/**"],
+  },
+  {
     files: ["static/js/**/*.js"],
     languageOptions: {
       ecmaVersion: "latest",
@@ -50,7 +53,6 @@ export default [
         supabase: "readonly",
         DataTransfer: "readonly",
       },
-
     },
     rules: {
       "complexity": ["error", { max: 15 }],
@@ -62,6 +64,16 @@ export default [
       "no-unreachable": "error",
       "eqeqeq": ["warn", "smart"],
       "curly": ["warn", "multi-line"],
+    },
+  },
+  {
+    files: ["static/js/tests/**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+    },
+    rules: {
+      "no-eval": "off",
     },
   },
 ];

@@ -318,7 +318,7 @@ jobs:
           generateSarif: "1"
 
       - name: Upload Semgrep SARIF to GitHub Advanced Security
-        uses: github/codeql-action/upload-sarif@4b6aa0b07da05d6e43d0e5f9c8596a6532ce8b37 # v3.28.16
+        uses: github/codeql-action/upload-sarif@67ba681cdcbc95ed0371c210ccf82c4d968ae5eb # v3.37.7
         if: always()
         with:
           sarif_file: semgrep.sarif
