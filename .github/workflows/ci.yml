@@ -224,7 +224,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: >
-            -Dsonar.organization=lucivskvn
+            -Dsonar.organization=esbpcs
             -Dsonar.projectKey=lucivskvn_AetherOmni
             -Dsonar.projectName=AetherOmni
             -Dsonar.scm.provider=git

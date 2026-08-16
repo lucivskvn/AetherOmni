@@ -19,7 +19,7 @@ set -euo pipefail
 
 SONAR_HOST="https://sonarcloud.io"
 SONAR_PROJECT_KEY="lucivskvn_AetherOmni"
-SONAR_ORGANIZATION="lucivskvn"
+SONAR_ORGANIZATION="esbpcs"
 
 SEPARATOR_BANNER="========================================================"
 
