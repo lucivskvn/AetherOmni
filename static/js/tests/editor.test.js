@@ -10,12 +10,12 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import vm from 'vm';
 
 // Inject editor.js into the jsdom window scope
 beforeAll(() => {
   const src = readFileSync(resolve('static/js/editor.js'), 'utf-8');
-  // window.eval places function declarations on window (globalThis)
-  window.eval(src);
+  vm.runInContext(src, vm.createContext(window));
 });
 
 // ---------------------------------------------------------------------------

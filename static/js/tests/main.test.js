@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import vm from 'vm';
 
 // Inject main.js into the jsdom window scope
 beforeAll(() => {
@@ -17,8 +18,7 @@ beforeAll(() => {
   window.supabaseClient = null;
 
   const src = readFileSync(resolve('static/js/main.js'), 'utf-8');
-  // window.eval places function declarations on window (globalThis)
-  window.eval(src);
+  vm.runInContext(src, vm.createContext(window));
 });
 
 // ---------------------------------------------------------------------------
