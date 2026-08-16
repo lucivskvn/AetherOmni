@@ -1182,6 +1182,17 @@ class ExportZipView(LoginRequiredMixin, View):
             zip_data = generate_curated_zip_bundle(
                 document_ids, user=request.user, actor_id=get_request_actor_id(request)
             )
+            from extractor.utils import AuditEvent, log_audit_event
+
+            log_audit_event(
+                AuditEvent(
+                    action=AuditAction.EXPORT,
+                    user=request.user,
+                    actor_id=get_request_actor_id(request),
+                    details=f"Exported {len(document_ids)} documents as ZIP bundle.",
+                    ip_address=get_client_ip(request),
+                )
+            )
             response = HttpResponse(zip_data, content_type="application/zip")
             response["Content-Disposition"] = (
                 f'attachment; filename="curated_literature_archive_{timezone.now().strftime("%Y%m%d%H%M")}.zip"'
@@ -1241,6 +1252,17 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
                 document_ids,
                 user=request.user,
                 actor_id=get_request_actor_id(request),
+            )
+            from extractor.utils import AuditEvent, log_audit_event
+
+            log_audit_event(
+                AuditEvent(
+                    action=AuditAction.EXPORT,
+                    user=request.user,
+                    actor_id=get_request_actor_id(request),
+                    details=f"Exported {len(document_ids)} documents as SFT JSONL dataset.",
+                    ip_address=get_client_ip(request),
+                )
             )
             response = HttpResponse(jsonl_data, content_type="application/x-jsonlines")
             filename = f"sft_dataset_{timezone.now().strftime('%Y%m%d%H%M')}.jsonl"
