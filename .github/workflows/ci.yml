@@ -1,5 +1,5 @@
 # ==============================================================================
-# GITHUB ACTIONS CI PIPELINE — CLOUD-ONLY QA GATE
+# GITHUB ACTIONS CI PIPELINE — DUAL-LAYER SHIFT-LEFT & CLOUD QA GATE
 # ==============================================================================
 # Architecture:
 #   Phase 1 ─ Pre-Scan          → Hadolint Dockerfile lint + ShellCheck
