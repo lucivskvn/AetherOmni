@@ -285,19 +285,19 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     text, replaced = _replace_sentinel(text, "badges", badge_block)
     if not replaced:
         text = re.sub(
-            r"\[!\[Version\]\(https://img\.shields\.io/badge/version-[^\)]+\)\]\([^\)]*\)",
+            r"\[!\[Version\]\(https://img\.shields\.io/badge/version-[^)]+\)\]\([^)]*\)",
             f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)]"
             f"(https://github.com/lucivskvn/AetherOmni)",
             text,
         )
         text = re.sub(
-            r"\[!\[Last Updated\]\(https://img\.shields\.io/badge/last%20updated-[^\)]+\)\]\([^\)]*\)",
+            r"\[!\[Last Updated\]\(https://img\.shields\.io/badge/last%20updated-[^)]+\)\]\([^)]*\)",
             f"[![Last Updated](https://img.shields.io/badge/last%20updated-"
             f"{v['today'].replace('-', '--')}-green.svg)](#)",
             text,
         )
         text = re.sub(
-            r"\[!\[Commit\]\(https://img\.shields\.io/badge/commit-[^\)]+\)\]\([^\)]*\)",
+            r"\[!\[Commit\]\(https://img\.shields\.io/badge/commit-[^)]+\)\]\([^)]*\)",
             f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](#)",
             text,
         )
