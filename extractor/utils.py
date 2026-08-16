@@ -92,6 +92,26 @@ class AuditEvent:
     actor_id: str | None = None
 
 
+def _resolve_audit_user_id(event: AuditEvent) -> str:
+    if event.actor_id:
+        return str(event.actor_id)
+    if event.user and hasattr(event.user, "id"):
+        return str(event.user.id)
+    if event.user:
+        return str(event.user)
+    return "system"
+
+
+def _resolve_audit_doc_uuid(document: Any) -> str | None:
+    if not document:
+        return None
+    if hasattr(document, "uuid"):
+        return str(document.uuid)
+    if isinstance(document, dict):
+        return document.get("doc_uuid")
+    return None
+
+
 def log_audit_event(event: AuditEvent) -> None:
     """
     Dual-write audit log to both SQLite (Django ORM) and SurrealDB.
@@ -115,21 +135,8 @@ def log_audit_event(event: AuditEvent) -> None:
     try:
         from extractor import surreal_db
 
-        if event.actor_id:
-            user_id = str(event.actor_id)
-        elif event.user and hasattr(event.user, "id"):
-            user_id = str(event.user.id)
-        elif event.user:
-            user_id = str(event.user)
-        else:
-            user_id = "system"
-
-        doc_uuid = None
-        if event.document:
-            if hasattr(event.document, "uuid"):
-                doc_uuid = str(event.document.uuid)
-            elif isinstance(event.document, dict):
-                doc_uuid = event.document.get("doc_uuid")
+        user_id = _resolve_audit_user_id(event)
+        doc_uuid = _resolve_audit_doc_uuid(event.document)
 
         surreal_db.log_audit(
             action=event.action,

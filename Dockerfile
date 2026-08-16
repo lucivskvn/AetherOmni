@@ -15,12 +15,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Install dependencies inside the virtual environment
 COPY requirements.txt .
-# hadolint ignore=DL3013
+# hadolint ignore=DL3013,SC2102
 RUN pip install --no-cache-dir --upgrade --only-binary :all: pip==26.0.1 && \
     pip install --no-cache-dir --only-binary :all: \
       bleach==6.4.0 \
-      "django-storages[google]==1.14.6" \
       django==6.0.8 \
+      "django-storages[google]==1.14.6" \
       google-cloud-tasks==2.24.0 \
       google-genai==2.17.0 \
       gunicorn==26.0.0 \
@@ -31,6 +31,7 @@ RUN pip install --no-cache-dir --upgrade --only-binary :all: pip==26.0.1 && \
       python-dotenv==1.2.2 \
       pyyaml==6.0.3 \
       ruff==0.16.2 \
+      "sentry-sdk[django]==2.22.0" \
       sqlparse==0.5.5 \
       surrealdb==2.0.0 \
       whitenoise==6.12.0

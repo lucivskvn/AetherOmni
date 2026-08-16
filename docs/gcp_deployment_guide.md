@@ -159,17 +159,24 @@ echo -n "https://supabase.fainko.cloud" | gcloud secrets versions add SUPABASE_U
 
 gcloud secrets create SUPABASE_PUBLIC_KEY --replication-policy="automatic"
 echo -n "YOUR_SUPABASE_PUBLIC_KEY" | gcloud secrets versions add SUPABASE_PUBLIC_KEY --data-file=-
+
+# 6. Sentry Observability DSN (optional)
+gcloud secrets create SENTRY_DSN --replication-policy="automatic"
+echo -n "YOUR_SENTRY_DSN" | gcloud secrets versions add SENTRY_DSN --data-file=-
 ```
 
 ### B. Grant Secret Access to the Service Account
 
 ```bash
-for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY; do
+for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY SENTRY_DSN; do
   gcloud secrets add-iam-policy-binding ${secret} \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
-    --role="roles/secretmanager.secretAccessor"
+    --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
 done
 ```
+
+> [!IMPORTANT]
+> **Production Sentry Release Tracking**: When `SENTRY_DSN` is configured in production (`DEBUG=False`), Cloud Run deployments must receive a non-empty `RELEASE_VERSION` environment variable (e.g. derived via `python scripts/update_docs.py --print-version` during Cloud Build). If `RELEASE_VERSION` is missing or whitespace-only, Django will fail fast with `ImproperlyConfigured` on startup.
 
 ---
 

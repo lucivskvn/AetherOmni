@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from django.contrib import messages
@@ -371,6 +371,48 @@ def _get_dashboard_stats(request):
     }
 
 
+def _filter_dashboard_docs(docs: list[Any], query: str) -> list[Any]:
+    if not query:
+        return docs
+    q = query.lower()
+    return [
+        d
+        for d in docs
+        if q in (d.title or "").lower()
+        or q in (d.author or "").lower()
+        or q in (d.language or "").lower()
+        or q in (d.document_type or "").lower()
+        or q in (getattr(d, "publisher", "") or "").lower()
+        or q in (getattr(d, "publication_year", "") or "").lower()
+        or q in (getattr(d, "doi", "") or "").lower()
+    ]
+
+
+def _sort_dashboard_docs(docs: list[Any], sort_by: str) -> list[Any]:
+    allowed_sorts = {
+        "name": "title",
+        "-name": "-title",
+        "cost": "cost_usd",
+        "-cost": "-cost_usd",
+        "status": "status",
+        "-status": "-status",
+        "date": "created_at",
+        "-date": "-created_at",
+    }
+    db_sort = allowed_sorts.get(sort_by, "-created_at")
+    reverse = db_sort.startswith("-")
+    key_name = db_sort.lstrip("-")
+
+    key_map = {
+        "title": lambda x: (x.title or x.original_filename or "").lower(),
+        "cost_usd": lambda x: float(x.cost_usd),
+        "status": lambda x: (x.status or "").lower(),
+        "created_at": lambda x: x.created_at,
+    }
+    sort_key = key_map.get(key_name, lambda x: x.created_at)
+    return sorted(docs, key=sort_key, reverse=reverse)
+
+
 @method_decorator(never_cache, name="dispatch")
 class DashboardView(LoginRequiredMixin, View):
     """
@@ -380,59 +422,19 @@ class DashboardView(LoginRequiredMixin, View):
     """
 
     def get(self, request):
-        sort_by = request.GET.get("sort_by", "-date")
-        allowed_sorts = {
-            "name": "title",
-            "-name": "-title",
-            "cost": "cost_usd",
-            "-cost": "-cost_usd",
-            "status": "status",
-            "-status": "-status",
-            "date": "created_at",
-            "-date": "-created_at",
-        }
-        db_sort = allowed_sorts.get(sort_by, "-created_at")
-
         stats = _get_dashboard_stats(request)
-        docs = stats["docs"]
+        sort_by = request.GET.get("sort_by", "-date")
+        docs = _filter_dashboard_docs(stats["docs"], request.GET.get("q", "").strip())
+        sorted_docs = _sort_dashboard_docs(docs, sort_by)
 
-        search_query = request.GET.get("q", "").strip().lower()
-        if search_query:
-            docs = [
-                d
-                for d in docs
-                if search_query in (d.title or "").lower()
-                or search_query in (d.author or "").lower()
-                or search_query in (d.language or "").lower()
-                or search_query in (d.document_type or "").lower()
-                or search_query in (getattr(d, "publisher", "") or "").lower()
-                or search_query in (getattr(d, "publication_year", "") or "").lower()
-                or search_query in (getattr(d, "doi", "") or "").lower()
-            ]
-
-        # Sort documents in python
-        reverse = db_sort.startswith("-")
-        key_name = db_sort.lstrip("-")
-
-        key_map = {
-            "title": lambda x: (x.title or x.original_filename or "").lower(),
-            "cost_usd": lambda x: float(x.cost_usd),
-            "status": lambda x: (x.status or "").lower(),
-            "created_at": lambda x: x.created_at,
-        }
-        sort_key = key_map.get(key_name, lambda x: x.created_at)
-        sorted_docs = sorted(docs, key=sort_key, reverse=reverse)
-
-        # Render lists with pre-calculated formatting
-        list_docs = []
-        for d in sorted_docs[:50]:  # Cap dashboard display to recent 50 entries
-            list_docs.append(
-                {
-                    "obj": d,
-                    "formatted_cost": format_localized_cost(d.cost_usd, stats["currency_details"]),
-                    "created_at_local": d.created_at.strftime("%Y-%m-%d %H:%M"),
-                }
-            )
+        list_docs = [
+            {
+                "obj": d,
+                "formatted_cost": format_localized_cost(d.cost_usd, stats["currency_details"]),
+                "created_at_local": d.created_at.strftime("%Y-%m-%d %H:%M"),
+            }
+            for d in sorted_docs[:50]
+        ]
 
         context = {
             "documents": list_docs,
@@ -685,6 +687,29 @@ class UploadView(LoginRequiredMixin, View):
                 existing_doc = surreal_db.get_document_by_hash(file_hash)
         return existing_doc
 
+    def _handle_existing_doc_match(self, request, existing_doc, orig_name, file_hash, actor_id):
+        status = existing_doc.get("status")
+        uploaded_by_id = existing_doc.get("uploaded_by_id")
+        if status == "COMPLETED":
+            if uploaded_by_id == actor_id:
+                logger.info(
+                    "[Deduplication] User already has completed document with hash %s. Reusing without copy.",
+                    file_hash,
+                )
+                return {"status": "cached", "name": orig_name}
+
+            logger.info("[Deduplication] Match found for file hash %s. Skipping physical rewrite.", file_hash)
+            return self._clone_deduplicated_document(request, existing_doc, orig_name, file_hash)
+        elif status in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
+            return {
+                "status": "error",
+                "name": orig_name,
+                "error": f"File '{orig_name}' is already being processed by the background worker.",
+            }
+        elif status == "FAILED":
+            return self._retry_existing_failed_document(request, existing_doc, orig_name)
+        return None
+
     def _process_single_file(self, request, uploaded_file, processed_hashes):
         orig_name = uploaded_file.name
 
@@ -702,32 +727,14 @@ class UploadView(LoginRequiredMixin, View):
             }
 
         processed_hashes.add(file_hash)
-
         actor_id = get_request_actor_id(request)
         existing_doc = self._find_existing_doc(file_hash, actor_id)
 
         try:
             if existing_doc:
-                status = existing_doc.get("status")
-                uploaded_by_id = existing_doc.get("uploaded_by_id")
-                if status == "COMPLETED":
-                    if uploaded_by_id == actor_id:
-                        logger.info(
-                            "[Deduplication] User already has completed document with hash %s. Reusing without copy.",
-                            file_hash,
-                        )
-                        return {"status": "cached", "name": orig_name}
-
-                    logger.info("[Deduplication] Match found for file hash %s. Skipping physical rewrite.", file_hash)
-                    return self._clone_deduplicated_document(request, existing_doc, orig_name, file_hash)
-                elif status in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
-                    return {
-                        "status": "error",
-                        "name": orig_name,
-                        "error": f"File '{orig_name}' is already being processed by the background worker.",
-                    }
-                elif status == "FAILED":
-                    return self._retry_existing_failed_document(request, existing_doc, orig_name)
+                res = self._handle_existing_doc_match(request, existing_doc, orig_name, file_hash, actor_id)
+                if res is not None:
+                    return res
 
             return self._create_fresh_document(request, uploaded_file, file_hash)
         except Exception as e:
@@ -1132,6 +1139,28 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
             )
 
 
+def _reserve_export_rate_limit(request) -> bool:
+    """Atomically reserves a 60-second export rate limit for both actor and IP keys.
+    Returns True if reservation succeeded, or False if rate limit is active."""
+    from django.core.cache import cache
+
+    user_key = f"export_ratelimit_{get_request_actor_id(request)}"
+    ip_key = f"export_ratelimit_{get_client_ip(request)}"
+
+    # cache.add sets key only if it does not exist (atomic in Redis/Memcached/LocMem)
+    user_acquired = cache.add(user_key, True, 60)
+    ip_acquired = cache.add(ip_key, True, 60)
+
+    if not user_acquired or not ip_acquired:
+        # Extend or ensure key existence
+        if user_acquired:
+            cache.set(user_key, True, 60)
+        if ip_acquired:
+            cache.set(ip_key, True, 60)
+        return False
+    return True
+
+
 class ExportZipView(LoginRequiredMixin, View):
     """
     Curates and builds dynamic ZIP bundle directories sorted by Language and Author,
@@ -1139,17 +1168,10 @@ class ExportZipView(LoginRequiredMixin, View):
     """
 
     def post(self, request):
-        from django.core.cache import cache
 
-        user_key = f"export_ratelimit_{get_request_actor_id(request)}"
-        ip_key = f"export_ratelimit_{get_client_ip(request)}"
-
-        if cache.get(user_key) or cache.get(ip_key):
+        if not _reserve_export_rate_limit(request):
             messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
-
-        cache.set(user_key, True, 60)
-        cache.set(ip_key, True, 60)
 
         document_ids = request.POST.getlist("selected_documents")
         if not document_ids:
@@ -1159,6 +1181,17 @@ class ExportZipView(LoginRequiredMixin, View):
         try:
             zip_data = generate_curated_zip_bundle(
                 document_ids, user=request.user, actor_id=get_request_actor_id(request)
+            )
+            from extractor.utils import AuditEvent, log_audit_event
+
+            log_audit_event(
+                AuditEvent(
+                    action=AuditAction.EXPORT,
+                    user=request.user,
+                    actor_id=get_request_actor_id(request),
+                    details=f"Exported {len(document_ids)} documents as ZIP bundle.",
+                    ip_address=get_client_ip(request),
+                )
             )
             response = HttpResponse(zip_data, content_type="application/zip")
             response["Content-Disposition"] = (
@@ -1204,17 +1237,10 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
     """Exports structured instruction fine-tuning dataset in Hugging Face / OpenAI JSONL format."""
 
     def post(self, request):
-        from django.core.cache import cache
 
-        user_key = f"export_ratelimit_{get_request_actor_id(request)}"
-        ip_key = f"export_ratelimit_{get_client_ip(request)}"
-
-        if cache.get(user_key) or cache.get(ip_key):
+        if not _reserve_export_rate_limit(request):
             messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
-
-        cache.set(user_key, True, 60)
-        cache.set(ip_key, True, 60)
 
         document_ids = request.POST.getlist("selected_documents")
         if not document_ids:
@@ -1226,6 +1252,17 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
                 document_ids,
                 user=request.user,
                 actor_id=get_request_actor_id(request),
+            )
+            from extractor.utils import AuditEvent, log_audit_event
+
+            log_audit_event(
+                AuditEvent(
+                    action=AuditAction.EXPORT,
+                    user=request.user,
+                    actor_id=get_request_actor_id(request),
+                    details=f"Exported {len(document_ids)} documents as SFT JSONL dataset.",
+                    ip_address=get_client_ip(request),
+                )
             )
             response = HttpResponse(jsonl_data, content_type="application/x-jsonlines")
             filename = f"sft_dataset_{timezone.now().strftime('%Y%m%d%H%M')}.jsonl"
@@ -1240,17 +1277,10 @@ class ExportSqliteView(LoginRequiredMixin, View):
     """Exports standalone SQLite database with FTS5 search index for offline mobile/desktop integration."""
 
     def post(self, request):
-        from django.core.cache import cache
 
-        user_key = f"export_ratelimit_{get_request_actor_id(request)}"
-        ip_key = f"export_ratelimit_{get_client_ip(request)}"
-
-        if cache.get(user_key) or cache.get(ip_key):
+        if not _reserve_export_rate_limit(request):
             messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
-
-        cache.set(user_key, True, 60)
-        cache.set(ip_key, True, 60)
 
         document_ids = request.POST.getlist("selected_documents")
         if not document_ids:
@@ -1287,17 +1317,10 @@ class ExportCsvView(LoginRequiredMixin, View):
     """Exports structured tabular CSV summary of document metadata, copyright, and content excerpts."""
 
     def post(self, request):
-        from django.core.cache import cache
 
-        user_key = f"export_ratelimit_{get_request_actor_id(request)}"
-        ip_key = f"export_ratelimit_{get_client_ip(request)}"
-
-        if cache.get(user_key) or cache.get(ip_key):
+        if not _reserve_export_rate_limit(request):
             messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
-
-        cache.set(user_key, True, 60)
-        cache.set(ip_key, True, 60)
 
         document_ids = request.POST.getlist("selected_documents")
         if not document_ids:
@@ -2316,3 +2339,15 @@ class SupabaseSessionExchangeView(View):
         except Exception as exc:
             logger.warning("[Auth] Supabase session exchange failed: %s", exc)
             return JsonResponse({"error": "Authentication failed."}, status=401)
+
+
+@require_http_methods(["GET"])
+def sentry_debug_view(request):
+    """Verification endpoint for testing Sentry exception and trace ingestion during development."""
+    user = getattr(request, "user", None)
+    is_super = getattr(user, "is_superuser", False) if user else False
+    if not settings.DEBUG and not is_super:
+        from django.http import HttpResponseForbidden
+
+        return HttpResponseForbidden("Sentry debug endpoint is restricted.")
+    raise ZeroDivisionError("Sentry verification debug error: division by zero trigger.")
