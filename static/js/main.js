@@ -490,7 +490,7 @@ function showClientSideAlert(message, type = 'error') {
     card.innerHTML = `
         <i data-lucide="${iconName}"></i>
         <span class="alert-msg-span"></span>
-        <button type="button" class="alert-close-btn" aria-label="Dismiss message" data-dismiss="${cardId}">
+        <button type="button" class="alert-close-btn" aria-label="Dismiss message" title="Dismiss message" data-dismiss="${cardId}">
             <i data-lucide="x"></i>
         </button>
     `;
