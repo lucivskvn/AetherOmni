@@ -536,7 +536,7 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
     context_blocks = []
     sources = []
     for idx, chunk in enumerate(matching_chunks):
-        doc_uuid_str = chunk.get("doc_uuid", "")
+        doc_uuid_str = str(chunk.get("doc_uuid", "") or "")
         doc_meta = _get_doc_metadata(doc_uuid_str)
         doc_info = _format_doc_info_parts(doc_meta, chunk)
 
@@ -550,14 +550,14 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
             {
                 "id": doc_meta["id"],
                 "uuid": doc_uuid_str,
-                "title": doc_meta["title"],
-                "author": doc_meta["author"],
-                "language": doc_meta["language"],
-                "publisher": doc_meta.get("publisher", "Unknown"),
-                "publication_year": doc_meta.get("publication_year", ""),
-                "license_type": doc_meta.get("license_type", "Unknown"),
-                "doi": doc_meta.get("doi", ""),
-                "chunk_index": chunk.get("chunk_index", 0),
+                "title": str(doc_meta.get("title", "Unknown")),
+                "author": str(doc_meta.get("author", "Unknown")),
+                "language": str(doc_meta.get("language", "Unknown")),
+                "publisher": str(doc_meta.get("publisher", "Unknown")),
+                "publication_year": str(doc_meta.get("publication_year", "")),
+                "license_type": str(doc_meta.get("license_type", "Unknown")),
+                "doi": str(doc_meta.get("doi", "")),
+                "chunk_index": int(chunk.get("chunk_index", 0)),
                 "page_number": page_num,
                 "chapter_title": chap,
                 "anchor_id": anchor_id,
@@ -706,20 +706,25 @@ def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
     try:
         doc = surreal_db.get_document(doc_uuid)
         if doc:
+            raw_id = doc.get("id") or doc.get("doc_uuid") or doc_uuid
+            # Always normalise to string: SurrealDB returns RecordID objects online,
+            # Django returns int in offline mode. A stable string contract keeps
+            # serialisation, caching, and test assertions consistent across both paths.
+            doc_id = str(raw_id)
             return {
-                "id": doc.get("id") if doc.get("id") is not None else doc.get("doc_uuid"),
-                "title": doc.get("title", "Unknown"),
-                "author": doc.get("author", "Unknown"),
-                "language": doc.get("language", "Unknown"),
-                "publisher": doc.get("publisher", "Unknown"),
-                "publication_year": doc.get("publication_year", ""),
-                "license_type": doc.get("license_type", "Unknown"),
-                "doi": doc.get("doi", ""),
+                "id": doc_id,
+                "title": str(doc.get("title", "Unknown") or "Unknown"),
+                "author": str(doc.get("author", "Unknown") or "Unknown"),
+                "language": str(doc.get("language", "Unknown") or "Unknown"),
+                "publisher": str(doc.get("publisher", "Unknown") or "Unknown"),
+                "publication_year": str(doc.get("publication_year", "") or ""),
+                "license_type": str(doc.get("license_type", "Unknown") or "Unknown"),
+                "doi": str(doc.get("doi", "") or ""),
             }
     except Exception as exc:
         logger.debug("[Metadata] Failed to read metadata: %s", exc)
     return {
-        "id": None,
+        "id": doc_uuid,
         "title": "Unknown",
         "author": "Unknown",
         "language": "Unknown",

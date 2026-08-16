@@ -1118,8 +1118,8 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
             # Ensure answer is correct and sources only contain User A's doc / system doc, but NOT User B's doc
             self.assertEqual(data["answer"], "Answer generated using user A context only.")
             source_ids = [s["id"] for s in data["sources"]]
-            self.assertIn(self.doc_a.id, source_ids)
-            self.assertNotIn(self.doc_b.id, source_ids)
+            self.assertIn(str(self.doc_a.id), source_ids)
+            self.assertNotIn(str(self.doc_b.id), source_ids)
 
 
 class SecurityAuthTestCase(TestCase):

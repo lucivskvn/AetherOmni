@@ -47,6 +47,19 @@ from django.core.validators import EmailValidator
 _email_validator = EmailValidator(allowlist=None)
 
 
+from django.core.serializers.json import DjangoJSONEncoder
+
+
+class AetherJSONEncoder(DjangoJSONEncoder):
+    """Custom JSON encoder that gracefully handles SurrealDB RecordIDs and custom objects."""
+
+    def default(self, obj):
+        try:
+            return super().default(obj)
+        except TypeError:
+            return str(obj)
+
+
 def _validate_email_format(email: str) -> bool:
     """Validate email address supporting standard, multi-label, and IDNA domains."""
     if not email or "@" not in email:
@@ -1103,7 +1116,7 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
             )
             # Render markdown answer safely to HTML
             results["answer_html"] = render_markdown_to_html(results["answer"])
-            return JsonResponse(results)
+            return JsonResponse(results, encoder=AetherJSONEncoder)
         except ValueError as e:
             logger.warning("[RAG Search] Validation error: %s", e)
             return JsonResponse({"error": "Invalid search parameters provided."}, status=400)
