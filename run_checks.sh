@@ -140,6 +140,18 @@ if [[ "$DOCS_ONLY" = true ]]; then
         echo -e "${YELLOW}[Diff Audit] Running Bandit on changed Python files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
         $PYTHON_BIN -m bandit -c bandit.yaml $CHANGED_PY
+        echo -e "${YELLOW}[Diff Audit] Running Cognitive Complexity & Literal Quality gate on changed Python files...${NC}"
+        # shellcheck disable=SC2086
+        $PYTHON_BIN scripts/check_code_quality.py $CHANGED_PY || exit 1
+        echo -e "${GREEN}✓ Changed Python files satisfy Cognitive Complexity <=15 and literal deduplication.${NC}"
+    fi
+
+    CHANGED_DOCKER=$(echo "$CHANGED_FILES" | grep -E '(^|/)Dockerfile' || true)
+    if [[ -n "$CHANGED_DOCKER" ]] && command -v hadolint &> /dev/null; then
+        echo -e "${YELLOW}[Diff Audit] Running Hadolint on changed Dockerfiles...${NC}"
+        # shellcheck disable=SC2086
+        hadolint $CHANGED_DOCKER || exit 1
+        echo -e "${GREEN}✓ Changed Dockerfile standards verified cleanly.${NC}"
     fi
 
     CHANGED_SHELL=$(echo "$CHANGED_FILES" | grep -E '(^|/)[^/]+\.sh$' || true)
@@ -352,6 +364,14 @@ if command -v semgrep &> /dev/null; then
     fi
 else
     echo -e "${YELLOW}⚠ Semgrep not found in PATH (skipping).${NC}"
+fi
+
+echo -e "\n${YELLOW}[Code Quality & Cognitive Complexity] Running AST Gatekeeper & Literal Deduplication...${NC}"
+if $PYTHON_BIN scripts/check_code_quality.py; then
+    echo -e "${GREEN}✓ Cognitive Complexity (<=15) & literal deduplication gate passed cleanly.${NC}"
+else
+    echo -e "${RED}✗ Cognitive Complexity or literal duplication gate failed!${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Security Audit] Running Bandit Vulnerability & ReDoS Audit...${NC}"
