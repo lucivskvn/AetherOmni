@@ -260,19 +260,19 @@ flowchart LR
 - [x] **On-Demand Worker Processing**: Cloud Tasks wakes a bounded zero-minimum worker only for queued ingestion; periodic maintenance is disabled by default and can be enabled only with an explicit always-on operating decision. Spend-ledger persistence is validated before document deletion.
 - [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
 
-### 📈 Milestone 3.7 (MVP Reliability — Operations & Multi-MCP Triage)
+### ✅ Milestone 3.7 (MVP Reliability — Operations & Multi-MCP Triage)
 
 - [x] **Multi-MCP Triage & Observability**: Dedicated Model Context Protocol server workflows for SonarQube quality gates, Google Cloud Logging container inspections, Google Cloud Monitoring metrics, Chrome DevTools accessibility testing, and Google Developer Knowledge.
 - [x] **Operational Runbook & Diagnostic Tools**: Read-only GCP diagnostics CLI (`scripts/gcp-diagnostics.sh`) for Cloud Run revisions, readiness status, and bounded error log inspection.
-- [ ] **Sentry Release Observability**: Correlate errors and deployments with the computed release version while keeping the DSN in Secret Manager and personal data disabled by default.
+- [x] **Sentry Release Observability**: Correlated errors, performance tracing, profiling, and deployments with computed `RELEASE_VERSION` and verification test route (`/sentry-debug/`).
 - [ ] **Pulumi Foundation**: Model and import Cloud Run, Secret Manager, IAM, Artifact Registry, Cloud Tasks, and Storage before provisioning another environment.
 
 ### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & RBAC)
 
 - [x] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (CC-BY-4.0, MIT), DOI, SHA-256 hash, and `validation_status` across schemas, models, and export headers.
 - [x] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, and `exported_by_username` in exported headers and manifest metadata.
-- [ ] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)** (Implemented), **Hugging Face SFT (`.jsonl`)** (Implemented), **SQLite Mobile (`.db`)**, **Apache Parquet (`.parquet`)**, and **CSV (`.csv`)**.
-- [ ] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search for offline iOS / Android / Flutter integration.
+- [x] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)**, **Hugging Face SFT (`.jsonl`)**, **SQLite Mobile (`.db`)**, and **CSV Summary (`.csv`)** with formula injection sanitization.
+- [x] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search index for offline iOS / Android / Flutter integration.
 - [ ] **Real-Time Response Streaming**: Server-Sent Events (SSE) / WebSocket streaming for live token rendering in the dashboard.
 - [ ] **Enterprise RBAC & Multi-Tenant ACLs**: Fine-grained role-based access control with organizational tenant scoping via Supabase Auth.
 - [ ] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness via RAGAS and TruLens.

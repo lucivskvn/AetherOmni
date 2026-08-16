@@ -79,10 +79,14 @@ def _check_ast_nodes_for_quality(tree: ast.AST, rel_path: str) -> tuple[list[str
 
 
 def audit_file(file_path: Path) -> tuple[list[str], list[str]]:
-    rel_path = str(file_path.relative_to(ROOT))
+    safe_path = _resolve_safe_file(file_path)
+    if not safe_path:
+        return [f"Untrusted or invalid file path rejected: {file_path}"], []
+
+    rel_path = str(safe_path.relative_to(ROOT))
     try:
-        content = file_path.read_text(encoding="utf-8")
-        tree = ast.parse(content, filename=str(file_path))
+        content = safe_path.read_text(encoding="utf-8")
+        tree = ast.parse(content, filename=str(safe_path))
     except Exception as exc:
         return [f"{rel_path}: Failed to parse AST ({exc})"], []
 
@@ -137,17 +141,24 @@ def audit_file(file_path: Path) -> tuple[list[str], list[str]]:
     return complexity_errors, duplication_errors
 
 
-def _is_safe_repo_file(p: Path) -> bool:
+def _resolve_safe_file(p: Path) -> Path | None:
     try:
-        resolved = p.resolve()
-        return resolved.is_file() and resolved.suffix == ".py" and ROOT in resolved.parents
-    except Exception:
-        return False
+        resolved = (ROOT / p).resolve() if not p.is_absolute() else p.resolve()
+        if resolved.is_file() and resolved.suffix == ".py" and (resolved == ROOT or ROOT in resolved.parents):
+            return resolved
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return None
 
 
 def collect_target_files(target_files: list[str] | None) -> list[Path]:
     if target_files:
-        return [Path(f) for f in target_files if _is_safe_repo_file(Path(f))]
+        valid_files: list[Path] = []
+        for f_str in target_files:
+            safe_p = _resolve_safe_file(Path(f_str))
+            if safe_p:
+                valid_files.append(safe_p)
+        return valid_files
     files: list[Path] = []
     for src_dir in SOURCE_DIRS:
         for path in src_dir.rglob("*.py"):
