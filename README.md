@@ -315,8 +315,8 @@ flowchart LR
 | **Cloud Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw documents and curated export bundles |
 | **CI/CD & Git Automation** | GitHub Actions / GitHub CLI | Pinned commit SHAs · `gh` CLI | 3-Phase Shift-Left validation, CodeQL, and Dependabot security |
 | **Container Runtime & Build** | Docker / Kaniko | Multi-stage OWASP non-root build · Kaniko debug image | Immutable digest-pinned containers with zero shell footprint in the application startup path |
-| **DevSecOps & SAST Suite** | SonarQube / Bandit / Hadolint / Semgrep / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | Sonar MQR Gate, SurrealQL syntax validation | Shift-left security verification, static typing, regex ReDoS prevention, and continuous codebase health |
-| **AI Agent Tooling & MCP** | Sequential Thinking / SonarQube / Google Cloud Logging / Chrome DevTools / Google Dev Knowledge | Model Context Protocol (MCP) servers | Fast grounded triage, multi-step sequential reasoning, live quality gate queries, Cloud Run log inspection, and UI/UX accessibility auditing |
+| **DevSecOps & SAST Suite** | SonarCloud / Semgrep Cloud SAST / Hadolint / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | SonarCloud Quality Gate, Semgrep SAST, SurrealQL validation | Shift-left security verification, static typing, regex ReDoS prevention, and continuous codebase health |
+| **AI Agent Tooling & MCP** | Sequential Thinking / SonarCloud / Google Cloud Logging / Chrome DevTools / Google Dev Knowledge | Model Context Protocol (MCP) servers | Fast grounded triage, multi-step sequential reasoning, live quality gate queries, Cloud Run log inspection, and UI/UX accessibility auditing |
 
 ---
 
