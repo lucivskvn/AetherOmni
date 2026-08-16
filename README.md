@@ -340,7 +340,7 @@ Execute the local verification script to validate all quality gates prior to ope
 
 ```bash
 bash run_checks.sh --autofix
-# OR the full pipeline (includes git pull, Desloppify, and SonarQube submission):
+# OR the full pipeline (includes git pull, Desloppify, and SonarCloud submission):
 bash scripts/verify-pipeline.sh
 ```
 
@@ -362,7 +362,7 @@ bash scripts/verify-pipeline.sh
 4. **Phase 4: Runtime Verification & Test Suite**:
    - Django System Integrity Check (`python manage.py check`)
    - Django Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`)
-5. **Phase 5: Documentation Governance & SonarQube Gate**:
+5. **Phase 5: Documentation Governance & SonarCloud Gate**:
    - Markdownlint Syntax Auditor (`markdownlint README.md docs/gcp_deployment_guide.md`)
    - Automated Version & Metadata Synchronizer (`python scripts/update_docs.py`)
    - GitHub workflow updates are manual-only to avoid auto-commits on `main`

@@ -388,9 +388,9 @@ We deploy both the `web` service and the `worker` service. Deployments are manag
 ### Deploy Services Declaratively (Recommended)
 
 Cloud Build computes the release version before it builds or deploys. The production
-container, GitHub verification workflow, local checks, and SonarQube analysis use
+container, GitHub verification workflow, local checks, and SonarCloud analysis use
 the Python 3.14 runtime declared by project configuration. It passes that
-same value to Cloud Run and SonarQube, so a production issue can be traced to one
+same value to Cloud Run and SonarCloud, so a production issue can be traced to one
 release. The Kaniko build step uses an official, digest-pinned debug image because
 it needs BusyBox to source computed release metadata; the standard executor image
 does not include a shell. Its layer cache is stored in Artifact Registry and
