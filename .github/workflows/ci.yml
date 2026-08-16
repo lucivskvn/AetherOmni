@@ -31,10 +31,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Principle of Least Privilege: Default to read-only at workflow level
-permissions:
-  contents: read
-
 jobs:
   # ============================================================================
   # Phase 1: Pre-Scan Validation
@@ -45,6 +41,8 @@ jobs:
     name: 1. Pre-Scan Validation
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,6 +66,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: pre-scan-validation
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.release-version.outputs.version }}
     steps:
