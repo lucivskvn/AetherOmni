@@ -520,3 +520,18 @@ function compileMarkdown(markdown) {
 
     return _restoreSafeHtml(html);
 }
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        escapeHtml,
+        compileMarkdown,
+        _slugifyHeading,
+        _parseYamlFrontmatter,
+        _restoreSafeHtml,
+        _processLine,
+        parseInline,
+        replaceMarkdownLinks,
+        isSafePreviewUrl,
+        _escapeCssIdentifier
+    };
+}

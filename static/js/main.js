@@ -1506,3 +1506,11 @@ function initializeLocalTimezones() {
         }
     });
 }
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        formatCompact,
+        getStatusBadgeHTML,
+        showClientSideAlert
+    };
+}
