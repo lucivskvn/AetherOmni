@@ -8,6 +8,7 @@
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Semgrep SAST](https://img.shields.io/badge/Semgrep-Cloud%20SAST-4B2BFF.svg?logo=semgrep)](https://semgrep.dev)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=coverage)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
