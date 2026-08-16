@@ -706,12 +706,11 @@ def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
     try:
         doc = surreal_db.get_document(doc_uuid)
         if doc:
-            raw_id = doc.get("id") if doc.get("id") is not None else doc.get("doc_uuid")
-            # If raw_id is already an integer (e.g. from Django model), keep it; otherwise str
-            if isinstance(raw_id, int):
-                doc_id = raw_id
-            else:
-                doc_id = str(raw_id) if raw_id is not None else doc_uuid
+            raw_id = doc.get("id") or doc.get("doc_uuid") or doc_uuid
+            # Always normalise to string: SurrealDB returns RecordID objects online,
+            # Django returns int in offline mode. A stable string contract keeps
+            # serialisation, caching, and test assertions consistent across both paths.
+            doc_id = str(raw_id)
             return {
                 "id": doc_id,
                 "title": str(doc.get("title", "Unknown") or "Unknown"),
