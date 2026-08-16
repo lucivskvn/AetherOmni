@@ -232,3 +232,29 @@ class SurrealDBClientTestCase(TestCase):
         surreal_db.delete_document(doc_uuid)
         self.assertEqual(surreal_db.count_document_chunks(doc_uuid), 0)
         self.assertFalse(SourceDocument.objects.filter(uuid=doc_uuid).exists())
+
+    @override_settings(DEBUG=True)
+    @patch("extractor.surreal_db.AsyncSurreal")
+    def test_create_document_converts_datetime_strings_to_datetime_objects(self, mock_surreal):
+        query_res = [{"result": [{"doc_uuid": "123", "title": "Test"}]}]
+        mock_db = self._create_mock_db(query_res)
+        mock_surreal.return_value = mock_db
+
+        data = {
+            "doc_uuid": "123",
+            "title": "Test",
+            "created_at": "2026-08-16T07:33:18Z",
+            "updated_at": "2026-08-16T07:33:20+00:00",
+            "expires_at": datetime(2026, 8, 17, 12, 0, 0, tzinfo=UTC),
+        }
+        surreal_db.create_document(data)
+
+        call_args = mock_db.query.call_args[0]
+        params = call_args[1] if len(call_args) > 1 else mock_db.query.call_args[1].get("params", {})
+        payload = params.get("payload", params)
+
+        self.assertIsInstance(payload["created_at"], datetime)
+        self.assertEqual(payload["created_at"].tzinfo, UTC)
+        self.assertIsInstance(payload["updated_at"], datetime)
+        self.assertEqual(payload["updated_at"].tzinfo, UTC)
+        self.assertIsInstance(payload["expires_at"], datetime)
