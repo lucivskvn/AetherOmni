@@ -7,12 +7,11 @@ gunicorn==26.0.0
 httpx==0.28.1
 markdown==3.10.3
 protobuf==7.35.1
-# Django uses Psycopg 3 for the Supabase PostgreSQL transaction pooler.
 psycopg[binary]==3.3.4
 python-dotenv==1.2.2
 pyyaml==6.0.3
 ruff==0.16.2
+sentry-sdk[django]==2.22.0
 sqlparse==0.5.5
 surrealdb==2.0.0
 whitenoise==6.12.0
-sentry-sdk[django]==2.22.0
