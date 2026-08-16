@@ -1121,6 +1121,46 @@ class UserIsolationDashboardAndRAGTestCase(TestCase):
             self.assertIn(str(self.doc_a.id), source_ids)
             self.assertNotIn(str(self.doc_b.id), source_ids)
 
+    @patch("extractor.rag.generate_llm_content_unified")
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
+    @patch("extractor.surreal_db.search_rag_cache_hnsw")
+    def test_rag_search_semantic_cache_hit_returns_hydrated_sources(
+        self, mock_search_cache, mock_execute, mock_generate
+    ):
+        self.client.force_login(self.user_a)
+
+        mock_emb_val = MagicMock()
+        mock_emb_val.values = [1.0, 0.0] * 384
+        mock_query_resp = MagicMock()
+        mock_query_resp.embeddings = [mock_emb_val]
+        mock_execute.return_value = mock_query_resp
+
+        # Return a semantic cache hit containing raw UUID strings in 'sources'
+        mock_search_cache.return_value = [
+            {
+                "answer_text": "Cached answer from semantic cache.",
+                "sources": [str(self.doc_a.uuid)],
+                "score": 0.05,
+            }
+        ]
+
+        with self.settings(GEMINI_API_KEY="mock-api-key"):
+            response = self.client.get(reverse("rag_search"), {"q": "cached-query"})
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+
+            self.assertEqual(data["answer"], "Cached answer from semantic cache.")
+            self.assertTrue(len(data["sources"]) > 0)
+            src = data["sources"][0]
+            # Ensure the raw UUID string was hydrated into full dictionary schema
+            self.assertIsInstance(src, dict)
+            self.assertEqual(src["uuid"], str(self.doc_a.uuid))
+            self.assertIn("title", src)
+            self.assertIn("language", src)
+            self.assertIn("chunk_index", src)
+            self.assertIn("deep_link", src)
+            self.assertIn(f"/document/{self.doc_a.uuid}/", src["deep_link"])
+
 
 class SecurityAuthTestCase(TestCase):
     """Verifies that various authentication, registration, recovery, and settings input checks are secure."""
