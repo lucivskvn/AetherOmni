@@ -1,0 +1,7 @@
+id: py-test-assert-is-instance
+message: "Use `self.assertIsInstance(A, B)` instead of `self.assertTrue(isinstance(A, B))` for clearer failure messages (Sonar S5906)."
+severity: warning
+language: Python
+rule:
+  pattern: self.assertTrue(isinstance($A, $B))
+fix: self.assertIsInstance($A, $B)
