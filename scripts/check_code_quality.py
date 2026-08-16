@@ -80,14 +80,10 @@ def _check_ast_nodes_for_quality(tree: ast.AST, rel_path: str) -> tuple[list[str
 
 
 def audit_file(file_path: Path) -> tuple[list[str], list[str]]:
-    safe_path = _resolve_safe_file(file_path)
-    if not safe_path:
-        return [f"Untrusted or invalid file path rejected: {file_path}"], []
-
-    rel_path = str(safe_path.relative_to(ROOT))
+    rel_path = str(file_path.relative_to(ROOT))
     try:
-        content = safe_path.read_text(encoding="utf-8")
-        tree = ast.parse(content, filename=str(safe_path))
+        content = file_path.read_text(encoding="utf-8")
+        tree = ast.parse(content, filename=str(file_path))
     except Exception as exc:
         return [f"{rel_path}: Failed to parse AST ({exc})"], []
 
@@ -142,41 +138,42 @@ def audit_file(file_path: Path) -> tuple[list[str], list[str]]:
     return complexity_errors, duplication_errors
 
 
-def _resolve_safe_file(raw_path: str | Path) -> Path | None:
-    """Validate and sanitize file path strictly within repository boundaries."""
-    try:
-        norm = os.path.normpath(str(raw_path))
-        if os.path.isabs(norm):
-            full_path = os.path.realpath(norm)
-        else:
-            full_path = os.path.realpath(os.path.join(str(ROOT), norm))
-
-        # Enforce boundary check before accessing file system
-        if not full_path.startswith(str(ROOT) + os.sep) and full_path != str(ROOT):
-            return None
-
-        p = Path(full_path)
-        if p.is_file() and p.suffix == ".py":
-            return p
-    except (OSError, RuntimeError, ValueError):
-        return None
-    return None
-
-
-def collect_target_files(target_files: list[str] | None) -> list[Path]:
-    if target_files:
-        valid_files: list[Path] = []
-        for f_str in target_files:
-            safe_p = _resolve_safe_file(Path(f_str))
-            if safe_p:
-                valid_files.append(safe_p)
-        return valid_files
-    files: list[Path] = []
+def _get_all_tracked_python_files() -> dict[str, Path]:
+    """Build an authoritative lookup map of canonical repo Python files."""
+    file_map: dict[str, Path] = {}
     for src_dir in SOURCE_DIRS:
         for path in src_dir.rglob("*.py"):
             if not any(exc in path.parts for exc in EXCLUDE_DIRS):
-                files.append(path)
-    return files
+                try:
+                    canon_abs = os.path.realpath(str(path))
+                    canon_rel = os.path.relpath(canon_abs, str(ROOT))
+                    file_map[canon_abs] = path
+                    file_map[canon_rel] = path
+                except (OSError, ValueError):
+                    continue
+    return file_map
+
+
+def collect_target_files(target_files: list[str] | None) -> list[Path]:
+    """Filter requested files strictly against canonical allowed repository files."""
+    allowed_map = _get_all_tracked_python_files()
+    if target_files:
+        valid_files: list[Path] = []
+        for f_str in target_files:
+            clean_str = os.path.normpath(str(f_str).strip())
+            if clean_str in allowed_map:
+                valid_files.append(allowed_map[clean_str])
+            else:
+                try:
+                    resolved_str = os.path.realpath(
+                        clean_str if os.path.isabs(clean_str) else os.path.join(str(ROOT), clean_str)
+                    )
+                    if resolved_str in allowed_map:
+                        valid_files.append(allowed_map[resolved_str])
+                except (OSError, ValueError):
+                    continue
+        return valid_files
+    return list(set(allowed_map.values()))
 
 
 def main(target_files: list[str] | None = None) -> int:
