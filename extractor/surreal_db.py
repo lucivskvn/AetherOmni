@@ -63,6 +63,22 @@ _test_chunks: dict[str, list[dict]] = {}
 
 ISO8601_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
+_DATETIME_FIELDS = frozenset({"created_at", "updated_at", "expires_at"})
+
+
+def _parse_datetime_field(value: Any) -> datetime | Any:
+    """Convert an ISO-8601 string to an aware datetime; return value unchanged if already datetime."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    if isinstance(value, str):
+        # fromisoformat handles both '2026-08-16T07:33:18Z' and offsets on Python ≥ 3.11
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+        except ValueError:
+            logger.warning("[SurrealDB] Could not parse datetime string %r; leaving as-is", value)
+    return value
+
 
 def _model_to_dict(doc) -> dict:
     if not doc:
@@ -501,6 +517,12 @@ def create_document(data: dict) -> dict:
     }
 
     payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
+    # Cast datetime-typed fields from ISO-8601 strings to Python datetime objects so that
+    # the SurrealDB driver serialises them as the SurrealDB `datetime` type rather than
+    # as opaque strings, which would fail the schema's type-coercion check on INSERT.
+    for dt_field in _DATETIME_FIELDS:
+        if dt_field in payload:
+            payload[dt_field] = _parse_datetime_field(payload[dt_field])
     for k in payload:
         _validate_field_name(k)
     sql = "INSERT INTO documents $payload;"
