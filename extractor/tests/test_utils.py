@@ -157,7 +157,8 @@ class ContentAddressingTestCase(TestCase):
             temp_path = f.name
 
         try:
-            file_hash = calculate_file_sha256(temp_path)
+            with open(temp_path, "rb") as f:
+                file_hash = calculate_file_sha256(f)
             # Match against expected sha256 of 'Sample booklet bytes for hashing'
             expected_hash = "9f613fcfa103ec3806438aceacaef2099ddc71ec5cf9c4b2c5e8e7f4b2622f5b"
             self.assertEqual(file_hash, expected_hash)

@@ -1749,3 +1749,37 @@ class ViewsExceptionPathsTestCase(TestCase):
             )
             self.assertFalse(success)
             self.assertIn("timed out", msg)
+
+    def test_multilabel_and_idna_email_validation(self):
+        from extractor.views import _validate_registration_inputs
+
+        valid_emails = [
+            "user@mail.example.com",
+            "user@example.xn--p1ai",
+            "first.last+tag@sub.domain.org",
+        ]
+        for email in valid_emails:
+            err = _validate_registration_inputs(
+                email=email,
+                password="SecurePassword123!",
+                confirm_password="SecurePassword123!",
+                supabase_url="https://test.supabase.co",
+                supabase_key="secret-key",
+            )
+            self.assertIsNone(err, f"Expected {email} to pass registration validation")
+
+        invalid_emails = [
+            "user@",
+            "@example.com",
+            "user@.com",
+            "invalid email@example.com",
+        ]
+        for email in invalid_emails:
+            err = _validate_registration_inputs(
+                email=email,
+                password="SecurePassword123!",
+                confirm_password="SecurePassword123!",
+                supabase_url="https://test.supabase.co",
+                supabase_key="secret-key",
+            )
+            self.assertEqual(err, "Invalid email format.")

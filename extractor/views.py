@@ -41,6 +41,23 @@ def _turnstile_token_error(request) -> str | None:
     return "CAPTCHA verification is required. Please complete the security check and try again."
 
 
+from django.core.exceptions import ValidationError
+from django.core.validators import EmailValidator
+
+_email_validator = EmailValidator(allowlist=None)
+
+
+def _validate_email_format(email: str) -> bool:
+    """Validate email address supporting standard, multi-label, and IDNA domains."""
+    if not email or "@" not in email:
+        return False
+    try:
+        _email_validator(email)
+        return True
+    except ValidationError:
+        return False
+
+
 from types import SimpleNamespace
 
 from extractor import surreal_db
@@ -1944,9 +1961,8 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         return redirect("deployment_controller")
 
 
-def _validate_registration_input(email, password, confirm_password, supabase_url, supabase_key):
+def _validate_registration_inputs(email, password, confirm_password, supabase_url, supabase_key):
     """Returns an error message string or None if input is valid."""
-    import re
     from urllib.parse import urlparse
 
     if not email or not password:
@@ -1964,7 +1980,7 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
     if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
         return "Registration of administrative or system email addresses is not permitted."
 
-    if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", email):
+    if not _validate_email_format(email):
         return "Invalid email format."
 
     return None
@@ -2016,7 +2032,7 @@ def register_view(request):
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
 
-        error_msg = _validate_registration_input(email, password, confirm_password, supabase_url, supabase_key)
+        error_msg = _validate_registration_inputs(email, password, confirm_password, supabase_url, supabase_key)
         if error_msg:
             messages.error(request, error_msg)
             return render(request, TEMPLATE_REGISTER)
@@ -2084,9 +2100,7 @@ def forgot_password_view(request):
             return render(request, TEMPLATE_FORGOT_PASSWORD)
 
         # Validate email format
-        import re
-
-        if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", email):
+        if not _validate_email_format(email):
             messages.error(request, "Invalid email format.")
             return render(request, TEMPLATE_FORGOT_PASSWORD)
 

@@ -77,7 +77,47 @@ def _count_pages_pass1(working_path, chunk_size, overlap, pages_pattern, parent_
     return pages_count, parent_count
 
 
-def _count_pages_pass2(working_path, chunk_size, overlap, count_pattern):
+def _extract_count_from_pages_node(content: bytes, pages_idx: int) -> int | None:
+    """Helper to extract /Count digits following a /Type/Pages token."""
+    # Strip all standard PDF whitespace characters (ASCII 0, 9, 10, 12, 13, 32)
+    type_slice = (
+        content[pages_idx : pages_idx + 30]
+        .replace(b" ", b"")
+        .replace(b"\t", b"")
+        .replace(b"\n", b"")
+        .replace(b"\r", b"")
+        .replace(b"\x0c", b"")
+        .replace(b"\x00", b"")
+    )
+    if not type_slice.startswith(b"/Type/Pages"):
+        return None
+    count_idx = content.find(b"/Count", pages_idx)
+    if count_idx == -1 or count_idx - pages_idx >= 200:
+        return None
+    after_count = content[count_idx + 6 : count_idx + 30].lstrip()
+    digits = []
+    for b in after_count:
+        if 48 <= b <= 57:
+            digits.append(b)
+        else:
+            break
+    return int(bytes(digits)) if digits else None
+
+
+def _find_pages_count_in_chunk(content: bytes) -> int | None:
+    """Scan chunk for /Type/Pages and parse its /Count."""
+    idx = 0
+    while True:
+        pages_idx = content.find(b"/Type", idx)
+        if pages_idx == -1:
+            return None
+        count = _extract_count_from_pages_node(content, pages_idx)
+        if count is not None:
+            return count
+        idx = pages_idx + 5
+
+
+def _count_pages_pass2(working_path, chunk_size, overlap):
     with open(working_path, "rb") as f:
         buffer = b""
         while True:
@@ -85,13 +125,10 @@ def _count_pages_pass2(working_path, chunk_size, overlap, count_pattern):
             if not chunk:
                 break
             content = buffer + chunk
-            match = count_pattern.search(content)
-            if match:
-                return int(match.group(1))
-            if len(content) > overlap:
-                buffer = content[-overlap:]
-            else:
-                buffer = content
+            count = _find_pages_count_in_chunk(content)
+            if count is not None:
+                return count
+            buffer = content[-overlap:] if len(content) > overlap else content
     return 1
 
 
@@ -107,7 +144,6 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
 
         pages_pattern = re.compile(rb"/Type\s*/Page\b")
         parent_pattern = re.compile(rb"/Parent\s+\d+\s+\d+\s+R")
-        count_pattern = re.compile(rb"/Type\s*/Pages.*?/Count\s*(\d+)")
 
         with open(working_path, "rb") as f:
             header = f.read(1024)
@@ -121,7 +157,7 @@ def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
         if pages_count > 0:
             return pages_count
 
-        return _count_pages_pass2(working_path, chunk_size, overlap, count_pattern)
+        return _count_pages_pass2(working_path, chunk_size, overlap)
     except Exception as e:
         logger.debug("[Worker] Failed to determine real page count for %s: %s", working_path, e)
         return 1
@@ -256,8 +292,8 @@ def _get_working_path_offline(doc_id: str, download: bool) -> str:
     try:
         with doc.file.open("rb") as f:
             content = f.read()
-    except Exception as e:
-        logger.error("[Worker] Failed to read file from SQLite storage: %s", e)
+    except Exception:
+        logger.exception("[Worker] Failed to read file from SQLite storage")
         raise
     import os
 

@@ -461,7 +461,7 @@ function initializeFormSubmitSpinners() {
         if (event.persisted) {
             forms.forEach(form => {
                 const btn = form.querySelector('button[type="submit"]');
-                if (btn && btn.dataset.originalHtml) {
+                if (btn?.dataset?.originalHtml) {
                     btn.innerHTML = btn.dataset.originalHtml;
                     btn.style.pointerEvents = '';
                     btn.style.opacity = '';
@@ -1505,4 +1505,12 @@ function initializeLocalTimezones() {
             console.error('Timezone conversion failed:', e);
         }
     });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        formatCompact,
+        getStatusBadgeHTML,
+        showClientSideAlert
+    };
 }

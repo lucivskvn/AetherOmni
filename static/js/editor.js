@@ -102,7 +102,7 @@ function isSafePreviewUrl(value) {
         return false;
     }
     try {
-        const baseOrigin = typeof globalThis.location !== 'undefined' && globalThis.location.origin ? globalThis.location.origin : 'https://aetheromni.local';
+        const baseOrigin = globalThis.location?.origin || 'https://aetheromni.local';
         const parsed = new URL(value, baseOrigin);
         return parsed.protocol === 'https:' || parsed.protocol === 'http:';
     } catch {
@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupScrollSync(editor, preview);
 
         // Listen for anchor hash changes dynamically
-        window.addEventListener('hashchange', () => {
+        globalThis.addEventListener('hashchange', () => {
             initDeepLinkScroll(preview);
         });
     }
@@ -237,10 +237,10 @@ function applyPostRenderFeatures(container) {
 }
 
 function _escapeCssIdentifier(value) {
-    if (typeof globalThis.CSS !== 'undefined' && globalThis.CSS?.escape) {
+    if (globalThis.CSS?.escape) {
         return globalThis.CSS.escape(value);
     }
-    return value.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+    return value.replace(/[^a-zA-Z0-9_-]/g, String.raw`\$&`);
 }
 
 /**
@@ -249,7 +249,7 @@ function _escapeCssIdentifier(value) {
  * @param {HTMLElement} container - The container element to search within.
  */
 function initDeepLinkScroll(container) {
-    if (typeof globalThis.location === 'undefined' || !globalThis.location.hash) return;
+    if (!globalThis.location?.hash) return;
     const rawHash = globalThis.location.hash.replace(/^#/, '');
     if (!rawHash) return;
 
@@ -263,7 +263,7 @@ function initDeepLinkScroll(container) {
             setTimeout(() => {
                 target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 target.classList.remove('deep-link-pulse');
-                void target.offsetWidth;
+                target.getBoundingClientRect();
                 target.classList.add('deep-link-pulse');
             }, 120);
         }
@@ -274,25 +274,28 @@ function initDeepLinkScroll(container) {
 
 function _slugifyHeading(text) {
     if (!text || typeof text !== 'string') return '';
-    return text.toLowerCase()
+    let slug = text.toLowerCase()
         .replace(/[^a-z0-9\u0600-\u06FF\s-]/gu, '')
         .trim()
-        .replace(/[\s_-]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 50);
+        .replace(/[\s_-]+/g, '-');
+    while (slug.startsWith('-')) slug = slug.slice(1);
+    while (slug.endsWith('-')) slug = slug.slice(0, -1);
+    return slug.slice(0, 50);
 }
 
-/**
- * Robust line-by-line Markdown compiler.
- * Parses the full CommonMark subset used by our pipeline:
- *   - Headings h1–h4, Paragraphs, Blank lines
- *   - Fenced code blocks (with optional language label)
- *   - Blockquotes, Unordered lists, Ordered lists
- *   - Pipe tables (GitHub-flavoured)
- *   - Horizontal rules
- *   - Inline: bold, italic, inline-code, links, images, strikethrough
- * Returns sanitised HTML (XSS-safe via upfront escaping).
- */
+function _handleHeading(line, state, pushHtml) {
+    const hMatch = line.match(/^(#{1,6})\s+(.*)/);
+    if (!hMatch) return false;
+
+    if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; }
+    const level = hMatch[1].length;
+    const headingText = hMatch[2];
+    const pageMatch = headingText.match(/^Page\s+(\d+)/i);
+    const slug = pageMatch ? `page-${pageMatch[1]}` : _slugifyHeading(headingText);
+    const idAttr = slug ? ` id="${slug}" class="heading-anchor"` : '';
+    pushHtml(`<h${level}${idAttr}>${parseInline(headingText)}</h${level}>`);
+    return true;
+}
 
 function _handleBlockquote(line, state, pushHtml) {
     if (line.startsWith('> ')) {
@@ -354,13 +357,17 @@ function _handleTable(line, state, pushHtml) {
     return false;
 }
 
+function _closeOpenBlocks(state, pushHtml) {
+    if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; state.listType = null; }
+    if (state.inBlockquote) { pushHtml('</blockquote>'); state.inBlockquote = false; }
+    if (state.inTable) { pushHtml('</tbody></table></div>'); state.inTable = false; state.tableHasHead = false; }
+}
+
 function processBlockElement(line, state, htmlBuilder) {
     const pushHtml = (str) => { htmlBuilder.html += str + '\n'; };
 
     if (!line) {
-        if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; state.listType = null; }
-        if (state.inBlockquote) { pushHtml('</blockquote>'); state.inBlockquote = false; }
-        if (state.inTable) { pushHtml('</tbody></table></div>'); state.inTable = false; state.tableHasHead = false; }
+        _closeOpenBlocks(state, pushHtml);
         return;
     }
 
@@ -369,21 +376,7 @@ function processBlockElement(line, state, htmlBuilder) {
         return;
     }
 
-    const hMatch = line.match(/^(#{1,6})\s+(.*)/);
-    if (hMatch) {
-        if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; }
-        const level = hMatch[1].length;
-        const headingText = hMatch[2];
-        let slug = _slugifyHeading(headingText);
-        const pageMatch = headingText.match(/^Page\s+(\d+)/i);
-        if (pageMatch) {
-            slug = `page-${pageMatch[1]}`;
-        }
-        const idAttr = slug ? ` id="${slug}" class="heading-anchor"` : '';
-        pushHtml(`<h${level}${idAttr}>${parseInline(headingText)}</h${level}>`);
-        return;
-    }
-
+    if (_handleHeading(line, state, pushHtml)) return;
     if (_handleBlockquote(line, state, pushHtml)) return;
     if (_handleList(line, state, pushHtml)) return;
     if (_handleTable(line, state, pushHtml)) return;
@@ -526,4 +519,19 @@ function compileMarkdown(markdown) {
     }
 
     return _restoreSafeHtml(html);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        escapeHtml,
+        compileMarkdown,
+        _slugifyHeading,
+        _parseYamlFrontmatter,
+        _restoreSafeHtml,
+        _processLine,
+        parseInline,
+        replaceMarkdownLinks,
+        isSafePreviewUrl,
+        _escapeCssIdentifier
+    };
 }

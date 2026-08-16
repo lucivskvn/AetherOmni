@@ -32,7 +32,7 @@ class UpdateDocsTestCase(unittest.TestCase):
 
     def test_get_major_minor(self):
         result = get_major_minor()
-        self.assertTrue(isinstance(result, str))
+        self.assertIsInstance(result, str)
         self.assertIn(".", result)
 
     @patch("scripts.update_docs._git")
@@ -53,7 +53,7 @@ class UpdateDocsTestCase(unittest.TestCase):
 
     def test_get_test_count(self):
         count = get_test_count()
-        self.assertTrue(isinstance(count, str))
+        self.assertIsInstance(count, str)
         self.assertTrue(count.isdigit())
 
     def test_get_health_scores(self):

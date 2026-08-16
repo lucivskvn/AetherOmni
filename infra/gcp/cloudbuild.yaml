@@ -141,7 +141,18 @@ steps:
                 "User-Agent": "AetherOmni-CloudBuild-Gate",
             },
         )
-        check_name = "2. SonarQube Community Mainline Gate"
+        sonar_names = {
+            "3. SonarCloud Quality Gate",
+            "2. SonarCloud Quality Gate",
+            "SonarCloud Code Analysis",
+            "SonarCloud Quality Gate",
+            "2. SonarQube Community Mainline Gate",
+        }
+        semgrep_names = {
+            "4. Semgrep Cloud SAST",
+            "semgrep-cloud-platform",
+            "semgrep",
+        }
 
         for attempt in range(30):
             try:
@@ -150,16 +161,28 @@ steps:
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
                 print(f"GitHub quality-gate query attempt {attempt + 1} failed: {type(exc).__name__}")
             else:
-                checks = [item for item in payload.get("check_runs", []) if item.get("name") == check_name]
-                completed = [item for item in checks if item.get("status") == "completed"]
-                if completed:
-                    conclusion = completed[0].get("conclusion")
-                    print(f"GitHub mainline quality gate concluded: {conclusion}")
-                    raise SystemExit(0 if conclusion == "success" else 1)
-                print(f"Waiting for GitHub mainline quality gate (attempt {attempt + 1}/30)")
+                check_runs = payload.get("check_runs", [])
+                sonar_runs = [item for item in check_runs if item.get("name") in sonar_names]
+                semgrep_runs = [item for item in check_runs if item.get("name") in semgrep_names]
+
+                all_tracked = sonar_runs + semgrep_runs
+                completed = [item for item in all_tracked if item.get("status") == "completed"]
+                failed = [item for item in completed if item.get("conclusion") not in ("success", "neutral")]
+                if failed:
+                    print(f"Deployment blocked: Gate check '{failed[0].get('name')}' concluded '{failed[0].get('conclusion')}'.")
+                    raise SystemExit(1)
+
+                sonar_passed = any(item.get("status") == "completed" and item.get("conclusion") in ("success", "neutral") for item in sonar_runs)
+                semgrep_passed = any(item.get("status") == "completed" and item.get("conclusion") in ("success", "neutral") for item in semgrep_runs)
+
+                if sonar_passed and semgrep_passed:
+                    print("GitHub quality gate passed across SonarCloud and Semgrep Cloud SAST checks.")
+                    raise SystemExit(0)
+
+                print(f"Waiting for GitHub quality gate: SonarCloud passed={sonar_passed}, Semgrep passed={semgrep_passed} (attempt {attempt + 1}/30)")
             time.sleep(30)
 
-        print("Timed out waiting for the GitHub mainline quality gate", file=sys.stderr)
+        print("Timed out waiting for mandatory SonarCloud and Semgrep quality gates to pass", file=sys.stderr)
         raise SystemExit(1)
         PY
 

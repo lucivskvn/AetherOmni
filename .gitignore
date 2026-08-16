@@ -256,3 +256,12 @@ service-account*.json
 credentials*.json
 supabase/
 .supabase/
+
+# JS test infrastructure
+node_modules/
+coverage/js/lcov-report/
+coverage/js/*.html
+coverage/js/*.css
+coverage/js/*.js
+coverage/js/*.png
+# Keep coverage/js/lcov.info tracked for SonarCloud (generated in CI)

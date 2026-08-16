@@ -310,7 +310,7 @@
                     return;
                 }
 
-                const client = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
+                const client = globalThis.supabase ? globalThis.supabase.createClient(supabaseUrl, supabaseKey) : null;
                 if (!client) {
                     if (typeof globalThis.showClientSideAlert === 'function') {
                         globalThis.showClientSideAlert('Supabase SDK failed to load.', 'error');

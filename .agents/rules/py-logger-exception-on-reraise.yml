@@ -1,0 +1,11 @@
+id: py-logger-exception-on-reraise
+message: "Use `logger.exception(...)` instead of `logger.error(...)` when immediately re-raising an exception (Sonar S8572)."
+severity: error
+language: Python
+rule:
+  pattern: |
+    try:
+        $$$BODY
+    except $$$EXC:
+        logger.error($$$ARGS)
+        raise

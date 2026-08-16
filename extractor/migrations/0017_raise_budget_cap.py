@@ -10,8 +10,8 @@ from django.db import migrations
 
 
 def raise_budget_cap(apps, schema_editor):
-    SystemSettings = apps.get_model("extractor", "SystemSettings")
-    obj, _created = SystemSettings.objects.get_or_create(id=1)
+    settings_model = apps.get_model("extractor", "SystemSettings")
+    obj, _created = settings_model.objects.get_or_create(id=1)
     # Raise if it's at or below $10 (covers the $5 live value and the $10 default).
     # Does NOT override a custom value already set above $10.
     if obj.monthly_budget_usd <= Decimal("10.00"):

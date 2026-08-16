@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_GEMINI_FLASH_LITE = "gemini-2.5-flash-lite"
 MODEL_GEMINI_FLASH = "gemini-2.5-flash"
+MODEL_GEMINI_PRO = "gemini-2.5-pro"
 MODEL_OPENROUTER_FREE = "openrouter/free"
 _NOT_FOUND = "not found"
 PREFIX_GOOGLE = "google/"
@@ -447,7 +448,7 @@ KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
     {
         MODEL_GEMINI_FLASH,
         MODEL_GEMINI_FLASH_LITE,
-        "gemini-2.5-pro",
+        MODEL_GEMINI_PRO,
         "gemini-3.1-pro",
         "auto",
     }
@@ -474,7 +475,7 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
             MODEL_GEMINI_FLASH_LITE,  # $0.038/1M
             "gemini-2.0-flash",
             "gemini-1.5-flash",
-            "gemini-2.5-pro",
+            MODEL_GEMINI_PRO,
         ]
     else:
         candidates = [
@@ -483,7 +484,7 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
             "gemini-2.0-flash-lite",
             "gemini-2.0-flash",
             "gemini-1.5-flash",
-            "gemini-2.5-pro",
+            MODEL_GEMINI_PRO,
         ]
 
     selected_model = MODEL_GEMINI_FLASH
@@ -1309,7 +1310,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
             logger.exception("[Refinement Pass 2] JSON Parsing error")
 
         pre_json = refined_text[: json_match.start()].rstrip()
-        pre_json = re.sub(r"(?:\r?\n)#[^\r\n]*", "", pre_json).rstrip()
+        pre_json = re.sub(r"\r?\n#[^\r\n]*", "", pre_json).rstrip()
         refined_text = pre_json
 
     # Clean any trailing or leading stray backticks, spaces, or lines from markdown split/model boundaries

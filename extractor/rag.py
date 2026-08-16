@@ -52,7 +52,7 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
     # 1. Normalize line endings and extract structural blocks
     # Break on major structural delimiters (page dividers, markdown headings, chapters)
     raw_blocks = re.split(
-        r"(?:\n[ \t]*---[ \t]*\n|\n(?=##[ \t]+Page[ \t]+\d+)|\n(?=#{2,3}[ \t]+(?:Surah|Hadith|Chapter|Section|Bab)\b))",
+        r"\n[ \t]*---[ \t]*\n|\n(?=#{2,3}\s)",
         text,
     )
     blocks = [b.strip() for b in raw_blocks if b.strip()]
@@ -478,7 +478,7 @@ def query_semantic_knowledge_rag(
         dense_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
         sparse_chunks = surreal_db.search_chunks_bm25(query_cleaned, limit=top_k, allowed_doc_uuids=allowed_uuids)
         matching_chunks = reciprocal_rank_fusion(dense_chunks, sparse_chunks, k=60, top_k=top_k)
-    except (ConnectionError, OSError, RuntimeError, TimeoutError):
+    except (OSError, RuntimeError):
         logger.exception("[RAG Search] Connection error to SurrealDB.")
         matching_chunks = []
 

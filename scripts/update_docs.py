@@ -228,7 +228,7 @@ def get_health_scores() -> dict[str, str]:
                     "strict": str(round(float(data.get("strict_score", 0)), 1)),
                     "overall": str(round(float(data.get("overall_score", 0)), 1)),
                 }
-        except (json.JSONDecodeError, OSError, ValueError):
+        except (OSError, ValueError):
             pass
 
     if score_file.exists():
@@ -240,7 +240,7 @@ def get_health_scores() -> dict[str, str]:
                 "objective": str(round(float(data.get("objective", 0)), 1)),
                 "strict": str(round(float(data.get("strict", 0)), 1)),
             }
-        except (json.JSONDecodeError, OSError, ValueError):
+        except (OSError, ValueError):
             pass
 
     return {}
@@ -284,23 +284,22 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
 
     text, replaced = _replace_sentinel(text, "badges", badge_block)
     if not replaced:
-        text = re.sub(
-            r"\[!\[Version\]\(https://img\.shields\.io/badge/version-[^\)]+\)\]\([^\)]*\)",
-            f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)]"
-            f"(https://github.com/lucivskvn/AetherOmni)",
-            text,
-        )
-        text = re.sub(
-            r"\[!\[Last Updated\]\(https://img\.shields\.io/badge/last%20updated-[^\)]+\)\]\([^\)]*\)",
-            f"[![Last Updated](https://img.shields.io/badge/last%20updated-"
-            f"{v['today'].replace('-', '--')}-green.svg)](#)",
-            text,
-        )
-        text = re.sub(
-            r"\[!\[Commit\]\(https://img\.shields\.io/badge/commit-[^\)]+\)\]\([^\)]*\)",
-            f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](#)",
-            text,
-        )
+        lines = []
+        for line in text.splitlines(keepends=True):
+            if "[![Version](https://img.shields.io/badge/version-" in line:
+                line = (
+                    f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)]"
+                    f"(https://github.com/lucivskvn/AetherOmni)\n"
+                )
+            elif "[![Last Updated](https://img.shields.io/badge/last%20updated-" in line:
+                line = (
+                    f"[![Last Updated](https://img.shields.io/badge/last%20updated-"
+                    f"{v['today'].replace('-', '--')}-green.svg)](#)\n"
+                )
+            elif "[![Commit](https://img.shields.io/badge/commit-" in line:
+                line = f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](#)\n"
+            lines.append(line)
+        text = "".join(lines)
 
     # Test count
     if test_count:

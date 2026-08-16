@@ -22,13 +22,15 @@ class FileUtilsTestCase(TestCase):
         file_obj = io.BytesIO(content)
         self.assertEqual(file_utils.calculate_file_sha256(file_obj), expected_hash)
 
-        # Test with string path
+        # Test with string path via calculate_filepath_sha256
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             temp_file.write(content)
             temp_file_path = temp_file.name
 
         try:
-            self.assertEqual(file_utils.calculate_file_sha256(temp_file_path), expected_hash)
+            self.assertEqual(file_utils.calculate_filepath_sha256(temp_file_path), expected_hash)
+            with open(temp_file_path, "rb") as f:
+                self.assertEqual(file_utils.calculate_file_sha256(f), expected_hash)
         finally:
             os.remove(temp_file_path)
 
