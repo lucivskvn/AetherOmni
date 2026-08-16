@@ -96,7 +96,7 @@ def _detect_gcloud_project_id() -> str | None:
         if res.returncode == 0 and res.stdout.strip():
             logger.info("[Deployment] Auto-detected local gcloud project ID: %s", res.stdout.strip())
             return res.stdout.strip()
-    except (subprocess.SubprocessError, OSError, FileNotFoundError) as proc_err:
+    except (subprocess.SubprocessError, OSError) as proc_err:
         logger.debug("[Deployment] gcloud CLI project lookup skipped: %s", proc_err)
     return None
 

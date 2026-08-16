@@ -4,20 +4,20 @@
 # ==============================================================================
 # Usage: ./scripts/verify-pipeline.sh [project_dir] [--fix|--autofix]
 
-set -e
+set -euo pipefail
 
 PROJECT_DIR="${1:-$(pwd)}"
-if [ -d "$PROJECT_DIR" ]; then
+if [[ -d "$PROJECT_DIR" ]]; then
     cd "$PROJECT_DIR"
 fi
 
 AUTOFIX_ARG=""
 FAST_ARG=""
 for arg in "$@"; do
-    if [ "$arg" == "--fix" ] || [ "$arg" == "--autofix" ]; then
+    if [[ "$arg" == "--fix" ]] || [[ "$arg" == "--autofix" ]]; then
         AUTOFIX_ARG="--fix"
     fi
-    if [ "$arg" == "--docs" ] || [ "$arg" == "--docs-only" ] || [ "$arg" == "--fast" ]; then
+    if [[ "$arg" == "--docs" ]] || [[ "$arg" == "--docs-only" ]] || [[ "$arg" == "--fast" ]]; then
         FAST_ARG="--fast"
     fi
 done
@@ -31,7 +31,7 @@ echo "======================================================================"
 EXIT_CODE=0
 
 # Load .env file if available
-if [ -f ".env" ]; then
+if [[ -f ".env" ]]; then
     set -a
     # shellcheck disable=SC1091  # .env is optional and not available at static analysis time
     source .env 2>/dev/null || true
@@ -42,11 +42,11 @@ fi
 _gate_summary() {
     echo ""
     echo "======================================================================"
-    if [ "${EXIT_CODE:-0}" -eq 0 ]; then
+    if [[ "${EXIT_CODE:-0}" -eq 0 ]]; then
         echo "✅ DEVSECOPS PIPELINE PASSED: All Quality Gates & Cloud Scans Succeeded Cleanly!"
         exit 0
     else
-        echo "❌ DEVSECOPS PIPELINE FAILED: Issues Detected. Check Logs Above."
+        echo "❌ DEVSECOPS PIPELINE FAILED: Issues Detected. Check Logs Above." >&2
         exit 1
     fi
 }
@@ -68,7 +68,7 @@ if git rev-parse --is-inside-work-tree &> /dev/null && git rev-parse --verify HE
             git stash push -m "verify-pipeline-auto-stash" --include-untracked &>/dev/null && STASHED=true
         fi
         git pull --rebase origin "$CURRENT_BRANCH" 2>&1 || echo "   ⚠️ Git pull rebase skipped (no remote changes or uncommitted work)."
-        if [ "$STASHED" = true ]; then
+        if [[ "$STASHED" = true ]]; then
             git stash pop &>/dev/null || echo "   ⚠️ Could not restore stash — check manually."
         fi
     fi
@@ -77,10 +77,10 @@ fi
 # ── STEP 1: LOCAL QUALITY & DEVSECOPS VERIFICATION ────────────────────────────
 echo ""
 echo "⚙️ [Step 1] Executing Local Quality & DevSecOps Verification Suite..."
-if [ -f "run_checks.sh" ]; then
+if [[ -f "run_checks.sh" ]]; then
     bash run_checks.sh $AUTOFIX_ARG $FAST_ARG || EXIT_CODE=1
 else
-    echo "   ❌ run_checks.sh not found!"
+    echo "   ❌ run_checks.sh not found!" >&2
     EXIT_CODE=1
 fi
 
@@ -91,7 +91,7 @@ echo "📊 [Step 2] Submitting to Remote SonarCloud Quality Gate..."
 SONAR_HOST="https://sonarcloud.io"
 TOKEN="${SONAR_REMOTE_TOKEN:-${SONAR_TOKEN:-}}"
 
-if [ -n "$TOKEN" ]; then
+if [[ -n "$TOKEN" ]]; then
     NPROC=$(nproc 2>/dev/null || echo "4")
     LIMITED_THREADS=$(( NPROC > 4 ? 4 : NPROC ))
 
@@ -113,11 +113,7 @@ fi
 echo ""
 echo "🐙 [Step 3] Verifying GitHub CLI Integration & PR Status..."
 
-if command -v gh &> /dev/null; then
-    if gh auth status &> /dev/null; then
-        if git remote &> /dev/null && [ -n "$(git remote 2>/dev/null)" ]; then
-            gh pr status >/dev/null 2>&1 || true
-            gh run list --limit 3 2>/dev/null || true
-        fi
-    fi
+if command -v gh &> /dev/null && gh auth status &> /dev/null && git remote &> /dev/null && [[ -n "$(git remote 2>/dev/null)" ]]; then
+    gh pr status >/dev/null 2>&1 || true
+    gh run list --limit 3 2>/dev/null || true
 fi
