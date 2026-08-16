@@ -2032,7 +2032,7 @@ def register_view(request):
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         supabase_key = getattr(settings, "SUPABASE_PUBLIC_KEY", "")
 
-        error_msg = _validate_registration_input(email, password, confirm_password, supabase_url, supabase_key)
+        error_msg = _validate_registration_inputs(email, password, confirm_password, supabase_url, supabase_key)
         if error_msg:
             messages.error(request, error_msg)
             return render(request, TEMPLATE_REGISTER)
