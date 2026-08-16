@@ -2,15 +2,14 @@
 # GITHUB ACTIONS CI PIPELINE — CLOUD-ONLY QA GATE
 # ==============================================================================
 # Architecture:
-#   All security scanning and quality gating is delegated exclusively to
-#   cloud services. No local SAST (bandit, ast-grep) in CI — cloud scanners
-#   run more comprehensive rulesets server-side.
-#
-#   Phase 1 ─ Pre-Scan          → Hadolint Dockerfile lint + shell syntax
+#   Phase 1 ─ Pre-Scan          → Hadolint Dockerfile lint + ShellCheck
+#                                  AST-Grep custom patterns + pip-audit supply chain
+#                                  surreal validate SurrealQL schema
 #   Phase 2 ─ Tests & Coverage  → ruff (linting) + eslint (linting)
+#                                  bandit (Python SAST) + mypy (type checking)
 #                                  Python tests → coverage.xml
 #                                  JS tests     → coverage/js/lcov.info
-#   Phase 3 ─ SonarCloud Gate   → Full SAST + coverage ingestion + quality gate
+#   Phase 3 ─ SonarCloud Gate   → Full cloud SAST + coverage ingestion + quality gate
 #
 # Note: Semgrep Cloud SAST is executed directly via Semgrep GitHub App.
 #
@@ -48,13 +47,59 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Dockerfile & Script Validation
+      - name: Dockerfile & Script Validation (Hadolint)
         run: |
           if [[ -f Dockerfile ]]; then
             docker run --rm -i hadolint/hadolint@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d hadolint - < Dockerfile
           fi
           if [[ -f scripts/verify-pipeline.sh ]]; then
             bash -n scripts/verify-pipeline.sh
+          fi
+
+      - name: ShellCheck Shell Script Audit
+        run: |
+          if command -v shellcheck &>/dev/null; then
+            shellcheck run_checks.sh scripts/*.sh
+          else
+            sudo apt-get install -y --no-install-recommends shellcheck
+            shellcheck run_checks.sh scripts/*.sh
+          fi
+
+      - name: AST-Grep Custom Pattern Scan
+        run: |
+          if ! command -v ast-grep &>/dev/null; then
+            curl -fsSL https://github.com/ast-grep/ast-grep/releases/latest/download/ast-grep-x86_64-unknown-linux-musl.tar.gz \
+              | tar -xz -C /usr/local/bin ast-grep
+          fi
+          AST_OUTPUT=$(ast-grep scan --color never 2>&1)
+          AST_ERRORS=$(echo "$AST_OUTPUT" | grep -c '^error' || true)
+          if [[ "$AST_ERRORS" -gt 0 ]]; then
+            echo "$AST_OUTPUT"
+            echo "::error title=AST-Grep::$AST_ERRORS pattern error(s) found. Fix before merging."
+            exit 1
+          fi
+          echo "AST-Grep scan: 0 errors"
+
+      - name: Setup Python (for pip-audit and surreal validate)
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+
+      - name: Supply Chain Audit (pip-audit)
+        run: |
+          pip install --no-cache-dir pip-audit==2.10.1 --quiet
+          pip-audit -r requirements.txt
+
+      - name: SurrealQL Schema Validation
+        run: |
+          if command -v surreal &>/dev/null; then
+            SURQL_FILES=$(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" | tr '\n' ' ')
+            if [[ -n "$SURQL_FILES" ]]; then
+              # shellcheck disable=SC2086
+              surreal validate $SURQL_FILES
+            fi
+          else
+            echo "::notice title=SurrealQL::surreal CLI not installed in runner. Install for local validation."
           fi
 
   # ============================================================================
@@ -114,23 +159,25 @@ jobs:
         run: |
           pip install --no-cache-dir --only-binary :all: --upgrade pip==26.0.1
           pip install --no-cache-dir --only-binary :all: \
+            bandit==1.9.4 \
             bleach==6.4.0 \
             coverage==7.15.4 \
-            "django-storages[google]==1.14.6" \
             django==6.0.8 \
+            django-storages[google]==1.14.6 \
             google-cloud-tasks==2.24.0 \
             google-genai==2.17.0 \
             gunicorn==26.0.0 \
             httpx==0.28.1 \
             markdown==3.10.3 \
+            mypy==2.3.0 \
             protobuf==7.35.1 \
-            "psycopg[binary]==3.3.4" \
+            psycopg[binary]==3.3.4 \
             python-dotenv==1.2.2 \
             pyyaml==6.0.3 \
             ruff==0.16.2 \
+            sentry-sdk[django]==2.22.0 \
             sqlparse==0.5.5 \
             surrealdb==2.0.0 \
-            "sentry-sdk[django]==2.22.0" \
             whitenoise==6.12.0 --quiet
 
       - name: Install Node Dependencies
@@ -142,6 +189,13 @@ jobs:
 
       - name: Code Quality & Cognitive Complexity Gate
         run: python scripts/check_code_quality.py
+
+      - name: Bandit Python Security Audit
+        run: python -m bandit -c bandit.yaml -r extractor/ core/ scripts/ -ll
+
+      - name: Mypy Static Type Check
+        run: python -m mypy --ignore-missing-imports core/ extractor/
+        continue-on-error: true  # Non-blocking until stubs are complete; findings visible in annotations
 
       - name: JavaScript Lint (eslint)
         run: ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"

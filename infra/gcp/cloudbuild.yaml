@@ -97,7 +97,6 @@ steps:
         /kaniko/executor \
           --context=dir:///workspace \
           --dockerfile=/workspace/Dockerfile \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:latest \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$SHORT_SHA \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
           --cache=true \
