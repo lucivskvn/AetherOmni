@@ -274,13 +274,13 @@ function initDeepLinkScroll(container) {
 
 function _slugifyHeading(text) {
     if (!text || typeof text !== 'string') return '';
-    return text.toLowerCase()
+    let slug = text.toLowerCase()
         .replace(/[^a-z0-9\u0600-\u06FF\s-]/gu, '')
         .trim()
-        .replace(/[\s_-]+/g, '-')
-        .replace(/^-+/, '')
-        .replace(/-+$/, '')
-        .slice(0, 50);
+        .replace(/[\s_-]+/g, '-');
+    while (slug.startsWith('-')) slug = slug.slice(1);
+    while (slug.endsWith('-')) slug = slug.slice(0, -1);
+    return slug.slice(0, 50);
 }
 
 function _handleHeading(line, state, pushHtml) {

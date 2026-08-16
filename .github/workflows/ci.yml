@@ -51,10 +51,10 @@ jobs:
 
       - name: Dockerfile & Script Validation
         run: |
-          if [ -f Dockerfile ]; then
+          if [[ -f Dockerfile ]]; then
             docker run --rm -i hadolint/hadolint hadolint - < Dockerfile
           fi
-          if [ -f scripts/verify-pipeline.sh ]; then
+          if [[ -f scripts/verify-pipeline.sh ]]; then
             bash -n scripts/verify-pipeline.sh
           fi
 
