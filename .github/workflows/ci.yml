@@ -1,12 +1,17 @@
 # ==============================================================================
-# GITHUB ACTIONS ENTERPRISE CI PIPELINE (SONARCLOUD + GITHUB PUBLIC REPO)
+# GITHUB ACTIONS ENTERPRISE CI PIPELINE (SONARCLOUD + SEMGREP CLOUD)
 # ==============================================================================
 # Security & Performance Standards:
 # - Pinned action releases maintained by Dependabot
 # - Least-privilege repository token (contents: read, pull-requests: write)
 # - Bounded job execution time
-# - Dual-Layer Caching (Dependency & SonarCloud Engine)
-# - 3-Phase Gatekeeper (Pre-Scan -> SonarCloud SAST & Tests -> Quality Gate)
+# - Dual-Layer Caching (Dependency, SonarCloud Engine & Semgrep rules)
+# - 4-Phase Gatekeeper:
+#     1. Pre-Scan       → Hadolint + script syntax validation
+#     2. SonarCloud     → SAST + Django tests + coverage + quality gate
+#     3. Semgrep Cloud  → Pro rules + secrets + custom policies (Cloud ruleset)
+#     4. (cloud checks) → CodeQL, Aikido, GitGuardian run in parallel
+# Required secrets: SONAR_TOKEN, SEMGREP_APP_TOKEN
 # ==============================================================================
 name: DevSecOps CI Pipeline
 
@@ -25,6 +30,7 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
+  security-events: write  # Required for Semgrep SARIF upload
 
 jobs:
   pre-scan-validation:
@@ -98,7 +104,7 @@ jobs:
           pip install -r requirements.txt coverage==7.15.4 --quiet
           python -m venv .ci-security-tools
           .ci-security-tools/bin/pip install --upgrade pip --quiet
-          .ci-security-tools/bin/pip install ast-grep-cli==0.45.1 ruff==0.16.2 bandit==1.9.4 semgrep==1.172.0 --quiet
+          .ci-security-tools/bin/pip install ast-grep-cli==0.45.1 ruff==0.16.2 bandit==1.9.4 --quiet
 
       - name: Execute Shift-Left Security & Automated Tests
         run: |
@@ -107,7 +113,6 @@ jobs:
           npx -y eslint --max-warnings 0 static/js/**/*.js
           .ci-security-tools/bin/ast-grep scan --color never
           yamllint bandit.yaml docker-compose.yml
-          .ci-security-tools/bin/semgrep scan --config=auto --quiet --error
           .ci-security-tools/bin/bandit -c bandit.yaml -r core extractor
           python scripts/verify_templates_and_assets.py
           python manage.py collectstatic --noinput
@@ -218,3 +223,48 @@ jobs:
             echo "::error title=SonarCloud Quality Gate ${result}::Review ${SONAR_DASHBOARD_URL}"
             exit 1
           fi
+
+  semgrep-cloud-sast:
+    name: 3. Semgrep Cloud SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: pre-scan-validation
+    # Skip on Dependabot PRs — SEMGREP_APP_TOKEN is not available to forked PRs
+    if: |
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate SEMGREP_APP_TOKEN
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SEMGREP_APP_TOKEN:-}" ]; then
+            echo "::error title=Missing SEMGREP_APP_TOKEN::Generate a token at https://semgrep.dev/orgs/-/settings/tokens and store it as the SEMGREP_APP_TOKEN repository secret."
+            exit 1
+          fi
+          echo "SEMGREP_APP_TOKEN is present"
+
+      - name: Run Semgrep Cloud Analysis
+        uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        with:
+          # publishToken connects to Semgrep Cloud and pulls all configured
+          # Pro rules, secrets detection, and custom policies from the dashboard.
+          # Results are posted back as PR comments and the SARIF is uploaded.
+          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+          publishDeployment: ${{ github.repository_id }}
+          generateSarif: "1"
+
+      - name: Upload Semgrep SARIF to GitHub Advanced Security
+        uses: github/codeql-action/upload-sarif@4b6aa0b07da05d6e43d0e5f9c8596a6532ce8b37 # v3.28.16
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+        continue-on-error: true
