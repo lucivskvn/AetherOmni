@@ -56,6 +56,8 @@ from django.utils.text import slugify
 logger = logging.getLogger(__name__)
 
 APPLICATION_JSON = "application/json"
+NO_COMPLETED_DOCS_MSG = "No completed documents selected for export bundle."
+
 
 # ── Fallback exchange rates (used if the external API is offline) ─────────────
 # Approximate rates as of mid-2026 — stale but far better than a blocking 5s timeout.
@@ -663,7 +665,7 @@ def generate_curated_zip_bundle(
         docs_list = _get_surreal_docs(document_ids, user, actor_id=actor_id)
 
     if not docs_list:
-        raise ValueError("No completed documents selected for export bundle.")
+        raise ValueError(NO_COMPLETED_DOCS_MSG)
 
     zip_buffer = BytesIO()
 
@@ -832,6 +834,256 @@ def generate_sft_jsonl_bundle(
     pairs = generate_sft_dataset_pairs(document_ids, user, actor_id=actor_id, limit=5000)
     lines = [json.dumps(p, ensure_ascii=False) for p in pairs]
     return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _init_sqlite_export_schema(cursor: Any) -> None:
+    cursor.execute("""
+        CREATE TABLE documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doc_uuid TEXT UNIQUE,
+            title TEXT,
+            original_filename TEXT,
+            author TEXT,
+            language TEXT,
+            publisher TEXT,
+            publication_year TEXT,
+            doi TEXT,
+            license_type TEXT,
+            file_hash TEXT,
+            page_count INTEGER,
+            cost_usd REAL,
+            created_at TEXT
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doc_uuid TEXT,
+            chunk_index INTEGER,
+            page_number INTEGER,
+            chapter_title TEXT,
+            anchor_id TEXT,
+            content TEXT,
+            FOREIGN KEY (doc_uuid) REFERENCES documents(doc_uuid)
+        );
+    """)
+    cursor.execute("""
+        CREATE VIRTUAL TABLE chunks_fts USING fts5(
+            content,
+            title,
+            author,
+            doc_uuid UNINDEXED,
+            page_number UNINDEXED,
+            anchor_id UNINDEXED,
+            tokenize='porter unicode61'
+        );
+    """)
+
+
+def _insert_sqlite_document(cursor: Any, doc: Any) -> str:
+    doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
+    title = str(getattr(doc, "title", None) or "Untitled")
+    author = str(getattr(doc, "author", None) or "Unknown")
+    cursor.execute(
+        """
+        INSERT INTO documents (
+            doc_uuid, title, original_filename, author, language,
+            publisher, publication_year, doi, license_type, file_hash,
+            page_count, cost_usd, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            doc_uuid,
+            title,
+            str(getattr(doc, "original_filename", None) or ""),
+            author,
+            str(getattr(doc, "language", None) or "en"),
+            str(getattr(doc, "publisher", None) or ""),
+            str(getattr(doc, "publication_year", None) or ""),
+            str(getattr(doc, "doi", None) or ""),
+            str(getattr(doc, "license_type", None) or ""),
+            str(getattr(doc, "file_hash", None) or ""),
+            int(getattr(doc, "page_count", 1) or 1),
+            float(getattr(doc, "cost_usd", 0.0) or 0.0),
+            datetime.now(UTC).isoformat(),
+        ),
+    )
+    return doc_uuid
+
+
+def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str) -> None:
+    title = str(getattr(doc, "title", None) or "Untitled")
+    author = str(getattr(doc, "author", None) or "Unknown")
+    chunks = _get_doc_chunks(doc, doc_uuid, limit=10000)
+    for chunk in chunks:
+        content_str = str(chunk.get("content") or "").strip()
+        if not content_str:
+            continue
+        p_num = int(chunk.get("page_number") or 1)
+        chap = str(chunk.get("chapter_title") or "")
+        anch = str(chunk.get("anchor_id") or f"page-{p_num}")
+        c_idx = int(chunk.get("chunk_index") or 0)
+
+        cursor.execute(
+            """
+            INSERT INTO chunks (
+                doc_uuid, chunk_index, page_number, chapter_title, anchor_id, content
+            ) VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (doc_uuid, c_idx, p_num, chap, anch, content_str),
+        )
+        cursor.execute(
+            """
+            INSERT INTO chunks_fts (
+                content, title, author, doc_uuid, page_number, anchor_id
+            ) VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (content_str, title, author, doc_uuid, str(p_num), anch),
+        )
+
+
+def _serialize_sqlite_conn(conn: Any) -> bytes:
+    import os
+    import sqlite3
+    import tempfile
+
+    if hasattr(conn, "serialize"):
+        raw_sqlite_bytes = conn.serialize()
+        conn.close()
+        return raw_sqlite_bytes
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_f:
+        tmp_path = tmp_f.name
+
+    file_conn = sqlite3.connect(tmp_path)
+    conn.backup(file_conn)
+    file_conn.close()
+    conn.close()
+
+    with open(tmp_path, "rb") as f:
+        raw_sqlite_bytes = f.read()
+    try:
+        os.remove(tmp_path)
+    except OSError:
+        pass
+    return raw_sqlite_bytes
+
+
+def generate_curated_sqlite_bundle(
+    document_ids: list[int] | list[str],
+    user: Any = None,
+    actor_id: str | None = None,
+) -> bytes:
+    """
+    Generates a standalone, self-contained SQLite database bundle with full-text search (FTS5).
+    Includes 'documents', 'chunks', and virtual full-text search table 'chunks_fts'.
+    Enforces user boundaries respecting tenant isolation.
+    """
+    import sqlite3
+
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        docs_list = _get_offline_docs(document_ids, user)
+    else:
+        docs_list = _get_surreal_docs(document_ids, user, actor_id=actor_id)
+
+    if not docs_list:
+        raise ValueError(NO_COMPLETED_DOCS_MSG)
+
+    conn = sqlite3.connect(":memory:")
+    cursor = conn.cursor()
+    _init_sqlite_export_schema(cursor)
+
+    for doc in docs_list:
+        doc_uuid = _insert_sqlite_document(cursor, doc)
+        _insert_sqlite_chunks(cursor, doc, doc_uuid)
+
+    conn.commit()
+    return _serialize_sqlite_conn(conn)
+
+
+def _build_csv_row_for_doc(doc: Any) -> list[Any]:
+    doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
+    raw_content = (
+        getattr(doc, "refined_markdown", None)
+        or getattr(doc, "cleaned_markdown", None)
+        or getattr(doc, "raw_markdown", None)
+        or ""
+    )
+    excerpt = (raw_content[:500] + "...") if len(raw_content) > 500 else raw_content
+    clean_excerpt = " ".join(excerpt.split())
+
+    return [
+        doc_uuid,
+        getattr(doc, "title", None) or "Untitled",
+        getattr(doc, "author", None) or "Unknown",
+        getattr(doc, "language", None) or "en",
+        getattr(doc, "document_type", None) or "PDF",
+        getattr(doc, "publisher", None) or "",
+        getattr(doc, "publication_year", None) or "",
+        getattr(doc, "doi", None) or "",
+        getattr(doc, "license_type", None) or "",
+        getattr(doc, "file_hash", None) or "",
+        int(getattr(doc, "page_count", 1) or 1),
+        float(getattr(doc, "cost_usd", 0.0) or 0.0),
+        int(getattr(doc, "input_tokens", 0) or 0),
+        int(getattr(doc, "output_tokens", 0) or 0),
+        str(getattr(doc, "created_at", "")),
+        clean_excerpt,
+    ]
+
+
+def generate_curated_csv_bundle(
+    document_ids: list[int] | list[str],
+    user: Any = None,
+    actor_id: str | None = None,
+) -> bytes:
+    """
+    Generates a structured CSV export containing legal metadata, copyright info, token metrics,
+    and excerpt content for all selected documents.
+    """
+    import csv
+    import io
+
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        docs_list = _get_offline_docs(document_ids, user)
+    else:
+        docs_list = _get_surreal_docs(document_ids, user, actor_id=actor_id)
+
+    if not docs_list:
+        raise ValueError(NO_COMPLETED_DOCS_MSG)
+
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+
+    writer.writerow(
+        [
+            "Document UUID",
+            "Title",
+            "Author",
+            "Language",
+            "Document Type",
+            "Publisher",
+            "Publication Year",
+            "DOI",
+            "License Type",
+            "SHA-256 Hash",
+            "Page Count",
+            "AI Spend (USD)",
+            "Input Tokens",
+            "Output Tokens",
+            "Created At",
+            "Content Excerpt",
+        ]
+    )
+
+    for doc in docs_list:
+        writer.writerow(_build_csv_row_for_doc(doc))
+
+    return output.getvalue().encode("utf-8")
 
 
 def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: int = 86400) -> int:

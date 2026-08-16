@@ -735,12 +735,18 @@ function initializeExportActions() {
         clearAllBtn.addEventListener('click', () => selectAllCheckbox(false));
     }
 
-    // Reset action back to default export zip URL if submitted via the primary Build Curated Bundle button
+    // Dynamic multi-format export action routing based on format selector
+    const exportFormatSelect = document.getElementById('export-format');
     if (exportForm) {
         exportForm.addEventListener('submit', () => {
             const actionInput = exportForm.querySelector('input[name="action"]');
             if (!actionInput) {
-                exportForm.action = '/export/';
+                if (exportFormatSelect) {
+                    const selectedOpt = exportFormatSelect.options[exportFormatSelect.selectedIndex];
+                    exportForm.action = selectedOpt.dataset.action || '/export/';
+                } else {
+                    exportForm.action = '/export/';
+                }
             }
         });
     }
