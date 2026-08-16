@@ -301,6 +301,16 @@ def _extract_zipxml_cell_value(c_el: Any, shared_strings: list[str]) -> str:
     return v_el.text
 
 
+def _extract_sheet_rows_from_xml(sheet_tree, shared_strings: list[str]) -> list[list[str]]:
+    """Helper to extract non-empty rows from an Excel worksheet XML tree."""
+    rows: list[list[str]] = []
+    for row_el in sheet_tree.findall(".//{*}row"):
+        row_cells = [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")]
+        if any(row_cells):
+            rows.append(row_cells)
+    return rows
+
+
 def _parse_excel_zipxml(file_path: str) -> str | None:
     """Pure standard-library ZIP+XML fallback for .xlsx parsing."""
     try:
@@ -319,11 +329,7 @@ def _parse_excel_zipxml(file_path: str) -> str | None:
             sheets_md: list[str] = []
             for s_idx, s_file in enumerate(sheet_files, 1):
                 sheet_tree = ET.fromstring(zf.read(s_file))  # nosec B314 # noqa: S314
-                rows: list[list[str]] = []
-                for row_el in sheet_tree.findall(".//{*}row"):
-                    row_cells = [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")]
-                    if any(row_cells):
-                        rows.append(row_cells)
+                rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings)
                 formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows)
                 if formatted:
                     sheets_md.append(formatted)
@@ -770,6 +776,26 @@ def _get_doc_chunks(doc: Any, doc_uuid: str, limit: int) -> list[dict[str, Any]]
         return []
 
 
+def _collect_pairs_for_document(doc, limit: int, current_count: int) -> list[dict[str, Any]]:
+    """Helper to retrieve chunks and build SFT pairs for a single document."""
+    doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
+    doc_info = (
+        doc_uuid,
+        getattr(doc, "title", None) or "Document",
+        getattr(doc, "author", None) or "Author",
+        getattr(doc, "language", None) or "en",
+    )
+    doc_pairs: list[dict[str, Any]] = []
+    chunks = _get_doc_chunks(doc, doc_uuid, limit)
+    for chunk_item in chunks[:limit]:
+        pair = _build_sft_pair(doc_info, chunk_item)
+        if pair:
+            doc_pairs.append(pair)
+        if current_count + len(doc_pairs) >= limit:
+            break
+    return doc_pairs
+
+
 def generate_sft_dataset_pairs(
     document_ids: list[int] | list[str],
     user: Any = None,
@@ -788,23 +814,9 @@ def generate_sft_dataset_pairs(
         docs_list = _get_surreal_docs(document_ids, user, actor_id=actor_id)
 
     pairs: list[dict[str, Any]] = []
-
     for doc in docs_list:
-        doc_uuid = str(getattr(doc, "doc_uuid", None) or getattr(doc, "uuid", None) or doc.id)
-        doc_info = (
-            doc_uuid,
-            getattr(doc, "title", None) or "Document",
-            getattr(doc, "author", None) or "Author",
-            getattr(doc, "language", None) or "en",
-        )
-
-        chunks = _get_doc_chunks(doc, doc_uuid, limit)
-        for chunk_item in chunks[:limit]:
-            pair = _build_sft_pair(doc_info, chunk_item)
-            if pair:
-                pairs.append(pair)
-            if len(pairs) >= limit:
-                break
+        doc_pairs = _collect_pairs_for_document(doc, limit, len(pairs))
+        pairs.extend(doc_pairs)
         if len(pairs) >= limit:
             break
 
