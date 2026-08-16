@@ -159,6 +159,10 @@ echo -n "https://supabase.fainko.cloud" | gcloud secrets versions add SUPABASE_U
 
 gcloud secrets create SUPABASE_PUBLIC_KEY --replication-policy="automatic"
 echo -n "YOUR_SUPABASE_PUBLIC_KEY" | gcloud secrets versions add SUPABASE_PUBLIC_KEY --data-file=-
+
+# 6. Sentry Observability DSN (optional)
+gcloud secrets create SENTRY_DSN --replication-policy="automatic"
+echo -n "YOUR_SENTRY_DSN" | gcloud secrets versions add SENTRY_DSN --data-file=-
 ```
 
 ### B. Grant Secret Access to the Service Account
