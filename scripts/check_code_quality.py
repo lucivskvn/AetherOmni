@@ -29,9 +29,13 @@ def _node_has_complexity_increment(node: ast.AST) -> bool:
     )
 
 
+def _is_nested_callable(node: ast.AST, func_node: ast.AST) -> bool:
+    return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node != func_node
+
+
 def _calculate_sub_complexity(node: ast.AST, current_nesting: int, func_node: ast.AST) -> int:
     added = 0
-    if _node_has_complexity_increment(node):
+    if _node_has_complexity_increment(node) or _is_nested_callable(node, func_node):
         added += 1 + current_nesting
         for child in ast.iter_child_nodes(node):
             added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
@@ -39,10 +43,6 @@ def _calculate_sub_complexity(node: ast.AST, current_nesting: int, func_node: as
         added += len(node.values) - 1
         for child in ast.iter_child_nodes(node):
             added += _calculate_sub_complexity(child, current_nesting, func_node)
-    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node != func_node:
-        added += 1 + current_nesting
-        for child in ast.iter_child_nodes(node):
-            added += _calculate_sub_complexity(child, current_nesting + 1, func_node)
     else:
         for child in ast.iter_child_nodes(node):
             added += _calculate_sub_complexity(child, current_nesting, func_node)
@@ -125,9 +125,17 @@ def audit_file(file_path: Path) -> tuple[list[str], list[str]]:
     return complexity_errors, duplication_errors
 
 
+def _is_safe_repo_file(p: Path) -> bool:
+    try:
+        resolved = p.resolve()
+        return resolved.is_file() and resolved.suffix == ".py" and ROOT in resolved.parents
+    except Exception:
+        return False
+
+
 def collect_target_files(target_files: list[str] | None) -> list[Path]:
     if target_files:
-        return [Path(f) for f in target_files if f.endswith(".py") and Path(f).is_file()]
+        return [Path(f) for f in target_files if _is_safe_repo_file(Path(f))]
     files: list[Path] = []
     for src_dir in SOURCE_DIRS:
         for path in src_dir.rglob("*.py"):
