@@ -305,6 +305,32 @@ def is_preference_signal(query: str) -> bool:
     return bool(PREFERENCE_RE.search(query))
 
 
+def _hydrate_source_from_uuid(uuid_str: str) -> dict[str, Any]:
+    """Convert a bare UUID string (from rag_cache) to the source-object schema.
+
+    The rag_cache table stores sources as UUID strings. The JS frontend expects
+    dicts with at least uuid/title/language/chunk_index to render source cards.
+    We do a best-effort metadata lookup; if it fails we return a minimal stub.
+    """
+    meta = _get_doc_metadata(uuid_str)
+    return {
+        "id": meta["id"],
+        "uuid": uuid_str,
+        "title": meta.get("title", "Unknown"),
+        "author": meta.get("author", "Unknown"),
+        "language": meta.get("language", "Unknown"),
+        "publisher": meta.get("publisher", "Unknown"),
+        "publication_year": meta.get("publication_year", ""),
+        "license_type": meta.get("license_type", "Unknown"),
+        "doi": meta.get("doi", ""),
+        "chunk_index": 0,
+        "page_number": 1,
+        "chapter_title": "",
+        "anchor_id": "page-1",
+        "deep_link": f"/document/{uuid_str}/" if uuid_str else "",
+    }
+
+
 def _lookup_semantic_cache(
     user_part: str,
     cache_key: str,
@@ -323,7 +349,11 @@ def _lookup_semantic_cache(
             hit_sources = hit.get("sources", [])
             if allowed_uuids is None or all(s in allowed_uuids for s in hit_sources):
                 logger.info("[Semantic Cache Hit] Distance <= 0.15 ($0.00 LLM cost)")
-                result = {"answer": hit["answer_text"], "sources": hit_sources}
+                # The rag_cache table stores sources as bare UUID strings. Hydrate
+                # them into the full source-object schema that the JS frontend
+                # (main.js) expects (uuid, title, language, chunk_index, etc.).
+                hydrated = [_hydrate_source_from_uuid(s) for s in hit_sources]
+                result = {"answer": hit["answer_text"], "sources": hydrated}
                 try:
                     surreal_db.kv_cache_set(cache_key, result, ttl_seconds=86400)
                 except Exception as exc:
@@ -543,7 +573,7 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
         page_num = chunk.get("page_number") or 1
         chap = chunk.get("chapter_title") or ""
         anchor_id = chunk.get("anchor_id") or f"page-{page_num}"
-        deep_link = f"/editor/{doc_uuid_str}/#{anchor_id}" if doc_uuid_str else ""
+        deep_link = f"/document/{doc_uuid_str}/#{anchor_id}" if doc_uuid_str else ""
 
         context_blocks.append(f"--- BLOCK {idx + 1} [{doc_info}] ---\n{chunk.get('content', '')}")
         sources.append(
@@ -766,40 +796,20 @@ def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db) -> None
         logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.get('status')}, skipping sync.")
 
 
-def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
-    """
-    Checks if chunks for doc_uuids exist in SurrealDB.
-    If they are missing and the document is COMPLETED, this function regenerates the chunks
-    and embeddings on-the-fly.
-    """
-    from extractor import surreal_db
-
+def _normalise_doc_uuid_list(doc_uuids: Any) -> list[str]:
+    """Convert any UUID input (single value, iterable, or None) to a non-empty list of strings."""
     if doc_uuids is None:
-        return
-
+        return []
     if isinstance(doc_uuids, str | uuid.UUID):
-        doc_uuid_strs = [str(doc_uuids)]
-    else:
-        try:
-            doc_uuid_strs = [str(u) for u in doc_uuids]
-        except TypeError:
-            doc_uuid_strs = [str(doc_uuids)]
-
-    doc_uuid_strs = [u for u in doc_uuid_strs if u]
-    if not doc_uuid_strs:
-        return
-
+        return [str(doc_uuids)]
     try:
-        # 1. Check SurrealDB count in bulk
-        counts = surreal_db.count_documents_chunks(doc_uuid_strs)
-    except Exception as exc:
-        logger.warning(f"[Surreal Sync] Failed to check chunks count for list: {exc}")
-        counts = {}
+        return [str(u) for u in doc_uuids if str(u)]
+    except TypeError:
+        return [str(doc_uuids)]
 
-    missing_uuids = [u for u in doc_uuid_strs if counts.get(u, 0) == 0]
-    if not missing_uuids:
-        return
 
+def _reload_missing_chunks(missing_uuids: list[str], surreal_db: Any) -> None:
+    """Regenerate chunks for documents that are present in SurrealDB but have no chunks."""
     for doc_uuid_str in missing_uuids:
         try:
             doc = surreal_db.get_document(doc_uuid_str)
@@ -808,8 +818,30 @@ def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
         except (OSError, ValueError, RuntimeError) as doc_err:
             logger.debug("[Surreal Sync] Skipping %s: %s", doc_uuid_str, doc_err)
             continue
-
         try:
             _regenerate_chunks_for_doc(doc, doc_uuid_str, surreal_db)
         except Exception as exc:
-            logger.warning(f"[Surreal Sync] Failed to ensure chunks for {doc_uuid_str}: {exc}")
+            logger.warning("[Surreal Sync] Failed to ensure chunks for %s: %s", doc_uuid_str, exc)
+
+
+def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
+    """
+    Checks if chunks for doc_uuids exist in SurrealDB.
+    If they are missing and the document is COMPLETED, this function regenerates the chunks
+    and embeddings on-the-fly.
+    """
+    from extractor import surreal_db
+
+    doc_uuid_strs = _normalise_doc_uuid_list(doc_uuids)
+    if not doc_uuid_strs:
+        return
+
+    try:
+        counts = surreal_db.count_documents_chunks(doc_uuid_strs)
+    except Exception as exc:
+        logger.warning("[Surreal Sync] Failed to check chunks count for list: %s", exc)
+        counts = {}
+
+    missing_uuids = [u for u in doc_uuid_strs if counts.get(u, 0) == 0]
+    if missing_uuids:
+        _reload_missing_chunks(missing_uuids, surreal_db)
