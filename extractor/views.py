@@ -2341,6 +2341,7 @@ class SupabaseSessionExchangeView(View):
             return JsonResponse({"error": "Authentication failed."}, status=401)
 
 
+@require_http_methods(["GET"])
 def sentry_debug_view(request):
     """Verification endpoint for testing Sentry exception and trace ingestion during development."""
     user = getattr(request, "user", None)
