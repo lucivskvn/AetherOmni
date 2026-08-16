@@ -119,7 +119,7 @@ jobs:
         run: ruff check .
 
       - name: JavaScript Lint (eslint)
-        run: npx -y eslint --max-warnings 0 static/js/**/*.js
+        run: npx -y eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
 
       - name: Python Tests → coverage.xml
         run: |
