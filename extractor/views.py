@@ -2343,7 +2343,9 @@ class SupabaseSessionExchangeView(View):
 
 def sentry_debug_view(request):
     """Verification endpoint for testing Sentry exception and trace ingestion during development."""
-    if not settings.DEBUG and not request.user.is_superuser:
+    user = getattr(request, "user", None)
+    is_super = getattr(user, "is_superuser", False) if user else False
+    if not settings.DEBUG and not is_super:
         from django.http import HttpResponseForbidden
 
         return HttpResponseForbidden("Sentry debug endpoint is restricted.")
