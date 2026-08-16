@@ -142,9 +142,11 @@ steps:
             },
         )
         target_check_names = (
+            "3. SonarCloud Quality Gate",
             "2. SonarCloud Quality Gate",
             "SonarCloud Code Analysis",
             "SonarCloud Quality Gate",
+            "4. Semgrep Cloud SAST",
             "2. SonarQube Community Mainline Gate",
         )
 
@@ -161,9 +163,15 @@ steps:
                 ]
                 completed = [item for item in checks if item.get("status") == "completed"]
                 if completed:
-                    conclusion = completed[0].get("conclusion")
-                    print(f"GitHub quality gate ({completed[0].get('name')}) concluded: {conclusion}")
-                    raise SystemExit(0 if conclusion == "success" else 1)
+                    failed = [item for item in completed if item.get("conclusion") not in ("success", "neutral")]
+                    if failed:
+                        print(f"Deployment blocked: Gate check '{failed[0].get('name')}' concluded '{failed[0].get('conclusion')}'.")
+                        raise SystemExit(1)
+                    
+                    all_passed = all(item.get("conclusion") in ("success", "neutral") for item in completed)
+                    if all_passed and len(completed) >= 1:
+                        print(f"GitHub quality gate passed across completed checks: {[c.get('name') for c in completed]}")
+                        raise SystemExit(0)
                 print(f"Waiting for GitHub quality gate (attempt {attempt + 1}/30)")
             time.sleep(30)
 
