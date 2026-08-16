@@ -70,3 +70,11 @@ class TemplateIntegrityTestCase(TestCase):
             rel_name = str(path.relative_to(self.templates_dir))
             template = get_template(rel_name)
             self.assertIsNotNone(template)
+
+    def test_script_with_data_src_is_not_matched_as_external_src(self):
+        """Ensure data-src is not falsely recognized as an executable external script src."""
+        from scripts.verify_templates_and_assets import EXTERNAL_SCRIPT_PATTERN
+
+        tag = '<script data-src="https://cdn.example.com/untrusted.js"></script>'
+        match = EXTERNAL_SCRIPT_PATTERN.search(tag)
+        self.assertIsNone(match, "data-src attribute should not match external script src pattern")

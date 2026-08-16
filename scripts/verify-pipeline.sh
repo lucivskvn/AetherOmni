@@ -99,7 +99,7 @@ if [[ -n "$TOKEN" ]]; then
       -e SONAR_HOST_URL="$SONAR_HOST" \
       -v "$(pwd):/usr/src" \
       -v "$(pwd)/.sonar-cache:/opt/sonar-scanner/.sonar/cache" \
-      sonarsource/sonar-scanner-cli -Dsonar.scm.provider=git \
+      sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9 -Dsonar.scm.provider=git \
       -Dsonar.token="$TOKEN" \
       -Dsonar.threads="$LIMITED_THREADS" \
       -Dsonar.organization="lucivskvn" \

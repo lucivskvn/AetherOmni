@@ -759,7 +759,7 @@ def _get_doc_chunks(doc: Any, doc_uuid: str, limit: int) -> list[dict[str, Any]]
         ]
 
     try:
-        return surreal_db.get_document_chunks(doc_uuid)
+        return surreal_db.get_document_chunks(doc_uuid, limit=limit)
     except Exception as e:
         logger.warning("[SFT Dataset] Failed to retrieve chunks for %s: %s", doc_uuid, e)
         return []

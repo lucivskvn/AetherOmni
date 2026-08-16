@@ -3,4 +3,7 @@ message: "Prefer element.dataset.prop over element.setAttribute('data-prop', ...
 severity: warning
 language: JavaScript
 rule:
-  pattern: $EL.setAttribute('data-$PROP', $VAL)
+  pattern: $EL.setAttribute($ATTR, $VAL)
+constraints:
+  ATTR:
+    regex: '^["'']data-[a-zA-Z0-9_-]+["'']$'

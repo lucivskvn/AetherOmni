@@ -1,6 +1,6 @@
 export default [
   {
-    ignores: ["static/js/tests/**", "coverage/**", "node_modules/**"],
+    ignores: ["coverage/**", "node_modules/**"],
   },
   {
     files: ["static/js/**/*.js"],

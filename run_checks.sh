@@ -184,6 +184,9 @@ if [[ "$DOCS_ONLY" = true ]]; then
             # shellcheck disable=SC2086
             npx --no-install eslint --no-warn-ignored --max-warnings 0 $CHANGED_JS || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 $CHANGED_JS
             echo -e "${GREEN}✓ Changed JavaScript files verified cleanly.${NC}"
+        else
+            echo -e "${RED}✗ Changed JavaScript files detected but eslint was not found in PATH or node_modules!${NC}" >&2
+            exit 1
         fi
     fi
 
@@ -228,7 +231,8 @@ elif command -v npx &> /dev/null; then
     npx --no-install eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 else
-    echo -e "${YELLOW}⚠ eslint not found in local node_modules or PATH (skipping JS lint).${NC}"
+    echo -e "${RED}✗ eslint not found in local node_modules or PATH! Run 'npm ci' to install.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Verifying Source Code Formatting Consistency...${NC}"

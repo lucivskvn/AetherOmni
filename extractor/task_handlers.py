@@ -189,7 +189,9 @@ class CloudTaskHandlerView(View):
             # WARNING: Do NOT return 4xx/5xx here — Cloud Tasks retries on non-2xx,
             # causing a retry storm. The OIDC token check above is the real security
             # gate. Log the unrecognised IP for monitoring and proceed.
-            raw_ip = str(request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", ""))).split(",")[0].strip()
+            raw_ip = (
+                str(request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", ""))).split(",")[0].strip()
+            )
             try:
                 valid_ip = str(ipaddress.ip_address(raw_ip))
             except ValueError:

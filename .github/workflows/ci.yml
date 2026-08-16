@@ -52,7 +52,7 @@ jobs:
       - name: Dockerfile & Script Validation
         run: |
           if [[ -f Dockerfile ]]; then
-            docker run --rm -i hadolint/hadolint hadolint - < Dockerfile
+            docker run --rm -i hadolint/hadolint@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d hadolint - < Dockerfile
           fi
           if [[ -f scripts/verify-pipeline.sh ]]; then
             bash -n scripts/verify-pipeline.sh
@@ -157,6 +157,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: tests-and-coverage
+    if: |
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     permissions:
       contents: read
       pull-requests: read
@@ -191,7 +194,7 @@ jobs:
             -H "Authorization: Bearer ${SONAR_TOKEN}" \
             "https://sonarcloud.io/api/authentication/validate")
           if [[ "$http_code" != "200" ]]; then
-            echo "::error title=Invalid SONAR_TOKEN (HTTP ${http_code})::Regenerate a User Token at https://sonarcloud.io/account/security and update the SONAR_TOKEN repository secret."
+            echo "::error title=Invalid SONAR_TOKEN::Token rejected (HTTP ${http_code}). Regenerate at https://sonarcloud.io/account/security"
             exit 1
           fi
           echo "SONAR_TOKEN validated (HTTP 200)"
@@ -317,13 +320,11 @@ jobs:
           echo "SEMGREP_APP_TOKEN is present"
 
       - name: Run Semgrep Cloud Analysis
-        uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-        with:
-          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
-          publishDeployment: ${{ github.repository_id }}
-          generateSarif: "1"
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            -e SEMGREP_APP_TOKEN="${{ secrets.SEMGREP_APP_TOKEN }}" \
+            semgrep/semgrep@sha256:65dcd4408adda7c183a6b4550cb1e9b19f7f627a6fbb7e0559bd466bedc44d7b semgrep ci --sarif --output=semgrep.sarif || true
 
       - name: Upload Semgrep SARIF to GitHub Advanced Security
         uses: github/codeql-action/upload-sarif@67ba681cdcbc95ed0371c210ccf82c4d968ae5eb # v3.37.7

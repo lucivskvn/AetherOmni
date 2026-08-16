@@ -18,7 +18,7 @@ beforeAll(() => {
 
   const src = readFileSync(resolve('static/js/main.js'), 'utf-8');
   // window.eval places function declarations on window (globalThis)
-  window.eval(src); // eslint-disable-line no-eval
+  window.eval(src);
 });
 
 // ---------------------------------------------------------------------------

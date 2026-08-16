@@ -62,7 +62,7 @@ LIMITED_THREADS=$(( NPROC > 4 ? 4 : NPROC ))
 docker run --rm \
   -e SONAR_HOST_URL="$SONAR_HOST" \
   -v "$(pwd):/usr/src" \
-  sonarsource/sonar-scanner-cli:latest \
+  sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9 \
   -Dsonar.token="$SONAR_TOKEN" \
   -Dsonar.organization="$SONAR_ORGANIZATION" \
   -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
@@ -70,7 +70,7 @@ docker run --rm \
   -Dsonar.sources=. \
   -Dsonar.tests=extractor/tests \
   -Dsonar.test.inclusions="extractor/tests/**/*.py" \
-  -Dsonar.python.version=3.13 \
+  -Dsonar.python.version=3.14 \
   -Dsonar.sourceEncoding=UTF-8 \
   -Dsonar.scm.provider=git \
   -Dsonar.python.coverage.reportPaths=coverage.xml \
