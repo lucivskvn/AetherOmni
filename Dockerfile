@@ -17,7 +17,23 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 # hadolint ignore=DL3013
 RUN pip install --no-cache-dir --upgrade --only-binary :all: pip==26.0.1 && \
-    pip install --no-cache-dir --only-binary :all: --no-deps -r requirements.txt
+    pip install --no-cache-dir --only-binary :all: \
+      django==6.0.8 \
+      "django-storages[google]==1.14.6" \
+      google-genai==2.17.0 \
+      google-cloud-tasks==2.24.0 \
+      httpx==0.28.1 \
+      pyyaml==6.0.3 \
+      gunicorn==26.0.0 \
+      python-dotenv==1.2.2 \
+      bleach==6.4.0 \
+      markdown==3.10.3 \
+      whitenoise==6.12.0 \
+      ruff==0.16.2 \
+      "psycopg[binary]==3.3.4" \
+      surrealdb==2.0.0 \
+      protobuf==7.35.1 \
+      sqlparse==0.5.5
 
 
 # ==========================================
