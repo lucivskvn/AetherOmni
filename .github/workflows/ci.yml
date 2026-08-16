@@ -31,10 +31,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Principle of Least Privilege: Default to read-only at workflow level
 permissions:
   contents: read
-  pull-requests: write
-  security-events: write  # Required for SARIF upload to GitHub Advanced Security
 
 jobs:
   # ============================================================================
@@ -113,13 +112,18 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements.txt coverage==7.15.4 ruff==0.16.2 --quiet || \
           pip install -r requirements.txt coverage==7.15.4 ruff==0.16.2 --quiet
+
+      - name: Install Node Dependencies
+        run: |
+          npm ci --prefer-offline --ignore-scripts
 
       - name: Python Lint (ruff)
         run: ruff check .
 
       - name: JavaScript Lint (eslint)
-        run: npx -y eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+        run: npx eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
 
       - name: Python Tests → coverage.xml
         run: |
@@ -134,7 +138,6 @@ jobs:
 
       - name: JavaScript Tests → coverage/js/lcov.info
         run: |
-          npm ci --prefer-offline
           npm run test:coverage
 
       - name: Upload Coverage Artifacts for SonarCloud
@@ -156,6 +159,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: tests-and-coverage
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -287,6 +293,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: pre-scan-validation
+    permissions:
+      contents: read
+      pull-requests: read
+      security-events: write
     # Skip on Dependabot PRs — SEMGREP_APP_TOKEN unavailable in forked PRs
     if: |
       github.actor != 'dependabot[bot]' &&

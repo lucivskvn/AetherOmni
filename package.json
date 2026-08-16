@@ -13,6 +13,7 @@
   "devDependencies": {
     "@vitest/browser": "^4.1.10",
     "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.1",
     "jsdom": "^26.1.0",
     "vitest": "^4.1.10"
   }

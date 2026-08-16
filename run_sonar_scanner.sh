@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+
 # =====================================================================
 # SonarCloud Remote Scanner Launcher
 # Target: https://sonarcloud.io
@@ -28,11 +30,11 @@ echo "========================================================"
 echo ""
 
 # Use env var first, prompt only if not set
-if [ -z "$SONAR_TOKEN" ]; then
-    read -rp "Enter your SonarQube Project Token: " SONAR_TOKEN
+if [ -z "${SONAR_TOKEN:-}" ]; then
+    read -rp "Enter your SonarCloud User Token: " SONAR_TOKEN
 fi
 
-if [ -z "$SONAR_TOKEN" ]; then
+if [ -z "${SONAR_TOKEN:-}" ]; then
     echo ""
     echo "[ERROR] Token cannot be empty. Generate one at: $SONAR_HOST/account/security"
     echo ""
@@ -46,7 +48,7 @@ if [ ! -f "coverage.xml" ]; then
 fi
 
 echo ""
-echo "Submitting to SonarQube remote server..."
+echo "Submitting to SonarCloud remote platform..."
 echo "Please wait — this may take 1-3 minutes..."
 echo ""
 
@@ -58,17 +60,24 @@ LIMITED_THREADS=$(( NPROC > 4 ? 4 : NPROC ))
 docker run --rm \
   -e SONAR_HOST_URL="$SONAR_HOST" \
   -v "$(pwd):/usr/src" \
-  -v "$(pwd)/.sonar-cache:/opt/sonar-scanner/.sonar/cache" \
-  sonarsource/sonar-scanner-cli \
+  sonarsource/sonar-scanner-cli:latest \
   -Dsonar.token="$SONAR_TOKEN" \
-  -Dsonar.scm.disabled=true \
+  -Dsonar.organization="$SONAR_ORGANIZATION" \
+  -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
+  -Dsonar.projectName="AetherOmni" \
+  -Dsonar.sources=. \
+  -Dsonar.tests=extractor/tests \
+  -Dsonar.test.inclusions="extractor/tests/**/*.py" \
+  -Dsonar.python.version=3.13 \
+  -Dsonar.sourceEncoding=UTF-8 \
+  -Dsonar.scm.provider=git \
+  -Dsonar.python.coverage.reportPaths=coverage.xml \
+  -Dsonar.javascript.lcov.reportPaths=coverage/js/lcov.info \
   -Dsonar.threads="$LIMITED_THREADS" \
-  -Dsonar.analysis.cache.enabled=true \
-  -Dsonar.userHome="/opt/sonar-scanner/.sonar"
+  -Dsonar.analysis.cache.enabled=true
 
 echo ""
 echo "========================================================"
-echo "  Scan submitted!"
-echo "  View results: $SONAR_HOST/dashboard?id=$SONAR_PROJECT_KEY"
+echo "  Analysis complete!"
+echo "  Dashboard: $SONAR_HOST/dashboard?id=$SONAR_PROJECT_KEY"
 echo "========================================================"
-echo ""
