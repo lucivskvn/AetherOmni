@@ -1,8 +1,11 @@
 #!/bin/bash
+set -euo pipefail
+
 # =====================================================================
-# SonarQube Remote Scanner Launcher
-# Target: https://sonarqube.fainko.cloud (self-hosted via Coolify/Cloudflare Tunnel)
-# Project key: aetheromni
+# SonarCloud Remote Scanner Launcher
+# Target: https://sonarcloud.io
+# Organization: lucivskvn
+# Project key: lucivskvn_AetherOmni
 # =====================================================================
 # NOTE: This script is a manual fallback for local submission.
 # The primary scan path is the GitHub Actions CI pipeline (.github/workflows/ci.yml)
@@ -14,36 +17,41 @@
 #   - coverage.xml must exist (run `bash run_checks.sh` first)
 # =====================================================================
 
-SONAR_HOST="https://sonarqube.fainko.cloud"
-SONAR_PROJECT_KEY="aetheromni"
+SONAR_HOST="https://sonarcloud.io"
+SONAR_PROJECT_KEY="lucivskvn_AetherOmni"
+SONAR_ORGANIZATION="esbpcs"
 
-echo "========================================================"
-echo "  AetherOmni — SonarQube Remote Scanner"
-echo "  Host   : $SONAR_HOST"
-echo "  Project: $SONAR_PROJECT_KEY"
-echo "========================================================"
+SEPARATOR_BANNER="========================================================"
+
+echo "$SEPARATOR_BANNER"
+echo "  AetherOmni — SonarCloud Remote Scanner"
+echo "  Host        : $SONAR_HOST"
+echo "  Organization: $SONAR_ORGANIZATION"
+echo "  Project     : $SONAR_PROJECT_KEY"
+echo "$SEPARATOR_BANNER"
 echo ""
 
 # Use env var first, prompt only if not set
-if [ -z "$SONAR_TOKEN" ]; then
-    read -rp "Enter your SonarQube Project Token: " SONAR_TOKEN
+if [[ -z "${SONAR_TOKEN:-}" ]]; then
+    read -rsp "Enter your SonarCloud User Token: " SONAR_TOKEN
+    echo ""
 fi
 
-if [ -z "$SONAR_TOKEN" ]; then
+if [[ -z "${SONAR_TOKEN:-}" ]]; then
     echo ""
-    echo "[ERROR] Token cannot be empty. Generate one at: $SONAR_HOST/account/security"
+    echo "[ERROR] Token cannot be empty. Generate one at: $SONAR_HOST/account/security" >&2
     echo ""
     exit 1
 fi
 
 # Verify coverage.xml exists (required for coverage import)
-if [ ! -f "coverage.xml" ]; then
+if [[ ! -f "coverage.xml" ]]; then
     echo "[WARN] coverage.xml not found. Run 'bash run_checks.sh' first to generate it."
     echo "       Continuing without coverage data..."
 fi
 
 echo ""
-echo "Submitting to SonarQube remote server..."
+echo "Submitting to SonarCloud remote platform..."
 echo "Please wait — this may take 1-3 minutes..."
 echo ""
 
@@ -55,17 +63,24 @@ LIMITED_THREADS=$(( NPROC > 4 ? 4 : NPROC ))
 docker run --rm \
   -e SONAR_HOST_URL="$SONAR_HOST" \
   -v "$(pwd):/usr/src" \
-  -v "$(pwd)/.sonar-cache:/opt/sonar-scanner/.sonar/cache" \
-  sonarsource/sonar-scanner-cli \
+  sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9 \
   -Dsonar.token="$SONAR_TOKEN" \
-  -Dsonar.scm.disabled=true \
+  -Dsonar.organization="$SONAR_ORGANIZATION" \
+  -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
+  -Dsonar.projectName="AetherOmni" \
+  -Dsonar.sources=. \
+  -Dsonar.tests=extractor/tests \
+  -Dsonar.test.inclusions="extractor/tests/**/*.py" \
+  -Dsonar.python.version=3.14 \
+  -Dsonar.sourceEncoding=UTF-8 \
+  -Dsonar.scm.provider=git \
+  -Dsonar.python.coverage.reportPaths=coverage.xml \
+  -Dsonar.javascript.lcov.reportPaths=coverage/js/lcov.info \
   -Dsonar.threads="$LIMITED_THREADS" \
-  -Dsonar.analysis.cache.enabled=true \
-  -Dsonar.userHome="/opt/sonar-scanner/.sonar"
+  -Dsonar.analysis.cache.enabled=true
 
 echo ""
-echo "========================================================"
-echo "  Scan submitted!"
-echo "  View results: $SONAR_HOST/dashboard?id=$SONAR_PROJECT_KEY"
-echo "========================================================"
-echo ""
+echo "$SEPARATOR_BANNER"
+echo "  Analysis complete!"
+echo "  Dashboard: $SONAR_HOST/dashboard?id=$SONAR_PROJECT_KEY"
+echo "$SEPARATOR_BANNER"

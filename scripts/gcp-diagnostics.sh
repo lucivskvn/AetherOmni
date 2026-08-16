@@ -14,7 +14,7 @@ usage() {
     echo "Usage: $0 [--service aether-web|aether-worker|all] [--project PROJECT_ID] [--region REGION] [--since DURATION]" >&2
 }
 
-while [ "$#" -gt 0 ]; do
+while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --service) SERVICE="$2"; shift 2 ;;
         --project) PROJECT_ID="$2"; shift 2 ;;
@@ -30,10 +30,10 @@ if ! command -v gcloud >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ -z "$PROJECT_ID" ]; then
+if [[ -z "$PROJECT_ID" ]]; then
     PROJECT_ID=$(gcloud config get-value project 2>/dev/null || true)
 fi
-if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "(unset)" ]; then
+if [[ -z "$PROJECT_ID" ]] || [[ "$PROJECT_ID" = "(unset)" ]]; then
     echo "ERROR: set --project, GCP_PROJECT_ID, or a gcloud default project." >&2
     exit 1
 fi

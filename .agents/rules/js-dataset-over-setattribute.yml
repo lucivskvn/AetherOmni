@@ -1,0 +1,9 @@
+id: js-dataset-over-setattribute
+message: "Prefer element.dataset.prop over element.setAttribute('data-prop', ...) for readability and performance (Sonar S7761)."
+severity: warning
+language: JavaScript
+rule:
+  pattern: $EL.setAttribute($ATTR, $VAL)
+constraints:
+  ATTR:
+    regex: '^["'']data-[a-zA-Z0-9_-]+["'']$'

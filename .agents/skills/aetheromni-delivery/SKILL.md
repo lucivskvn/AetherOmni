@@ -1,6 +1,6 @@
 ---
 name: aetheromni-delivery
-description: Safely deliver, diagnose, or plan AetherOmni changes across local checks, GitHub Actions, SonarQube, Supabase Auth, Cloud Build, Cloud Run, release versions, and planned Sentry/Pulumi work. Use for any AetherOmni implementation, CI failure, security finding, deployment, production incident, or roadmap task.
+description: Safely deliver, diagnose, or plan AetherOmni changes across local checks, GitHub Actions, SonarCloud, Supabase Auth, Cloud Build, Cloud Run, release versions, and planned Sentry/Pulumi work. Use for any AetherOmni implementation, CI failure, security finding, deployment, production incident, or roadmap task.
 ---
 
 # AetherOmni Delivery

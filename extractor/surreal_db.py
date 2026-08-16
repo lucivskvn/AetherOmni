@@ -162,7 +162,9 @@ def _get_surreal_url() -> str:
 
     if not url.startswith(ws_schemes):
         # nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- Maps local http to ws and https to wss
-        url = url.replace("http://", "ws://").replace("https://", "wss://")
+        url = url.replace("http://", "ws://").replace(
+            "https://", "wss://"
+        )  # NOSONAR python:S5332 -- URL scheme normalization mapping http/https to ws/wss
     if not url.endswith("/rpc"):
         url = url.rstrip("/") + "/rpc"
 
@@ -1225,7 +1227,7 @@ def kv_cache_get(key: str) -> Any | None:
                 if isinstance(val_data, str):
                     return json.loads(val_data)
                 return val_data
-            except (json.JSONDecodeError, ValueError):
+            except ValueError:
                 return val_data
     return None
 

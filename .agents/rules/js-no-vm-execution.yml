@@ -1,0 +1,9 @@
+id: js-no-vm-execution
+message: "Avoid vm.runInContext / vm.runInThisContext in tests and source code - use static ESM/CJS imports instead to prevent CodeQL code-injection alerts."
+severity: error
+language: JavaScript
+rule:
+  pattern: $VM.$METHOD($$$)
+constraints:
+  METHOD:
+    regex: '^(runInContext|runInThisContext|runInNewContext|createScript)$'

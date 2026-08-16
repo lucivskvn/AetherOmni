@@ -193,15 +193,15 @@ recovery links return to the browser-facing login page.
 
 Push-triggered Cloud Build checkouts are shallow by default. The reviewed build
 configuration unshallows Git history before computing the commit-count patch so
-its image tag and `RELEASE_VERSION` match the SonarQube analysis version. Manual
+its image tag and `RELEASE_VERSION` match the SonarCloud analysis version. Manual
 source uploads must pass `_RELEASE_VERSION` and `_DEPLOY_COMMIT_SHA` explicitly
-as shown above. The latter must identify a commit with a successful mainline gate.
+as shown above. The latter must identify a commit with a successful quality gate.
 
 Cloud Build may construct and publish the immutable image while GitHub Actions
 analyzes the same commit, but the web and worker deployment steps wait for that
-exact SHA's successful SonarQube mainline check. Failed, cancelled, missing, or
+exact SHA's successful SonarCloud quality gate check. Failed, cancelled, missing, or
 timed-out checks stop deployment. The Actions log and summary both contain the
-condition table, and failing metrics are emitted as annotations for Jules.
+condition table, and failing metrics are emitted as annotations for automated triage.
 
 Supabase CAPTCHA-protected password, signup, and recovery calls forward the
 Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
@@ -388,9 +388,9 @@ We deploy both the `web` service and the `worker` service. Deployments are manag
 ### Deploy Services Declaratively (Recommended)
 
 Cloud Build computes the release version before it builds or deploys. The production
-container, GitHub verification workflow, local checks, and SonarQube analysis use
-the Python 3.14 runtime declared by project configuration. It passes that
-same value to Cloud Run and SonarQube, so a production issue can be traced to one
+container, GitHub verification workflow, local checks, and SonarCloud analysis use
+the Python runtime declared by project configuration (`pyproject.toml`). It passes that
+same value to Cloud Run and SonarCloud, so a production issue can be traced to one
 release. The Kaniko build step uses an official, digest-pinned debug image because
 it needs BusyBox to source computed release metadata; the standard executor image
 does not include a shell. Its layer cache is stored in Artifact Registry and
@@ -415,7 +415,7 @@ provisioning and reconciliation path after infrastructure import and preview.
 
 ## 8. Continuous Updates & Redeployment
 
-Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. With SonarQube Community Edition, the remote PR pipeline blocks on repository-native shift-left checks and GitHub security tools, then publishes a read-only table of the current `main` quality-gate baseline; the authoritative SonarQube quality-gate log, summary, annotations, and dashboard link apply to `main` after a push. Cloud Build automatically builds the immutable container, but updates both Cloud Run services only after the exact commit's mainline gate succeeds:
+Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. With SonarCloud on the public repository, the CI pipeline blocks on repository-native shift-left checks, GitHub security tools, test suite with coverage, and SonarCloud analysis across all PRs and pushes with native PR annotations. Cloud Build automatically builds the immutable container, but updates both Cloud Run services only after the exact commit's quality gate succeeds:
 
 CI installs Python security scanners in an isolated environment if their dependency graph differs from the application runtime. AST-Grep is invoked through its pinned official npm CLI because the similarly named Python package does not expose a command-line executable. This preserves reproducible application tests and keeps all scanner results blocking.
 
@@ -435,6 +435,6 @@ AI agents and platform operators leverage Model Context Protocol (MCP) servers f
 - **Sequential Thinking MCP (`sequential-thinking`)**: Deconstruct complex multi-stage deployment anomalies, trace inter-service race conditions between Cloud Tasks and SurrealDB transactions, and formulate deterministic root-cause hypotheses.
 - **Google Cloud Logging MCP (`google-cloud-logging`)**: Triage Cloud Run service logs (`get_service_log`, `list_log_entries`) to pinpoint unhandled container exceptions or startup timeouts without navigating the GCP web console.
 - **Google Cloud Monitoring MCP (`google-cloud-monitoring`)**: Query live Cloud Run latency percentiles, worker CPU/memory usage, and Cloud Tasks queue depths (`list_timeseries`, `list_alerts`).
-- **SonarQube MCP (`sonarqube`)**: Query real-time quality gate status, rule violations, and security hotspots (`get_project_quality_gate_status`, `search_sonar_issues_in_projects`).
+- **SonarQube / SonarCloud MCP (`sonarqube`)**: Query real-time quality gate status, rule violations, and security hotspots (`get_project_quality_gate_status`, `search_sonar_issues_in_projects`).
 - **Chrome DevTools MCP (`chrome-devtools-mcp`)**: Audit production frontend performance, Core Web Vitals, accessibility compliance (`a11y-debugging`), and browser runtime console errors.
 - **Google Developer Knowledge MCP (`google-developer-knowledge`)**: Verify up-to-date Cloud Run and Vertex AI configuration blueprints.

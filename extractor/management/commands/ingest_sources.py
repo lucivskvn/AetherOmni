@@ -60,7 +60,8 @@ class Command(BaseCommand):
             self.stdout.write(f"[{idx}/{len(files_to_ingest)}] Analyzing: {filename}")
 
             try:
-                file_hash = calculate_file_sha256(file_path)
+                with open(file_path, "rb") as f:
+                    file_hash = calculate_file_sha256(f)
                 self.stdout.write(f"   - SHA-256 Hash: {file_hash}")
 
                 existing_doc = SourceDocument.objects.filter(file_hash=file_hash, status="COMPLETED").first()

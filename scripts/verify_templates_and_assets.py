@@ -14,15 +14,18 @@ from __future__ import annotations
 import os
 import re
 import sys
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = ROOT / "extractor" / "templates"
 STATIC_DIR = ROOT / "static"
 
-STATIC_PATTERN = re.compile(r"{%\s*static\s+['\"]([^'\"]+)['\"]\s*(?:as\s+\w+)?\s*%}")
-URL_PATTERN = re.compile(r"{%\s*url\s+['\"]([^'\"]+)['\"]")
-EXTERNAL_SCRIPT_PATTERN = re.compile(r"<script[^>]+src=[\"'](https?://[^\"']+)[\"'][^>]*>", re.IGNORECASE)
+STATIC_PATTERN = re.compile(r"{%\s*static\s+['\"]([^'\"\s]+)['\"](?:\s+as\s+\w+)?\s*%}")
+URL_PATTERN = re.compile(r"{%\s*url\s+['\"]([^'\"\s]+)['\"]")
+SCRIPT_OPEN_PATTERN = re.compile(r"<script\b([^>]*)>", re.IGNORECASE)
+SRC_ATTR_PATTERN = re.compile(r'(?:^|\s)src\s*=\s*["\'](https?://[^"\'\s>]+)["\']', re.IGNORECASE)
+INTEGRITY_ATTR_PATTERN = re.compile(r'\bintegrity\s*=\s*["\'][^"\'\s>]+["\']', re.IGNORECASE)
 
 
 def verify_static_references() -> list[str]:
@@ -42,23 +45,32 @@ def verify_static_references() -> list[str]:
     return errors
 
 
+def _check_file_sri(path: Path, allowed_unhashed: tuple[str, ...]) -> list[str]:
+    rel_path = path.relative_to(ROOT)
+    content = path.read_text(encoding="utf-8")
+    file_errors: list[str] = []
+    for match in SCRIPT_OPEN_PATTERN.finditer(content):
+        attrs = match.group(1)
+        src_match = SRC_ATTR_PATTERN.search(attrs)
+        if not src_match:
+            continue
+        src = src_match.group(1)
+        parsed = urllib.parse.urlparse(src)
+        host_and_path = f"{parsed.netloc}{parsed.path}"
+        if any(host_and_path == allowed.strip("/") for allowed in allowed_unhashed):
+            continue
+        if not INTEGRITY_ATTR_PATTERN.search(attrs):
+            file_errors.append(f"{rel_path}: External script '{src}' is missing SRI 'integrity' attribute")
+    return file_errors
+
+
 def verify_sri_attributes() -> list[str]:
     errors: list[str] = []
-    allowed_unhashed = ("challenges.cloudflare.com/turnstile",)
+    allowed_unhashed = ("challenges.cloudflare.com/turnstile/v0/api.js",)
     for root, _, files in os.walk(TEMPLATES_DIR):
         for file in files:
-            if not file.endswith(".html"):
-                continue
-            path = Path(root) / file
-            rel_path = path.relative_to(ROOT)
-            content = path.read_text(encoding="utf-8")
-            for match in EXTERNAL_SCRIPT_PATTERN.finditer(content):
-                script_tag = match.group(0)
-                src = match.group(1)
-                if any(allowed in src for allowed in allowed_unhashed):
-                    continue
-                if "integrity=" not in script_tag:
-                    errors.append(f"{rel_path}: External script '{src}' is missing SRI 'integrity' attribute")
+            if file.endswith(".html"):
+                errors.extend(_check_file_sri(Path(root) / file, allowed_unhashed))
     return errors
 
 

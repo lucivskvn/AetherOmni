@@ -12,6 +12,9 @@ name: Auto-Update Documentation & Version
         required: false
         default: 'Manual docs sync'
 
+permissions:
+  contents: read
+
 jobs:
   # ──────────────────────────────────────────────────────────────────────────────
   # Job 1: Compute the canonical version from git and export it as an output
@@ -19,6 +22,8 @@ jobs:
   compute-version:
     name: Compute Version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     outputs:
       semver: ${{ steps.version.outputs.semver }}

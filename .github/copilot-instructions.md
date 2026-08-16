@@ -31,15 +31,15 @@ runbook. This file remains the authoritative cross-agent policy.
 - Use the generated `docs/scorecard.png` as the source of truth for the health target and status. Use the runtime declared by `pyproject.toml` and the digest-pinned `Dockerfile` image.
 - Never hardcode Desloppify scores in Markdown — always reference the dynamic `docs/scorecard.png` badge image.
 
-### 4. Automated Cloud SAST & Quality Gate (SonarQube & Semgrep)
+### 4. Automated Cloud SAST & Quality Gate (SonarCloud & Semgrep)
 
 - Once `run_checks.sh` passes locally and the user approves remote pushing, push to `origin main` or open a PR.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
-     2. Community Edition PR Shift-Left Gate — runs Ruff, ESLint, strict Sonar-aligned YAML linting, AST-Grep regex rules, Semgrep, Bandit, tests, CodeQL, and external security checks on pull requests; SonarQube Cloud SAST analyzes `main` after a push with multi-language Python and JavaScript coverage.
-     3. Post-Scan Quality Gate Gatekeeper — publishes the actionable condition table in both the Actions log and summary, annotates failures, and blocks violations
+     2. SonarCloud Quality Gate & Shift-Left Security — runs Ruff, ESLint, strict Sonar-aligned YAML linting, AST-Grep regex rules, Semgrep, Bandit, tests with coverage, and official SonarCloud analysis across both PRs and mainline pushes with native GitHub annotations.
+     3. Quality Gate Gatekeeper — publishes the actionable condition table in both the Actions log and summary, annotates failures, and blocks violations
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
-  - Cloud Build may construct the immutable image in parallel, but it must wait for a successful GitHub mainline SonarQube check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
+  - Cloud Build may construct the immutable image in parallel, but it must wait for a successful GitHub SonarCloud Quality Gate check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
 
 ### 4.1 Native GitHub Auto-Merge & PR Creation Protocol
 
@@ -64,14 +64,13 @@ runbook. This file remains the authoritative cross-agent policy.
 
 ### 7. Release, GCP, and Agent Hand-off
 
-- Compute the release version before SonarQube analysis and Cloud Build; never manually edit it or deploy a `latest` fallback. Cloud Build must unshallow trigger checkouts before deriving the commit-count patch.
+- Compute the release version before SonarCloud analysis and Cloud Build; never manually edit it or deploy a `latest` fallback. Cloud Build must unshallow trigger checkouts before deriving the commit-count patch.
 - Send Supabase CAPTCHA tokens in GoTrue `gotrue_meta_security`; require Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL` or server-controlled Supabase app metadata. Never auto-promote the first user.
 - In production, use the Supabase Auth subject UUID for document ownership, tenant filtering, exports, RAG access, and rate-limit keys; Django/SQLite IDs are offline-only implementation details.
 - Default the worker to bounded Cloud Run on-demand scaling with periodic maintenance disabled. Cloud Tasks wakes it for queued work; only opt into an always-on worker for an explicit scheduled-maintenance requirement. Web instances must not start maintenance threads.
 - Cloud Tasks must dispatch only to `WORKER_URL` in production; never fall back to a local web-process thread. Cloud Build resolves the worker URL and GCP project identity at deploy time, while `_APP_URL` may set the public Supabase confirmation origin.
-- Keep SonarQube failures blocking and actionable in the GitHub Actions summary so Jules can work from scoped PR checks or issues.
-- SonarQube Community Edition does not support pull-request or branch analysis; never analyze a merge checkout as the default branch.
-- PR Actions publish the read-only `main` quality-gate baseline as a table and label it as baseline context, never as a PR result.
+- Treat the GitHub Actions summary as the actionable SonarCloud hand-off. Keep failures blocking so Jules can address scoped issues from PR checks or issues.
+- Public GitHub repositories run native SonarCloud analysis across all pull requests and branch pushes, providing live PR decoration and quality gate evaluation.
 - Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do not reintroduce secret-retrieval or imperative provisioning scripts.
 - Use Pulumi for new or rebuilt GCP environments; import and preview existing infrastructure before applying changes.
 
@@ -79,7 +78,7 @@ runbook. This file remains the authoritative cross-agent policy.
 
 - **Mandatory Tooling & Multi-MCP Integration for Fast Triage**:
   - **Sequential Thinking MCP (`sequential-thinking`)**: Leverage structured step-by-step reasoning for complex architectural refactoring, root-cause analysis of subtle bugs, multi-variable dependency resolution, and deep verification planning.
-  - **SonarQube MCP (`sonarqube`)**: Proactively query live quality gate status, rule violations, cognitive complexity hotspots, and security findings (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`, `show_security_hotspot`, `analyze_code_snippet`) during investigation and verification turns.
+  - **SonarQube / SonarCloud MCP (`sonarqube`)**: Proactively query live quality gate status, rule violations, cognitive complexity hotspots, and security findings (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`, `show_security_hotspot`, `analyze_code_snippet`) during investigation and verification turns.
   - **Google Cloud Logging & Monitoring MCP (`google-cloud-logging`, `google-cloud-monitoring`, `cloudrun`)**: Triage Cloud Run deployment health, container logs, worker queue execution traces, and performance metric timeseries (`list_log_entries`, `get_service_log`, `list_timeseries`) directly without manual console lookup.
   - **Chrome DevTools MCP (`chrome-devtools-mcp`)**: Audit UI/UX regressions, Lighthouse Core Web Vitals, accessibility tree standards (`a11y-debugging`), browser console errors (`list_console_messages`), and network payload bottlenecks (`list_network_requests`).
   - **Google Developer Knowledge MCP (`google-developer-knowledge`)**: Fetch authoritative documentation and architecture guidelines for Cloud Run, IAM keyless authentication, and Vertex AI integrations.
@@ -98,9 +97,9 @@ runbook. This file remains the authoritative cross-agent policy.
 3. **Dynamic Documentation & Zero Static Numbers**:
    - Avoid hardcoding static version strings, score numbers, test counts, or rule counts in Markdown text or tables. Use dynamic badges or auto-generated images (`scorecard.png`) to prevent stale documentation.
 
-4. **Remote Self-Hosted SonarQube Architecture (`sonarqube.fainko.cloud`)**:
-   - Target Host: `https://sonarqube.fainko.cloud` (Coolify Cloudflare Tunnel).
-   - Zero local server footprint: Reclaims local RAM and CPU cycles.
+4. **SonarCloud Public Repository Architecture (`https://sonarcloud.io`)**:
+   - Target Host: `https://sonarcloud.io` (Organization: `lucivskvn`, Project: `lucivskvn_AetherOmni`).
+   - Zero local server footprint: Reclaims local RAM and CPU cycles with automated PR decoration.
 
 5. **SurrealDB Native Transactions, Schema Validation & Async Safety**:
    - Execute budget caps and atomic counters using SurrealDB native `BEGIN TRANSACTION ... COMMIT TRANSACTION;` blocks.
@@ -142,6 +141,6 @@ As an AI coding assistant, execute the requested task following these strict rep
    files without exception.
 6. Dynamic Documentation: Avoid static version/score numbers in Markdown text or tables;
    use dynamic scorecard images (scorecard.png) and badges.
-   Release versions must be computed as MAJOR.MINOR.PATCH before SonarQube analysis and deployment.
+   Release versions must be computed as MAJOR.MINOR.PATCH before SonarCloud analysis and deployment.
 7. Standardized Model & Auth Naming: Use Gemini 2.5 Flash / 2.5 Flash-Lite for the stable Vertex v1 production path; preview-model adoption requires an availability check. Refer to Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
 ```

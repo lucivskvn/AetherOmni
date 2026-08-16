@@ -60,7 +60,7 @@ class CheckSuppressionsTestCase(TestCase):
 
         mock_subproc.return_value = MagicMock(stdout="README.md\n")
         lines = check_suppressions._read_untracked_files()
-        self.assertTrue(isinstance(lines, list))
+        self.assertIsInstance(lines, list)
 
     @patch("scripts.check_suppressions.GIT", None)
     def test_changed_lines_requires_git(self):
