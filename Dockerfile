@@ -19,8 +19,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade --only-binary :all: pip==26.0.1 && \
     pip install --no-cache-dir --only-binary :all: \
       bleach==6.4.0 \
-      django==6.0.8 \
       "django-storages[google]==1.14.6" \
+      django==6.0.8 \
       google-cloud-tasks==2.24.0 \
       google-genai==2.17.0 \
       gunicorn==26.0.0 \
