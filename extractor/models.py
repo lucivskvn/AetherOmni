@@ -175,6 +175,7 @@ class AuditAction:
     DOCUMENT_EDITED = "DOCUMENT_EDITED"
     DOCUMENT_REQUEUED = "DOCUMENT_REQUEUED"
     SYSTEM_CONTROL = "SYSTEM_CONTROL"
+    EXPORT = "EXPORT"
 
 
 class AuditLog(models.Model):

@@ -96,7 +96,6 @@ until `SUPABASE_DATABASE_URL` exists and a new Cloud Run revision binds it as
 ## Explicit non-goals and planned work
 
 - Passkey/WebAuthn login, enterprise RBAC, and organizational tenancy.
-- Sentry observability and production error-budget reporting.
 - Pulumi-managed infrastructure reconciliation.
 - Retrieval quality, latency, cost, and model-availability service-level
   objectives.

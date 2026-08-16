@@ -291,8 +291,17 @@
         <span id="selected-count">0</span> sources selected
     </span>
     <div class="flex-gap-sm" style="display: flex; gap: 8px; align-items: center;">
-        <button type="submit" form="export-form" class="btn btn-primary">
-            <i data-lucide="download-cloud"></i> Build Curated Bundle
+        <div class="export-format-selector" style="display: flex; align-items: center; gap: 6px;">
+            <label for="export-format" class="visually-hidden">Export Format</label>
+            <select id="export-format" name="export_format" class="btn btn-secondary" style="padding: 6px 10px; font-size: 13px; cursor: pointer; border-radius: var(--border-radius-sm); height: auto;">
+                <option value="zip" data-action="{% url 'export_zip' %}">📦 Markdown Archive (.zip)</option>
+                <option value="sft" data-action="{% url 'export_sft_jsonl' %}">🤖 Hugging Face SFT (.jsonl)</option>
+                <option value="sqlite" data-action="{% url 'export_sqlite' %}">📱 SQLite FTS5 DB (.db)</option>
+                <option value="csv" data-action="{% url 'export_csv' %}">📊 Metadata Summary (.csv)</option>
+            </select>
+        </div>
+        <button type="submit" form="export-form" id="btn-export-submit" class="btn btn-primary">
+            <i data-lucide="download-cloud"></i> Export Selected
         </button>
         <button type="button" id="btn-bulk-restart" class="btn btn-secondary" data-action-url="{% url 'bulk_action' %}">
             <i data-lucide="refresh-cw"></i> Bulk Restart
