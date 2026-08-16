@@ -123,40 +123,32 @@ _rates_cache: dict[str, Any] = {}
 _rates_cache_lock = threading.Lock()
 
 
-def calculate_file_sha256(file_handle_or_path: str | IO[bytes]) -> str:
+def calculate_file_sha256(file_handle: IO[bytes]) -> str:
     """
-    Computes SHA-256 checksum in chunks of 64KB for deduplication and content-addressing.
-    Accepts either a string path or a file-like object.
+    Computes SHA-256 checksum in chunks of 64KB for deduplication and content-addressing
+    from an open file-like byte stream.
+    """
+    sha256 = hashlib.sha256()
+    file_handle.seek(0)
+    for chunk in iter(lambda: file_handle.read(65536), b""):
+        sha256.update(chunk)
+    file_handle.seek(0)
+    return sha256.hexdigest()
+
+
+def calculate_filepath_sha256(file_path: str) -> str:
+    """
+    Computes SHA-256 checksum in chunks of 64KB for deduplication and content-addressing
+    from a filesystem path.
     """
     from pathlib import Path
 
-    sha256 = hashlib.sha256()
-    if isinstance(file_handle_or_path, str):
-        import os
-        from pathlib import Path
+    target_path = Path(file_path).resolve()
+    if not target_path.is_file():
+        raise ValueError(f"Path is not a valid file: {file_path}")
 
-        target_path = Path(file_handle_or_path).resolve()
-        if not target_path.is_file():
-            raise ValueError(f"Path is not a valid file: {file_handle_or_path}")
-
-        # Secure file reading using file descriptor with O_NOFOLLOW to block symlink traversal
-        fd = os.open(str(target_path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
-        try:
-            with open(fd, "rb", closefd=True) as f:
-                for chunk in iter(lambda: f.read(65536), b""):
-                    sha256.update(chunk)
-        except Exception:
-            try:
-                os.close(fd)
-            except OSError:
-                pass
-            raise
-    else:
-        file_handle_or_path.seek(0)
-        for chunk in iter(lambda: file_handle_or_path.read(65536), b""):
-            sha256.update(chunk)
-        file_handle_or_path.seek(0)
-    return sha256.hexdigest()
+    with target_path.open("rb") as f:
+        return calculate_file_sha256(f)
 
 
 def process_csv_local(file_path: str) -> str:
