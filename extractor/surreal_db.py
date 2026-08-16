@@ -234,18 +234,22 @@ def _extract_namespaces(root_info_res) -> list[str]:
     return namespaces
 
 
-def _extract_doc_count(count_res) -> int:
-    count = 0
-    if count_res and isinstance(count_res, list):
-        first_el = count_res[0]
-        if isinstance(first_el, dict):
-            if "result" in first_el and isinstance(first_el["result"], list) and len(first_el["result"]) > 0:
-                count = first_el["result"][0].get("count", 0)
-            elif "count" in first_el:
-                count = first_el.get("count", 0)
-        elif isinstance(first_el, list) and len(first_el) > 0:
-            count = first_el[0].get("count", 0)
-    return count
+def _extract_doc_count_from_dict(d: dict) -> int:
+    res = d.get("result")
+    if isinstance(res, list) and res:
+        return int(res[0].get("count", 0))
+    return int(d.get("count", 0))
+
+
+def _extract_doc_count(count_res: Any) -> int:
+    if not isinstance(count_res, list) or not count_res:
+        return 0
+    first_el = count_res[0]
+    if isinstance(first_el, dict):
+        return _extract_doc_count_from_dict(first_el)
+    if isinstance(first_el, list) and first_el:
+        return int(first_el[0].get("count", 0))
+    return 0
 
 
 async def _probe_namespaces(db, namespaces, db_name):
@@ -267,6 +271,16 @@ async def _probe_namespaces(db, namespaces, db_name):
     return None
 
 
+def _prioritize_namespaces(namespaces: list[str]) -> list[str]:
+    pref = ["aetheromni", "omnirag"]
+    res = list(namespaces)
+    for p in reversed(pref):
+        if p in res:
+            res.remove(p)
+            res.insert(0, p)
+    return res
+
+
 async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
     global _detected_ns
     if _detected_ns:
@@ -282,24 +296,14 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
         async with AsyncSurreal(url) as db:
             await db.signin(auth)
             root_info_res = await db.query("INFO FOR ROOT;")
-            namespaces = _extract_namespaces(root_info_res)
+            namespaces = _prioritize_namespaces(_extract_namespaces(root_info_res))
 
             if not namespaces:
                 _detected_ns = fallback_ns
                 return _detected_ns
 
-            pref = ["aetheromni", "omnirag"]
-            for p in reversed(pref):
-                if p in namespaces:
-                    namespaces.remove(p)
-                    namespaces.insert(0, p)
-
             probed_ns = await _probe_namespaces(db, namespaces, db_name)
-            if probed_ns:
-                _detected_ns = probed_ns
-                return _detected_ns
-
-            _detected_ns = namespaces[0] if namespaces else fallback_ns
+            _detected_ns = probed_ns or (namespaces[0] if namespaces else fallback_ns)
             return _detected_ns
 
     except Exception as e:

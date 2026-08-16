@@ -489,9 +489,17 @@ SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     try:
         import sentry_sdk
+        from django.core.exceptions import ImproperlyConfigured
         from sentry_sdk.integrations.django import DjangoIntegration
 
-        release_ver = os.getenv("RELEASE_VERSION", "0.0.0")
+        release_ver = os.getenv("RELEASE_VERSION")
+        if not release_ver:
+            if not DEBUG:
+                raise ImproperlyConfigured(
+                    "RELEASE_VERSION must be set when SENTRY_DSN is configured in production environments."
+                )
+            release_ver = "0.0.0"
+
         sentry_sdk.init(
             dsn=SENTRY_DSN,
             integrations=[DjangoIntegration()],
@@ -503,5 +511,7 @@ if SENTRY_DSN:
         logger.info("[Observability] Sentry release tracking active (release=%s).", release_ver)
     except ImportError:
         logger.debug("[Observability] sentry-sdk not installed; skipping Sentry initialization.")
+    except ImproperlyConfigured:
+        raise
     except Exception as exc:
         logger.warning("[Observability] Failed to initialize Sentry: %s", exc)

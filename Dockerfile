@@ -33,6 +33,7 @@ RUN pip install --no-cache-dir --upgrade --only-binary :all: pip==26.0.1 && \
       ruff==0.16.2 \
       sqlparse==0.5.5 \
       surrealdb==2.0.0 \
+      "sentry-sdk[django]==2.22.0" \
       whitenoise==6.12.0
 
 
