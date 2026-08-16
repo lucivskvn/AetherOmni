@@ -185,14 +185,14 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${SONAR_TOKEN:-}" ]; then
+          if [[ -z "${SONAR_TOKEN:-}" ]]; then
             echo "::error title=Missing SONAR_TOKEN::Generate a User Token at https://sonarcloud.io/account/security and store it as the SONAR_TOKEN repository secret."
             exit 1
           fi
           http_code=$(curl --silent --output /dev/null --write-out "%{http_code}" \
             -H "Authorization: Bearer ${SONAR_TOKEN}" \
             "https://sonarcloud.io/api/authentication/validate")
-          if [ "$http_code" != "200" ]; then
+          if [[ "$http_code" != "200" ]]; then
             echo "::error title=Invalid SONAR_TOKEN (HTTP ${http_code})::Regenerate a User Token at https://sonarcloud.io/account/security and update the SONAR_TOKEN repository secret."
             exit 1
           fi

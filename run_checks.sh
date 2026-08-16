@@ -182,7 +182,7 @@ if [[ "$DOCS_ONLY" = true ]]; then
         elif command -v npx &> /dev/null; then
             echo -e "${YELLOW}[Diff Audit] Scanning changed JS files with ESLint...${NC}"
             # shellcheck disable=SC2086
-            npx eslint --no-warn-ignored --max-warnings 0 $CHANGED_JS
+            npx --no-install eslint --no-warn-ignored --max-warnings 0 $CHANGED_JS || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 $CHANGED_JS
             echo -e "${GREEN}✓ Changed JavaScript files verified cleanly.${NC}"
         fi
     fi
@@ -225,7 +225,7 @@ if [[ -x "./node_modules/.bin/eslint" ]]; then
     ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 elif command -v npx &> /dev/null; then
-    npx eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+    npx --no-install eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 else
     echo -e "${YELLOW}⚠ eslint not found in local node_modules or PATH (skipping JS lint).${NC}"

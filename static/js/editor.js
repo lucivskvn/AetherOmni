@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupScrollSync(editor, preview);
 
         // Listen for anchor hash changes dynamically
-        window.addEventListener('hashchange', () => {
+        globalThis.addEventListener('hashchange', () => {
             initDeepLinkScroll(preview);
         });
     }
