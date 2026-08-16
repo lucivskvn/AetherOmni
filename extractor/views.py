@@ -1106,7 +1106,7 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
             return JsonResponse(results)
         except ValueError as e:
             logger.warning("[RAG Search] Validation error: %s", e)
-            return JsonResponse({"error": str(e)}, status=400)
+            return JsonResponse({"error": "Invalid search parameters provided."}, status=400)
         except Exception as e:
             logger.exception("[RAG Search] Internal exception during semantic search: %s", e)
             return JsonResponse(
