@@ -32,12 +32,12 @@ concurrency:
 
 jobs:
   # ============================================================================
-  # Phase 1: Pre-Scan Validation
+  # Phase 1: Pre-Scan Validation & Security Audit
   # Fast infrastructure sanity check. Runs first so subsequent cloud scans
   # don't waste compute on obviously broken Dockerfiles or shell scripts.
   # ============================================================================
   pre-scan-validation:
-    name: 1. Pre-Scan Validation
+    name: 1. Pre-Scan Validation & Security Audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -58,12 +58,12 @@ jobs:
           fi
 
   # ============================================================================
-  # Phase 2: Tests & Coverage Generation
+  # Phase 2: Tests & Coverage Generation (PR Shift-Left Security Gate)
   # Runs linters for immediate developer feedback + all tests to generate
   # coverage artifacts consumed by SonarCloud in Phase 3.
   # ============================================================================
   tests-and-coverage:
-    name: 2. Tests & Coverage
+    name: 2. PR Shift-Left Security Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: pre-scan-validation
