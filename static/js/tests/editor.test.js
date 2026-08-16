@@ -216,6 +216,24 @@ describe('compileMarkdown', () => {
   it('XSS: script tags in input are escaped', () => {
     const html = compileMarkdown('<script>alert(1)</script>');
     expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('XSS: img onerror event handlers in markdown input are neutralized', () => {
+    const html = compileMarkdown('<img src=x onerror=alert(1)>');
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img');
+  });
+
+  it('XSS: javascript: URLs in markdown links are neutralized', () => {
+    const html = compileMarkdown('[Click me](javascript:alert(1))');
+    expect(html).not.toContain('href="javascript:');
+  });
+
+  it('XSS: iframe tags are escaped', () => {
+    const html = compileMarkdown('<iframe src="https://evil.com"></iframe>');
+    expect(html).not.toContain('<iframe');
+    expect(html).toContain('&lt;iframe');
   });
 });
 

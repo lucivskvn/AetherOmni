@@ -402,7 +402,18 @@ SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 $PYTHON_BIN -m coverage
 $PYTHON_BIN -m coverage xml -o coverage.xml 2>/dev/null || true
 TEST_COUNT=$(grep -oP '(?<=Ran )\d+' /tmp/test_output.txt 2>/dev/null | tail -1 || true)
 if [[ -n "$TEST_COUNT" ]]; then echo "$TEST_COUNT" > .test_count; fi
-echo -e "${GREEN}✓ Automated unit test suite executed successfully with coverage.xml generated.${NC}"
+echo -e "${GREEN}✓ Automated Django unit test suite executed successfully with coverage.xml generated.${NC}"
+
+echo -e "\n${YELLOW}[JavaScript Testing] Executing JavaScript Unit Test Suite & Coverage...${NC}"
+if [[ -x "./node_modules/.bin/vitest" ]]; then
+    ./node_modules/.bin/vitest run --coverage
+    echo -e "${GREEN}✓ JavaScript unit tests & lcov coverage generated cleanly.${NC}"
+elif command -v npm &> /dev/null; then
+    npm run test:coverage --if-present
+    echo -e "${GREEN}✓ JavaScript unit tests & lcov coverage generated cleanly.${NC}"
+else
+    echo -e "${YELLOW}⚠ Vitest/npm not available. Skipping JS tests.${NC}"
+fi
 
 # ── PHASE 5: DOCUMENTATION GOVERNANCE & RELEASE SYNCHRONIZATION ─────────────
 
