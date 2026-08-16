@@ -128,9 +128,14 @@ def calculate_file_sha256(file_handle_or_path: str | IO[bytes]) -> str:
     Computes SHA-256 checksum in chunks of 64KB for deduplication and content-addressing.
     Accepts either a string path or a file-like object.
     """
+    from pathlib import Path
+
     sha256 = hashlib.sha256()
     if isinstance(file_handle_or_path, str):
-        with open(file_handle_or_path, "rb") as f:
+        safe_path = Path(file_handle_or_path).resolve()
+        if not safe_path.is_file():
+            raise ValueError(f"Path is not a valid file: {file_handle_or_path}")
+        with safe_path.open("rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
                 sha256.update(chunk)
     else:

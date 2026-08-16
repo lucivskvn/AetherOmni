@@ -1964,7 +1964,7 @@ def _validate_registration_input(email, password, confirm_password, supabase_url
     if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
         return "Registration of administrative or system email addresses is not permitted."
 
-    if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", email):
+    if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email):
         return "Invalid email format."
 
     return None
@@ -2086,7 +2086,7 @@ def forgot_password_view(request):
         # Validate email format
         import re
 
-        if not re.fullmatch(r"[^@\s]+@[^@\s.]+\.[^@\s]+", email):
+        if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email):
             messages.error(request, "Invalid email format.")
             return render(request, TEMPLATE_FORGOT_PASSWORD)
 

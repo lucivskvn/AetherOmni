@@ -147,7 +147,9 @@ def _verify_source_ip(request: HttpRequest) -> bool:
         except ValueError:
             continue
 
-    logger.warning("[CloudTasksHandler] Request from unrecognised IP: %s (remote: %s)", x_forwarded_for, raw_remote)
+    clean_xff = str(x_forwarded_for).replace("\r", "").replace("\n", "")[:64]
+    clean_remote = str(raw_remote).replace("\r", "").replace("\n", "")[:64]
+    logger.warning("[CloudTasksHandler] Request from unrecognised IP: %s (remote: %s)", clean_xff, clean_remote)
     return False
 
 
@@ -187,9 +189,10 @@ class CloudTaskHandlerView(View):
             # WARNING: Do NOT return 4xx/5xx here — Cloud Tasks retries on non-2xx,
             # causing a retry storm. The OIDC token check above is the real security
             # gate. Log the unrecognised IP for monitoring and proceed.
+            raw_ip = str(request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", ""))).replace("\r", "").replace("\n", "")[:64]
             logger.warning(
                 "[CloudTasksHandler] Proceeding despite unrecognised IP: %s — OIDC token already verified.",
-                request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR", "")),
+                raw_ip,
             )
 
         # ── Dispatch ──────────────────────────────────────────────────────
