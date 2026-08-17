@@ -285,6 +285,32 @@ def get_request_actor_id(request) -> str:
     return str(request.session.get("supabase_user_id") or request.user.id)
 
 
+def _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned: bool = False):
+    """
+    Fetch a raw SurrealDB document by UUID, wrap it with Django user mappings,
+    and verify user ownership / staff authorization.
+    Returns (raw_doc, doc_wrapped, is_authorized, users_map).
+    """
+    raw_doc = surreal_db.get_document(doc_uuid)
+    if not raw_doc:
+        return None, None, False, {}
+
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
+    users_map = {str(u.id): u for u in user_model.objects.all()}
+    doc = _wrap_surreal_doc(raw_doc, users_map)
+
+    actor_id = get_request_actor_id(request)
+    is_owner = (doc.uploaded_by is not None and doc.uploaded_by == request.user) or (
+        getattr(doc, "uploaded_by_id", None) and doc.uploaded_by_id == actor_id
+    )
+    is_authorized = (
+        request.user.is_staff or request.user.is_superuser or (allow_unowned and doc.uploaded_by is None) or is_owner
+    )
+    return raw_doc, doc, is_authorized, users_map
+
+
 def _get_dashboard_stats(request):
     """
     Helper to calculate and format dashboard statistics, avoiding duplicate logic
@@ -790,23 +816,13 @@ class DocumentDetailView(LoginRequiredMixin, View):
     """
 
     def get(self, request, doc_uuid):
-        raw_doc = surreal_db.get_document(doc_uuid)
+        raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned=True)
         if not raw_doc:
             from django.http import Http404
 
             raise Http404(DOCUMENT_NOT_FOUND_MSG)
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
-        users_map = {str(u.id): u for u in user_model.objects.all()}
-        doc = _wrap_surreal_doc(raw_doc, users_map)
-
-        actor_id = get_request_actor_id(request)
-        is_owner = (doc.uploaded_by is not None and doc.uploaded_by == request.user) or (
-            getattr(doc, "uploaded_by_id", None) and doc.uploaded_by_id == actor_id
-        )
-        if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by is None or is_owner):
+        if not is_authorized:
             messages.error(request, "Permission denied to view this document.")
             return redirect("dashboard")
 
@@ -853,22 +869,12 @@ class DocumentSaveView(LoginRequiredMixin, View):
     """
 
     def post(self, request, doc_uuid):
-        raw_doc = surreal_db.get_document(doc_uuid)
+        raw_doc, _doc, is_authorized, users_map = _get_authorized_wrapped_doc(request, doc_uuid)
         if not raw_doc:
             messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
-        users_map = {str(u.id): u for u in user_model.objects.all()}
-        doc = _wrap_surreal_doc(raw_doc, users_map)
-
-        actor_id = get_request_actor_id(request)
-        is_owner = (doc.uploaded_by is not None and doc.uploaded_by == request.user) or (
-            getattr(doc, "uploaded_by_id", None) and doc.uploaded_by_id == actor_id
-        )
-        if not (request.user.is_staff or request.user.is_superuser or is_owner):
+        if not is_authorized:
             messages.error(request, "Permission denied to modify this document.")
             return redirect("dashboard")
 
@@ -944,22 +950,12 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         return len(other_uuids)
 
     def post(self, request, doc_uuid):
-        raw_doc = surreal_db.get_document(doc_uuid)
+        raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid)
         if not raw_doc:
             messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
-        users_map = {str(u.id): u for u in user_model.objects.all()}
-        doc = _wrap_surreal_doc(raw_doc, users_map)
-
-        actor_id = get_request_actor_id(request)
-        is_owner = (doc.uploaded_by is not None and doc.uploaded_by == request.user) or (
-            getattr(doc, "uploaded_by_id", None) and doc.uploaded_by_id == actor_id
-        )
-        if not (request.user.is_staff or request.user.is_superuser or is_owner):
+        if not is_authorized:
             messages.error(request, "Permission denied to delete this document.")
             return redirect("dashboard")
 
@@ -1762,24 +1758,14 @@ class DocumentCancelView(LoginRequiredMixin, View):
             request.headers.get("x-requested-with") == "XMLHttpRequest"
             or request.headers.get("accept") == APPLICATION_JSON
         )
-        raw_doc = surreal_db.get_document(doc_uuid)
+        raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid)
         if not raw_doc:
             if is_ajax:
                 return JsonResponse({"error": DOCUMENT_NOT_FOUND_MSG}, status=404)
             messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
-        users_map = {str(u.id): u for u in user_model.objects.all()}
-        doc = _wrap_surreal_doc(raw_doc, users_map)
-
-        actor_id = get_request_actor_id(request)
-        is_owner = (doc.uploaded_by is not None and doc.uploaded_by == request.user) or (
-            getattr(doc, "uploaded_by_id", None) and doc.uploaded_by_id == actor_id
-        )
-        if not (request.user.is_staff or request.user.is_superuser or is_owner):
+        if not is_authorized:
             if is_ajax:
                 return JsonResponse({"error": "Permission denied to cancel this document."}, status=403)
             messages.error(request, "Permission denied to cancel this document.")
