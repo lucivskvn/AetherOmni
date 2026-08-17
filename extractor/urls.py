@@ -24,6 +24,7 @@ urlpatterns = [
     path("document/<uuid:doc_uuid>/save/", views.DocumentSaveView.as_view(), name="save_document"),
     path("document/<uuid:doc_uuid>/delete/", views.DocumentDeleteView.as_view(), name="delete_document"),
     path("document/<uuid:doc_uuid>/retry/", views.DocumentRetryView.as_view(), name="retry_document"),
+    path("document/<uuid:doc_uuid>/cancel/", views.DocumentCancelView.as_view(), name="cancel_document"),
     path("purge-all/", views.DocumentPurgeAllView.as_view(), name="purge_all_documents"),
     path("rag-search/", views.DocumentRAGSearchView.as_view(), name="rag_search"),
     path("export/", views.ExportZipView.as_view(), name="export_zip"),

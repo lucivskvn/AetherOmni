@@ -186,6 +186,7 @@ def _wrap_surreal_doc(d, users_map):
     doc_obj.expires_at = parse_datetime(d.get("expires_at")) if d.get("expires_at") else None
 
     uid = d.get("uploaded_by_id")
+    doc_obj.uploaded_by_id = uid
     doc_obj.uploaded_by = users_map.get(uid) if uid in users_map else None
     return doc_obj
 
@@ -282,6 +283,32 @@ def get_request_actor_id(request) -> str:
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return str(request.user.id)
     return str(request.session.get("supabase_user_id") or request.user.id)
+
+
+def _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned: bool = False):
+    """
+    Fetch a raw SurrealDB document by UUID, wrap it with Django user mappings,
+    and verify user ownership / staff authorization.
+    Returns (raw_doc, doc_wrapped, is_authorized, users_map).
+    """
+    raw_doc = surreal_db.get_document(doc_uuid)
+    if not raw_doc:
+        return None, None, False, {}
+
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
+    users_map = {str(u.id): u for u in user_model.objects.all()}
+    doc = _wrap_surreal_doc(raw_doc, users_map)
+
+    actor_id = get_request_actor_id(request)
+    is_owner = (doc.uploaded_by is not None and doc.uploaded_by == request.user) or (
+        getattr(doc, "uploaded_by_id", None) and doc.uploaded_by_id == actor_id
+    )
+    is_authorized = (
+        request.user.is_staff or request.user.is_superuser or (allow_unowned and doc.uploaded_by is None) or is_owner
+    )
+    return raw_doc, doc, is_authorized, users_map
 
 
 def _get_dashboard_stats(request):
@@ -789,25 +816,13 @@ class DocumentDetailView(LoginRequiredMixin, View):
     """
 
     def get(self, request, doc_uuid):
-        raw_doc = surreal_db.get_document(doc_uuid)
+        raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned=True)
         if not raw_doc:
             from django.http import Http404
 
             raise Http404(DOCUMENT_NOT_FOUND_MSG)
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
-        users_map = {str(u.id): u for u in user_model.objects.all()}
-        doc = _wrap_surreal_doc(raw_doc, users_map)
-
-        # Check standard user access boundary (only uploader, staff, or system documents with no uploader can access)
-        if not (
-            request.user.is_staff
-            or request.user.is_superuser
-            or doc.uploaded_by is None
-            or doc.uploaded_by == request.user
-        ):
+        if not is_authorized:
             messages.error(request, "Permission denied to view this document.")
             return redirect("dashboard")
 
@@ -854,19 +869,12 @@ class DocumentSaveView(LoginRequiredMixin, View):
     """
 
     def post(self, request, doc_uuid):
-        raw_doc = surreal_db.get_document(doc_uuid)
+        raw_doc, _doc, is_authorized, users_map = _get_authorized_wrapped_doc(request, doc_uuid)
         if not raw_doc:
             messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
-        users_map = {str(u.id): u for u in user_model.objects.all()}
-        doc = _wrap_surreal_doc(raw_doc, users_map)
-
-        # Check standard user access boundary (only uploader or staff can edit)
-        if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
+        if not is_authorized:
             messages.error(request, "Permission denied to modify this document.")
             return redirect("dashboard")
 
@@ -928,20 +936,26 @@ class DocumentDeleteView(LoginRequiredMixin, View):
     the GCS file is preserved. Otherwise, it is deleted cleanly.
     """
 
+    def _count_shared_references(self, doc_uuid, file_hash):
+        from django.conf import settings
+
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor.models import SourceDocument
+
+            return SourceDocument.objects.filter(file_hash=file_hash).exclude(uuid=doc_uuid).count()
+
+        sql = "SELECT doc_uuid FROM documents WHERE file_hash = $file_hash;"
+        rows = surreal_db._first_result(surreal_db._run(sql, {"file_hash": file_hash}))
+        other_uuids = [r["doc_uuid"] for r in rows if r["doc_uuid"] != doc_uuid]
+        return len(other_uuids)
+
     def post(self, request, doc_uuid):
-        raw_doc = surreal_db.get_document(doc_uuid)
+        raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid)
         if not raw_doc:
             messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
-        users_map = {str(u.id): u for u in user_model.objects.all()}
-        doc = _wrap_surreal_doc(raw_doc, users_map)
-
-        # Check standard user access boundary (only uploader or staff can delete)
-        if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
+        if not is_authorized:
             messages.error(request, "Permission denied to delete this document.")
             return redirect("dashboard")
 
@@ -949,18 +963,7 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         orig_name = doc.original_filename
         file_rel_path = raw_doc.get("file", "")
 
-        # Count shared hash pointers in SurrealDB
-        from django.conf import settings
-
-        if getattr(settings, "SURREALDB_OFFLINE", False):
-            from extractor.models import SourceDocument
-
-            shared_references = SourceDocument.objects.filter(file_hash=file_hash).exclude(uuid=doc_uuid).count()
-        else:
-            sql = "SELECT doc_uuid FROM documents WHERE file_hash = $file_hash;"
-            rows = surreal_db._first_result(surreal_db._run(sql, {"file_hash": file_hash}))
-            other_uuids = [r["doc_uuid"] for r in rows if r["doc_uuid"] != doc_uuid]
-            shared_references = len(other_uuids)
+        shared_references = self._count_shared_references(doc_uuid, file_hash)
         ip = get_client_ip(request)
 
         # Create audit log record before deleting to preserve User/Document context
@@ -1654,7 +1657,11 @@ class DocumentRetryView(LoginRequiredMixin, View):
     """
 
     def _handle_retry_permissions_and_limits(self, request, doc):
-        if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
+        actor_id = get_request_actor_id(request)
+        is_owner = (doc.uploaded_by is not None and doc.uploaded_by == request.user) or (
+            getattr(doc, "uploaded_by_id", None) and doc.uploaded_by_id == actor_id
+        )
+        if not (request.user.is_staff or request.user.is_superuser or is_owner):
             return "Permission denied to retry this document.", 403
 
         is_restart = doc.status == "COMPLETED"
@@ -1737,6 +1744,60 @@ class DocumentRetryView(LoginRequiredMixin, View):
             return JsonResponse({"status": "success", "message": "Curation pipeline re-enqueued."})
 
         messages.success(request, f"Re-enqueued curation pipeline for document: {doc.title or doc.original_filename}")
+        return redirect("dashboard")
+
+
+class DocumentCancelView(LoginRequiredMixin, View):
+    """
+    Cancels an in-flight or pending document processing task,
+    marking its status as FAILED with an explicit cancellation message.
+    """
+
+    def post(self, request, doc_uuid):
+        is_ajax = (
+            request.headers.get("x-requested-with") == "XMLHttpRequest"
+            or request.headers.get("accept") == APPLICATION_JSON
+        )
+        raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid)
+        if not raw_doc:
+            if is_ajax:
+                return JsonResponse({"error": DOCUMENT_NOT_FOUND_MSG}, status=404)
+            messages.error(request, DOCUMENT_NOT_FOUND_MSG)
+            return redirect("dashboard")
+
+        if not is_authorized:
+            if is_ajax:
+                return JsonResponse({"error": "Permission denied to cancel this document."}, status=403)
+            messages.error(request, "Permission denied to cancel this document.")
+            return redirect("dashboard")
+
+        # Mark document as FAILED with cancellation message
+        surreal_db.update_document(
+            doc_uuid,
+            {
+                "status": "FAILED",
+                "error_message": "Processing stopped by user.",
+                "updated_at": format_datetime(timezone.now()),
+            },
+        )
+
+        from extractor.utils import AuditEvent, get_client_ip, log_audit_event
+
+        log_audit_event(
+            AuditEvent(
+                action=AuditAction.DOCUMENT_EDITED,
+                user=request.user,
+                actor_id=get_request_actor_id(request),
+                document=doc,
+                details=f"User manually stopped curation for document '{doc.original_filename}'.",
+                ip_address=get_client_ip(request),
+            )
+        )
+
+        if is_ajax:
+            return JsonResponse({"status": "success", "message": "Document processing stopped."})
+
+        messages.info(request, f"Stopped processing for document: {doc.title or doc.original_filename}")
         return redirect("dashboard")
 
 
