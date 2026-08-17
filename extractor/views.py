@@ -285,6 +285,22 @@ def get_request_actor_id(request) -> str:
     return str(request.session.get("supabase_user_id") or request.user.id)
 
 
+def _record_view_audit(request, action, details: str, document=None, ip: str | None = None) -> None:
+    """Helper to record standardized view-level audit trail events without repetitive boilerplate."""
+    from extractor.utils import AuditEvent, get_client_ip, log_audit_event
+
+    log_audit_event(
+        AuditEvent(
+            action=action,
+            user=request.user,
+            actor_id=get_request_actor_id(request),
+            document=document,
+            details=details,
+            ip_address=ip or get_client_ip(request),
+        )
+    )
+
+
 def _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned: bool = False):
     """
     Fetch a raw SurrealDB document by UUID, wrap it with Django user mappings,
@@ -544,17 +560,12 @@ class UploadView(LoginRequiredMixin, View):
         except Exception as clone_err:
             logger.warning("[Upload] SurrealDB chunk clone failed: %s", clone_err)
 
-        from extractor.utils import AuditEvent, log_audit_event
-
-        log_audit_event(
-            AuditEvent(
-                action=AuditAction.UPLOAD_CACHED,
-                user=request.user,
-                actor_id=get_request_actor_id(request),
-                document=doc,
-                details=f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
-                ip_address=ip,
-            )
+        _record_view_audit(
+            request,
+            AuditAction.UPLOAD_CACHED,
+            f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
+            document=doc,
+            ip=ip,
         )
         return {"status": "cached", "name": orig_name}
 
@@ -584,17 +595,12 @@ class UploadView(LoginRequiredMixin, View):
             },
         )
 
-        from extractor.utils import AuditEvent, log_audit_event
-
-        log_audit_event(
-            AuditEvent(
-                action=AuditAction.UPLOAD,
-                user=request.user,
-                actor_id=get_request_actor_id(request),
-                document=doc_ref,
-                details=f"File '{orig_name}' re-uploaded; resetting failed pipeline status and re-enqueuing.",
-                ip_address=ip,
-            )
+        _record_view_audit(
+            request,
+            AuditAction.UPLOAD,
+            f"File '{orig_name}' re-uploaded; resetting failed pipeline status and re-enqueuing.",
+            document=doc_ref,
+            ip=ip,
         )
 
         from django.conf import settings
@@ -642,17 +648,12 @@ class UploadView(LoginRequiredMixin, View):
         }
         doc = surreal_db.create_document(data)
 
-        from extractor.utils import AuditEvent, log_audit_event
-
-        log_audit_event(
-            AuditEvent(
-                action=AuditAction.UPLOAD,
-                user=request.user,
-                actor_id=get_request_actor_id(request),
-                document=doc,
-                details=f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
-                ip_address=ip,
-            )
+        _record_view_audit(
+            request,
+            AuditAction.UPLOAD,
+            f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
+            document=doc,
+            ip=ip,
         )
 
         from django.conf import settings
@@ -900,18 +901,11 @@ class DocumentSaveView(LoginRequiredMixin, View):
         doc_ref = surreal_db.update_document(doc_uuid, payload)
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
 
-        # Log the document edit event
-        from extractor.utils import AuditEvent, log_audit_event
-
-        log_audit_event(
-            AuditEvent(
-                action=AuditAction.DOCUMENT_EDITED,
-                user=request.user,
-                actor_id=get_request_actor_id(request),
-                document=doc_wrapped,
-                details=f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
-                ip_address=get_client_ip(request),
-            )
+        _record_view_audit(
+            request,
+            AuditAction.DOCUMENT_EDITED,
+            f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
+            document=doc_wrapped,
         )
 
         # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes
@@ -966,18 +960,12 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         shared_references = self._count_shared_references(doc_uuid, file_hash)
         ip = get_client_ip(request)
 
-        # Create audit log record before deleting to preserve User/Document context
-        from extractor.utils import AuditEvent, log_audit_event
-
-        log_audit_event(
-            AuditEvent(
-                action=AuditAction.DELETE,
-                user=request.user,
-                actor_id=get_request_actor_id(request),
-                document=doc,
-                details=f"Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
-                ip_address=ip,
-            )
+        _record_view_audit(
+            request,
+            AuditAction.DELETE,
+            f"Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
+            document=doc,
+            ip=ip,
         )
 
         # Flip delete order: delete file first if shared_references == 0
@@ -1023,17 +1011,11 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
         raw_docs = surreal_db.list_documents()
         ip = get_client_ip(request)
 
-        # Log the global purge all event first
-        from extractor.utils import AuditEvent, log_audit_event
-
-        log_audit_event(
-            AuditEvent(
-                action=AuditAction.PURGE_ALL,
-                user=request.user,
-                actor_id=get_request_actor_id(request),
-                details=f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
-                ip_address=ip,
-            )
+        _record_view_audit(
+            request,
+            AuditAction.PURGE_ALL,
+            f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
+            ip=ip,
         )
 
         from django.core.files.storage import default_storage
@@ -1185,16 +1167,10 @@ class ExportZipView(LoginRequiredMixin, View):
             zip_data = generate_curated_zip_bundle(
                 document_ids, user=request.user, actor_id=get_request_actor_id(request)
             )
-            from extractor.utils import AuditEvent, log_audit_event
-
-            log_audit_event(
-                AuditEvent(
-                    action=AuditAction.EXPORT,
-                    user=request.user,
-                    actor_id=get_request_actor_id(request),
-                    details=f"Exported {len(document_ids)} documents as ZIP bundle.",
-                    ip_address=get_client_ip(request),
-                )
+            _record_view_audit(
+                request,
+                AuditAction.EXPORT,
+                f"Exported {len(document_ids)} documents as ZIP bundle.",
             )
             response = HttpResponse(zip_data, content_type="application/zip")
             response["Content-Disposition"] = (
@@ -1256,16 +1232,10 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
                 user=request.user,
                 actor_id=get_request_actor_id(request),
             )
-            from extractor.utils import AuditEvent, log_audit_event
-
-            log_audit_event(
-                AuditEvent(
-                    action=AuditAction.EXPORT,
-                    user=request.user,
-                    actor_id=get_request_actor_id(request),
-                    details=f"Exported {len(document_ids)} documents as SFT JSONL dataset.",
-                    ip_address=get_client_ip(request),
-                )
+            _record_view_audit(
+                request,
+                AuditAction.EXPORT,
+                f"Exported {len(document_ids)} documents as SFT JSONL dataset.",
             )
             response = HttpResponse(jsonl_data, content_type="application/x-jsonlines")
             filename = f"sft_dataset_{timezone.now().strftime('%Y%m%d%H%M')}.jsonl"
@@ -1296,16 +1266,10 @@ class ExportSqliteView(LoginRequiredMixin, View):
                 user=request.user,
                 actor_id=get_request_actor_id(request),
             )
-            from extractor.utils import AuditEvent, log_audit_event
-
-            log_audit_event(
-                AuditEvent(
-                    action=AuditAction.EXPORT,
-                    user=request.user,
-                    actor_id=get_request_actor_id(request),
-                    details=f"Exported {len(document_ids)} documents as SQLite FTS5 database.",
-                    ip_address=get_client_ip(request),
-                )
+            _record_view_audit(
+                request,
+                AuditAction.EXPORT,
+                f"Exported {len(document_ids)} documents as SQLite FTS5 database.",
             )
             response = HttpResponse(sqlite_data, content_type="application/x-sqlite3")
             filename = f"curated_knowledge_{timezone.now().strftime('%Y%m%d%H%M')}.db"
@@ -1336,16 +1300,10 @@ class ExportCsvView(LoginRequiredMixin, View):
                 user=request.user,
                 actor_id=get_request_actor_id(request),
             )
-            from extractor.utils import AuditEvent, log_audit_event
-
-            log_audit_event(
-                AuditEvent(
-                    action=AuditAction.EXPORT,
-                    user=request.user,
-                    actor_id=get_request_actor_id(request),
-                    details=f"Exported {len(document_ids)} documents as CSV summary.",
-                    ip_address=get_client_ip(request),
-                )
+            _record_view_audit(
+                request,
+                AuditAction.EXPORT,
+                f"Exported {len(document_ids)} documents as CSV summary.",
             )
             response = HttpResponse(csv_data, content_type="text/csv; charset=utf-8")
             filename = f"curated_metadata_{timezone.now().strftime('%Y%m%d%H%M')}.csv"
@@ -1398,9 +1356,6 @@ def _handle_bulk_restart(request, document_ids):
 
 
 def _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db):
-    from extractor.models import AuditAction
-    from extractor.utils import AuditEvent, get_client_ip, log_audit_event
-
     file_hash = doc.file_hash
     orig_name = doc.original_filename
     file_rel_path = doc.file
@@ -1412,15 +1367,11 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
     if file_hash in hash_ref_counts:
         hash_ref_counts[file_hash] = max(0, total_refs - 1)
 
-    log_audit_event(
-        AuditEvent(
-            action=AuditAction.DELETE,
-            user=request.user,
-            actor_id=get_request_actor_id(request),
-            document=doc,
-            details=f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
-            ip_address=get_client_ip(request),
-        )
+    _record_view_audit(
+        request,
+        AuditAction.DELETE,
+        f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
+        document=doc,
     )
 
     if shared_references == 0:
@@ -1673,17 +1624,11 @@ class DocumentRetryView(LoginRequiredMixin, View):
         return None, None
 
     def _requeue_document_task(self, doc_wrapped, doc_uuid, request):
-        from extractor.utils import AuditEvent, get_client_ip, log_audit_event
-
-        log_audit_event(
-            AuditEvent(
-                action=AuditAction.UPLOAD,
-                user=request.user,
-                actor_id=get_request_actor_id(request),
-                document=doc_wrapped,
-                details=f"Curation pipeline re-enqueued for document: {doc_wrapped.title or doc_wrapped.original_filename}",
-                ip_address=get_client_ip(request),
-            )
+        _record_view_audit(
+            request,
+            AuditAction.DOCUMENT_REQUEUED,
+            f"User re-enqueued pipeline processing for document '{doc_wrapped.title or doc_wrapped.original_filename}'.",
+            document=doc_wrapped,
         )
 
         from django.conf import settings
@@ -1781,17 +1726,11 @@ class DocumentCancelView(LoginRequiredMixin, View):
             },
         )
 
-        from extractor.utils import AuditEvent, get_client_ip, log_audit_event
-
-        log_audit_event(
-            AuditEvent(
-                action=AuditAction.DOCUMENT_EDITED,
-                user=request.user,
-                actor_id=get_request_actor_id(request),
-                document=doc,
-                details=f"User manually stopped curation for document '{doc.original_filename}'.",
-                ip_address=get_client_ip(request),
-            )
+        _record_view_audit(
+            request,
+            AuditAction.DOCUMENT_EDITED,
+            f"User manually stopped curation for document '{doc.original_filename}'.",
+            document=doc,
         )
 
         if is_ajax:
@@ -2151,17 +2090,11 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         try:
             update_service_scale(target_service, min_scale, max_scale)
             messages.success(request, f"Successfully toggled scaling mode of {target_service} to {mode_display}!")
-            # Add audit log for this operational action
-            from extractor.utils import AuditEvent, log_audit_event
-
-            log_audit_event(
-                AuditEvent(
-                    action=AuditAction.SYSTEM_CONTROL,
-                    user=request.user,
-                    actor_id=get_request_actor_id(request),
-                    details=f"Admins toggled worker scaling mode to '{mode}' (minScale: {min_scale}, maxScale: {max_scale}).",
-                    ip_address=request.META.get("REMOTE_ADDR"),
-                )
+            _record_view_audit(
+                request,
+                AuditAction.SYSTEM_CONTROL,
+                f"Admins toggled worker scaling mode to '{mode}' (minScale: {min_scale}, maxScale: {max_scale}).",
+                ip=request.META.get("REMOTE_ADDR"),
             )
 
         except Exception as e:
