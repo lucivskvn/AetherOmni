@@ -1787,7 +1787,7 @@ class DocumentCancelView(LoginRequiredMixin, View):
             AuditEvent(
                 action=AuditAction.DOCUMENT_EDITED,
                 user=request.user,
-                actor_id=actor_id,
+                actor_id=get_request_actor_id(request),
                 document=doc,
                 details=f"User manually stopped curation for document '{doc.original_filename}'.",
                 ip_address=get_client_ip(request),
