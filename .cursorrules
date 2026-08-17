@@ -83,9 +83,13 @@ runbook. This file remains the authoritative cross-agent policy.
   - **Sequential Thinking MCP (`sequential-thinking`)**: Leverage structured step-by-step reasoning for complex architectural refactoring, root-cause analysis of subtle bugs, multi-variable dependency resolution, and deep verification planning.
   - **SonarQube / SonarCloud MCP (`sonarqube`)**: Proactively query live quality gate status, rule violations, cognitive complexity hotspots, and security findings (`search_sonar_issues_in_projects`, `get_project_quality_gate_status`, `show_security_hotspot`, `analyze_code_snippet`) during investigation and verification turns.
   - **Google Cloud Logging & Monitoring MCP (`google-cloud-logging`, `google-cloud-monitoring`, `cloudrun`)**: Triage Cloud Run deployment health, container logs, worker queue execution traces, and performance metric timeseries (`list_log_entries`, `get_service_log`, `list_timeseries`) directly without manual console lookup.
+  - **Composio Automation MCP (`remote-composio`)**: Inspect real-time production error traces, Sentry issues, alert workflows, and third-party integrations across managed cloud toolkits (`COMPOSIO_SEARCH_TOOLS`, `COMPOSIO_MULTI_EXECUTE_TOOL`).
   - **Chrome DevTools MCP (`chrome-devtools-mcp`)**: Audit UI/UX regressions, Lighthouse Core Web Vitals, accessibility tree standards (`a11y-debugging`), browser console errors (`list_console_messages`), and network payload bottlenecks (`list_network_requests`).
   - **Google Developer Knowledge MCP (`google-developer-knowledge`)**: Fetch authoritative documentation and architecture guidelines for Cloud Run, IAM keyless authentication, and Vertex AI integrations.
   - Always prioritize deep programmatic inspection, sequential reasoning, and MCP-grounded evidence over speculative diagnostics.
+- **Batch PR & Local Verification Policy**:
+  - Accumulate fixes and improvements locally on working branches; avoid opening small, incremental PRs.
+  - Verify full passes locally via `bash run_checks.sh` and only bundle cohesive batches into a single PR when all related issues in a turn or feature milestone are completely resolved.
 
 ---
 
