@@ -30,8 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 8. Initialize Realtime WebSocket updates or Fallback Poller
     initializeSupabaseRealtime();
 
-    // 9. Curation Pipeline Booklet Retries
+    // 9. Curation Pipeline Booklet Retries & Cancellations
     initializeRetryActions();
+    initializeCancelActions();
 
     // 10. Auto-convert UTC timestamps to user/browser local timezone
     initializeLocalTimezones();
@@ -1347,10 +1348,11 @@ function updateDocumentDetailScreen(data) {
     const detailTimelineContainer = document.querySelector('.timeline-container');
     if (!detailTimelineContainer) return;
 
-    const match = /\/document\/(\d+)\//.exec(globalThis.location.pathname);
+    const match = /\/document\/([^/]+)\//.exec(globalThis.location.pathname);
     if (!match) return;
 
-    const currentDoc = data.documents.find(d => d.id === Number.parseInt(match[1], 10));
+    const targetId = match[1];
+    const currentDoc = data.documents.find(d => String(d.uuid) === targetId || String(d.id) === targetId);
     if (!currentDoc) return;
 
     _updateDetailMetaFields(currentDoc, currentDoc.status);
@@ -1420,29 +1422,31 @@ function getStatusBadgeHTML(status, display) {
 
 
 /**
- * Handle manual curation retry actions for failed documents.
+ * Helper to bind document state modifying actions (retry, cancel).
  */
-function initializeRetryActions() {
+function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, defaultErrorMsg }) {
     document.addEventListener('click', (event) => {
-        const btn = event.target.closest('.btn-retry-doc');
+        const btn = event.target.closest(buttonClass);
         if (!btn) return;
-        
+
         event.preventDefault();
         const docId = btn.dataset.docId;
         if (!docId) return;
-        
-        // Show spinning loader on button
+
+        if (confirmMsg && !confirm(confirmMsg)) {
+            return;
+        }
+
         const icon = btn.querySelector('[data-lucide]') || btn.querySelector('i');
         if (icon) {
             icon.classList.add('spinner');
         }
         btn.disabled = true;
-        
-        // Retrieve Django CSRF token
+
         const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
         const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
-        
-        fetch(`/document/${docId}/retry/`, {
+
+        fetch(`/document/${docId}/${endpointSuffix}/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': csrfToken,
@@ -1458,10 +1462,9 @@ function initializeRetryActions() {
         })
         .then(data => {
             if (data.status === 'success') {
-                // Instantly reload to transition to PENDING/processing state
                 globalThis.location.reload();
             } else {
-                showClientSideAlert(data.message || 'Failed to re-enqueue booklet.');
+                showClientSideAlert(data.message || defaultErrorMsg);
                 if (icon) {
                     icon.classList.remove('spinner');
                 }
@@ -1469,13 +1472,37 @@ function initializeRetryActions() {
             }
         })
         .catch(err => {
-            console.error('Error re-enqueuing:', err);
-            showClientSideAlert('An error occurred while retrying the curation pipeline.');
+            console.error('Error executing document action:', err);
+            showClientSideAlert(defaultErrorMsg);
             if (icon) {
                 icon.classList.remove('spinner');
             }
             btn.disabled = false;
         });
+    });
+}
+
+/**
+ * Handle manual curation retry actions for failed documents.
+ */
+function initializeRetryActions() {
+    _handleDocumentStateAction({
+        buttonClass: '.btn-retry-doc',
+        confirmMsg: '',
+        endpointSuffix: 'retry',
+        defaultErrorMsg: 'Failed to re-enqueue booklet.'
+    });
+}
+
+/**
+ * Handle manual cancellation / stopping of in-flight or stuck curation tasks.
+ */
+function initializeCancelActions() {
+    _handleDocumentStateAction({
+        buttonClass: '.btn-cancel-doc',
+        confirmMsg: 'Are you sure you want to stop processing this document?',
+        endpointSuffix: 'cancel',
+        defaultErrorMsg: 'Failed to stop document processing.'
     });
 }
 

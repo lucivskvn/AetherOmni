@@ -218,11 +218,14 @@
                                             <a href="{% url 'document_detail' d.obj.uuid %}" class="btn btn-secondary" title="View Details" aria-label="View Details for {{ d.obj.title }}">
                                                 <i data-lucide="eye"></i>
                                             </a>
-                                            {% if d.obj.status == 'FAILED' or d.obj.status == 'COMPLETED' %}
+                                            {% if d.obj.status == 'PENDING' or d.obj.status == 'EXTRACTING' or d.obj.status == 'REFINING' or d.obj.status == 'EMBEDDING' %}
+                                            <button type="button" class="btn btn-secondary btn-cancel-doc" data-doc-id="{{ d.obj.uuid }}" title="Stop Processing" aria-label="Stop Processing for {{ d.obj.title }}" style="color: var(--danger, #ef4444);">
+                                                <i data-lucide="square"></i>
+                                            </button>
+                                            {% endif %}
                                             <button type="button" class="btn btn-secondary btn-retry-doc" data-doc-id="{{ d.obj.uuid }}" title="Restart Curation" aria-label="Restart Curation for {{ d.obj.title }}">
                                                 <i data-lucide="refresh-cw"></i>
                                             </button>
-                                            {% endif %}
                                             <button type="button" class="btn btn-secondary btn-delete-doc" data-doc-id="{{ d.obj.uuid }}" title="Delete" aria-label="Delete {{ d.obj.title }}">
                                                 <i data-lucide="trash-2"></i>
                                             </button>
