@@ -1422,78 +1422,18 @@ function getStatusBadgeHTML(status, display) {
 
 
 /**
- * Handle manual curation retry actions for failed documents.
+ * Helper to bind document state modifying actions (retry, cancel).
  */
-function initializeRetryActions() {
+function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, defaultErrorMsg }) {
     document.addEventListener('click', (event) => {
-        const btn = event.target.closest('.btn-retry-doc');
-        if (!btn) return;
-        
-        event.preventDefault();
-        const docId = btn.dataset.docId;
-        if (!docId) return;
-        
-        // Show spinning loader on button
-        const icon = btn.querySelector('[data-lucide]') || btn.querySelector('i');
-        if (icon) {
-            icon.classList.add('spinner');
-        }
-        btn.disabled = true;
-        
-        // Retrieve Django CSRF token
-        const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
-        const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
-        
-        fetch(`/document/${docId}/retry/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            }
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.status === 'success') {
-                // Instantly reload to transition to PENDING/processing state
-                globalThis.location.reload();
-            } else {
-                showClientSideAlert(data.message || 'Failed to re-enqueue booklet.');
-                if (icon) {
-                    icon.classList.remove('spinner');
-                }
-                btn.disabled = false;
-            }
-        })
-        .catch(err => {
-            console.error('Error re-enqueuing:', err);
-            showClientSideAlert('An error occurred while retrying the curation pipeline.');
-            if (icon) {
-                icon.classList.remove('spinner');
-            }
-            btn.disabled = false;
-        });
-    });
-}
-
-/**
- * Handle manual cancellation / stopping of in-flight or stuck curation tasks.
- */
-function initializeCancelActions() {
-    document.addEventListener('click', (event) => {
-        const btn = event.target.closest('.btn-cancel-doc');
+        const btn = event.target.closest(buttonClass);
         if (!btn) return;
 
         event.preventDefault();
         const docId = btn.dataset.docId;
         if (!docId) return;
 
-        if (!confirm('Are you sure you want to stop processing this document?')) {
+        if (confirmMsg && !confirm(confirmMsg)) {
             return;
         }
 
@@ -1506,7 +1446,7 @@ function initializeCancelActions() {
         const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
         const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
 
-        fetch(`/document/${docId}/cancel/`, {
+        fetch(`/document/${docId}/${endpointSuffix}/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': csrfToken,
@@ -1524,7 +1464,7 @@ function initializeCancelActions() {
             if (data.status === 'success') {
                 globalThis.location.reload();
             } else {
-                showClientSideAlert(data.message || 'Failed to stop processing.');
+                showClientSideAlert(data.message || defaultErrorMsg);
                 if (icon) {
                     icon.classList.remove('spinner');
                 }
@@ -1532,13 +1472,37 @@ function initializeCancelActions() {
             }
         })
         .catch(err => {
-            console.error('Error stopping document processing:', err);
-            showClientSideAlert('An error occurred while stopping the task.');
+            console.error('Error executing document action:', err);
+            showClientSideAlert(defaultErrorMsg);
             if (icon) {
                 icon.classList.remove('spinner');
             }
             btn.disabled = false;
         });
+    });
+}
+
+/**
+ * Handle manual curation retry actions for failed documents.
+ */
+function initializeRetryActions() {
+    _handleDocumentStateAction({
+        buttonClass: '.btn-retry-doc',
+        confirmMsg: '',
+        endpointSuffix: 'retry',
+        defaultErrorMsg: 'Failed to re-enqueue booklet.'
+    });
+}
+
+/**
+ * Handle manual cancellation / stopping of in-flight or stuck curation tasks.
+ */
+function initializeCancelActions() {
+    _handleDocumentStateAction({
+        buttonClass: '.btn-cancel-doc',
+        confirmMsg: 'Are you sure you want to stop processing this document?',
+        endpointSuffix: 'cancel',
+        defaultErrorMsg: 'Failed to stop document processing.'
     });
 }
 
