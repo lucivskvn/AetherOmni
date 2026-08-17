@@ -170,6 +170,23 @@ def _truncate(value: str | None, max_len: int) -> str:
     return value[:max_len]
 
 
+def _resolve_user_by_id(uploaded_by_id: Any) -> Any | None:
+    """
+    Safely resolve a Django User instance from uploaded_by_id, which may be
+    a Django integer PK or a Supabase UUID string.
+    """
+    if not uploaded_by_id:
+        return None
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
+    # Try integer lookup if uploaded_by_id is numeric
+    val_str = str(uploaded_by_id).strip()
+    if val_str.isdigit():
+        return user_model.objects.filter(id=int(val_str)).first()
+    return None
+
+
 def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: bool = True) -> None:
     """
     Handles pipeline failures atomically: sets status=FAILED, saves error log,
@@ -183,11 +200,8 @@ def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: b
     surreal_db.update_document(doc_uuid, {"status": "FAILED", "error_message": error_message})
 
     if log_audit:
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
         uploaded_by_id = doc.get("uploaded_by_id")
-        user = user_model.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+        user = _resolve_user_by_id(uploaded_by_id)
         log_audit_event(
             AuditEvent(
                 action=AuditAction.EXTRACTION_FAILED,
@@ -241,11 +255,8 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
         )
         return None
 
-    from django.contrib.auth import get_user_model
-
-    user_model = get_user_model()
     uploaded_by_id = doc.get("uploaded_by_id")
-    user = user_model.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+    user = _resolve_user_by_id(uploaded_by_id)
 
     log_audit_event(
         AuditEvent(
@@ -1036,11 +1047,8 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
 
         logger.info("[Worker] Pipeline completed successfully for UUID %s!", doc_uuid)
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
         uploaded_by_id = doc.get("uploaded_by_id")
-        user = user_model.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+        user = _resolve_user_by_id(uploaded_by_id)
 
         log_audit_event(
             AuditEvent(
@@ -1369,11 +1377,8 @@ def _reap_single_stale_doc(doc: dict) -> bool:
     )
     logger.warning("[Reaper] Reaped stale document task %s (was %s, max retries reached).", doc_uuid, current_status)
 
-    from django.contrib.auth import get_user_model
-
-    user_model = get_user_model()
     uploaded_by_id = doc.get("uploaded_by_id")
-    user = user_model.objects.filter(id=uploaded_by_id).first() if uploaded_by_id else None
+    user = _resolve_user_by_id(uploaded_by_id)
 
     # Write audit log for reaped task
     log_audit_event(
