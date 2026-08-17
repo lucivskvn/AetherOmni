@@ -1654,12 +1654,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
     """
 
     def _handle_retry_permissions_and_limits(self, request, doc):
-        if not (
-            request.user.is_staff
-            or request.user.is_superuser
-            or doc.uploaded_by is None
-            or doc.uploaded_by == request.user
-        ):
+        if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
             return "Permission denied to retry this document.", 403
 
         is_restart = doc.status == "COMPLETED"
