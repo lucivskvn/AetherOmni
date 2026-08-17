@@ -491,6 +491,7 @@ if SENTRY_DSN:
         import sentry_sdk
         from django.core.exceptions import ImproperlyConfigured
         from sentry_sdk.integrations.django import DjangoIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
 
         release_ver = os.getenv("RELEASE_VERSION", "").strip()
         if not release_ver:
@@ -504,9 +505,14 @@ if SENTRY_DSN:
         traces_rate = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0" if DEBUG else "0.1"))
         profile_session_rate = float(os.getenv("SENTRY_PROFILE_SESSION_SAMPLE_RATE", "0.0"))
 
+        logging_integration = LoggingIntegration(
+            level=logging.INFO,
+            event_level=logging.ERROR,
+        )
+
         sentry_kwargs = {
             "dsn": SENTRY_DSN,
-            "integrations": [DjangoIntegration()],
+            "integrations": [DjangoIntegration(), logging_integration],
             "traces_sample_rate": traces_rate,
             "send_default_pii": send_pii,
             "release": f"aetheromni@{release_ver}",
