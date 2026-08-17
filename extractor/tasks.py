@@ -1318,22 +1318,56 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
 
 def _reap_single_stale_doc(doc: dict) -> bool:
-    """Lock and check one stale document; mark FAILED if still stuck. Returns True if reaped."""
+    """Check one stale document; auto-retry if under retry limit or mark FAILED. Returns True if reaped."""
     doc_uuid = str(doc.get("doc_uuid") or "")
     if not doc_uuid:
         return False
+
+    retry_count = doc.get("retry_count", 0)
+    current_status = doc.get("status", "UNKNOWN")
+
+    # If document is stuck in PENDING or had a worker restart and has retries left, auto-re-enqueue it
+    if retry_count < 3:
+        logger.info(
+            "[Reaper] Document %s was stuck in '%s' (attempt %s/3). Auto-re-enqueuing task...",
+            doc_uuid,
+            current_status,
+            retry_count + 1,
+        )
+        surreal_db.update_document(
+            doc_uuid,
+            {
+                "status": "PENDING",
+                "retry_count": retry_count + 1,
+                "error_message": "",
+            },
+        )
+        try:
+            from django.conf import settings
+
+            from extractor import cloud_tasks
+
+            if getattr(settings, "SURREALDB_OFFLINE", False):
+                doc_id = doc.get("id")
+                cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+            else:
+                cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+            logger.info("[Reaper] Successfully auto-re-enqueued document %s", doc_uuid)
+            return True
+        except Exception as enq_err:
+            logger.warning("[Reaper] Auto-retry enqueue failed for %s: %s", doc_uuid, enq_err)
 
     surreal_db.update_document(
         doc_uuid,
         {
             "status": "FAILED",
             "error_message": (
-                "Task terminated unexpectedly. "
-                "The background worker may have scaled down, been preempted, or restarted."
+                "Task timed out or terminated unexpectedly. "
+                "The background worker may have scaled down, been preempted, or queue permissions were missing."
             ),
         },
     )
-    logger.warning("[Reaper] Reaped stale document task %s (was %s).", doc_uuid, doc.get("status"))
+    logger.warning("[Reaper] Reaped stale document task %s (was %s, max retries reached).", doc_uuid, current_status)
 
     from django.contrib.auth import get_user_model
 
@@ -1349,8 +1383,8 @@ def _reap_single_stale_doc(doc: dict) -> bool:
             actor_id=uploaded_by_id,
             document=doc,
             details=(
-                f"[Reaper] Document '{doc.get('original_filename')}' was stuck in '{doc.get('status')}' for >15 minutes "
-                "and has been automatically marked as FAILED."
+                f"[Reaper] Document '{doc.get('original_filename')}' was stuck in '{current_status}' for >5 minutes "
+                "and has reached max retries, marked as FAILED."
             ),
         ),
     )
@@ -1366,11 +1400,11 @@ def _reap_single_stale_doc(doc: dict) -> bool:
 
 def reap_stale_tasks(_payload: dict | None = None) -> int:
     """
-    Marks documents stuck in transient states for >15 minutes as FAILED.
-    Writes audit entries and broadcasts status updates for reaped tasks.
+    Scans for documents stuck in PENDING, EXTRACTING, REFINING, or EMBEDDING for >5 minutes.
+    Automatically re-enqueues them up to 3 times, or marks them FAILED if retries are exhausted.
     """
-    logger.info("[Reaper] Scanning for stale active tasks...")
-    stale_threshold = timezone.now() - timezone.timedelta(minutes=15)
+    logger.info("[Reaper] Scanning for stale or stuck tasks...")
+    stale_threshold = timezone.now() - timezone.timedelta(minutes=5)
     stale_threshold_str = format_datetime(stale_threshold)
 
     from django.conf import settings
@@ -1379,14 +1413,15 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
         from extractor.models import SourceDocument
 
         stale_qs = SourceDocument.objects.filter(
-            status__in=["EXTRACTING", "REFINING", "EMBEDDING"], updated_at__lte=stale_threshold
+            status__in=["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"], updated_at__lte=stale_threshold
         )
         stale_docs = [surreal_db._model_to_dict(d) for d in stale_qs]
     else:
         stale_sql = "SELECT * FROM documents WHERE status INSIDE $states AND updated_at <= <datetime> $threshold;"
         stale_docs = surreal_db._first_result(
             surreal_db._run(
-                stale_sql, {"states": ["EXTRACTING", "REFINING", "EMBEDDING"], "threshold": stale_threshold_str}
+                stale_sql,
+                {"states": ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"], "threshold": stale_threshold_str},
             )
         )
     reaped_count = 0
@@ -1396,7 +1431,7 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
             reaped_count += 1
 
     if reaped_count > 0:
-        logger.info("[Reaper] Successfully reaped %s stuck tasks.", reaped_count)
+        logger.info("[Reaper] Successfully recovered or reaped %s stuck tasks.", reaped_count)
 
     return reaped_count
 

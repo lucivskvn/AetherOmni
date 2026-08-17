@@ -91,8 +91,9 @@ class ResilienceAndSafetyTestCase(TestCase):
             if temp_local_path and os.path.exists(temp_local_path):
                 os.unlink(temp_local_path)
 
+    @patch("extractor.cloud_tasks.enqueue")
     @patch("django.utils.timezone.now")
-    def test_reap_stale_tasks(self, mock_now):
+    def test_reap_stale_tasks(self, mock_now, mock_enqueue):
         from datetime import datetime, timedelta
 
         from extractor.tasks import reap_stale_tasks
@@ -101,28 +102,39 @@ class ResilienceAndSafetyTestCase(TestCase):
         base_time = datetime(2026, 6, 19, 12, 0, 0, tzinfo=UTC)
         mock_now.return_value = base_time
 
-        # 1. Stuck task (> 15 minutes ago)
-        doc_stale = SourceDocument.objects.create(
-            original_filename="stuck_booklet.pdf", file_hash="stale-hash", status="EXTRACTING"
+        # 1. Stuck task (> 5 minutes ago) with retry_count=0 -> should auto-re-enqueue to PENDING
+        doc_stale_retry = SourceDocument.objects.create(
+            original_filename="stuck_booklet.pdf", file_hash="stale-hash", status="EXTRACTING", retry_count=0
         )
-        SourceDocument.objects.filter(id=doc_stale.id).update(updated_at=base_time - timedelta(minutes=16))
+        SourceDocument.objects.filter(id=doc_stale_retry.id).update(updated_at=base_time - timedelta(minutes=6))
 
-        # 2. Healthy active task (< 15 minutes ago)
-        doc_healthy = SourceDocument.objects.create(
-            original_filename="healthy_booklet.pdf", file_hash="healthy-hash", status="EXTRACTING"
+        # 2. Stuck task with retry_count=3 -> should mark FAILED
+        doc_stale_failed = SourceDocument.objects.create(
+            original_filename="exhausted_booklet.pdf", file_hash="exhausted-hash", status="PENDING", retry_count=3
         )
-        SourceDocument.objects.filter(id=doc_healthy.id).update(updated_at=base_time - timedelta(minutes=5))
+        SourceDocument.objects.filter(id=doc_stale_failed.id).update(updated_at=base_time - timedelta(minutes=6))
+
+        # 3. Healthy active task (< 5 minutes ago)
+        doc_healthy = SourceDocument.objects.create(
+            original_filename="healthy_booklet.pdf", file_hash="healthy-hash", status="EXTRACTING", retry_count=0
+        )
+        SourceDocument.objects.filter(id=doc_healthy.id).update(updated_at=base_time - timedelta(minutes=2))
 
         # Run stale task reaper
         reaped_count = reap_stale_tasks()
 
-        # Verify stuck task reaped and healthy task unaffected
-        doc_stale_refreshed = SourceDocument.objects.get(id=doc_stale.id)
+        # Verify stuck task auto-re-enqueued and exhausted task marked FAILED
+        doc_retry_refreshed = SourceDocument.objects.get(id=doc_stale_retry.id)
+        doc_failed_refreshed = SourceDocument.objects.get(id=doc_stale_failed.id)
         doc_healthy_refreshed = SourceDocument.objects.get(id=doc_healthy.id)
 
-        self.assertEqual(reaped_count, 1)
-        self.assertEqual(doc_stale_refreshed.status, "FAILED")
-        self.assertIn("Task terminated unexpectedly", doc_stale_refreshed.error_message)
+        self.assertEqual(reaped_count, 2)
+        self.assertEqual(doc_retry_refreshed.status, "PENDING")
+        self.assertEqual(doc_retry_refreshed.retry_count, 1)
+        mock_enqueue.assert_called()
+
+        self.assertEqual(doc_failed_refreshed.status, "FAILED")
+        self.assertIn("Task timed out or terminated unexpectedly", doc_failed_refreshed.error_message)
         self.assertEqual(doc_healthy_refreshed.status, "EXTRACTING")
 
     @patch("extractor.cloud_tasks.enqueue")
