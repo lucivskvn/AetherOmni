@@ -1654,7 +1654,12 @@ class DocumentRetryView(LoginRequiredMixin, View):
     """
 
     def _handle_retry_permissions_and_limits(self, request, doc):
-        if not (request.user.is_staff or request.user.is_superuser or doc.uploaded_by == request.user):
+        if not (
+            request.user.is_staff
+            or request.user.is_superuser
+            or doc.uploaded_by is None
+            or doc.uploaded_by == request.user
+        ):
             return "Permission denied to retry this document.", 403
 
         is_restart = doc.status == "COMPLETED"
@@ -1687,7 +1692,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
             doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
             cloud_tasks.enqueue("process_document", {"document_id": doc_id})
         else:
-            cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+            cloud_tasks.enqueue("process_document", {"document_uuid": str(doc_uuid)})
 
     def post(self, request, doc_uuid):
         raw_doc = surreal_db.get_document(doc_uuid)
