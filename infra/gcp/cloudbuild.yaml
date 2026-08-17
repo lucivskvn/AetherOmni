@@ -263,6 +263,9 @@ steps:
         if gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null 2>&1; then
           SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
         fi
+        if gcloud secrets describe SENTRY_DSN --project="${PROJECT_ID}" >/dev/null 2>&1; then
+          SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
+        fi
         gcloud run deploy aether-worker \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
           --region=${_REGION} \
@@ -310,6 +313,9 @@ steps:
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
         if gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null 2>&1; then
           SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
+        fi
+        if gcloud secrets describe SENTRY_DSN --project="${PROJECT_ID}" >/dev/null 2>&1; then
+          SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
         fi
         gcloud run deploy aether-web \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
