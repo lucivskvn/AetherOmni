@@ -210,6 +210,12 @@ header {
     background: rgba(255, 255, 255, 0.05);
 }
 
+.nav-link:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    border-radius: 8px;
+}
+
 /* Buttons and Interactive Elements */
 .btn {
     font-family: var(--font-display);
@@ -225,6 +231,11 @@ header {
     gap: 8px;
     transition: var(--transition-smooth);
     text-decoration: none;
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .btn-primary {
@@ -426,10 +437,16 @@ dialog.settings-dialog .close-btn {
     color: var(--text-muted);
     cursor: pointer;
     transition: var(--transition-smooth);
+    border-radius: 4px;
 }
 
 dialog.settings-dialog .close-btn:hover {
     color: var(--text-main);
+}
+
+dialog.settings-dialog .close-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 dialog.settings-dialog .form-group {
@@ -1639,6 +1656,12 @@ tr:hover td {
     gap: 6px;
 }
 
+.logout-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    border-radius: 8px;
+}
+
 /* Settings Dialog and Danger Zone Decoupled Styles */
 #settings-trigger-btn {
     background: none;
@@ -1669,6 +1692,13 @@ tr:hover td {
     opacity: 0.7;
     transition: opacity 0.2s;
     margin-left: auto;
+    border-radius: 4px;
+}
+
+.alert-close-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    opacity: 1;
 }
 
 .alert-close-btn i,

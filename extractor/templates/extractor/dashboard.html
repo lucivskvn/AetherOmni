@@ -234,7 +234,10 @@
                                 <tr>
                                     <td colspan="6" class="empty-table-cell">
                                         <i data-lucide="inbox"></i>
-                                        No documents ingested yet. Upload files above to get started.
+                                        <p style="margin-bottom: 12px;">No documents ingested yet. Upload files above to get started.</p>
+                                        <button type="button" class="btn btn-primary" onclick="document.getElementById('file-input').click()" aria-label="Upload files">
+                                            <i data-lucide="upload" style="width: 14px; height: 14px; display: inline-block; margin-right: 6px;"></i> Upload Files
+                                        </button>
                                     </td>
                                 </tr>
                             {% endif %}
