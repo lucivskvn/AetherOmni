@@ -521,6 +521,53 @@ class SecurityGatewayAndAuthTestCase(TestCase):
         response = self.client.post(reverse("delete_document", args=[my_doc.uuid]))
         self.assertEqual(response.status_code, 302)
 
+    def test_document_cancel_view(self):
+        self.client.force_login(self.user)
+        doc_in_flight = SourceDocument.objects.create(
+            original_filename="in_flight.pdf",
+            file_hash="mock-hash-inflight",
+            title="In Flight Doc",
+            status="EXTRACTING",
+            uploaded_by=self.user,
+        )
+
+        # Test AJAX cancellation
+        response = self.client.post(
+            reverse("cancel_document", args=[doc_in_flight.uuid]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")
+
+        doc_in_flight.refresh_from_db()
+        self.assertEqual(doc_in_flight.status, "FAILED")
+        self.assertIn("stopped by user", doc_in_flight.error_message)
+
+    def test_document_cancel_view_permission_denied(self):
+        other_user = User.objects.create_user(
+            username="another_user", email="another_user@example.com", password="password123"
+        )
+        other_doc = SourceDocument.objects.create(
+            original_filename="other_inflight.pdf",
+            file_hash="mock-hash-other-inflight",
+            title="Other In Flight Doc",
+            status="PENDING",
+            uploaded_by=other_user,
+        )
+
+        std_user = User.objects.create_user(
+            username="regular_user", email="regular_user@example.com", password="password123"
+        )
+        self.client.force_login(std_user)
+
+        response = self.client.post(
+            reverse("cancel_document", args=[other_doc.uuid]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+
 
 class DynamicCsrfMiddlewareTestCase(TestCase):
     """Verifies that DynamicCsrfTrustedOriginsMiddleware correctly whitelists origins in DEBUG mode."""

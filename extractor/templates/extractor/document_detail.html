@@ -23,6 +23,11 @@
         {% endif %}
     </div>
     <div class="detail-header-actions" style="display: flex; gap: 12px; align-items: center;">
+        {% if document.status == 'PENDING' or document.status == 'EXTRACTING' or document.status == 'REFINING' or document.status == 'EMBEDDING' %}
+        <button type="button" class="btn btn-secondary btn-cancel-doc" data-doc-id="{{ document.uuid }}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; border-radius: 8px; font-weight: 600; font-size: 0.85rem; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.1); color: var(--danger, #ef4444); cursor: pointer; transition: all 0.2s;" aria-label="Stop Processing for {{ document.title }}">
+            <i data-lucide="square" style="width: 14px; height: 14px;"></i> Stop Processing
+        </button>
+        {% endif %}
         <button type="button" class="btn btn-secondary btn-retry-doc" data-doc-id="{{ document.uuid }}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.65rem 1.1rem; border-radius: 8px; font-weight: 600; font-size: 0.85rem; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; transition: all 0.2s;" aria-label="Restart Curation for {{ document.title }}">
             <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> Restart Curation
         </button>

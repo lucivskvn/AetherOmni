@@ -30,8 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 8. Initialize Realtime WebSocket updates or Fallback Poller
     initializeSupabaseRealtime();
 
-    // 9. Curation Pipeline Booklet Retries
+    // 9. Curation Pipeline Booklet Retries & Cancellations
     initializeRetryActions();
+    initializeCancelActions();
 
     // 10. Auto-convert UTC timestamps to user/browser local timezone
     initializeLocalTimezones();
@@ -1347,10 +1348,11 @@ function updateDocumentDetailScreen(data) {
     const detailTimelineContainer = document.querySelector('.timeline-container');
     if (!detailTimelineContainer) return;
 
-    const match = /\/document\/(\d+)\//.exec(globalThis.location.pathname);
+    const match = /\/document\/([^/]+)\//.exec(globalThis.location.pathname);
     if (!match) return;
 
-    const currentDoc = data.documents.find(d => d.id === Number.parseInt(match[1], 10));
+    const targetId = match[1];
+    const currentDoc = data.documents.find(d => String(d.uuid) === targetId || String(d.id) === targetId);
     if (!currentDoc) return;
 
     _updateDetailMetaFields(currentDoc, currentDoc.status);
@@ -1471,6 +1473,67 @@ function initializeRetryActions() {
         .catch(err => {
             console.error('Error re-enqueuing:', err);
             showClientSideAlert('An error occurred while retrying the curation pipeline.');
+            if (icon) {
+                icon.classList.remove('spinner');
+            }
+            btn.disabled = false;
+        });
+    });
+}
+
+/**
+ * Handle manual cancellation / stopping of in-flight or stuck curation tasks.
+ */
+function initializeCancelActions() {
+    document.addEventListener('click', (event) => {
+        const btn = event.target.closest('.btn-cancel-doc');
+        if (!btn) return;
+
+        event.preventDefault();
+        const docId = btn.dataset.docId;
+        if (!docId) return;
+
+        if (!confirm('Are you sure you want to stop processing this document?')) {
+            return;
+        }
+
+        const icon = btn.querySelector('[data-lucide]') || btn.querySelector('i');
+        if (icon) {
+            icon.classList.add('spinner');
+        }
+        btn.disabled = true;
+
+        const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
+        const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
+
+        fetch(`/document/${docId}/cancel/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'success') {
+                globalThis.location.reload();
+            } else {
+                showClientSideAlert(data.message || 'Failed to stop processing.');
+                if (icon) {
+                    icon.classList.remove('spinner');
+                }
+                btn.disabled = false;
+            }
+        })
+        .catch(err => {
+            console.error('Error stopping document processing:', err);
+            showClientSideAlert('An error occurred while stopping the task.');
             if (icon) {
                 icon.classList.remove('spinner');
             }
