@@ -1687,7 +1687,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
             doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
             cloud_tasks.enqueue("process_document", {"document_id": doc_id})
         else:
-            cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+            cloud_tasks.enqueue("process_document", {"document_uuid": str(doc_uuid)})
 
     def post(self, request, doc_uuid):
         raw_doc = surreal_db.get_document(doc_uuid)

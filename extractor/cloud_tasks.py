@@ -139,7 +139,16 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
 
     handler_url = f"{service_url.rstrip('/')}/internal/tasks/{task_name}/"
     queue_path = f"projects/{project}/locations/{region}/queues/{queue_name}"
-    body = json.dumps(payload).encode()
+    from django.core.serializers.json import DjangoJSONEncoder
+
+    class _CloudTasksEncoder(DjangoJSONEncoder):
+        def default(self, obj):
+            try:
+                return super().default(obj)
+            except TypeError:
+                return str(obj)
+
+    body = json.dumps(payload, cls=_CloudTasksEncoder).encode()
 
     # Prefer the project-number-based compute SA (Cloud Run default SA format).
     # Fall back to the appspot SA if project_number is unavailable.
