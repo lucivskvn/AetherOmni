@@ -1,4 +1,4 @@
-# 🚀 KORDA — Knowledge Orchestration, RAG & Document Analysis Platform
+# 🚀 KORDA — Knowledge Orchestration, Retrieval & Document Analysis Platform
 
 > **Modern Django platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
@@ -9,8 +9,8 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.567-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-35ca0d8-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.568-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-a000deb-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -20,7 +20,7 @@
 
 ## 📌 Executive Summary, Technical Outputs & Business Use Cases
 
-**KORDA** (**K**nowledge **O**rchestration, **R**AG & **D**ocument **A**nalysis) is a multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, Excel, TXT, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
+**KORDA** (**K**nowledge **O**rchestration, **R**etrieval & **D**ocument **A**nalysis) is a multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, Excel, TXT, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
 
 ---
 
