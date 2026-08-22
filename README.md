@@ -1,4 +1,4 @@
-# 🚀 AetherOmni — Multi-Model RAG & Document Intelligence Platform
+# 🚀 KORDA — Knowledge Orchestration, RAG & Document Analysis Platform
 
 > **Modern Django platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
@@ -9,8 +9,8 @@
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.566-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-9e67544-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.567-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-35ca0d8-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -20,13 +20,13 @@
 
 ## 📌 Executive Summary, Technical Outputs & Business Use Cases
 
-**AetherOmni** is an enterprise multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, TXT, scanned images, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
+**KORDA** (**K**nowledge **O**rchestration, **R**AG & **D**ocument **A**nalysis) is a multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, Excel, TXT, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
 
 ---
 
 ## 👁️ Multi-Perspective Architectural Evaluation & Value Analysis
 
-AetherOmni's architecture is evaluated across four primary stakeholder perspectives to articulate its concrete utility, engineering rigor, financial sustainability, and scholarly rigor.
+KORDA's architecture is evaluated across four primary stakeholder perspectives to articulate its concrete utility, engineering rigor, financial sustainability, and scholarly rigor.
 
 ```mermaid
 flowchart TD
@@ -35,7 +35,7 @@ flowchart TD
     Sub3["<b>💼 Business & Enterprise PoV</b><br>SHA-256 $0.00 Caching · Immutable Audit Trail"]
     Sub4["<b>🎓 Academic Research PoV</b><br>Verifiable Citations · Multilingual SFT Datasets"]
 
-    Sub1 --> Pipeline["<b>AetherOmni Core Engine</b>"]
+    Sub1 --> Pipeline["<b>KORDA Core Engine</b>"]
     Sub2 --> Pipeline
     Sub3 --> Pipeline
     Sub4 --> Pipeline
@@ -45,8 +45,8 @@ flowchart TD
 
 ### 1. 🟢 Non-Technical & Executive Perspective: "What Does It Do & Why Use It?"
 
-- **The Problem**: Organizations waste thousands of hours manually copying data from PDFs, scanned contracts, images, and mixed document archives into databases and internal wikis. Crucial knowledge remains locked in silos.
-- **The AetherOmni Solution**: AetherOmni acts as an **Automated Digital Knowledge Converter**. Simply upload your documents (PDFs, Word files, spreadsheets, scanned images, ZIP archives), and AetherOmni automatically cleans, organizes, transcribes, and connects your files into an intelligent, searchable library.
+- **The Problem**: Organizations waste thousands of hours manually copying data from PDFs, spreadsheets, and mixed document archives into databases and internal wikis. Crucial knowledge remains locked in silos.
+- **The KORDA Solution**: KORDA acts as an **Automated Digital Knowledge Converter**. Simply upload your documents (PDFs, Word files, spreadsheets, text files, ZIP archives), and KORDA automatically cleans, organizes, transcribes, and connects your files into an intelligent, searchable library.
 - **Key User Benefits**:
   - **Zero Manual Data Entry**: Reads complex tables, flowcharts, and multi-column pages automatically.
   - **Multilingual Support**: Natively handles complex languages like Arabic (with proper Right-to-Left formatting) alongside English.
@@ -164,7 +164,7 @@ flowchart TD
 
 ### 🏢 Comprehensive Target Use Cases & Application Domains
 
-AetherOmni serves three core application tiers: Business Enterprise, Academic & Scholarly Research, and AI/ML Engineering & Developer Ecosystems.
+KORDA serves three core application tiers: Business Enterprise, Academic & Scholarly Research, and AI/ML Engineering & Developer Ecosystems.
 
 #### 1. 💼 Enterprise & Business Use Cases
 
@@ -204,7 +204,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 
 ## 🗺️ Engineering Milestones & Progressive Roadmap
 
-AetherOmni follows an **MVP-First Engineering Philosophy**, prioritizing solid core extraction, zero-cost caching, hybrid vector search, and clean batch exports before scaling to advanced multi-tenant agentic workflows.
+KORDA follows an **MVP-First Engineering Philosophy**, prioritizing solid core extraction, zero-cost caching, hybrid vector search, and clean batch exports before scaling to advanced multi-tenant agentic workflows.
 
 ```mermaid
 flowchart LR
@@ -329,7 +329,7 @@ flowchart LR
 
 ## 🛡️ DevSecOps & 5-Phase Quality Gates
 
-AetherOmni strictly enforces **Shift-Left Local Verification** before code can be committed or merged into production branches.
+KORDA strictly enforces **Shift-Left Local Verification** before code can be committed or merged into production branches.
 
 ### 🧪 Complete Verification Gate (`run_checks.sh`)
 
