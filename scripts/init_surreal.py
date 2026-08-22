@@ -115,7 +115,7 @@ def _create_local_superuser_stub(admin_email):
         user.is_staff = True
         user.is_superuser = True
         user.save()
-    logger.info("Successfully provisioned Django Admin user for: %s", admin_email)
+    logger.info("Successfully provisioned Django Admin user account.")
 
 
 def _create_local_superuser_full(admin_email, admin_password):
