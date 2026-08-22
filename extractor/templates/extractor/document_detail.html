@@ -13,7 +13,7 @@
         </a>
         {% if document.status == 'COMPLETED' or document.refined_markdown %}
         <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 12px;">
-            <label for="doc-title-input" style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Document Title</label>
+            <label for="doc-title-input" style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Document Title <span class="text-danger" aria-hidden="true">*</span></label>
             <input type="text" id="doc-title-input" name="title" value="{{ document.title }}" form="editor-form" style="font-family: var(--font-display); font-size: 20px; font-weight: 700; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: var(--text-main); max-width: 600px; outline: none; transition: border-color 0.2s; margin-bottom: 4px;" required>
             <span class="original-filename">Original Filename: {{ document.original_filename }} (Hash: {{ document.file_hash }})</span>
         </div>
@@ -217,7 +217,7 @@
             <i data-lucide="help-circle" class="meta-box-value-accent"></i> Supervised Fine-Tuning (SFT) Q&A Dataset
         </h3>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <button type="button" class="btn btn-secondary" id="btn-preview-sft" data-preview-url="{% url 'sft_dataset_preview' document.uuid %}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(99, 102, 241, 0.1); color: var(--accent); transition: all 0.2s;">
+            <button type="button" class="btn btn-secondary" id="btn-preview-sft" data-preview-url="{% url 'sft_dataset_preview' document.uuid %}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(99, 102, 241, 0.1); color: var(--accent); transition: all 0.2s;" aria-haspopup="dialog" aria-controls="sft-preview-modal">
                 <i data-lucide="eye" style="width:14px; height:14px;"></i> Inspect Dataset Pairs
             </button>
             <form action="{% url 'export_sft_jsonl' %}" method="post" style="display: inline;">
