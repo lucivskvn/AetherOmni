@@ -19,3 +19,6 @@
 
 **Learning:** Keyboard users navigating the authentication forms lack visual feedback when focusing on the GitHub OAuth buttons, as they don't inherit the global focus styles perfectly due to their border radius and specific styles.
 **Action:** Adding an explicit `.btn-github-auth:focus-visible` CSS rule in `login.html` and `register.html` fixes this by displaying a clear outline with the correct offset and border radius, improving accessibility and consistency.
+## 2026-08-22 - Add `aria-label` and `:focus-visible` to SFT Modal Close Button
+**Learning:** Icon-only buttons with hardcoded text symbols like '✕' inside modals lack proper screen reader announcements and often miss global focus styles because they aren't explicitly classed.
+**Action:** Replace hardcoded symbols with semantic SVG icons (like Lucide `x`), add `aria-label` and `title` attributes, and explicitly add them to the `:focus-visible` CSS selector rules to ensure keyboard focus visibility.
