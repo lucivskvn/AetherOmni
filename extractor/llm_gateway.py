@@ -487,7 +487,7 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
             MODEL_GEMINI_PRO,
         ]
 
-    selected_model = MODEL_GEMINI_FLASH
+    selected_model = candidates[0]
     for candidate in candidates:
         if getattr(settings, "SURREALDB_OFFLINE", False) or os.getenv("CI"):
             selected_model = candidate
