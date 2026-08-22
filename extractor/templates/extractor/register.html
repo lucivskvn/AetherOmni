@@ -253,17 +253,17 @@
             {% csrf_token %}
 
             <div class="form-group">
-                <label for="id_email">Email Address</label>
+                <label for="id_email">Email Address <span class="text-danger" aria-hidden="true">*</span></label>
                 <input type="email" id="id_email" name="email" class="register-input" autocomplete="email" required autofocus placeholder="Enter your email" aria-required="true">
             </div>
 
             <div class="form-group">
-                <label for="id_password">Password</label>
+                <label for="id_password">Password <span class="text-danger" aria-hidden="true">*</span></label>
                 <input type="password" id="id_password" name="password" class="register-input" autocomplete="new-password" required placeholder="Choose a password" aria-required="true">
             </div>
 
             <div class="form-group">
-                <label for="id_confirm_password">Confirm Password</label>
+                <label for="id_confirm_password">Confirm Password <span class="text-danger" aria-hidden="true">*</span></label>
                 <input type="password" id="id_confirm_password" name="confirm_password" class="register-input" autocomplete="new-password" required placeholder="Re-enter password" aria-required="true">
             </div>
 
@@ -274,7 +274,7 @@
                 </div>
             {% endif %}
 
-            <button type="submit" class="btn-register-submit">
+            <button type="submit" class="btn-register-submit" aria-label="Sign Up">
                 <i data-lucide="user-plus"></i> Sign Up
             </button>
         </form>

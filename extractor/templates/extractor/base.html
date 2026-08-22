@@ -121,7 +121,7 @@
                 {% endif %}
 
                 {% if user.is_superuser or user.is_staff %}
-                <button type="button" id="settings-trigger-btn" class="nav-link" aria-haspopup="dialog" aria-controls="settings-modal">
+                <button type="button" id="settings-trigger-btn" class="nav-link" aria-haspopup="dialog" aria-controls="settings-modal" aria-label="Open Settings">
                     <i data-lucide="settings"></i> Settings
                 </button>
                 {% endif %}
@@ -219,7 +219,7 @@
                 </div>
                 
                 <div class="dialog-footer border-sep">
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" aria-label="Save Configurations">
                         <i data-lucide="save"></i> Save Configurations
                     </button>
                 </div>
@@ -237,7 +237,7 @@
             
             <!-- Interactive Dual Action Confirmation Flow -->
             <div id="reset-initial-state">
-                <button type="button" id="reset-trigger-btn" class="btn btn-danger full-width">
+                <button type="button" id="reset-trigger-btn" class="btn btn-danger full-width" aria-label="Reset All Memory">
                     <i data-lucide="trash-2"></i> Reset All Memory
                 </button>
             </div>
@@ -251,13 +251,13 @@
                 <label for="reset_confirm_input">Type <strong>RESET</strong> below to confirm:</label>
                 <input type="text" id="reset_confirm_input" placeholder="RESET">
                 
-                <form action="{% url 'purge_all_documents' %}" method="post" class="full-width-form">
+                <form action="{% url 'purge_all_documents' %}" method="post" class="full-width-form" id="purge-all-form">
                     {% csrf_token %}
-                    <button type="submit" id="final-reset-btn" class="btn btn-danger full-width" disabled>
+                    <button type="submit" id="final-reset-btn" class="btn btn-danger full-width" aria-label="Permanently Wipe Database" disabled>
                         <i data-lucide="shield-alert"></i> Permanently Wipe Database & Files
                     </button>
                 </form>
-                <button type="button" id="reset-cancel-btn" class="btn btn-secondary full-width">
+                <button type="button" id="reset-cancel-btn" class="btn btn-secondary full-width" aria-label="Cancel Reset">
                     Cancel
                 </button>
             </div>
