@@ -217,7 +217,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Custom AetherOmni ignores
+# Custom KORDA ignores
 .codex/
 scratch/
 backups/
