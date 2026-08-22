@@ -1,8 +1,8 @@
-# AetherOmni Project Contract
+# KORDA Project Contract
 
 ## Purpose and status
 
-AetherOmni is an MVP for turning authenticated document uploads into searchable,
+KORDA is a platform for turning authenticated document uploads into searchable,
 curated knowledge. This contract defines what the repository currently supports,
 the conditions required for production operation, and the work that remains
 planned. It supersedes contradictory capability or compliance claims elsewhere.

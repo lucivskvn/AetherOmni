@@ -3,8 +3,8 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-admin.site.site_header = "AetherOmni Administrative Portal"
-admin.site.site_title = "AetherOmni Admin"
+admin.site.site_header = "KORDA Administrative Portal"
+admin.site.site_title = "KORDA Admin"
 admin.site.index_title = "System Database & Configuration Administration"
 
 urlpatterns = [

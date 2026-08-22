@@ -13,8 +13,8 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.571-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-1cc959d-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.572-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-b861ac0-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -96,7 +96,7 @@ flowchart TD
 
 ### 📊 Multi-Stakeholder Evaluation Summary Matrix
 
-| Stakeholder PoV | Primary Objective | AetherOmni Feature Implementation | Practical Business & Technical Value |
+| Stakeholder PoV | Primary Objective | KORDA Feature Implementation | Practical Business & Technical Value |
 | :--- | :--- | :--- | :--- |
 | **Non-Technical User** | Ease of Use & Automated Ingestion | Drag-and-drop uploads, simple markdown view, instant single-copy ZIP export (`documents/001_title.md`). | Zero technical learning curve; eliminates manual document transcription. |
 | **Software Engineer** | Architecture Rigor & Zero Hallucination | Decoupled 3-stage pipeline, SurrealDB HNSW vector RAG, RRF hybrid search (BM25 + HNSW). | High-precision sub-100ms retrieval with zero prompt context window waste. |
@@ -134,8 +134,8 @@ flowchart TD
    ```json
    [
      {
-       "question": "How does AetherOmni ensure sub-100ms vector search latency for hybrid RAG queries?",
-       "answer": "AetherOmni uses SurrealDB v3.x HNSW vector indexing combined with BM25 sparse term matching fused via Reciprocal Rank Fusion (RRF)."
+       "question": "How does KORDA ensure sub-100ms vector search latency for hybrid RAG queries?",
+       "answer": "KORDA uses SurrealDB v3.x HNSW vector indexing combined with BM25 sparse term matching fused via Reciprocal Rank Fusion (RRF)."
      }
    ]
    ```
