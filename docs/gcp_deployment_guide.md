@@ -1,6 +1,6 @@
 # Google Cloud Run Production Deployment Guide
 
-This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing Supabase PostgreSQL for Django relational state, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager. SQLite is restricted to explicit offline/test use.
+This guide describes how to provision, configure, build, and deploy the **KORDA** application to production on **Google Cloud Run**, utilizing Supabase PostgreSQL for Django relational state, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager. SQLite is restricted to explicit offline/test use.
 
 ---
 
@@ -155,7 +155,7 @@ echo -n "admin@example.com" | gcloud secrets versions add ADMIN_EMAIL --data-fil
 
 # 5. Supabase Auth Configuration (for user authentication)
 gcloud secrets create SUPABASE_URL --replication-policy="automatic"
-echo -n "https://supabase.fainko.cloud" | gcloud secrets versions add SUPABASE_URL --data-file=-
+echo -n "https://<YOUR_PROJECT_ID>.supabase.co" | gcloud secrets versions add SUPABASE_URL --data-file=-
 
 gcloud secrets create SUPABASE_PUBLIC_KEY --replication-policy="automatic"
 echo -n "YOUR_SUPABASE_PUBLIC_KEY" | gcloud secrets versions add SUPABASE_PUBLIC_KEY --data-file=-
