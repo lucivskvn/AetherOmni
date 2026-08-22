@@ -10,7 +10,7 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Version](https://img.shields.io/badge/version-v1.5.559-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-4baaea1-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Commit](https://img.shields.io/badge/commit-d138ce8-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
