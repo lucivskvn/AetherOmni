@@ -163,6 +163,8 @@ def _wrap_surreal_doc(d, users_map):
     doc_obj.id = d.get("doc_uuid")
     doc_obj.uuid = d.get("doc_uuid")
     doc_obj.doc_uuid = d.get("doc_uuid")
+    doc_obj.file = d.get("file")
+    doc_obj.file_hash = d.get("file_hash")
     doc_obj.original_filename = d.get("original_filename")
     doc_obj.title = d.get("title")
     doc_obj.author = d.get("author")
@@ -1461,6 +1463,9 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
     Handles bulk operations (Delete or Reprocess/Restart) on selected documents.
     """
 
+    def get(self, request):
+        return redirect("dashboard")
+
     def post(self, request):
         action = request.POST.get("action")
         document_ids = request.POST.getlist("selected_documents")
@@ -1795,7 +1800,13 @@ def _get_surreal_audit_document(raw_log, users_map):
     if not document_id:
         return None
     raw_document = surreal_db.get_document(document_id)
-    return _wrap_surreal_doc(raw_document, users_map) if raw_document else None
+    if raw_document:
+        return _wrap_surreal_doc(raw_document, users_map)
+    # If the document was deleted or purged, provide a fallback object so Target File displays gracefully
+    fallback = SimpleNamespace()
+    fallback.uuid = document_id
+    fallback.original_filename = f"Deleted Document ({document_id[:8]})"
+    return fallback
 
 
 def _parse_surreal_audit_log(rl, users_map):
