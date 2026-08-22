@@ -982,8 +982,8 @@ def _serialize_sqlite_conn(conn: Any) -> bytes:
         raw_sqlite_bytes = f.read()
     try:
         os.remove(tmp_path)
-    except OSError:
-        pass
+    except OSError as e:
+        logger.debug("[FileUtils] Failed to remove temporary SQLite file %s: %s", tmp_path, e)
     return raw_sqlite_bytes
 
 

@@ -100,32 +100,30 @@ def apply_schema(client: httpx.Client) -> None:
 def _create_local_superuser_stub(admin_email):
     from django.contrib.auth.models import User
 
-    from extractor.auth import _generate_unique_username
+    from extractor.auth import generate_unique_username
 
-    django_username = _generate_unique_username(admin_email)
-
+    django_username = generate_unique_username(admin_email)
     user, created = User.objects.get_or_create(
         email=admin_email,
         defaults={
             "username": django_username,
             "is_staff": True,
             "is_superuser": True,
-            "is_active": True,
         },
     )
-    if created:
-        user.set_unusable_password()
+    if not created:
+        user.is_staff = True
+        user.is_superuser = True
         user.save()
-        logger.info("Local account stub initialized.")
-    return user
+    logger.info("Successfully provisioned Django Admin user for: %s", admin_email)
 
 
 def _create_local_superuser_full(admin_email, admin_password):
     from django.contrib.auth.models import User
 
-    from extractor.auth import _generate_unique_username
+    from extractor.auth import generate_unique_username
 
-    django_username = _generate_unique_username(admin_email)
+    django_username = generate_unique_username(admin_email)
 
     user, created = User.objects.get_or_create(
         email=admin_email,
