@@ -444,7 +444,8 @@ dialog.settings-dialog .close-btn:hover {
     color: var(--text-main);
 }
 
-dialog.settings-dialog .close-btn:focus-visible {
+dialog.settings-dialog .close-btn:focus-visible,
+#btn-close-sft-modal:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
