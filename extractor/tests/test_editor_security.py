@@ -15,7 +15,7 @@ def py_is_safe_preview_url(value: str) -> bool:
         # Disallow dangerous javascript: or data: in relative pseudo-schemes
         lower_val = value.strip().lower()
         return not lower_val.startswith(("javascript:", "data:", "vbscript:", "file:"))
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         return False
 
 

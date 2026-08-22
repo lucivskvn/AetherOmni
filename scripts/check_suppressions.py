@@ -48,7 +48,12 @@ def _read_untracked_files() -> list[tuple[str, int, str]]:
     if GIT is None:
         return []
     untracked = subprocess.run(  # nosec B603
-        [GIT, "ls-files", "--others", "--exclude-standard"], cwd=ROOT, capture_output=True, check=True, text=True
+        [GIT, "ls-files", "--others", "--exclude-standard"],
+        cwd=ROOT,
+        capture_output=True,
+        check=True,
+        text=True,
+        timeout=30,
     ).stdout.splitlines()
     result: list[tuple[str, int, str]] = []
     for path in untracked:
@@ -66,7 +71,12 @@ def changed_lines() -> list[tuple[str, int, str]]:
         raise RuntimeError("Git is required to validate suppressions.")
     # Safe: GIT resolves the local executable and every argument is constant.
     diff = subprocess.run(  # nosec B603
-        [GIT, "diff", "--unified=0", "HEAD"], cwd=ROOT, capture_output=True, check=True, text=True
+        [GIT, "diff", "--unified=0", "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        check=True,
+        text=True,
+        timeout=30,
     ).stdout
     return _parse_diff_added_lines(diff) + _read_untracked_files()
 

@@ -34,7 +34,7 @@ def _gunicorn_command() -> list[str]:
 
 def _run_migrations() -> None:
     subprocess.run(  # nosec B603 -- interpreter, script, and arguments are constants
-        [sys.executable, "manage.py", "migrate", "--noinput"], check=True
+        [sys.executable, "manage.py", "migrate", "--noinput"], check=True, timeout=120
     )
 
 
