@@ -1002,8 +1002,8 @@ class DeploymentControllerViewTestCase(TestCase):
                 "template": {
                     "metadata": {
                         "annotations": {
-                            "autoscaling.knative.dev/minScale": "1" if service == "aether-web" else "0",
-                            "autoscaling.knative.dev/maxScale": "5" if service == "aether-web" else "3",
+                            "autoscaling.knative.dev/minScale": "1" if service == "korda-web" else "0",
+                            "autoscaling.knative.dev/maxScale": "5" if service == "korda-web" else "3",
                         }
                     }
                 }
@@ -1040,17 +1040,17 @@ class DeploymentControllerViewTestCase(TestCase):
     def test_post_hibernate(self):
         response = self.client.post(reverse("deployment_controller"), {"mode": "hibernate"})
         self.assertRedirects(response, reverse("deployment_controller"))
-        self.mocks[5].assert_called_once_with("aether-worker", 0, 1)
+        self.mocks[5].assert_called_once_with("korda-worker", 0, 1)
 
     def test_post_on_demand(self):
         response = self.client.post(reverse("deployment_controller"), {"mode": "on-demand"})
         self.assertRedirects(response, reverse("deployment_controller"))
-        self.mocks[5].assert_called_once_with("aether-worker", 0, 5)
+        self.mocks[5].assert_called_once_with("korda-worker", 0, 5)
 
     def test_post_always_on(self):
         response = self.client.post(reverse("deployment_controller"), {"mode": "always-on"})
         self.assertRedirects(response, reverse("deployment_controller"))
-        self.mocks[5].assert_called_once_with("aether-worker", 1, 5)
+        self.mocks[5].assert_called_once_with("korda-worker", 1, 5)
 
     def test_post_invalid(self):
         response = self.client.post(reverse("deployment_controller"), {"mode": "invalid-mode"})

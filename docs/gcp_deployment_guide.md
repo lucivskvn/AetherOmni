@@ -8,8 +8,8 @@ This guide describes how to provision, configure, build, and deploy the **KORDA*
 
 The production system consists of:
 
-1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Production users, sessions, audit logs, spend history, and settings persist in Supabase PostgreSQL; document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
-2. **Cloud Run Service (`aether-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
+1. **Cloud Run Service (`korda-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Production users, sessions, audit logs, spend history, and settings persist in Supabase PostgreSQL; document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
+2. **Cloud Run Service (`korda-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
 3. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
 4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (configured via `SURREAL_URL` WebSocket RPC). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
 5. **Vertex AI & Gemini Multi-Modal Gateway**: Direct Application Default Credentials (ADC) access (`roles/aiplatform.user`) for stable Vertex v1 Gemini 2.5 Flash / Flash-Lite and Vertex AI Vision.

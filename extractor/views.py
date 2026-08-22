@@ -1940,19 +1940,19 @@ def _resolve_worker_config(worker_config_default):
 
     worker_config = worker_config_default
     gcp_active = False
-    worker_service_name = "aether-worker"
+    worker_service_name = "korda-worker"
 
     try:
-        worker_real = get_service_config("aether-worker")
+        worker_real = get_service_config("korda-worker")
         if worker_real:
             worker_config = worker_real
             gcp_active = True
     except Exception as e:
         logger.warning(f"Could not load worker config from GCP (local fallback): {e}")
         try:
-            web_real = get_service_config("aether-web")
+            web_real = get_service_config("korda-web")
             if web_real:
-                worker_service_name = "aether-web"
+                worker_service_name = "korda-web"
                 worker_config = web_real
                 gcp_active = True
         except Exception as e_web:
@@ -2014,13 +2014,13 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         }
         worker_logs = []
         web_logs = []
-        worker_service_name = "aether-worker"
+        worker_service_name = "korda-worker"
         gcp_active = False
 
         worker_config, gcp_active, worker_service_name = _resolve_worker_config(worker_config)
 
         try:
-            web_real = get_service_config("aether-web")
+            web_real = get_service_config("korda-web")
             if web_real:
                 web_config = web_real
         except Exception as e:
@@ -2045,7 +2045,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             worker_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
 
         try:
-            web_logs = get_service_logs("aether-web", limit=50)
+            web_logs = get_service_logs("korda-web", limit=50)
         except Exception as e:
             web_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
 
@@ -2088,15 +2088,15 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             return redirect("deployment_controller")
 
         # Resolve which service to scale on GCP
-        target_service = "aether-worker"
+        target_service = "korda-worker"
         try:
-            get_service_config("aether-worker")
+            get_service_config("korda-worker")
         except (OSError, ValueError, RuntimeError):
             try:
-                get_service_config("aether-web")
-                target_service = "aether-web"
+                get_service_config("korda-web")
+                target_service = "korda-web"
             except Exception as exc:
-                logger.debug("Failed to check fallback service aether-web: %s", exc)
+                logger.debug("Failed to check fallback service korda-web: %s", exc)
 
         try:
             update_service_scale(target_service, min_scale, max_scale)
