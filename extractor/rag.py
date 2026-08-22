@@ -136,10 +136,12 @@ def _fetch_missing_embeddings(
     return dict(zip(missing_indices, generated_embeddings, strict=False))
 
 
-def _lookup_cached_embeddings(chunks_list, surreal_db):
-    final_embeddings = [None] * len(chunks_list)
-    missing_indices = []
-    missing_texts = []
+def _lookup_cached_embeddings(
+    chunks_list: list[str], surreal_db: Any
+) -> tuple[list[list[float] | None], list[int], list[str]]:
+    final_embeddings: list[list[float] | None] = [None] * len(chunks_list)
+    missing_indices: list[int] = []
+    missing_texts: list[str] = []
 
     cleaned_texts = [text.strip() for text in chunks_list]
     cached_map: dict[str, list[float]] = {}
@@ -244,7 +246,10 @@ def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-
 
     _fill_missing_fallbacks(final_embeddings, chunks_list, model_name)
 
-    return final_embeddings
+    return [
+        emb if emb is not None else generate_deterministic_embedding(chunks_list[i])
+        for i, emb in enumerate(final_embeddings)
+    ]
 
 
 # Keep old name as alias for backward compatibility with any remaining call sites

@@ -13,8 +13,8 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.574-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-1dc1aaa-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.576-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-59d760b-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 

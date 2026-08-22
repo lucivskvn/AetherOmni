@@ -2139,7 +2139,14 @@ def _validate_registration_inputs(email, password, confirm_password, supabase_ur
     return None
 
 
-def _register_supabase_user(supabase_url, supabase_key, email, password, app_url, captcha_token=None):
+def _register_supabase_user(
+    supabase_url: str,
+    supabase_key: str,
+    email: str,
+    password: str,
+    app_url: str,
+    captcha_token: str | None = None,
+) -> tuple[bool, str | None]:
     """Make the Supabase signup API call. Returns (success: bool, error_msg: str | None)."""
     import json
     import urllib.parse
@@ -2210,7 +2217,13 @@ def register_view(request):
     return render(request, TEMPLATE_REGISTER)
 
 
-def _send_supabase_recovery(email, supabase_url, supabase_key, app_url, captcha_token=None):
+def _send_supabase_recovery(
+    email: str,
+    supabase_url: str,
+    supabase_key: str,
+    app_url: str,
+    captcha_token: str | None = None,
+) -> tuple[bool, str | None]:
     import json
     import urllib.parse
     import urllib.request
