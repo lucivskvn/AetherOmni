@@ -121,7 +121,7 @@
                 {% endif %}
 
                 {% if user.is_superuser or user.is_staff %}
-                <button type="button" id="settings-trigger-btn" class="nav-link" aria-haspopup="dialog" aria-controls="settings-modal">
+                <button type="button" id="settings-trigger-btn" class="nav-link" aria-haspopup="dialog" aria-controls="settings-modal" aria-label="Open Settings" title="Open Settings">
                     <i data-lucide="settings"></i> Settings
                 </button>
                 {% endif %}

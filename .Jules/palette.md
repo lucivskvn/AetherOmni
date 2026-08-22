@@ -17,13 +17,19 @@
 
 ## 2026-08-15 - Add `:focus-visible` to OAuth Buttons
 
-**Learning:** Keyboard users navigating the authentication forms lack visual feedback when focusing on the GitHub OAuth buttons, as they don't inherit the global focus styles perfectly due to their border radius and specific styles.
 **Action:** Adding an explicit `.btn-github-auth:focus-visible` CSS rule in `login.html` and `register.html` fixes this by displaying a clear outline with the correct offset and border radius, improving accessibility and consistency.
 
 ## 2026-08-20 - Add Required Indicators to Form Labels
+
 **Learning:** Forms with `required` inputs rely on screen readers or validation errors to communicate requirements, which harms visual UX.
 **Action:** Adding an accessible visual indicator (`<span class="text-danger" aria-hidden="true">*</span>`) to mandatory field labels provides clear, immediate expectations without cluttering screen reader announcements.
 
 ## 2026-08-20 - Add ARIA Dialog Attributes to Modal Triggers
+
 **Learning:** Buttons that open custom modals (like `<dialog>`) often lack semantic connection to the modal they control.
 **Action:** Add `aria-haspopup="dialog"` and `aria-controls="modal-id"` to the trigger buttons to ensure screen readers correctly announce the interaction pattern.
+
+## 2026-08-22 - Add `aria-label` and `:focus-visible` to SFT Modal Close Button
+
+**Learning:** Icon-only buttons with hardcoded text symbols like '✕' inside modals lack proper screen reader announcements and often miss global focus styles because they aren't explicitly classed.
+**Action:** Replace hardcoded symbols with semantic SVG icons (like Lucide `x`), add `aria-label` and `title` attributes, and explicitly add them to the `:focus-visible` CSS selector rules to ensure keyboard focus visibility.
