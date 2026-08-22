@@ -163,6 +163,8 @@ def _wrap_surreal_doc(d, users_map):
     doc_obj.id = d.get("doc_uuid")
     doc_obj.uuid = d.get("doc_uuid")
     doc_obj.doc_uuid = d.get("doc_uuid")
+    doc_obj.file = d.get("file")
+    doc_obj.file_hash = d.get("file_hash")
     doc_obj.original_filename = d.get("original_filename")
     doc_obj.title = d.get("title")
     doc_obj.author = d.get("author")

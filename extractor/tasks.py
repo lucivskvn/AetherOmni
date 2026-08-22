@@ -272,40 +272,58 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     return doc
 
 
-def _get_working_path(doc_id: str, download: bool = True) -> tuple[str, str]:
+def _get_working_path(doc_or_id: Any, download: bool = True) -> tuple[str, str]:
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        p = _get_working_path_offline(doc_id, download)
+        p = _get_working_path_offline(doc_or_id, download)
         return p, p
     else:
-        p = _get_working_path_surreal(doc_id, download)
+        p = _get_working_path_surreal(doc_or_id, download)
         return p, p
 
 
-def _get_working_path_offline(doc_id: str, download: bool) -> str:
+def _resolve_offline_source_doc(doc_or_id: Any):
     from extractor.models import SourceDocument
 
+    if isinstance(doc_or_id, SourceDocument):
+        return doc_or_id
+    doc_id = doc_or_id
     try:
         import uuid
 
         try:
             uuid.UUID(str(doc_id))
-            doc = SourceDocument.objects.get(uuid=doc_id)
+            return SourceDocument.objects.get(uuid=doc_id)
         except ValueError:
-            doc = SourceDocument.objects.get(id=int(getattr(doc_id, "id", doc_id)))
+            return SourceDocument.objects.get(id=int(getattr(doc_id, "id", doc_id)))
     except (SourceDocument.DoesNotExist, ValueError):
         raise ValueError(f"Document {doc_id} not found in SQLite")
-    if not download:
-        return ""
-    if not doc.file or not doc.file.name:
-        raise ValueError(f"Document {doc_id} has no file attached")
+
+
+def _read_offline_file_bytes(doc_file) -> bytes:
     try:
-        with doc.file.open("rb") as f:
-            content = f.read()
+        if hasattr(doc_file, "open"):
+            try:
+                with doc_file.open("rb") as f:
+                    return f.read()
+            except (AttributeError, TypeError):
+                return doc_file.read()
+        return doc_file.read()
     except Exception:
         logger.exception("[Worker] Failed to read file from SQLite storage")
         raise
+
+
+def _get_working_path_offline(doc_or_id: Any, download: bool) -> str:
+    doc = _resolve_offline_source_doc(doc_or_id)
+    if not download:
+        return ""
+    if not doc.file or not doc.file.name:
+        doc_ref_id = getattr(doc, "id", doc_or_id)
+        raise ValueError(f"Document {doc_ref_id} has no file attached")
+
+    content = _read_offline_file_bytes(doc.file)
     import os
 
     ext = os.path.splitext(doc.file.name)[1]
@@ -315,13 +333,22 @@ def _get_working_path_offline(doc_id: str, download: bool) -> str:
     return temp_path
 
 
-def _get_working_path_surreal(doc_id: str, download: bool) -> str:
+def _get_working_path_surreal(doc_or_id: Any, download: bool) -> str:
     import os
     import urllib.parse
 
     from extractor.file_utils import _get_gcs_bucket
 
-    doc = surreal_db.get_document(doc_id)
+    if isinstance(doc_or_id, dict):
+        doc = doc_or_id
+        doc_id = doc.get("doc_uuid") or str(doc.get("id", ""))
+    elif hasattr(doc_or_id, "doc_uuid"):
+        doc_id = str(doc_or_id.doc_uuid)
+        doc = surreal_db.get_document(doc_id)
+    else:
+        doc_id = str(doc_or_id)
+        doc = surreal_db.get_document(doc_id)
+
     if not doc:
         raise ValueError(f"Document {doc_id} not found in SurrealDB")
     if not download:
