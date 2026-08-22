@@ -1,0 +1,7 @@
+config:
+  gcp:project: ${GCP_PROJECT_ID}
+  gcp:region: asia-southeast1
+  korda-infra:web_min_instances: 1
+  korda-infra:web_max_instances: 5
+  korda-infra:worker_min_instances: 0
+  korda-infra:worker_max_instances: 5
