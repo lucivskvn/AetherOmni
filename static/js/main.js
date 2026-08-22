@@ -1180,7 +1180,7 @@ function initializeSupabaseRealtime() {
     const supabaseKey = document.body.dataset.supabaseKey;
 
     if (!supabaseUrl || !supabaseKey || typeof supabase === 'undefined') {
-        console.debug("[Realtime] Supabase Realtime credentials not detected or SDK not loaded. Falling back to background AJAX polling.");
+        console.debug("[Realtime] Realtime websocket channel unavailable. Falling back to background AJAX polling.");
         initializeStatusPoller();
         return;
     }
