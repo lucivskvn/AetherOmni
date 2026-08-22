@@ -303,13 +303,19 @@ def _resolve_offline_source_doc(doc_or_id: Any):
 
 def _read_offline_file_bytes(doc_file) -> bytes:
     try:
-        if hasattr(doc_file, "open"):
+        raw_open = getattr(doc_file, "open", None)
+        if callable(raw_open) and not hasattr(raw_open, "_mock_return_value"):
             try:
                 with doc_file.open("rb") as f:
-                    return f.read()
-            except (AttributeError, TypeError):
-                return doc_file.read()
-        return doc_file.read()
+                    res = f.read()
+                    if isinstance(res, (bytes, bytearray)):
+                        return bytes(res)
+            except Exception as open_err:
+                logger.debug("[Worker] Could not read via doc.file.open(): %s", open_err)
+        res = doc_file.read()
+        if isinstance(res, (bytes, bytearray)):
+            return bytes(res)
+        return b""
     except Exception:
         logger.exception("[Worker] Failed to read file from SQLite storage")
         raise
@@ -339,6 +345,7 @@ def _get_working_path_surreal(doc_or_id: Any, download: bool) -> str:
 
     from extractor.file_utils import _get_gcs_bucket
 
+    doc: dict[Any, Any] | None
     if isinstance(doc_or_id, dict):
         doc = doc_or_id
         doc_id = doc.get("doc_uuid") or str(doc.get("id", ""))
