@@ -19,33 +19,51 @@ The production system consists of:
 
 ---
 
-## 2. Provisioning and Deployment Policy
+## 2. Infrastructure as Code (IaC) & Deployment Policy
 
-The legacy imperative provisioning script has been retired. It mixed local
-`.env` secrets, broad IAM changes, infrastructure creation, and deployment in a
-single command, making its results difficult to review and reproduce.
+Infrastructure provisioning and teardown are managed declaratively using **Pulumi Python IaC** (`infra/pulumi/`), replacing imperative manual provisioning scripts.
 
-For the existing project, manage deployment through the reviewed Cloud Build
-configuration in `infra/gcp/cloudbuild.yaml`. Infrastructure provisioning will
-move to Pulumi before any new environment is created or an existing environment
-is rebuilt. Until then, use the manual reference below and make narrowly scoped,
-reviewed GCP changes.
+Key operational policies:
+
+- **Zero Committed Secrets & Dynamic Project Resolution**: Cloud Run service manifests and Pulumi configurations resolve project IDs and Secret Manager references dynamically at runtime (`GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`).
+- **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks`, and GCS bucket `esbpcs-lab-un-media-korda`) are colocated in **`asia-southeast2` (Jakarta)** to eliminate cross-region egress and intra-region data transfer fees.
+- **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching and SonarCloud Quality Gate verification.
 
 ---
 
-## 3. Manual Provisioning Reference
+## 3. Declarative Provisioning via Pulumi (Recommended)
 
-Run these commands using the Google Cloud CLI (`gcloud`) or Cloud Shell.
+Provision or update the entire platform topology across Cloud Run, Cloud Tasks, GCS, and IAM with Pulumi:
+
+```bash
+# Navigate to the Pulumi IaC stack
+cd infra/pulumi
+
+# Set your target project ID (if not already set in environment)
+pulumi config set gcp:project <YOUR_GCP_PROJECT_ID>
+pulumi config set gcp:region asia-southeast2
+
+# Preview resource topology
+pulumi preview --stack prod
+
+# Deploy infrastructure
+pulumi up --stack prod --yes
+```
+
+---
+
+## 4. Manual Provisioning Reference (Fallback)
+
+Run these commands using the Google Cloud CLI (`gcloud`) or Cloud Shell if bootstrapping without Pulumi:
 
 ### A. Set Environment Variables
 
 ```bash
 export PROJECT_ID="your-gcp-project-id"
-export REGION="asia-southeast1" # Choose your preferred region
-export SUFFIX="data-extractor"
-export ARTIFACT_REGISTRY="data-extractor-repo"
-export BUCKET_NAME="${PROJECT_ID}-media-${SUFFIX}"
-export SERVICE_ACCOUNT="run-service-account@${PROJECT_ID}.iam.gserviceaccount.com"
+export REGION="asia-southeast2" # Primary region (Jakarta)
+export ARTIFACT_REGISTRY="cloud-run-source-deploy"
+export BUCKET_NAME="${PROJECT_ID}-media-korda"
+export SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
 export QUEUE_NAME="extractor-tasks"
 ```
 
@@ -57,7 +75,8 @@ gcloud services enable \
   cloudtasks.googleapis.com \
   secretmanager.googleapis.com \
   artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com
+  cloudbuild.googleapis.com \
+  aiplatform.googleapis.com
 ```
 
 ### C. Create Artifact Registry
@@ -445,3 +464,23 @@ AI agents and platform operators leverage Model Context Protocol (MCP) servers f
 - **SonarQube / SonarCloud MCP (`sonarqube`)**: Query real-time quality gate status, rule violations, and security hotspots (`get_project_quality_gate_status`, `search_sonar_issues_in_projects`).
 - **Chrome DevTools MCP (`chrome-devtools-mcp`)**: Audit production frontend performance, Core Web Vitals, accessibility compliance (`a11y-debugging`), and browser runtime console errors.
 - **Google Developer Knowledge MCP (`google-developer-knowledge`)**: Verify up-to-date Cloud Run and Vertex AI configuration blueprints.
+
+---
+
+## 10. Intra-Region & Inter-Service Network Cost Optimization
+
+To minimize Google Cloud billing anomalies and eliminate **Intra-Region & Cross-Region Data Transfer Egress** charges:
+
+1. **Strict Same-Region Colocation (`asia-southeast2`)**:
+   - Cloud Run Web (`korda-web`), Cloud Run Worker (`korda-worker`), Cloud Tasks (`extractor-tasks`), and Google Cloud Storage bucket (`esbpcs-lab-un-media-korda`) reside exclusively in `asia-southeast2` (Jakarta).
+   - Ingress and egress traffic between Cloud Run, Cloud Tasks, and Cloud Storage in the same GCP region is priced at **$0.00/GB** (free intra-region data transfer).
+
+2. **Vertex AI Multimodal Regional Gateway Routing**:
+   - `extractor/llm_gateway.py` evaluates the local region `asia-southeast2` first for all Vertex AI Gemini 2.5 Flash and Flash-Lite inference calls.
+   - Cross-regional fallbacks (to Singapore `asia-southeast1`, US `us-central1`, or EU `europe-west9`) trigger only if model quota or regional outages occur, reducing inter-region data transfer billing.
+
+3. **Signed URLs & Streaming Content Delivery**:
+   - Large raw PDF documents and curated ZIP export bundles stream directly from GCS via short-lived signed URLs rather than being proxied through the Web service container memory, avoiding double egress billing.
+
+4. **Zero Scale-to-Idle Worker Strategy**:
+   - `korda-worker` scales to `0` minimum instances when idle (`min_instance_count: 0`). Cloud Tasks wakes the worker on-demand via OIDC authenticated HTTP invocation, preventing continuous compute fees.
