@@ -1189,7 +1189,7 @@ def _fetch_live_rates_with_fallback():
                 except (RuntimeError, ValueError, KeyError, AttributeError) as exc:
                     logger.debug("[Exchange Rates] Failed to cache rates: %s", exc)
     except (urllib.error.URLError, ValueError, TypeError, KeyError, OSError) as exc:
-        logger.warning("[Exchange Rates] Error fetching live rates: %s — using fallback.", exc)
+        logger.error("[Exchange Rates] Error fetching live rates: %s — using fallback.", exc)
         rates = _FALLBACK_RATES.copy()
         try:
             from extractor import surreal_db

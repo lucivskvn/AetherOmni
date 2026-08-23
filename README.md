@@ -13,8 +13,8 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.608-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-011883c-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.609-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-41e3c16-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -203,6 +203,8 @@ KORDA serves three core application tiers: Business Enterprise, Academic & Schol
 | **Automated Artifact Cleanup** | Automated DevSecOps file retention policy (`cleanup_stale_temp_artifacts`) purging temporary processing scratch files older than 24h. | `cleanup_stale_temp_artifacts` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L420) |
 | **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
 | **5-Phase DevSecOps Suite** | Automated verification pipeline: AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy static typing, Hadolint container hardening, **SurrealQL schema validation** (`surreal validate`), ShellCheck POSIX safety, SonarQube MQR Gatekeeper, and a comprehensive unit test suite with `coverage.xml` reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
+| **Knowledge Graph RAG** | Multi-hop reasoning via `entities`, `chunk_references`, and `entity_relations` graph edges with HNSW 768 entity embeddings. | `query_knowledge_graph` in [`surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py) |
+| **Real-Time SSE Streaming** | Server-Sent Events (`text/event-stream`) streaming endpoint (`/api/v1/stream-query/`) with non-blocking token generators. | [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py) |
 
 ---
 
@@ -232,7 +234,7 @@ flowchart LR
 ### ✅ Milestone 2.0 (MVP Core — Dual Database Engine & Multi-Model LLM Gateway)
 
 - [x] **SurrealDB HNSW Vector Storage**: Remote SurrealDB vector indexer (`DIMENSION 768 DIST COSINE`) paired with Supabase PostgreSQL (and SQLite offline).
-- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (latency, privacy and low-carbon ranked: Jakarta ID ➡️ Singapore SG ➡️ Paris/NL EU ➡️ Montreal CA), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
+- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast2 (Jakarta) -> asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
 - [x] **Persisted Budget Accounting**: Hard monthly USD spend limits backed by immutable `MonthlySpendLog` ledgers.
 
 ### ✅ Milestone 3.0 (MVP Core — Hybrid RAG, Context Caching & Vision OCR)
@@ -280,7 +282,8 @@ flowchart LR
 
 ### 🚀 Milestone 5.0 (Enterprise Roadmap — Knowledge Graph RAG & Autonomous Agent Tools)
 
-- [ ] **Multi-Tenant Knowledge Graph RAG**: SurrealDB Graph Relational RAG (`entities`, `chunk_references`, `entity_relations`) linking concepts, authors, and document nodes.
+- [x] **Multi-Tenant Knowledge Graph RAG Schema**: SurrealDB Graph Relational RAG (`entities`, `chunk_references`, `entity_relations`) schema defined in `schema.surql` and wired via `upsert_entity()`, `relate_chunk_to_entity()`, and `query_knowledge_graph()` in `surreal_db.py`.
+- [ ] **Knowledge Graph Pipeline Ingestion**: Full pipeline ingestion and entity extraction for Graph RAG.
 - [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step research and data ingestion workflows.
 
 ---
@@ -288,10 +291,10 @@ flowchart LR
 ## 🏗️ 3-Stage Architectural Pipeline
 
 ```text
-┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐
-│     STAGE 1: LAYOUT     │ ──> │   STAGE 2: REFINEMENT   │ ──> │     STAGE 3: VECTOR     │
-│   Ingestion & Parsing   │     │    Multi-Model LLM     │     │  SurrealDB HNSW Index  │
-└─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘
+┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐
+│     STAGE 1: LAYOUT     │ ──> │   STAGE 2: REFINEMENT   │ ──> │     STAGE 3: VECTOR     │ ──> │ STAGE 4: KNOWLEDGE GRAPH│
+│   Ingestion & Parsing   │     │    Multi-Model LLM      │     │  SurrealDB HNSW Index   │     │   Entities & Relations  │
+└─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘
 ```
 
 | Pipeline Stage | Implementation Module | Architecture & Operations |
@@ -299,6 +302,7 @@ flowchart LR
 | **Stage 1: Layout & Ingestion** | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) | • Validates document headers, sanitizes HTML, computes SHA-256 hashes.<br>• Executes instant SHA-256 hash deduplication ($0.00 cost reuse).<br>• Parses Arabic RTL typography (`parse_arabic_layout`) and extracts YAML frontmatter.<br>• Unpacks ZIP archives recursively into single-copy standardized files (`documents/001_title.md`). |
 | **Stage 2: LLM Refinement & Cost Control** | [`extractor/llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) | • Evaluates `check_budget_and_api_limit()` against `MonthlySpendLog` USD caps.<br>• Dispatches prompts across primary LLM providers (Gemini / Vertex / OpenRouter) with exponential backoff.<br>• Extracts multi-modal visual diagrams and flowcharts via Gemini 2.5 Flash / Vertex AI Vision.<br>• Calculates real-time prompt/completion token spend and logs costs. |
 | **Stage 3: Vector HNSW Indexing & RAG** | [`extractor/rag.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/rag.py) | • Executes semantic boundary chunking (`chunk_document_semantically`).<br>• Generates text embeddings and writes to SurrealDB HNSW vector index (`DIMENSION 768`).<br>• Executes Reciprocal Rank Fusion (RRF) combining BM25 keyword matching with dense HNSW vector search.<br>• Manages TTL-enforced RAG cache (`upsert_rag_cache`) for fast semantic retrieval. |
+| **Stage 4: Knowledge Graph Storage** | [`extractor/surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py) | • Upserts semantic entities (`upsert_entity()`) with HNSW 768 vector embeddings.<br>• Connects document chunks to entities via `chunk_references` graph edges (`relate_chunk_to_entity()`).<br>• Establishes relationships between concepts via `entity_relations`.<br>• Facilitates multi-hop reasoning (`query_knowledge_graph()`). |
 
 ---
 
@@ -309,8 +313,9 @@ flowchart LR
 | **Core Framework** | Python / Django | Python 3.14 · Django 6.x | Core MVC architecture, ORM data layer, admin backend, session management |
 | **Relational Storage & Auth** | Supabase PostgreSQL / Supabase Auth | PostgreSQL 17 · GoTrue REST API · Cloudflare Turnstile | User identity, authentication, session tokens with `gotrue_meta_security`, spend logs, and audit trails |
 | **High-Throughput Vector & Cache DB** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model vector store (HNSW 768 cosine), prompt prefix cache (`context_cache`), sliding rate limits (`rate_limits`), and `user_memories` |
+| **Knowledge Graph Engine** | SurrealDB | Graph Relational | Stores nodes (`entities`), semantic embeddings (HNSW 768), and bidirectional graph edges (`chunk_references`, `entity_relations`) for multi-hop RAG |
 | **Secrets & Keyless IAM** | GCP Secret Manager / IAM ADC | Application Default Credentials (ADC) | Keyless IAM runtime authentication, dynamic resolution of API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) with zero committed secrets |
-| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: ID ➡️ SG ➡️ EU ➡️ CA), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
+| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast2 (Jakarta) -> asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
 | **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast2` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
 | **Asynchronous Task Queue** | GCP Cloud Tasks | OIDC Authenticated Worker Tasks | Production asynchronous document processing queue with localized thread fallbacks |
 | **Cloud Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw documents and curated export bundles |
@@ -323,6 +328,8 @@ flowchart LR
 
 ## ✨ Core Feature Matrix
 
+- 🧠 **Knowledge Graph RAG**: Employs SurrealDB's graph relational model to connect semantic entities, multi-hop `entity_relations`, and `chunk_references` for advanced reasoning.
+- ⚡ **Real-Time SSE Streaming**: Low-latency Server-Sent Events (`/api/v1/stream-query/`) endpoint for instant token streaming to live UIs.
 - 🌐 **Multilingual & RTL Layout Preservation**: Full support for Right-to-Left Arabic text formatting and multi-column document parsing.
 - 📦 **Curated ZIP Archival Export**: Bundles filtered documents into organized folder hierarchies (`Language/English`, `Author/Shakespeare`) complete with `manifest.json` and combined `master_archival_source.md`.
 - 🔎 **Hybrid Semantic RAG Search**: Combines SurrealDB HNSW vector search with BM25 sparse keyword matching using Reciprocal Rank Fusion (RRF).

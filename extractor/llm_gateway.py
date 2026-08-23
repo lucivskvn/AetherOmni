@@ -173,7 +173,7 @@ def _get_cached_realtime_pricing(cache) -> dict[str, dict[str, Decimal]] | None:
                 for k, v in cached_pricing.items()
             }
         except (KeyError, ValueError, TypeError, AttributeError) as e:
-            logger.warning("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
+            logger.error("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
 
     return None
 
@@ -226,7 +226,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                 for k, v in pricing_map.items()
             }
     except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
-        logger.warning("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
+        logger.error("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
 
     return None
 
