@@ -51,10 +51,12 @@ media_bucket = gcp.storage.Bucket(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
+queue_name = config.get("queue_name") or os.getenv("CLOUD_TASKS_QUEUE") or "extractor-tasks-v2"
+
 # 2. Cloud Tasks Queue
 tasks_queue = gcp.cloudtasks.Queue(
     "korda-tasks-queue",
-    name="extractor-tasks",
+    name=queue_name,
     location=region,
     project=project,
     rate_limits=gcp.cloudtasks.QueueRateLimitsArgs(
@@ -85,13 +87,15 @@ iam_roles = [
     "roles/run.invoker",  # Invoke Cloud Run internal endpoints
 ]
 
+iam_members = []
 for idx, role in enumerate(iam_roles):
-    gcp.projects.IAMMember(
+    member = gcp.projects.IAMMember(
         f"korda-iam-{idx}",
         project=project,
         role=role,
         member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
     )
+    iam_members.append(member)
 
 # Grant service account access to the media bucket
 gcp.storage.BucketIAMMember(
@@ -118,6 +122,7 @@ common_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL", value="gemini-2.5-flash"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_BATCH", value="gemini-2.5-flash-lite"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="CLOUD_TASKS_SERVICE_ACCOUNT", value=service_account.email),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="CLOUD_TASKS_QUEUE", value=queue_name),
 ]
 
 # Standard Secret Manager Volume / Environment Bindings
@@ -177,7 +182,7 @@ worker_service = gcp.cloudrunv2.Service(
             )
         ],
     ),
-    opts=pulumi.ResourceOptions(provider=gcp_provider),
+    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
 )
 
 # 6. Cloud Run Web Service (korda-web)
@@ -211,7 +216,7 @@ web_service = gcp.cloudrunv2.Service(
             )
         ],
     ),
-    opts=pulumi.ResourceOptions(provider=gcp_provider),
+    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
 )
 
 # Public access IAM policy for korda-web
