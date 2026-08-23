@@ -471,8 +471,8 @@ if [[ "$TESTS_FAILED" = true ]]; then
     exit 1
 fi
 
-$PYTHON_BIN -m coverage combine 2>/dev/null || true
-$PYTHON_BIN -m coverage xml -o coverage.xml 2>/dev/null || true
+$PYTHON_BIN -m coverage combine 2>/dev/null
+$PYTHON_BIN -m coverage xml -o coverage.xml 2>/dev/null
 TEST_COUNT=$(grep -oP '(?<=Ran )\d+' "$TMPDIR_AET/test_output.txt" 2>/dev/null | awk '{s+=$1} END {print s}')
 if [[ -n "$TEST_COUNT" ]]; then echo "$TEST_COUNT" > .test_count; fi
 echo -e "${GREEN}✓ Automated Django unit test suite executed successfully with coverage.xml generated (${TEST_COUNT:-0} tests passed).${NC}"

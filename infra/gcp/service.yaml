@@ -54,7 +54,7 @@ spec:
         - name: WORKER_URL
           value: "${WORKER_URL}"
         - name: SURREAL_NS
-          value: "aetheromni"
+          value: "korda"
         - name: SURREAL_DB
           value: "extractor"
         - name: SURREALDB_OFFLINE

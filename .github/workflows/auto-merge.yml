@@ -6,6 +6,7 @@ on:
     branches: [main, next]
   pull_request_review:
     types: [submitted]
+    branches: [main, next]
   push:
     branches: [main]
 
@@ -16,6 +17,7 @@ permissions:
 jobs:
   manage-pr-lifecycle:
     name: Auto-Sync, Conflict Guard & Auto-Merge
+    if: github.event_name == 'push' || github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'next'
     runs-on: ubuntu-latest
     steps:
       - name: Process Open PRs (Sync, Conflict Check, Auto-Merge)

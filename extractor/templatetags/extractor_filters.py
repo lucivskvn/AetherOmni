@@ -279,26 +279,22 @@ def normalize_language(value: str) -> str:
     return _LANG_MAP.get(key, str(value).strip().title())
 
 
-import os
 import time
 
 _CACHE_BUST_VAL: str | None = None
 
 
 def get_cache_bust_version() -> str:
-    """Returns the current cache busting string, prioritizing dynamic RELEASE_VERSION, then VERSION file, then server startup timestamp."""
+    """Returns the current cache busting string, prioritizing _resolve_release_version(), then server startup timestamp."""
     global _CACHE_BUST_VAL
     if _CACHE_BUST_VAL is None:
-        if env_ver := os.environ.get("RELEASE_VERSION"):
-            _CACHE_BUST_VAL = env_ver.lstrip("v")
-        else:
-            try:
-                from extractor.context_processors import _resolve_release_version
+        try:
+            from extractor.context_processors import _resolve_release_version
 
-                ver = _resolve_release_version()
-                _CACHE_BUST_VAL = ver if ver != "0.0.0" else str(int(time.time()))
-            except Exception:
-                _CACHE_BUST_VAL = str(int(time.time()))
+            ver = _resolve_release_version()
+            _CACHE_BUST_VAL = ver if ver != "0.0.0" else str(int(time.time()))
+        except Exception:
+            _CACHE_BUST_VAL = str(int(time.time()))
     return _CACHE_BUST_VAL
 
 
