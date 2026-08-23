@@ -26,7 +26,7 @@ Infrastructure provisioning and teardown are managed declaratively using **Pulum
 Key operational policies:
 
 - **Zero Committed Secrets & Dynamic Project Resolution**: Cloud Run service manifests and Pulumi configurations resolve project IDs and Secret Manager references dynamically at runtime (`GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`).
-- **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks`, and GCS bucket `esbpcs-lab-un-media-korda`) are colocated in **`asia-southeast2` (Jakarta)** to eliminate cross-region egress and intra-region data transfer fees.
+- **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks-v2`, and GCS bucket `<PROJECT_ID>-media-korda`) are colocated in **`asia-southeast2` (Jakarta)** to eliminate cross-region egress and intra-region data transfer fees.
 - **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching and SonarCloud Quality Gate verification.
 
 ---
@@ -517,7 +517,7 @@ AI agents and platform operators leverage Model Context Protocol (MCP) servers f
 To minimize Google Cloud billing anomalies and eliminate **Intra-Region & Cross-Region Data Transfer Egress** charges:
 
 1. **Strict Same-Region Colocation (`asia-southeast2`)**:
-   - Cloud Run Web (`korda-web`), Cloud Run Worker (`korda-worker`), Cloud Tasks (`extractor-tasks`), and Google Cloud Storage bucket (`esbpcs-lab-un-media-korda`) reside exclusively in `asia-southeast2` (Jakarta).
+   - Cloud Run Web (`korda-web`), Cloud Run Worker (`korda-worker`), Cloud Tasks (`extractor-tasks-v2`), and Google Cloud Storage bucket (`<PROJECT_ID>-media-korda`) reside exclusively in `asia-southeast2` (Jakarta).
    - Ingress and egress traffic between Cloud Run, Cloud Tasks, and Cloud Storage in the same GCP region is priced at **$0.00/GB** (free intra-region data transfer).
 
 2. **Vertex AI Multimodal Regional Gateway Routing (Latency-Ranked)**:
