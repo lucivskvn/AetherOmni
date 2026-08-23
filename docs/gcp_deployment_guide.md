@@ -527,7 +527,6 @@ To minimize Google Cloud billing anomalies and eliminate **Intra-Region & Cross-
      2. **SG** (`asia-southeast1` — Singapore: nearest APAC secondary hub)
      3. **EU** (`europe-west9` / `europe-west4` — Paris/Netherlands: GDPR-compliant EU hubs)
      4. **CA** (`northamerica-northeast1` — Montreal: low-carbon, on-par Canadian privacy hub)
-     5. **US** (`us-central1` — Iowa: final universal fallback)
 
 3. **Signed URLs & Streaming Content Delivery**:
    - Large raw PDF documents and curated ZIP export bundles stream directly from GCS via short-lived signed URLs rather than being proxied through the Web service container memory, avoiding double egress billing.

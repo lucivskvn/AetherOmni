@@ -733,12 +733,11 @@ def is_rate_limit_error(exception: Exception) -> bool:
 
 
 # Ordered list of Vertex AI regions to try when a model is unavailable in the
-# primary region. Prioritized for minimal latency and data protection:
+# primary region. Prioritized for minimal latency, data protection, and low carbon:
 # 1. ID (asia-southeast2 — Jakarta: closest local APAC origin)
 # 2. SG (asia-southeast1 — Singapore: nearest APAC secondary hub)
 # 3. EU (europe-west9 / europe-west4 — Paris/Netherlands: GDPR-compliant EU hubs)
 # 4. CA (northamerica-northeast1 — Montreal: low-carbon, on-par data privacy Canadian hub)
-# 5. US (us-central1 — Iowa: final universal fallback)
 # Override via settings.VERTEX_REGION_FALLBACK_CHAIN or the env variable.
 VERTEX_REGION_FALLBACK_CHAIN: list[str] = getattr(settings, "VERTEX_REGION_FALLBACK_CHAIN", None) or [
     "asia-southeast2",  # ID: Jakarta — primary lowest latency
@@ -746,7 +745,6 @@ VERTEX_REGION_FALLBACK_CHAIN: list[str] = getattr(settings, "VERTEX_REGION_FALLB
     "europe-west9",  # EU: Paris — GDPR compliant high-capacity hub
     "europe-west4",  # EU: Netherlands — secondary EU fallback
     "northamerica-northeast1",  # CA: Montreal — Canadian on-par data privacy hub
-    "us-central1",  # US: Iowa — final global fallback
 ]
 
 
@@ -789,7 +787,7 @@ def get_vertex_client() -> Any | None:
     primary_location = (
         getattr(settings, "GCP_REGION", None)
         or os.getenv("GCP_REGION")
-        or (VERTEX_REGION_FALLBACK_CHAIN[0] if VERTEX_REGION_FALLBACK_CHAIN else "us-central1")
+        or (VERTEX_REGION_FALLBACK_CHAIN[0] if VERTEX_REGION_FALLBACK_CHAIN else "asia-southeast2")
     )
     client = get_vertex_client_for_location(primary_location)
     if client:
@@ -799,12 +797,10 @@ def get_vertex_client() -> Any | None:
 
 def execute_embed_content_with_fallback(
     model_name: str,
-    contents: list[str],
+    contents: Any,
+    config: Any = None,
 ) -> Any:
-    """
-    Retrieves embeddings for the given contents, trying first with Vertex AI
-    across the region fallback chain, and falling back to AI Studio if necessary.
-    """
+    """ """
     # 1. Prioritise Vertex AI via ADC across regions fallback chain
     for region in VERTEX_REGION_FALLBACK_CHAIN:
         vertex_client = get_vertex_client_for_location(region)
@@ -932,9 +928,6 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
           - If the model succeeds → return immediately.
           - If NOT_FOUND / region-unavailable → try next region for that model.
           - Other errors (rate limit, quota) → try next model in same region.
-
-    This means asia-southeast1 is tried first (Singapore, closest to Indonesia).
-    If any model isn't available there, us-central1 is the universal fallback.
     """
     NOT_FOUND_SIGNALS = ("not found", "not_found", "404", "does not have access", "not available in")
 

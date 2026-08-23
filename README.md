@@ -13,8 +13,8 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.598-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-f535266-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.599-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-b0d2970-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -232,7 +232,7 @@ flowchart LR
 ### ✅ Milestone 2.0 (MVP Core — Dual Database Engine & Multi-Model LLM Gateway)
 
 - [x] **SurrealDB HNSW Vector Storage**: Remote SurrealDB vector indexer (`DIMENSION 768 DIST COSINE`) paired with Supabase PostgreSQL (and SQLite offline).
-- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (latency and privacy ranked: Jakarta ID ➡️ Singapore SG ➡️ Paris/NL EU ➡️ Montreal CA ➡️ Iowa US), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
+- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (latency, privacy and low-carbon ranked: Jakarta ID ➡️ Singapore SG ➡️ Paris/NL EU ➡️ Montreal CA), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
 - [x] **Persisted Budget Accounting**: Hard monthly USD spend limits backed by immutable `MonthlySpendLog` ledgers.
 
 ### ✅ Milestone 3.0 (MVP Core — Hybrid RAG, Context Caching & Vision OCR)
@@ -310,7 +310,7 @@ flowchart LR
 | **Relational Storage & Auth** | Supabase PostgreSQL / Supabase Auth | PostgreSQL 17 · GoTrue REST API · Cloudflare Turnstile | User identity, authentication, session tokens with `gotrue_meta_security`, spend logs, and audit trails |
 | **High-Throughput Vector & Cache DB** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model vector store (HNSW 768 cosine), prompt prefix cache (`context_cache`), sliding rate limits (`rate_limits`), and `user_memories` |
 | **Secrets & Keyless IAM** | GCP Secret Manager / IAM ADC | Application Default Credentials (ADC) | Keyless IAM runtime authentication, dynamic resolution of API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) with zero committed secrets |
-| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: ID ➡️ SG ➡️ EU ➡️ CA ➡️ US), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
+| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: ID ➡️ SG ➡️ EU ➡️ CA), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
 | **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast2` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
 | **Asynchronous Task Queue** | GCP Cloud Tasks | OIDC Authenticated Worker Tasks | Production asynchronous document processing queue with localized thread fallbacks |
 | **Cloud Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw documents and curated export bundles |
