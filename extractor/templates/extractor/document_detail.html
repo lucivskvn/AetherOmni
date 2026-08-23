@@ -227,7 +227,7 @@
                     <i data-lucide="download" style="width:14px; height:14px;"></i> Download JSONL
                 </button>
             </form>
-            <button type="button" class="btn btn-secondary btn-copy-sft" id="btn-copy-sft" aria-label="Copy JSON" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
+            <button type="button" class="btn btn-secondary btn-copy-sft" id="btn-copy-sft" title="Copy JSON Dataset to Clipboard" aria-label="Copy JSON Dataset to Clipboard" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
                 <i data-lucide="copy" style="width:14px; height:14px;"></i> Copy JSON
             </button>
         </div>
@@ -431,7 +431,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeBtn && modal) {
         closeBtn.addEventListener('click', () => modal.close());
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.close();
+            const rect = modal.getBoundingClientRect();
+            const isInDialog = (
+                rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+                rect.left <= e.clientX && e.clientX <= rect.left + rect.width
+            );
+            if (!isInDialog) {
+                modal.close();
+            }
+        });
+
+        modal.addEventListener('close', () => {
+            if (modalBody) {
+                modalBody.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--text-muted);">Click "Inspect Dataset Pairs" to load prompt-completion pairs.</div>';
+            }
         });
     }
 });
