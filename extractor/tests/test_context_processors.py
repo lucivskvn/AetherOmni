@@ -24,7 +24,7 @@ class SystemSettingsContextProcessorTestCase(TestCase):
         injected into the template context.
         """
         # Clear or set environment variables for deterministic testing
-        with patch_environ({"RELEASE_VERSION": "v1.2.3"}):
+        with patch_environ({"RELEASE_VERSION": "v1.2.3", "COMMIT_SHA": "497a1f8"}):
             context = system_settings(self.request)
 
             # Check context keys and values
@@ -34,6 +34,7 @@ class SystemSettingsContextProcessorTestCase(TestCase):
             self.assertEqual(context["SUPABASE_URL"], "https://test-supabase-url.co")
             self.assertEqual(context["SUPABASE_PUBLIC_KEY"], "test-pub-key-123")
             self.assertEqual(context["RELEASE_VERSION"], "1.2.3")
+            self.assertEqual(context["COMMIT_SHA"], "497a1f8")
 
     @override_settings(SUPABASE_URL="https://test-supabase-url.co", SUPABASE_PUBLIC_KEY="test-pub-key-123")
     def test_existing_settings_record(self):
