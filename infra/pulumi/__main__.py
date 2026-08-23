@@ -27,7 +27,7 @@ if not project or "${" in project:
         "GCP project ID must be specified via 'pulumi config set gcp:project <id>' or GCP_PROJECT_ID env var."
     )
 
-region = gcp_config.get("region") or os.getenv("GCP_REGION") or "asia-southeast2"
+region = gcp_config.get("region") or os.getenv("GCP_REGION") or "asia-southeast1"
 
 # Stack configuration parameters
 release_version = config.get("release_version") or "1.5.0"
