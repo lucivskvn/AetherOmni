@@ -253,7 +253,7 @@
                 
                 <form action="{% url 'purge_all_documents' %}" method="post" class="full-width-form" id="purge-all-form">
                     {% csrf_token %}
-                    <button type="submit" id="final-reset-btn" class="btn btn-danger full-width" aria-label="Permanently Wipe Database" disabled>
+                    <button type="submit" id="final-reset-btn" class="btn btn-danger full-width" aria-label="Permanently Wipe Database & Files" disabled>
                         <i data-lucide="shield-alert"></i> Permanently Wipe Database & Files
                     </button>
                 </form>
