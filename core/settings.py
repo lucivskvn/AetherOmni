@@ -478,8 +478,8 @@ if not DEBUG and not GEMINI_API_KEY and not os.getenv("GOOGLE_CLOUD_PROJECT") an
 
 # Google Cloud Platform (GCP) and Vertex AI Settings
 GCP_PROJECT = os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
-# Canonical default: asia-southeast2 (Jakarta) — matches cloudbuild.yaml, Pulumi, and deployment.py
-GCP_REGION = os.getenv("GCP_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "asia-southeast2"
+# Canonical default: asia-southeast1 (Singapore) — primary APAC hub with full Gemini 2.5 Flash / Flash-Lite support
+GCP_REGION = os.getenv("GCP_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "asia-southeast1"
 VERTEX_API_KEY = os.getenv("VERTEX_API_KEY")
 
 

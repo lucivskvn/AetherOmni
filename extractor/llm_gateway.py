@@ -733,15 +733,15 @@ def is_rate_limit_error(exception: Exception) -> bool:
 
 
 # Ordered list of Vertex AI regions to try when a model is unavailable in the
-# primary region. Prioritized for minimal latency, data protection, and low carbon:
-# 1. ID (asia-southeast2 — Jakarta: closest local APAC origin)
-# 2. SG (asia-southeast1 — Singapore: nearest APAC secondary hub)
+# primary region. Prioritized for minimal latency, full model availability (Gemini 2.5 Flash), and low carbon:
+# 1. SG (asia-southeast1 — Singapore: primary APAC hub with full Gemini 2.5 Flash / Flash-Lite availability)
+# 2. ID (asia-southeast2 — Jakarta: secondary local APAC fallback)
 # 3. EU (europe-west9 / europe-west4 — Paris/Netherlands: GDPR-compliant EU hubs)
 # 4. CA (northamerica-northeast1 — Montreal: low-carbon, on-par data privacy Canadian hub)
 # Override via settings.VERTEX_REGION_FALLBACK_CHAIN or the env variable.
 VERTEX_REGION_FALLBACK_CHAIN: list[str] = getattr(settings, "VERTEX_REGION_FALLBACK_CHAIN", None) or [
-    "asia-southeast2",  # ID: Jakarta — primary lowest latency
-    "asia-southeast1",  # SG: Singapore — secondary APAC low latency
+    "asia-southeast1",  # SG: Singapore — primary APAC hub with full Gemini 2.5 Flash support
+    "asia-southeast2",  # ID: Jakarta — secondary APAC fallback
     "europe-west9",  # EU: Paris — GDPR compliant high-capacity hub
     "europe-west4",  # EU: Netherlands — secondary EU fallback
     "northamerica-northeast1",  # CA: Montreal — Canadian on-par data privacy hub
