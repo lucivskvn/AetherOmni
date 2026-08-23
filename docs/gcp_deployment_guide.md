@@ -201,6 +201,44 @@ for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_
 done
 ```
 
+### C. Secure Batch Provisioning from Local `.env` (Automated & Zero-Leak)
+
+To provision all secrets directly from a local `.env` file without echoing values in shell history or logs:
+
+```bash
+# Safely parse .env and create/update secrets via STDIN pipeline
+while IFS='=' read -r key value || [ -n "$key" ]; do
+  # Skip comments and empty lines
+  [[ "$key" =~ ^[[:space:]]*# ]] && continue
+  [[ -z "$key" ]] && continue
+  
+  # Strip surrounding quotes and whitespace
+  key=$(echo "$key" | xargs)
+  value=$(echo "$value" | sed -e 's/^["'\''']//' -e 's/["'\''']$//')
+  
+  # Filter only required production secrets
+  case "$key" in
+    DJANGO_SECRET_KEY|GEMINI_API_KEY|SURREAL_URL|SURREAL_USER|SURREAL_PASS|ADMIN_EMAIL|SUPABASE_URL|SUPABASE_PUBLIC_KEY|SUPABASE_SERVICE_ROLE_KEY|CF_TURNSTILE_SITE_KEY|SENTRY_DSN)
+      echo "🔒 Syncing secret: $key"
+      # Create secret if it does not exist
+      gcloud secrets describe "$key" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+        gcloud secrets create "$key" --replication-policy="automatic" --project="${PROJECT_ID}"
+      
+      # Add new secret version securely via standard input
+      printf "%s" "$value" | gcloud secrets versions add "$key" --data-file=- --project="${PROJECT_ID}" >/dev/null
+      ;;
+  esac
+done < .env
+
+# Grant runtime IAM access to all synced secrets
+for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY SUPABASE_SERVICE_ROLE_KEY CF_TURNSTILE_SITE_KEY SENTRY_DSN; do
+  gcloud secrets add-iam-policy-binding "$secret" \
+    --project="${PROJECT_ID}" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role="roles/secretmanager.secretAccessor" >/dev/null 2>&1 || true
+done
+```
+
 > [!IMPORTANT]
 > **Production Sentry Release Tracking**: When `SENTRY_DSN` is configured in production (`DEBUG=False`), Cloud Run deployments must receive a non-empty `RELEASE_VERSION` environment variable (e.g. derived via `python scripts/update_docs.py --print-version` during Cloud Build). If `RELEASE_VERSION` is missing or whitespace-only, Django will fail fast with `ImproperlyConfigured` on startup.
 
