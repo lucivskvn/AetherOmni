@@ -33,6 +33,9 @@ TABLES_TO_MIGRATE = [
     "system_settings",
     "context_cache",
     "rate_limits",
+    "entities",
+    "chunk_references",
+    "entity_relations",
 ]
 
 
