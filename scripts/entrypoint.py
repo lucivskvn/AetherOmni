@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import os
-import subprocess  # nosec B404 -- required for fixed, shell-free process control
-import sys
-from typing import NoReturn
+import subprocess  # nosec B404
 
 
 def _debug_enabled() -> bool:
@@ -33,22 +31,21 @@ def _gunicorn_command() -> list[str]:
 
 
 def _run_migrations() -> None:
-    subprocess.run(  # nosec B603 -- interpreter, script, and arguments are constants
-        [sys.executable, "manage.py", "migrate", "--noinput"], check=True, timeout=120
-    )
+    # interpreter, script, and arguments are fixed constants
+    subprocess.run([sys.executable, "manage.py", "migrate", "--noinput"], check=True, timeout=120)  # nosec B603
 
 
 def _start_database_initialization() -> None:
-    subprocess.Popen(  # nosec B603 -- interpreter and bootstrap script are constants
-        [sys.executable, "init_surreal.py"]
-    )
+    # interpreter and bootstrap script are fixed constants
+    subprocess.Popen([sys.executable, "init_surreal.py"])  # nosec B603
 
 
 def main() -> NoReturn:
     _run_migrations()
     _start_database_initialization()
     command = _gunicorn_command()
-    os.execvp(command[0], command)  # noqa: S606  # nosec B606 -- executable and arguments are constructed from constants
+    # executable and arguments are constructed from fixed constants
+    os.execvp(command[0], command)  # noqa: S606 # nosec B606
 
 
 if __name__ == "__main__":
