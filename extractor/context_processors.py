@@ -31,13 +31,21 @@ def _read_git_head_sha(git_dir: str) -> str | None:
     try:
         with open(head_file, encoding="utf-8") as f:
             ref = f.read().strip()
-        if ref.startswith("ref: "):
-            ref_path = os.path.join(git_dir, ref[5:])
-            if os.path.isfile(ref_path):
-                with open(ref_path, encoding="utf-8") as f:
+        if ref.startswith("ref: refs/"):
+            clean_rel_path = ref[5:].replace("\\", "/").strip()
+            # Prevent directory traversal in git ref
+            if ".." in clean_rel_path.split("/"):
+                return None
+            ref_path = os.path.normpath(os.path.join(git_dir, clean_rel_path))
+            real_git_dir = os.path.abspath(git_dir)
+            real_ref_path = os.path.abspath(ref_path)
+            if not real_ref_path.startswith(real_git_dir):
+                return None
+            if os.path.isfile(real_ref_path):
+                with open(real_ref_path, encoding="utf-8") as f:
                     return f.read().strip()[:7]
             return None
-        return ref[:7] if len(ref) >= 7 else None
+        return ref[:7] if len(ref) >= 7 and "/" not in ref else None
     except OSError:
         return None
 
