@@ -217,17 +217,17 @@
             <i data-lucide="help-circle" class="meta-box-value-accent"></i> Supervised Fine-Tuning (SFT) Q&A Dataset
         </h3>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <button type="button" class="btn btn-secondary" id="btn-preview-sft" data-preview-url="{% url 'sft_dataset_preview' document.uuid %}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(99, 102, 241, 0.1); color: var(--accent); transition: all 0.2s;" aria-haspopup="dialog" aria-controls="sft-preview-modal">
+            <button type="button" class="btn btn-secondary" id="btn-preview-sft" aria-label="Inspect Dataset Pairs" aria-haspopup="dialog" aria-controls="sft-preview-modal" data-preview-url="{% url 'sft_dataset_preview' document.uuid %}" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(99, 102, 241, 0.1); color: var(--accent); transition: all 0.2s;">
                 <i data-lucide="eye" style="width:14px; height:14px;"></i> Inspect Dataset Pairs
             </button>
             <form action="{% url 'export_sft_jsonl' %}" method="post" style="display: inline;">
                 {% csrf_token %}
                 <input type="hidden" name="selected_documents" value="{{ document.uuid }}">
-                <button type="submit" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
+                <button type="submit" class="btn btn-secondary" aria-label="Download JSONL" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
                     <i data-lucide="download" style="width:14px; height:14px;"></i> Download JSONL
                 </button>
             </form>
-            <button type="button" class="btn btn-secondary btn-copy-sft" id="btn-copy-sft" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
+            <button type="button" class="btn btn-secondary btn-copy-sft" id="btn-copy-sft" aria-label="Copy JSON" style="display: inline-flex; align-items: center; gap: 6px; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-main); transition: all 0.2s;">
                 <i data-lucide="copy" style="width:14px; height:14px;"></i> Copy JSON
             </button>
         </div>
@@ -343,7 +343,7 @@
             <a href="{% url 'dashboard' %}" class="btn btn-secondary">
                 <i data-lucide="arrow-left" style="width:14px; height:14px; margin-right:4px;"></i> Back to Knowledge Desk
             </a>
-            <button type="button" class="btn btn-primary btn-retry-doc" data-doc-id="{{ document.uuid }}">
+            <button type="button" class="btn btn-primary btn-retry-doc" data-doc-id="{{ document.uuid }}" aria-label="Retry Curation for {{ document.title }}">
                 <i data-lucide="refresh-cw" style="width:14px; height:14px; margin-right:4px;"></i> Retry Curation
             </button>
         </div>
@@ -370,7 +370,7 @@
         <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.1rem;">
             <i data-lucide="database" style="color: var(--accent);"></i> SFT Instruction Dataset Pairs
         </h3>
-        <button type="button" id="btn-close-sft-modal" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; font-size: 18px; line-height: 1;" aria-label="Close Dataset Viewer" title="Close Dataset Viewer">
+        <button type="button" id="btn-close-sft-modal" aria-label="Close Dataset Viewer" title="Close Dataset Viewer" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; font-size: 18px; line-height: 1;">
             <i data-lucide="x"></i>
         </button>
     </div>
