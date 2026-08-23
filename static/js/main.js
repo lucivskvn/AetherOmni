@@ -1183,8 +1183,8 @@ function initializeSupabaseRealtime() {
         .on(
             'broadcast',
             { event: 'status-changed' },
-            (payload) => {
-                console.debug('[Realtime] Received document update broadcast:', payload);
+            () => {
+                console.debug('[Realtime] Received document update broadcast event');
                 triggerUpdate();
             }
         )

@@ -44,25 +44,24 @@ GOOGLE_TASKS_IP_CIDRS = [
 
 from collections.abc import Callable
 
-# ── Task function registry ────────────────────────────────────────────────────
-# Maps task_name strings (URL slug) to callable handler functions.
-# Populated at import time.
-TASK_REGISTRY: dict[str, Callable] = {}
+_TASK_REGISTRY: dict[str, Callable] = {}
 
 
-def _register():
-    """Populate the task registry after apps are fully loaded."""
-    from extractor import tasks
+def get_task_registry() -> dict[str, Callable]:
+    """Returns the populated task registry, loading task handlers if not yet registered."""
+    if not _TASK_REGISTRY:
+        from extractor import tasks
 
-    TASK_REGISTRY.update(
-        {
-            "process_document": tasks.process_document_task,
-            "reembed_document": tasks.reembed_edited_document_task,
-            "cleanup_expired_documents": tasks.cleanup_expired_documents_task,
-            "reap_stale_tasks": tasks.reap_stale_tasks,
-            "store_user_memory": tasks.store_user_memory_task,
-        }
-    )
+        _TASK_REGISTRY.update(
+            {
+                "process_document": tasks.process_document_task,
+                "reembed_document": tasks.reembed_edited_document_task,
+                "cleanup_expired_documents": tasks.cleanup_expired_documents_task,
+                "reap_stale_tasks": tasks.reap_stale_tasks,
+                "store_user_memory": tasks.store_user_memory_task,
+            }
+        )
+    return _TASK_REGISTRY
 
 
 # ── OIDC Bearer token verification ───────────────────────────────────────────
@@ -224,7 +223,7 @@ class CloudTaskHandlerView(View):
             )
 
         # ── Dispatch ──────────────────────────────────────────────────────
-        handler = TASK_REGISTRY.get(task_name)
+        handler = get_task_registry().get(task_name)
         if handler is None:
             logger.error("[CloudTasksHandler] Unknown task name: '%s'", task_name)
             return JsonResponse({"error": f"Unknown task: {task_name}"}, status=404)
