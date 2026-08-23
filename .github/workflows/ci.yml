@@ -196,19 +196,56 @@ jobs:
         run: python -m mypy --ignore-missing-imports core/ extractor/
         continue-on-error: true  # Non-blocking until stubs are complete; findings visible in annotations
 
+      - name: Django Schema Migration Drift Gate
+        run: python manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_SECRET_KEY: "django-insecure-ci-test-key-50-chars-long-for-local-testing"
+          SURREALDB_OFFLINE: "True"
+          DATABASE_URL: "sqlite:///:memory:"
+
       - name: JavaScript Lint (eslint)
         run: ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"
+
+      - name: Pulumi IaC Stack Gate
+        run: |
+          python -m ruff check infra/pulumi/
+          python -m ruff format --check infra/pulumi/
 
       - name: Python Tests → coverage.xml
         run: |
           export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
           python scripts/verify_templates_and_assets.py
           python manage.py collectstatic --noinput
-          coverage run --source='core,extractor' manage.py test extractor.tests --keepdb
+          rm -f .coverage .coverage.* coverage.xml
+
+          BATCH_DISPATCHER=$(python -c "
+          import glob
+          modules = [
+              p.replace('/', '.').removesuffix('.py')
+              for p in sorted(glob.glob('core/tests/**/test_*.py', recursive=True) + glob.glob('extractor/tests/**/test_*.py', recursive=True))
+              if not p.endswith('__init__.py')
+          ]
+          view_mods = [m for m in modules if 'test_views' in m]
+          non_view_mods = [m for m in modules if 'test_views' not in m]
+          chunk_size = 10
+          batches = [non_view_mods[i:i+chunk_size] for i in range(0, len(non_view_mods), chunk_size)]
+          if view_mods:
+              batches.append(view_mods)
+          for b in batches:
+              print(' '.join(b))
+          ")
+
+          while IFS= read -r BATCH_MODULES; do
+              [[ -z "$BATCH_MODULES" ]] && continue
+              coverage run -p manage.py test $BATCH_MODULES --keepdb --buffer
+          done <<< "$BATCH_DISPATCHER"
+
+          coverage combine
           coverage xml -o coverage.xml
         env:
           SURREALDB_OFFLINE: "True"
           DATABASE_URL: "sqlite:///:memory:"
+          MALLOC_ARENA_MAX: "2"
 
       - name: JavaScript Tests → coverage/js/lcov.info
         run: |

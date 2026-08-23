@@ -50,6 +50,7 @@ ALLOWED_LITERALS = {
     "accumulated_input_tokens",
     "accumulated_output_tokens",
     "asia-southeast1",
+    "asia-southeast2",
     "usd_exchange_rates",
     "realtime_model_pricing",
     "application/zip",

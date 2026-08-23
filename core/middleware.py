@@ -1,19 +1,19 @@
-# Copyright (c) 2026 AetherOmni Contributors.
+# Copyright (c) 2026 KORDA Contributors.
 #
-# This file is part of AetherOmni.
+# This file is part of KORDA.
 #
-# AetherOmni is free software: you can redistribute it and/or modify
+# KORDA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# AetherOmni is distributed in the hope that it will be useful,
+# KORDA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with AetherOmni.  If not, see <https://www.gnu.org/licenses/>.
+# along with KORDA.  If not, see <https://www.gnu.org/licenses/>.
 
 
 import logging
@@ -83,6 +83,21 @@ def _parse_db_origins(db_origins):
     return tuple(parsed)
 
 
+def _is_loopback_origin(origin_str: str) -> bool:
+    if not origin_str:
+        return False
+    clean = origin_str.strip().lower()
+    if clean in ("localhost", "127.0.0.1", "::1"):
+        return True
+    try:
+        url = clean if "://" in clean else f"https://{clean}"
+        parsed = urllib.parse.urlparse(url)
+        host = (parsed.hostname or "").strip("[]").lower()
+        return host in ("localhost", "127.0.0.1", "::1")
+    except Exception:
+        return False
+
+
 class DynamicCsrfTrustedOriginsMiddleware:
     """
     Dynamically registers the request's origin and referer in CSRF_TRUSTED_ORIGINS
@@ -99,22 +114,7 @@ class DynamicCsrfTrustedOriginsMiddleware:
         self.get_response = get_response
 
     def _is_loopback(self, origin_str: str) -> bool:
-        if not origin_str:
-            return False
-        origin_str = origin_str.strip().lower()
-        if origin_str in ("localhost", "127.0.0.1", "::1"):
-            return True
-        try:
-            url = origin_str if "://" in origin_str else f"http://{origin_str}"  # NOSONAR
-            parsed = urllib.parse.urlparse(url)
-            host = parsed.hostname
-            if not host:
-                return False
-            # Strip IPv6 brackets if present (e.g. [::1])
-            host = host.strip("[]")
-            return host in ("localhost", "127.0.0.1", "::1")
-        except Exception:
-            return False
+        return _is_loopback_origin(origin_str)
 
     def __call__(self, request):
         # 1. Capture base static origins from settings if not already cached

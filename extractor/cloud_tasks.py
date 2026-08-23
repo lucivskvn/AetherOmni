@@ -78,17 +78,13 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
     """Execute task in a daemon thread (local development fallback)."""
     logger.info("[CloudTasks/local] Spawning thread for task '%s'", task_name)
 
-    if not _LOCAL_TASK_REGISTRY:
-        from extractor.task_handlers import TASK_REGISTRY, _register
+    from extractor.task_handlers import get_task_registry
 
-        if not TASK_REGISTRY:
-            _register()
-
-        _LOCAL_TASK_REGISTRY.update(TASK_REGISTRY)
+    task_registry = _LOCAL_TASK_REGISTRY if _LOCAL_TASK_REGISTRY else get_task_registry()
 
     def _run() -> None:
         try:
-            handler = _LOCAL_TASK_REGISTRY.get(task_name)
+            handler = task_registry.get(task_name)
             if handler is None:
                 logger.error("[CloudTasks/local] Unknown task: '%s'", task_name)
                 return
@@ -128,7 +124,7 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
         raise RuntimeError(message)
 
     project = details.get("project_id")
-    region = details.get("region") or getattr(settings, "GCP_REGION", "asia-southeast1")
+    region = details.get("region") or getattr(settings, "GCP_REGION", "asia-southeast2")
     queue_name = getattr(settings, "CLOUD_TASKS_QUEUE", "extractor-tasks")
     service_url = getattr(settings, "WORKER_URL", "") or getattr(settings, "APP_URL", "")
 

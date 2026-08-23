@@ -12,8 +12,13 @@ from extractor.utils import APPLICATION_JSON
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "SupabaseAuthBackend",
+    "generate_unique_username",
+]
 
-def _generate_unique_username(user_email: str) -> str:
+
+def generate_unique_username(user_email: str) -> str:
     import hashlib
 
     base_username = user_email.split("@")[0]
@@ -53,7 +58,7 @@ def _sync_supabase_user(
     user_info = resp_data.get("user", {})
     user_email = user_info.get("email", username)
 
-    django_username = _generate_unique_username(user_email)
+    django_username = generate_unique_username(user_email)
 
     # Retrieve or instantiate standard Django User account
     user, created = User.objects.get_or_create(

@@ -47,7 +47,9 @@ class EntrypointTest(SimpleTestCase):
     def test_migrations_use_an_argument_list(self, mock_run):
         entrypoint._run_migrations()
 
-        mock_run.assert_called_once_with([entrypoint.sys.executable, "manage.py", "migrate", "--noinput"], check=True)
+        mock_run.assert_called_once_with(
+            [entrypoint.sys.executable, "manage.py", "migrate", "--noinput"], check=True, timeout=120
+        )
 
     @patch("scripts.entrypoint.subprocess.Popen")
     def test_initialization_uses_an_argument_list(self, mock_popen):

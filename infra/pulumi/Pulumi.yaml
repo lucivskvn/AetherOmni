@@ -1,0 +1,6 @@
+name: korda-infra
+runtime:
+  name: python
+  options:
+    virtualenv: /media/elang/TMSSD/CrossSharing/Repos/AetherOmni/infra/pulumi/venv
+description: Declarative GCP Infrastructure as Code for KORDA Platform (Cloud Run, Cloud Tasks, IAM, Storage)

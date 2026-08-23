@@ -12,7 +12,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: aether-web
+    container_name: korda-web
     restart: always
     ports:
       - "8080:8080"
@@ -32,7 +32,7 @@ services:
   # Matches the remote production version
   surrealdb:
     image: surrealdb/surrealdb:v3.2.0
-    container_name: aether-surrealdb
+    container_name: korda-surrealdb
     security_opt:
       - no-new-privileges:true
     user: root
@@ -47,7 +47,7 @@ services:
       - --log=info
       - --user=${SURREAL_USER:-root}
       - --pass=${SURREAL_PASS:?Set SURREAL_PASS in .env}
-      - surrealkv://data/aetheromni.db
+      - surrealkv://data/korda.db
     volumes:
       - surreal_data:/data
     healthcheck:

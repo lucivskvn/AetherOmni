@@ -1,7 +1,7 @@
 [project]
-name = "aetheromni"
+name = "korda"
 version = "1.5"
-description = "Enterprise Multi-Model RAG & Document Intelligence Platform"
+description = "KORDA — Knowledge Orchestration, Retrieval & Document Analysis Platform"
 requires-python = ">=3.14"
 readme = "README.md"
 license = { text = "AGPL-3.0" }
@@ -116,3 +116,33 @@ max-complexity = 15
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
+
+# ── Coverage configuration ────────────────────────────────────────────────────
+# Branch coverage is intentionally disabled: it roughly doubles the per-line
+# arc metadata stored in .coverage, significantly increasing RSS during
+# instrumented runs on Python 3.14 / linuxbrew and causing swap pressure.
+# Statement coverage is sufficient for the SonarCloud gate.
+[tool.coverage.run]
+include = [
+    "core/*",
+    "extractor/*.py",
+    "extractor/templatetags/*",
+]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/migrations/*",
+    "scripts/*",
+    "manage.py",
+    "*/__pycache__/*",
+]
+branch = false
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

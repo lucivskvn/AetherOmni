@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from django.core.management.base import BaseCommand
 from django.db.models import Q
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = "Re-queues completed documents that are missing publisher or doi metadata to force LLM backfill extraction."
 
-    def handle(self, *args, **options):
+    def handle(self, *args: Any, **options: Any) -> None:
         import datetime
 
         # Target documents created before the deployment date (e.g., July 16, 2026) to guarantee idempotency

@@ -2,7 +2,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: aether-web
+  name: korda-web
   namespace: "${GCP_PROJECT_ID}"
   labels:
     cloud.googleapis.com/location: "${GCP_REGION}"
@@ -17,7 +17,7 @@ spec:
       serviceAccountName: "${SERVICE_ACCOUNT}"
       timeoutSeconds: 900
       containers:
-      - image: "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/cloud-run-source-deploy/aether-web:latest"
+      - image: "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/cloud-run-source-deploy/korda-web:latest"
         name: web
         securityContext:
           runAsNonRoot: true
@@ -54,7 +54,7 @@ spec:
         - name: WORKER_URL
           value: "${WORKER_URL}"
         - name: SURREAL_NS
-          value: "aetheromni"
+          value: "korda"
         - name: SURREAL_DB
           value: "extractor"
         - name: SURREALDB_OFFLINE
