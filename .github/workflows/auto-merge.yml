@@ -6,21 +6,50 @@ on:
     branches: [main, next]
   pull_request_review:
     types: [submitted]
+  push:
+    branches: [main]
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  enable-auto-merge:
-    name: Enable GitHub Auto-Merge with Branch Deletion
+  manage-pr-lifecycle:
+    name: Auto-Sync, Conflict Guard & Auto-Merge
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
     steps:
-      - name: Enable Auto-Merge via GitHub CLI
+      - name: Process Open PRs (Sync, Conflict Check, Auto-Merge)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          echo "Enabling automatic squash merge and branch deletion on PR: $PR_URL"
-          gh pr merge "$PR_URL" --auto --squash --delete-branch || true
+          # 1. Resolve PR URL depending on trigger event (PR event vs main push event)
+          if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "pull_request_review" ]]; then
+            PR_NUMBERS="${{ github.event.pull_request.number }}"
+          else
+            # On pushes to main, update and check all open PRs targeting main
+            PR_NUMBERS=$(gh pr list --state open --base main --json number --jq '.[].number' || true)
+          fi
+
+          for PR in $PR_NUMBERS; do
+            [[ -z "$PR" ]] && continue
+            echo "=========================================================="
+            echo "🔍 Processing PR #${PR}..."
+
+            # 2. Automatically update branch from base (keeps PR branch synchronized with main)
+            echo "🔄 Synchronizing PR #${PR} with latest main..."
+            gh pr update-branch "$PR" 2>/dev/null || echo "ℹ️ Branch already up to date or has conflict."
+
+            # 3. Check mergeable status & detect conflicts
+            MERGEABLE_STATE=$(gh pr view "$PR" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")
+            echo "📊 Mergeable state for PR #${PR}: ${MERGEABLE_STATE}"
+
+            if [[ "$MERGEABLE_STATE" == "CONFLICTING" ]]; then
+              echo "⚠️ Merge conflict detected on PR #${PR}!"
+              CONFLICT_MSG="⚠️ **Merge Conflict Detected**: This branch has merge conflicts with \`main\`. Please rebase against latest \`main\` to resume automated checks."
+              gh pr comment "$PR" --body "$CONFLICT_MSG" 2>/dev/null || true
+            else
+              # 4. Enable automatic squash-merge with remote branch deletion upon green checks
+              echo "✅ Enabling Auto-Merge & Auto-Branch-Deletion on PR #${PR}..."
+              gh pr merge "$PR" --auto --squash --delete-branch 2>/dev/null || true
+            fi
+          done
