@@ -282,20 +282,32 @@ def normalize_language(value: str) -> str:
 import os
 import time
 
-_CACHE_BUST_VAL = None
+_CACHE_BUST_VAL: str | None = None
+
+
+def get_cache_bust_version() -> str:
+    """Returns the current cache busting string, prioritizing dynamic RELEASE_VERSION, then VERSION file, then server startup timestamp."""
+    global _CACHE_BUST_VAL
+    if _CACHE_BUST_VAL is None:
+        if env_ver := os.environ.get("RELEASE_VERSION"):
+            _CACHE_BUST_VAL = env_ver.lstrip("v")
+        else:
+            try:
+                from extractor.context_processors import _resolve_release_version
+
+                ver = _resolve_release_version()
+                _CACHE_BUST_VAL = ver if ver != "0.0.0" else str(int(time.time()))
+            except Exception:
+                _CACHE_BUST_VAL = str(int(time.time()))
+    return _CACHE_BUST_VAL
 
 
 @register.filter
 def cache_bust(static_url: str) -> str:
-    """Appends a dynamic cache busting version based on the RELEASE_VERSION env variable or current server startup time."""
-    global _CACHE_BUST_VAL
-    if _CACHE_BUST_VAL is None:
-        # Fallback to current time at startup to guarantee change on deployment restart
-        _CACHE_BUST_VAL = os.getenv("RELEASE_VERSION") or str(int(time.time()))
-
+    """Appends a dynamic cache busting version query parameter (?v=...) based on current release or startup timestamp."""
     if not static_url:
         return ""
 
-    if "?" in static_url:
-        return f"{static_url}&v={_CACHE_BUST_VAL}"
-    return f"{static_url}?v={_CACHE_BUST_VAL}"
+    bust_val = get_cache_bust_version()
+    separator = "&" if "?" in static_url else "?"
+    return f"{static_url}{separator}v={bust_val}"
