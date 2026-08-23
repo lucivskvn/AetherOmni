@@ -733,15 +733,16 @@ def is_rate_limit_error(exception: Exception) -> bool:
 
 
 # Ordered list of Vertex AI regions to try when a model is unavailable in the
-# primary region.  asia-southeast1 (Singapore) is closest to Indonesia; if a
-# model hasn't been deployed there yet we cascade to us-central1 (global hub)
-# then europe-west4 (Netherlands) as a final option.
+# primary region.  asia-southeast2 (Jakarta) is local to Indonesia; if a
+# model hasn't been deployed there yet we cascade to asia-southeast1 (Singapore),
+# us-central1 (global hub), and europe-west4/europe-west9 (EU).
 # Override via settings.VERTEX_REGION_FALLBACK_CHAIN or the env variable.
 VERTEX_REGION_FALLBACK_CHAIN: list[str] = getattr(settings, "VERTEX_REGION_FALLBACK_CHAIN", None) or [
-    "europe-west9",  # Paris — GDPR-compliant, primary region for Gemini 3.1 models
-    "europe-west4",  # Netherlands — GDPR-compliant fallback
+    "asia-southeast2",  # Jakarta — local APAC region
+    "asia-southeast1",  # Singapore — APAC secondary hub
     "us-central1",  # Iowa — universal fallback, all models available
-    "asia-southeast1",  # Singapore — backup region
+    "europe-west9",  # Paris — GDPR-compliant EU primary
+    "europe-west4",  # Netherlands — GDPR-compliant EU fallback
 ]
 
 

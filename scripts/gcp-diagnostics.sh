@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PROJECT_ID="${GCP_PROJECT_ID:-${GOOGLE_CLOUD_PROJECT:-${GCP_PROJECT:-}}}"
-REGION="${GCP_REGION:-asia-southeast1}"
+REGION="${GCP_REGION:-asia-southeast2}"
 SERVICE="korda-web"
 SINCE="1h"
 

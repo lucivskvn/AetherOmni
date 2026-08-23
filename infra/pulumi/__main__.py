@@ -7,14 +7,27 @@ Provisions:
 - Cloud Run v2 Services: korda-web & korda-worker
 """
 
+import os
+
 import pulumi
 import pulumi_gcp as gcp
 
 config = pulumi.Config()
 gcp_config = pulumi.Config("gcp")
 
-project = gcp_config.require("project")
-region = gcp_config.get("region") or "asia-southeast1"
+# Dynamic project resolution: Pulumi config -> GCP_PROJECT_ID / GOOGLE_CLOUD_PROJECT env vars
+project = (
+    gcp_config.get("project")
+    or os.getenv("GCP_PROJECT_ID")
+    or os.getenv("GOOGLE_CLOUD_PROJECT")
+    or os.getenv("CLOUDSDK_CORE_PROJECT")
+)
+if not project or "${" in project:
+    raise ValueError(
+        "GCP project ID must be specified via 'pulumi config set gcp:project <id>' or GCP_PROJECT_ID env var."
+    )
+
+region = gcp_config.get("region") or os.getenv("GCP_REGION") or "asia-southeast2"
 
 # Stack configuration parameters
 release_version = config.get("release_version") or "1.5.0"
@@ -24,20 +37,26 @@ web_max_instances = config.get_int("web_max_instances") or 5
 worker_min_instances = config.get_int("worker_min_instances") or 0
 worker_max_instances = config.get_int("worker_max_instances") or 5
 
+# Explicit GCP Provider passing resolved project and region dynamically
+gcp_provider = gcp.Provider("gcp-provider", project=project, region=region)
+
 # 1. Cloud Storage Media Bucket
 media_bucket = gcp.storage.Bucket(
     "korda-media-bucket",
     name=f"{project}-media-korda",
     location=region,
+    project=project,
     uniform_bucket_level_access=True,
     versioning=gcp.storage.BucketVersioningArgs(enabled=False),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-# 2. Cloud Tasks Queue (adopts existing queue or manages it)
+# 2. Cloud Tasks Queue
 tasks_queue = gcp.cloudtasks.Queue(
     "korda-tasks-queue",
     name="extractor-tasks",
     location=region,
+    project=project,
     rate_limits=gcp.cloudtasks.QueueRateLimitsArgs(
         max_concurrent_dispatches=10,
         max_dispatches_per_second=50.0,
@@ -48,7 +67,7 @@ tasks_queue = gcp.cloudtasks.Queue(
         max_backoff="300s",
         max_doublings=4,
     ),
-    opts=pulumi.ResourceOptions(import_=f"projects/{project}/locations/{region}/queues/extractor-tasks"),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # 3. Dedicated Service Account for Cloud Run & Tasks
@@ -133,6 +152,8 @@ worker_service = gcp.cloudrunv2.Service(
     "korda-worker",
     name="korda-worker",
     location=region,
+    project=project,
+    deletion_protection=False,
     ingress="INGRESS_TRAFFIC_ALL",
     template=gcp.cloudrunv2.ServiceTemplateArgs(
         service_account=service_account.email,
@@ -156,6 +177,7 @@ worker_service = gcp.cloudrunv2.Service(
             )
         ],
     ),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # 6. Cloud Run Web Service (korda-web)
@@ -163,6 +185,8 @@ web_service = gcp.cloudrunv2.Service(
     "korda-web",
     name="korda-web",
     location=region,
+    project=project,
+    deletion_protection=False,
     ingress="INGRESS_TRAFFIC_ALL",
     template=gcp.cloudrunv2.ServiceTemplateArgs(
         service_account=service_account.email,
@@ -187,6 +211,7 @@ web_service = gcp.cloudrunv2.Service(
             )
         ],
     ),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # Public access IAM policy for korda-web
@@ -194,8 +219,10 @@ gcp.cloudrunv2.ServiceIamMember(
     "korda-web-public-access",
     name=web_service.name,
     location=region,
+    project=project,
     role="roles/run.invoker",
     member="allUsers",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # Stack Outputs

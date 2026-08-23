@@ -28,7 +28,7 @@
 # use single $ as normal.
 # ==============================================================================
 substitutions:
-  _REGION: asia-southeast1
+  _REGION: asia-southeast2
   _GITHUB_REPOSITORY: lucivskvn/AetherOmni
   # Optional public application URL. When unset, the deployed aether-web URL is used.
   _APP_URL: ""
