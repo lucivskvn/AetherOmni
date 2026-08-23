@@ -340,12 +340,17 @@ steps:
           DOMAIN="$$(echo "$${APP_URL}" | sed -e 's|^[^/]*//||' -e 's|/.*$$||')"
           if [ -n "$${DOMAIN}" ] && [[ "$${DOMAIN}" != *".run.app" ]]; then
             echo "Automating Google-managed domain mapping for $${DOMAIN} in region ${_REGION}..."
-            gcloud beta run domain-mappings create \
-              --domain="$${DOMAIN}" \
-              --service=korda-web \
-              --region=${_REGION} \
-              --platform=managed \
-              --quiet 2>/dev/null || echo "Domain mapping for $${DOMAIN} already exists or is configured."
+            EXISTING_ROUTE="$$(gcloud beta run domain-mappings describe --domain="$${DOMAIN}" --region=${_REGION} --format='value(spec.routeName)' 2>/dev/null || echo '')"
+            if [ "$${EXISTING_ROUTE}" = "korda-web" ]; then
+              echo "Domain mapping for $${DOMAIN} is already active on korda-web."
+            else
+              gcloud beta run domain-mappings create \
+                --domain="$${DOMAIN}" \
+                --service=korda-web \
+                --region=${_REGION} \
+                --platform=managed \
+                --quiet || echo "Domain mapping creation scheduled or already requested."
+            fi
           fi
         fi
 
