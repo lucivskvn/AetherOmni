@@ -263,9 +263,15 @@ else:
             "Configure a GCS bucket for persistent file storage."
         )
 
+staticfiles_backend = (
+    "django.contrib.staticfiles.storage.StaticFilesStorage"
+    if ("test" in sys.argv or "test_coverage" in sys.argv or os.getenv("TESTING") == "true")
+    else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+)
+
 STORAGES = {
     "default": {"BACKEND": DEFAULT_STORAGE_BACKEND},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    "staticfiles": {"BACKEND": staticfiles_backend},
 }
 
 # 1-year immutable caching for fingerprinted static assets (Brotli/Gzip compressed)

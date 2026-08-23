@@ -45,10 +45,11 @@ GOOGLE_TASKS_IP_CIDRS = [
 from collections.abc import Callable
 
 _TASK_REGISTRY: dict[str, Callable] = {}
+TASK_REGISTRY = _TASK_REGISTRY
 
 
-def get_task_registry() -> dict[str, Callable]:
-    """Returns the populated task registry, loading task handlers if not yet registered."""
+def _register():
+    """Populate the task registry after apps are fully loaded."""
     if not _TASK_REGISTRY:
         from extractor import tasks
 
@@ -61,6 +62,11 @@ def get_task_registry() -> dict[str, Callable]:
                 "store_user_memory": tasks.store_user_memory_task,
             }
         )
+
+
+def get_task_registry() -> dict[str, Callable]:
+    """Returns the populated task registry, loading task handlers if not yet registered."""
+    _register()
     return _TASK_REGISTRY
 
 
@@ -223,7 +229,7 @@ class CloudTaskHandlerView(View):
             )
 
         # ── Dispatch ──────────────────────────────────────────────────────
-        handler = get_task_registry().get(task_name)
+        handler = TASK_REGISTRY.get(task_name)
         if handler is None:
             logger.error("[CloudTasksHandler] Unknown task name: '%s'", task_name)
             return JsonResponse({"error": f"Unknown task: {task_name}"}, status=404)

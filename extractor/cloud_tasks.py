@@ -71,13 +71,16 @@ def enqueue(task_name: str, payload: dict[str, Any], countdown: int = 0) -> None
         _enqueue_cloud(task_name, payload, countdown)
 
 
+_LOCAL_TASK_REGISTRY: dict[str, Any] = {}
+
+
 def _enqueue_local(task_name: str, payload: dict) -> None:
     """Execute task in a daemon thread (local development fallback)."""
     logger.info("[CloudTasks/local] Spawning thread for task '%s'", task_name)
 
     from extractor.task_handlers import get_task_registry
 
-    task_registry = get_task_registry()
+    task_registry = _LOCAL_TASK_REGISTRY if _LOCAL_TASK_REGISTRY else get_task_registry()
 
     def _run() -> None:
         try:
