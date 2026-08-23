@@ -28,7 +28,7 @@
 # use single $ as normal.
 # ==============================================================================
 substitutions:
-  _REGION: asia-southeast1
+  _REGION: asia-southeast2
   _GITHUB_REPOSITORY: lucivskvn/AetherOmni
   # Optional public application URL. Defaults to the canonical domain.
   _APP_URL: "https://korda.fainko.my.id"
@@ -339,17 +339,17 @@ steps:
         if [ -n "$${APP_URL}" ] && [[ "$${APP_URL}" == http* ]]; then
           DOMAIN="$$(echo "$${APP_URL}" | sed -e 's|^[^/]*//||' -e 's|/.*$$||')"
           if [ -n "$${DOMAIN}" ] && [[ "$${DOMAIN}" != *".run.app" ]]; then
-            echo "Automating Google-managed domain mapping for $${DOMAIN} in region ${_REGION}..."
+            echo "Checking Google-managed domain mapping for $${DOMAIN} in region ${_REGION}..."
             EXISTING_ROUTE="$$(gcloud beta run domain-mappings describe --domain="$${DOMAIN}" --region=${_REGION} --format='value(spec.routeName)' 2>/dev/null || echo '')"
             if [ "$${EXISTING_ROUTE}" = "korda-web" ]; then
-              echo "Domain mapping for $${DOMAIN} is already active on korda-web."
+              echo "Domain mapping for $${DOMAIN} is already active on korda-web in ${_REGION}."
             else
               gcloud beta run domain-mappings create \
                 --domain="$${DOMAIN}" \
                 --service=korda-web \
                 --region=${_REGION} \
                 --platform=managed \
-                --quiet || echo "Domain mapping creation scheduled or already requested."
+                --quiet 2>/dev/null || echo "Domain mapping for $${DOMAIN} in ${_REGION} is managed via Cloudflare/Load Balancer or already requested."
             fi
           fi
         fi
