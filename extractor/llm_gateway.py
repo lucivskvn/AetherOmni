@@ -336,7 +336,7 @@ def _call_openrouter(prompt: str, system_instruction: str | None, model_name: st
     headers: dict[str, str] = {
         "Authorization": f"Bearer {api_key}",
         "HTTP-Referer": app_url,
-        "X-Title": "Knowledge Desk",
+        "X-Title": "KORDA",
         "Content-Type": APPLICATION_JSON,
     }
 
