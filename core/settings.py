@@ -105,7 +105,9 @@ if not _raw_secret:
         raise ImproperlyConfigured(
             "DJANGO_SECRET_KEY environment variable is not set. Production deployments require an explicit secret key."
         )
-    _raw_secret = "django-insecure-local-dev-key-do-not-use-in-prod"  # nosec B105 B106
+    import secrets
+
+    _raw_secret = secrets.token_urlsafe(50)
 
 SECRET_KEY = _raw_secret
 

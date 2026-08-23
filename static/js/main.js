@@ -103,87 +103,76 @@ function initializeAuditSearch() {
     update();
 }
 
+const PASSWORD_MATCH_SVGS = {
+    match: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+    mismatch: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
+};
+
+function createPasswordFeedbackElement(confirmInput) {
+    const feedback = document.createElement('div');
+    feedback.className = 'password-match-status';
+    feedback.style.display = 'none';
+    feedback.style.alignItems = 'center';
+    feedback.style.gap = '6px';
+    feedback.style.fontSize = '13px';
+    feedback.style.fontWeight = '500';
+    feedback.style.marginTop = '8px';
+    feedback.style.padding = '6px 12px';
+    feedback.style.borderRadius = '8px';
+    feedback.style.width = '100%';
+    feedback.style.boxSizing = 'border-box';
+    feedback.style.transition = 'all 0.2s ease-in-out';
+    feedback.setAttribute('role', 'status');
+    feedback.setAttribute('aria-live', 'polite');
+
+    const wrapper = confirmInput.closest('.password-toggle-wrapper');
+    if (wrapper) {
+        wrapper.parentNode.insertBefore(feedback, wrapper.nextSibling);
+    } else {
+        confirmInput.parentNode.insertBefore(feedback, confirmInput.nextSibling);
+    }
+    return feedback;
+}
+
+function updatePasswordMatchStatus(feedback, pVal, cVal) {
+    if (pVal === '' || cVal === '') {
+        feedback.style.display = 'none';
+        feedback.innerHTML = '';
+        return;
+    }
+    feedback.style.display = 'inline-flex';
+    const isMatch = pVal === cVal;
+    feedback.style.color = isMatch ? '#10b981' : '#ef4444';
+    feedback.style.background = isMatch ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)';
+    feedback.style.border = isMatch ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(239, 68, 68, 0.25)';
+    feedback.innerHTML = `
+        ${isMatch ? PASSWORD_MATCH_SVGS.match : PASSWORD_MATCH_SVGS.mismatch}
+        <span style="vertical-align: middle;">${isMatch ? 'Passwords match' : 'Passwords do not match'}</span>
+    `;
+}
+
+function bindPasswordMatchEvents(pair) {
+    const passwordInput = document.getElementById(pair.passwordId);
+    const confirmInput = document.getElementById(pair.confirmId);
+    if (!passwordInput || !confirmInput) return;
+
+    const feedback = createPasswordFeedbackElement(confirmInput);
+    const checkMatch = () => updatePasswordMatchStatus(feedback, passwordInput.value, confirmInput.value);
+    passwordInput.addEventListener('input', checkMatch);
+    confirmInput.addEventListener('input', checkMatch);
+}
+
 /**
  * Real-time password matching feedback helper for register, password change,
  * and password reset confirmation forms.
  */
 function initializePasswordMatchFeedback() {
-    // Premium feedback checking for matched credentials
     const pairs = [
-        { passwordId: 'id_password', confirmId: 'id_confirm_password' }, // NOSONAR
-        { passwordId: 'id_new_password1', confirmId: 'id_new_password2' }, // NOSONAR
-        { passwordId: 'new_password', confirmId: 'confirm_password' } // NOSONAR
+        { passwordId: 'id_password', confirmId: 'id_confirm_password' }, // NOSONAR javascript:S2068 -- DOM element ID selectors, not hardcoded credentials
+        { passwordId: 'id_new_password1', confirmId: 'id_new_password2' }, // NOSONAR javascript:S2068 -- DOM element ID selectors, not hardcoded credentials
+        { passwordId: 'new_password', confirmId: 'confirm_password' } // NOSONAR javascript:S2068 -- DOM element ID selectors, not hardcoded credentials
     ];
-
-    pairs.forEach(pair => {
-        const passwordInput = document.getElementById(pair.passwordId);
-        const confirmInput = document.getElementById(pair.confirmId);
-
-        if (!passwordInput || !confirmInput) return;
-
-        // Create feedback element
-        const feedback = document.createElement('div');
-        feedback.className = 'password-match-status';
-        feedback.style.display = 'none';
-        feedback.style.alignItems = 'center';
-        feedback.style.gap = '6px';
-        feedback.style.fontSize = '13px';
-        feedback.style.fontWeight = '500';
-        feedback.style.marginTop = '8px';
-        feedback.style.padding = '6px 12px';
-        feedback.style.borderRadius = '8px';
-        feedback.style.width = '100%';
-        feedback.style.boxSizing = 'border-box';
-        feedback.style.transition = 'all 0.2s ease-in-out';
-        feedback.setAttribute('role', 'status');
-        feedback.setAttribute('aria-live', 'polite');
-
-        // Insert after the confirm password input or its toggle wrapper
-        const wrapper = confirmInput.closest('.password-toggle-wrapper');
-        if (wrapper) {
-            wrapper.parentNode.insertBefore(feedback, wrapper.nextSibling);
-        } else {
-            confirmInput.parentNode.insertBefore(feedback, confirmInput.nextSibling);
-        }
-
-        const SVGS = {
-            match: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
-            mismatch: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
-        };
-
-        const checkMatch = () => {
-            const pVal = passwordInput.value;
-            const cVal = confirmInput.value;
-
-            if (pVal === '' || cVal === '') {
-                feedback.style.display = 'none';
-                feedback.innerHTML = '';
-                return;
-            }
-
-            feedback.style.display = 'inline-flex';
-            if (pVal === cVal) {
-                feedback.style.color = '#10b981'; // green-500
-                feedback.style.background = 'rgba(16, 185, 129, 0.08)';
-                feedback.style.border = '1px solid rgba(16, 185, 129, 0.25)';
-                feedback.innerHTML = `
-                    ${SVGS.match}
-                    <span style="vertical-align: middle;">Passwords match</span>
-                `;
-            } else {
-                feedback.style.color = '#ef4444'; // red-500
-                feedback.style.background = 'rgba(239, 68, 68, 0.08)';
-                feedback.style.border = '1px solid rgba(239, 68, 68, 0.25)';
-                feedback.innerHTML = `
-                    ${SVGS.mismatch}
-                    <span style="vertical-align: middle;">Passwords do not match</span>
-                `;
-            }
-        };
-
-        passwordInput.addEventListener('input', checkMatch);
-        confirmInput.addEventListener('input', checkMatch);
-    });
+    pairs.forEach(bindPasswordMatchEvents);
 }
 
 /**

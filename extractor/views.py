@@ -144,7 +144,37 @@ def format_datetime(dt):
     return dt.strftime(ISO_8601_FORMAT)
 
 
-def _wrap_surreal_doc(d, users_map):
+def _build_users_map(user_ids=None, fallback_user=None) -> dict:
+    """
+    Build a mapping of {str(user_id): user_obj} targeting only requested user_ids
+    instead of bulk-loading all users in the database.
+    """
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
+    users_map = {}
+    if fallback_user and getattr(fallback_user, "is_authenticated", False):
+        users_map[str(fallback_user.id)] = fallback_user
+        actor_id = getattr(fallback_user, "actor_id", None)
+        if actor_id:
+            users_map[str(actor_id)] = fallback_user
+
+    if user_ids is None:
+        for u in user_model.objects.all():
+            users_map[str(u.id)] = u
+        return users_map
+
+    needed_ids = {str(uid) for uid in user_ids if uid and str(uid) not in users_map}
+    if needed_ids:
+        try:
+            for u in user_model.objects.filter(id__in=needed_ids):
+                users_map[str(u.id)] = u
+        except Exception as exc:
+            logger.debug("[Users Map] Scoped user query skipped: %s", exc)
+    return users_map
+
+
+def _wrap_surreal_doc(d, users_map=None):
     if not d:
         return None
     from django.conf import settings
@@ -189,7 +219,7 @@ def _wrap_surreal_doc(d, users_map):
 
     uid = d.get("uploaded_by_id")
     doc_obj.uploaded_by_id = uid
-    doc_obj.uploaded_by = users_map.get(uid) if uid in users_map else None
+    doc_obj.uploaded_by = users_map.get(uid) if (users_map and uid in users_map) else None
     return doc_obj
 
 
@@ -313,10 +343,8 @@ def _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned: bool = False):
     if not raw_doc:
         return None, None, False, {}
 
-    from django.contrib.auth import get_user_model
-
-    user_model = get_user_model()
-    users_map = {str(u.id): u for u in user_model.objects.all()}
+    uid = raw_doc.get("uploaded_by_id")
+    users_map = _build_users_map([uid], fallback_user=request.user)
     doc = _wrap_surreal_doc(raw_doc, users_map)
 
     actor_id = get_request_actor_id(request)
@@ -344,12 +372,9 @@ def _get_dashboard_stats(request):
     else:
         raw_docs = surreal_db.list_documents(get_request_actor_id(request))
 
-    # Parse and wrap documents
-    from django.contrib.auth import get_user_model
-
-    user_model = get_user_model()
-    users_map = {str(u.id): u for u in user_model.objects.all()}
-
+    # Parse and wrap documents with scoped users_map
+    user_ids = {d.get("uploaded_by_id") for d in raw_docs if d and d.get("uploaded_by_id")}
+    users_map = _build_users_map(user_ids, fallback_user=user)
     docs = [_wrap_surreal_doc(d, users_map) for d in raw_docs]
 
     monthly_live = Decimal(str(sum(float(d.cost_usd) for d in docs if d.created_at >= first_of_month)))
@@ -499,6 +524,266 @@ class DashboardView(LoginRequiredMixin, View):
         return render(request, "extractor/dashboard.html", context)
 
 
+ALLOWED_UPLOAD_EXTENSIONS = {
+    "pdf",
+    "png",
+    "jpg",
+    "jpeg",
+    "webp",
+    "gif",
+    "tiff",
+    "heic",
+    "heif",
+    "csv",
+    "txt",
+    "md",
+    "markdown",
+    "json",
+    "docx",
+    "doc",
+    "xlsx",
+    "xls",
+}
+
+
+def _validate_upload_file(orig_name: str, size: int) -> dict[str, str] | None:
+    import os
+
+    ext = os.path.splitext(orig_name)[1].lower().replace(".", "")
+    if not ext or ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        return {
+            "status": "error",
+            "name": orig_name,
+            "error": f"Unsupported file type. Supported types: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+        }
+    if size > 31457280:
+        return {"status": "error", "name": orig_name, "error": f"'{orig_name}' exceeds maximum 30MB constraint."}
+    return None
+
+
+def _find_existing_doc_by_hash(file_hash: str, user_id: str | None = None) -> dict[str, Any] | None:
+    existing_doc = surreal_db.get_document_by_hash(file_hash, str(user_id) if user_id else None)
+    if not existing_doc:
+        sql = "SELECT * FROM documents WHERE file_hash = $file_hash AND status = 'COMPLETED' LIMIT 1;"
+        rows = surreal_db._first_result(surreal_db._run(sql, {"file_hash": file_hash}))
+        if rows:
+            existing_doc = rows[0]
+        else:
+            existing_doc = surreal_db.get_document_by_hash(file_hash)
+    return existing_doc
+
+
+def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: str) -> dict[str, str]:
+    import uuid
+
+    ip = get_client_ip(request)
+    new_uuid = str(uuid.uuid4())
+    file_path = existing_doc.file if hasattr(existing_doc, "file") else existing_doc.get("file")
+
+    data = {
+        "doc_uuid": new_uuid,
+        "file": file_path,
+        "original_filename": orig_name,
+        "file_hash": file_hash,
+        "status": "COMPLETED",
+        "uploaded_by_id": get_request_actor_id(request),
+        "language": existing_doc.language if hasattr(existing_doc, "language") else existing_doc.get("language"),
+        "author": existing_doc.author if hasattr(existing_doc, "author") else existing_doc.get("author"),
+        "title": existing_doc.title if hasattr(existing_doc, "title") else existing_doc.get("title"),
+        "document_type": existing_doc.document_type
+        if hasattr(existing_doc, "document_type")
+        else existing_doc.get("document_type"),
+        "page_count": existing_doc.page_count
+        if hasattr(existing_doc, "page_count")
+        else existing_doc.get("page_count", 0),
+        "raw_markdown": existing_doc.raw_markdown
+        if hasattr(existing_doc, "raw_markdown")
+        else existing_doc.get("raw_markdown"),
+        "refined_markdown": existing_doc.refined_markdown
+        if hasattr(existing_doc, "refined_markdown")
+        else existing_doc.get("refined_markdown"),
+        "yaml_metadata": existing_doc.yaml_metadata
+        if hasattr(existing_doc, "yaml_metadata")
+        else existing_doc.get("yaml_metadata"),
+        "qa_dataset": existing_doc.qa_dataset
+        if hasattr(existing_doc, "qa_dataset")
+        else existing_doc.get("qa_dataset"),
+        "cost_usd": 0.0,
+        "semantic_signature": existing_doc.semantic_signature
+        if hasattr(existing_doc, "semantic_signature")
+        else existing_doc.get("semantic_signature"),
+        "retry_count": 0,
+        "created_at": format_datetime(timezone.now()),
+        "updated_at": format_datetime(timezone.now()),
+        "expires_at": format_datetime(
+            timezone.now() + timezone.timedelta(days=int(getattr(settings, "DATA_RETENTION_DAYS", 30)))
+        ),
+    }
+    doc = surreal_db.create_document(data)
+
+    try:
+        surreal_db.clone_chunks(
+            str(existing_doc.uuid if hasattr(existing_doc, "uuid") else existing_doc.get("doc_uuid")), new_uuid
+        )
+    except Exception as clone_err:
+        logger.warning("[Upload] SurrealDB chunk clone failed: %s", clone_err)
+
+    _record_view_audit(
+        request,
+        AuditAction.UPLOAD_CACHED,
+        f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
+        document=doc,
+        ip=ip,
+    )
+    return {"status": "cached", "name": orig_name}
+
+
+def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
+    from extractor import cloud_tasks
+
+    ip = get_client_ip(request)
+    retry_cnt = existing_doc.retry_count if hasattr(existing_doc, "retry_count") else existing_doc.get("retry_count", 0)
+    if retry_cnt >= 3:
+        return {
+            "status": "error",
+            "name": orig_name,
+            "error": f"Maximum retry limit of 3 exceeded for file '{orig_name}'.",
+        }
+
+    doc_uuid = existing_doc.uuid if hasattr(existing_doc, "uuid") else existing_doc.get("doc_uuid")
+    doc_ref = surreal_db.update_document(
+        doc_uuid,
+        {
+            "status": "PENDING",
+            "cost_usd": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "error_message": "",
+            "retry_count": retry_cnt + 1,
+        },
+    )
+
+    _record_view_audit(
+        request,
+        AuditAction.UPLOAD,
+        f"File '{orig_name}' re-uploaded; resetting failed pipeline status and re-enqueuing.",
+        document=doc_ref,
+        ip=ip,
+    )
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        doc_id = doc_ref.get("id") if isinstance(doc_ref, dict) else getattr(doc_ref, "id", None)
+        cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+    else:
+        cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+    return {"status": "success", "name": f"{orig_name} (re-enqueued)"}
+
+
+def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[str, str]:
+    import os
+    import uuid
+
+    from django.core.files.storage import default_storage
+
+    from extractor import cloud_tasks
+
+    orig_name = uploaded_file.name
+    ip = get_client_ip(request)
+    title_guess = os.path.splitext(orig_name)[0].replace("_", " ").replace("-", " ").strip()
+    ext_guess = os.path.splitext(orig_name)[1].replace(".", "").upper() or "PDF"
+
+    file_id = str(uuid.uuid4())
+    ext = os.path.splitext(orig_name)[1].lower()
+    filename = f"uploads/{timezone.now().strftime('%Y/%m/%d')}/{file_id}{ext}"
+    saved_path = default_storage.save(filename, uploaded_file)
+
+    new_uuid = str(uuid.uuid4())
+    data = {
+        "doc_uuid": new_uuid,
+        "file": saved_path,
+        "original_filename": orig_name,
+        "file_hash": file_hash,
+        "status": "PENDING",
+        "uploaded_by_id": get_request_actor_id(request),
+        "title": title_guess or "Untitled",
+        "document_type": ext_guess,
+        "retry_count": 0,
+        "created_at": format_datetime(timezone.now()),
+        "updated_at": format_datetime(timezone.now()),
+    }
+    doc = surreal_db.create_document(data)
+
+    _record_view_audit(
+        request,
+        AuditAction.UPLOAD,
+        f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
+        document=doc,
+        ip=ip,
+    )
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
+        cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+    else:
+        cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
+    return {"status": "success", "name": orig_name}
+
+
+def _handle_existing_doc_match(
+    request, existing_doc, orig_name: str, file_hash: str, actor_id: str
+) -> dict[str, str] | None:
+    status = existing_doc.get("status")
+    uploaded_by_id = existing_doc.get("uploaded_by_id")
+    if status == "COMPLETED":
+        if uploaded_by_id == actor_id:
+            logger.info(
+                "[Deduplication] User already has completed document with hash %s. Reusing without copy.",
+                file_hash,
+            )
+            return {"status": "cached", "name": orig_name}
+
+        logger.info("[Deduplication] Match found for file hash %s. Skipping physical rewrite.", file_hash)
+        return _clone_deduplicated_doc(request, existing_doc, orig_name, file_hash)
+    elif status in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
+        return {
+            "status": "error",
+            "name": orig_name,
+            "error": f"File '{orig_name}' is already being processed by the background worker.",
+        }
+    elif status == "FAILED":
+        return _retry_failed_doc(request, existing_doc, orig_name)
+    return None
+
+
+def _process_single_upload_file(request, uploaded_file, processed_hashes: set) -> dict[str, str]:
+    orig_name = uploaded_file.name
+    validation_error = _validate_upload_file(orig_name, uploaded_file.size)
+    if validation_error:
+        return validation_error
+
+    file_hash = calculate_file_sha256(uploaded_file)
+    if file_hash in processed_hashes:
+        return {
+            "status": "error",
+            "name": orig_name,
+            "error": f"File '{orig_name}' is a duplicate of another file in this batch.",
+        }
+
+    processed_hashes.add(file_hash)
+    actor_id = get_request_actor_id(request)
+    existing_doc = _find_existing_doc_by_hash(file_hash, actor_id)
+
+    try:
+        if existing_doc:
+            res = _handle_existing_doc_match(request, existing_doc, orig_name, file_hash, actor_id)
+            if res is not None:
+                return res
+
+        return _create_fresh_uploaded_doc(request, uploaded_file, file_hash)
+    except Exception as e:
+        return {"status": "error", "name": orig_name, "error": f"Error processing '{orig_name}': {e!s}"}
+
+
 class UploadView(LoginRequiredMixin, View):
     """
     Handles secure drag-and-drop document uploads with automatic SHA-256
@@ -507,268 +792,25 @@ class UploadView(LoginRequiredMixin, View):
     """
 
     def _clone_deduplicated_document(self, request, existing_doc, orig_name, file_hash):
-        ip = get_client_ip(request)
-        import uuid
-
-        new_uuid = str(uuid.uuid4())
-
-        file_path = existing_doc.file if hasattr(existing_doc, "file") else existing_doc.get("file")
-
-        data = {
-            "doc_uuid": new_uuid,
-            "file": file_path,
-            "original_filename": orig_name,
-            "file_hash": file_hash,
-            "status": "COMPLETED",
-            "uploaded_by_id": get_request_actor_id(request),
-            "language": existing_doc.language if hasattr(existing_doc, "language") else existing_doc.get("language"),
-            "author": existing_doc.author if hasattr(existing_doc, "author") else existing_doc.get("author"),
-            "title": existing_doc.title if hasattr(existing_doc, "title") else existing_doc.get("title"),
-            "document_type": existing_doc.document_type
-            if hasattr(existing_doc, "document_type")
-            else existing_doc.get("document_type"),
-            "page_count": existing_doc.page_count
-            if hasattr(existing_doc, "page_count")
-            else existing_doc.get("page_count", 0),
-            "raw_markdown": existing_doc.raw_markdown
-            if hasattr(existing_doc, "raw_markdown")
-            else existing_doc.get("raw_markdown"),
-            "refined_markdown": existing_doc.refined_markdown
-            if hasattr(existing_doc, "refined_markdown")
-            else existing_doc.get("refined_markdown"),
-            "yaml_metadata": existing_doc.yaml_metadata
-            if hasattr(existing_doc, "yaml_metadata")
-            else existing_doc.get("yaml_metadata"),
-            "qa_dataset": existing_doc.qa_dataset
-            if hasattr(existing_doc, "qa_dataset")
-            else existing_doc.get("qa_dataset"),
-            "cost_usd": 0.0,
-            "semantic_signature": existing_doc.semantic_signature
-            if hasattr(existing_doc, "semantic_signature")
-            else existing_doc.get("semantic_signature"),
-            "retry_count": 0,
-            "created_at": format_datetime(timezone.now()),
-            "updated_at": format_datetime(timezone.now()),
-            "expires_at": format_datetime(
-                timezone.now() + timezone.timedelta(days=int(getattr(settings, "DATA_RETENTION_DAYS", 30)))
-            ),
-        }
-        doc = surreal_db.create_document(data)
-
-        try:
-            surreal_db.clone_chunks(
-                str(existing_doc.uuid if hasattr(existing_doc, "uuid") else existing_doc.get("doc_uuid")), new_uuid
-            )
-        except Exception as clone_err:
-            logger.warning("[Upload] SurrealDB chunk clone failed: %s", clone_err)
-
-        _record_view_audit(
-            request,
-            AuditAction.UPLOAD_CACHED,
-            f"File '{orig_name}' uploaded and instantly cached via de-duplication.",
-            document=doc,
-            ip=ip,
-        )
-        return {"status": "cached", "name": orig_name}
+        return _clone_deduplicated_doc(request, existing_doc, orig_name, file_hash)
 
     def _retry_existing_failed_document(self, request, existing_doc, orig_name):
-        ip = get_client_ip(request)
-        retry_cnt = (
-            existing_doc.retry_count if hasattr(existing_doc, "retry_count") else existing_doc.get("retry_count", 0)
-        )
-        if retry_cnt >= 3:
-            return {
-                "status": "error",
-                "name": orig_name,
-                "error": f"Maximum retry limit of 3 exceeded for file '{orig_name}'.",
-            }
-
-        doc_uuid = existing_doc.uuid if hasattr(existing_doc, "uuid") else existing_doc.get("doc_uuid")
-
-        doc_ref = surreal_db.update_document(
-            doc_uuid,
-            {
-                "status": "PENDING",
-                "cost_usd": 0.0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "error_message": "",
-                "retry_count": retry_cnt + 1,
-            },
-        )
-
-        _record_view_audit(
-            request,
-            AuditAction.UPLOAD,
-            f"File '{orig_name}' re-uploaded; resetting failed pipeline status and re-enqueuing.",
-            document=doc_ref,
-            ip=ip,
-        )
-
-        from django.conf import settings
-
-        from extractor import cloud_tasks
-
-        if getattr(settings, "SURREALDB_OFFLINE", False):
-            doc_id = doc_ref.get("id") if isinstance(doc_ref, dict) else getattr(doc_ref, "id", None)
-            cloud_tasks.enqueue("process_document", {"document_id": doc_id})
-        else:
-            cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
-        return {"status": "success", "name": f"{orig_name} (re-enqueued)"}
+        return _retry_failed_doc(request, existing_doc, orig_name)
 
     def _create_fresh_document(self, request, uploaded_file, file_hash):
-        orig_name = uploaded_file.name
-        ip = get_client_ip(request)
-        import os
-        import uuid
-
-        from django.core.files.storage import default_storage
-
-        title_guess = os.path.splitext(orig_name)[0].replace("_", " ").replace("-", " ").strip()
-        ext_guess = os.path.splitext(orig_name)[1].replace(".", "").upper()
-        if not ext_guess:
-            ext_guess = "PDF"
-
-        file_id = str(uuid.uuid4())
-        ext = os.path.splitext(orig_name)[1].lower()
-        filename = f"uploads/{timezone.now().strftime('%Y/%m/%d')}/{file_id}{ext}"
-        saved_path = default_storage.save(filename, uploaded_file)
-
-        new_uuid = str(uuid.uuid4())
-        data = {
-            "doc_uuid": new_uuid,
-            "file": saved_path,
-            "original_filename": orig_name,
-            "file_hash": file_hash,
-            "status": "PENDING",
-            "uploaded_by_id": get_request_actor_id(request),
-            "title": title_guess or "Untitled",
-            "document_type": ext_guess,
-            "retry_count": 0,
-            "created_at": format_datetime(timezone.now()),
-            "updated_at": format_datetime(timezone.now()),
-        }
-        doc = surreal_db.create_document(data)
-
-        _record_view_audit(
-            request,
-            AuditAction.UPLOAD,
-            f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
-            document=doc,
-            ip=ip,
-        )
-
-        from django.conf import settings
-
-        from extractor import cloud_tasks
-
-        if getattr(settings, "SURREALDB_OFFLINE", False):
-            doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
-            cloud_tasks.enqueue("process_document", {"document_id": doc_id})
-        else:
-            cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
-        return {"status": "success", "name": orig_name}
+        return _create_fresh_uploaded_doc(request, uploaded_file, file_hash)
 
     def _validate_uploaded_file(self, orig_name, size):
-        import os
-
-        ext = os.path.splitext(orig_name)[1].lower().replace(".", "")
-        ALLOWED_EXTENSIONS = {
-            "pdf",
-            "png",
-            "jpg",
-            "jpeg",
-            "webp",
-            "gif",
-            "tiff",
-            "heic",
-            "heif",
-            "csv",
-            "txt",
-            "md",
-            "markdown",
-            "json",
-            "docx",
-            "doc",
-            "xlsx",
-            "xls",
-        }
-        if not ext or ext not in ALLOWED_EXTENSIONS:
-            return {
-                "status": "error",
-                "name": orig_name,
-                "error": f"Unsupported file type. Supported types: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
-            }
-
-        if size > 31457280:
-            return {"status": "error", "name": orig_name, "error": f"'{orig_name}' exceeds maximum 30MB constraint."}
-        return None
+        return _validate_upload_file(orig_name, size)
 
     def _find_existing_doc(self, file_hash, user_id):
-        existing_doc = surreal_db.get_document_by_hash(file_hash, str(user_id))
-        if not existing_doc:
-            # Check COMPLETED ones from anyone
-            sql = "SELECT * FROM documents WHERE file_hash = $file_hash AND status = 'COMPLETED' LIMIT 1;"
-            rows = surreal_db._first_result(surreal_db._run(sql, {"file_hash": file_hash}))
-            if rows:
-                existing_doc = rows[0]
-            else:
-                # Get any document matching hash
-                existing_doc = surreal_db.get_document_by_hash(file_hash)
-        return existing_doc
+        return _find_existing_doc_by_hash(file_hash, user_id)
 
     def _handle_existing_doc_match(self, request, existing_doc, orig_name, file_hash, actor_id):
-        status = existing_doc.get("status")
-        uploaded_by_id = existing_doc.get("uploaded_by_id")
-        if status == "COMPLETED":
-            if uploaded_by_id == actor_id:
-                logger.info(
-                    "[Deduplication] User already has completed document with hash %s. Reusing without copy.",
-                    file_hash,
-                )
-                return {"status": "cached", "name": orig_name}
-
-            logger.info("[Deduplication] Match found for file hash %s. Skipping physical rewrite.", file_hash)
-            return self._clone_deduplicated_document(request, existing_doc, orig_name, file_hash)
-        elif status in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
-            return {
-                "status": "error",
-                "name": orig_name,
-                "error": f"File '{orig_name}' is already being processed by the background worker.",
-            }
-        elif status == "FAILED":
-            return self._retry_existing_failed_document(request, existing_doc, orig_name)
-        return None
+        return _handle_existing_doc_match(request, existing_doc, orig_name, file_hash, actor_id)
 
     def _process_single_file(self, request, uploaded_file, processed_hashes):
-        orig_name = uploaded_file.name
-
-        validation_error = self._validate_uploaded_file(orig_name, uploaded_file.size)
-        if validation_error:
-            return validation_error
-
-        file_hash = calculate_file_sha256(uploaded_file)
-
-        if file_hash in processed_hashes:
-            return {
-                "status": "error",
-                "name": orig_name,
-                "error": f"File '{orig_name}' is a duplicate of another file in this batch.",
-            }
-
-        processed_hashes.add(file_hash)
-        actor_id = get_request_actor_id(request)
-        existing_doc = self._find_existing_doc(file_hash, actor_id)
-
-        try:
-            if existing_doc:
-                res = self._handle_existing_doc_match(request, existing_doc, orig_name, file_hash, actor_id)
-                if res is not None:
-                    return res
-
-            return self._create_fresh_document(request, uploaded_file, file_hash)
-        except Exception as e:
-            return {"status": "error", "name": orig_name, "error": f"Error processing '{orig_name}': {e!s}"}
+        return _process_single_upload_file(request, uploaded_file, processed_hashes)
 
     def post(self, request):
         uploaded_files = request.FILES.getlist("file")
@@ -1388,7 +1430,7 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
     surreal_db.delete_document(doc_uuid)
 
 
-def _get_docs_for_delete(request, document_ids, users_map):
+def _get_docs_for_delete(request, document_ids, users_map=None):
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -1401,6 +1443,9 @@ def _get_docs_for_delete(request, document_ids, users_map):
             return list(SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user))
     else:
         raw_docs = surreal_db.get_documents(document_ids)
+        if users_map is None:
+            user_ids = {d.get("uploaded_by_id") for d in raw_docs if d and d.get("uploaded_by_id")}
+            users_map = _build_users_map(user_ids, fallback_user=request.user)
         docs = []
         for raw_doc in raw_docs:
             uploaded_by_id = raw_doc.get("uploaded_by_id")
@@ -1441,13 +1486,9 @@ def _get_hash_ref_counts(file_hashes):
 
 
 def _handle_bulk_delete(request, document_ids):
-    from django.contrib.auth import get_user_model
     from django.core.files.storage import default_storage
 
-    user_model = get_user_model()
-    users_map = {str(u.id): u for u in user_model.objects.all()}
-
-    docs = _get_docs_for_delete(request, document_ids, users_map)
+    docs = _get_docs_for_delete(request, document_ids)
     file_hashes = {doc.file_hash for doc in docs if doc.file_hash}
     hash_ref_counts = _get_hash_ref_counts(file_hashes)
 
@@ -1659,10 +1700,8 @@ class DocumentRetryView(LoginRequiredMixin, View):
             messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
-        users_map = {str(u.id): u for u in user_model.objects.all()}
+        uid = raw_doc.get("uploaded_by_id")
+        users_map = _build_users_map([uid], fallback_user=request.user)
         doc = _wrap_surreal_doc(raw_doc, users_map)
 
         err_msg, status_code = self._handle_retry_permissions_and_limits(request, doc)
@@ -1880,10 +1919,8 @@ def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_
 
     raw_logs = surreal_db._first_result(surreal_db._run(sql, params))
 
-    from django.contrib.auth import get_user_model
-
-    user_model = get_user_model()
-    users_map = {str(u.id): u for u in user_model.objects.all()}
+    user_ids = {rl.get("user_id") for rl in raw_logs if rl.get("user_id")}
+    users_map = _build_users_map(user_ids, fallback_user=request.user)
     actor_id = get_request_actor_id(request)
     if actor_id:
         users_map[actor_id] = request.user

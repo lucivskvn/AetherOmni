@@ -145,16 +145,19 @@ def _lookup_cached_embeddings(
 
     cleaned_texts = [text.strip() for text in chunks_list]
     cached_map: dict[str, list[float]] = {}
+    batch_performed = False
     if hasattr(surreal_db, "find_chunk_embeddings_batch"):
         try:
             cached_map = surreal_db.find_chunk_embeddings_batch(cleaned_texts)
+            batch_performed = True
         except Exception as e:
             logger.debug("[Embeddings Cache] Failed batch lookup of chunk embeddings: %s", e)
 
     for idx, text in enumerate(chunks_list):
         cleaned_text = cleaned_texts[idx]
         cached_vector = cached_map.get(cleaned_text)
-        if not cached_vector and cleaned_text:
+        # Avoid N+1 query fallback if batch lookup was already executed successfully
+        if not cached_vector and cleaned_text and not batch_performed and hasattr(surreal_db, "find_chunk_embedding"):
             try:
                 cached_vector = surreal_db.find_chunk_embedding(cleaned_text)
             except Exception as e:

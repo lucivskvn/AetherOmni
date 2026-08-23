@@ -124,6 +124,39 @@ def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
         return False
 
 
+def _is_ip_in_google_cidrs(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        for cidr in GOOGLE_TASKS_IP_CIDRS:
+            if ip in ipaddress.ip_network(cidr, strict=False):
+                return True
+    except ValueError:
+        pass
+    return False
+
+
+def _extract_candidate_ips(request: HttpRequest) -> list[str]:
+    raw_remote = request.META.get("REMOTE_ADDR", "").strip()
+    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    candidate_ips: list[str] = []
+    if raw_remote:
+        candidate_ips.append(raw_remote)
+
+    if not x_forwarded_for:
+        return candidate_ips
+
+    is_private = True
+    if raw_remote:
+        try:
+            is_private = ipaddress.ip_address(raw_remote).is_private
+        except ValueError:
+            is_private = True
+
+    if is_private:
+        candidate_ips.extend([ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()])
+    return candidate_ips
+
+
 def _verify_source_ip(request: HttpRequest) -> bool:
     """
     Verify the request source IP is within known Google Cloud Tasks CIDRs.
@@ -132,27 +165,13 @@ def _verify_source_ip(request: HttpRequest) -> bool:
     if settings.DEBUG:
         return True
 
+    for ip_str in _extract_candidate_ips(request):
+        if _is_ip_in_google_cidrs(ip_str):
+            return True
+
     raw_remote = request.META.get("REMOTE_ADDR", "").strip()
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    candidate_ips: list[str] = []
-    if raw_remote:
-        candidate_ips.append(raw_remote)
-    if x_forwarded_for:
-        # Check all verifiable proxy hops rather than trusting raw leftmost header
-        candidate_ips.extend([ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()])
-
-    for ip_str in candidate_ips:
-        try:
-            ip = ipaddress.ip_address(ip_str)
-            for cidr in GOOGLE_TASKS_IP_CIDRS:
-                if ip in ipaddress.ip_network(cidr, strict=False):
-                    return True
-        except ValueError:
-            continue
-
-    clean_xff = str(x_forwarded_for).replace("\r", "").replace("\n", "")[:64]
     clean_remote = str(raw_remote).replace("\r", "").replace("\n", "")[:64]
-    logger.warning("[CloudTasksHandler] Request from unrecognised IP: %s (remote: %s)", clean_xff, clean_remote)
+    logger.warning("[CloudTasksHandler] Request from unrecognised IP (remote: %s)", clean_remote)
     return False
 
 

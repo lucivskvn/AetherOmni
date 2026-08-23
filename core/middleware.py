@@ -83,6 +83,23 @@ def _parse_db_origins(db_origins):
     return tuple(parsed)
 
 
+def _is_loopback_origin(origin_str: str) -> bool:
+    if not origin_str:
+        return False
+    clean = origin_str.strip().lower()
+    if clean in ("localhost", "127.0.0.1", "::1"):
+        return True
+    try:
+        url = (
+            clean if "://" in clean else f"http://{clean}"
+        )  # NOSONAR python:S5332 -- local scheme fallback for url parsing
+        parsed = urllib.parse.urlparse(url)
+        host = (parsed.hostname or "").strip("[]").lower()
+        return host in ("localhost", "127.0.0.1", "::1")
+    except Exception:
+        return False
+
+
 class DynamicCsrfTrustedOriginsMiddleware:
     """
     Dynamically registers the request's origin and referer in CSRF_TRUSTED_ORIGINS
@@ -99,22 +116,7 @@ class DynamicCsrfTrustedOriginsMiddleware:
         self.get_response = get_response
 
     def _is_loopback(self, origin_str: str) -> bool:
-        if not origin_str:
-            return False
-        origin_str = origin_str.strip().lower()
-        if origin_str in ("localhost", "127.0.0.1", "::1"):
-            return True
-        try:
-            url = origin_str if "://" in origin_str else f"http://{origin_str}"  # NOSONAR
-            parsed = urllib.parse.urlparse(url)
-            host = parsed.hostname
-            if not host:
-                return False
-            # Strip IPv6 brackets if present (e.g. [::1])
-            host = host.strip("[]")
-            return host in ("localhost", "127.0.0.1", "::1")
-        except Exception:
-            return False
+        return _is_loopback_origin(origin_str)
 
     def __call__(self, request):
         # 1. Capture base static origins from settings if not already cached

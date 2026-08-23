@@ -16,6 +16,7 @@ Capabilities:
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -274,7 +275,7 @@ async def _probe_namespaces(db, namespaces, db_name):
 
 
 def _prioritize_namespaces(namespaces: list[str]) -> list[str]:
-    pref = ["aetheromni", "omnirag"]
+    pref = ["korda", "aetheromni", "omnirag"]
     res = list(namespaces)
     for p in reversed(pref):
         if p in res:
@@ -289,11 +290,11 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
         return _detected_ns
 
     env_ns = os.getenv("SURREAL_NS") or getattr(settings, "SURREAL_NS", None)
-    if env_ns and env_ns not in ("", "aetheromni", "omrag", "omnirag"):
+    if env_ns and env_ns not in ("", "korda", "aetheromni", "omrag", "omnirag"):
         _detected_ns = env_ns
         return _detected_ns
 
-    fallback_ns = env_ns or "aetheromni"
+    fallback_ns = env_ns or "korda"
     try:
         async with AsyncSurreal(url) as db:
             await db.signin(auth)
@@ -316,9 +317,9 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
 
 def _get_surreal_ns_db() -> tuple[str, str]:
     global _detected_ns
-    ns = _detected_ns or getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "aetheromni"))
+    ns = _detected_ns or getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "korda"))
     db = getattr(settings, "SURREAL_DB", os.getenv("SURREAL_DB", "extractor"))
-    return str(ns or "aetheromni"), str(db or "extractor")
+    return str(ns or "korda"), str(db or "extractor")
 
 
 async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
@@ -367,8 +368,6 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
 
 def _run_in_thread(coro):
     """Run an async coroutine synchronously in a separate thread to prevent event loop blocking/corruption."""
-    import concurrent.futures
-
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(asyncio.run, coro)
         return future.result()

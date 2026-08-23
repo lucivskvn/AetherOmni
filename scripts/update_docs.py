@@ -93,21 +93,6 @@ def get_major_minor() -> str:
     return "0.1"
 
 
-def get_last_release_tag() -> str:
-    """Return the newest semantic release tag in the repo, if one exists."""
-    tag = _git("describe", "--tags", "--abbrev=0")
-    if tag:
-        return tag.strip()
-
-    tags = _git("tag", "--sort=-v:refname")
-    if tags:
-        for line in tags.splitlines():
-            candidate = line.strip()
-            if re.fullmatch(r"v?\d+\.\d+\.\d+", candidate):
-                return candidate
-    return ""
-
-
 def get_commit_count() -> str:
     """Return a monotonically increasing PATCH number for the current commit."""
     env_count = os.getenv("BUILD_NUMBER") or os.getenv("COMMIT_COUNT")
@@ -340,15 +325,6 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     readme.write_text(text, encoding="utf-8")
     print(f"[OK]   README.md — {v['badge_ver']} | {v['today']} | sha:{v['sha']}")
     return True
-
-
-# ── GCP deployment guide update ────────────────────────────────────────────────
-
-
-def update_gcp_guide(v: dict) -> bool:
-    """Keep the deployment guide free of generated version churn."""
-    _ = v
-    return False
 
 
 # ── service.yaml / service-worker.yaml update ─────────────────────────────────

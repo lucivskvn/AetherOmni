@@ -632,16 +632,14 @@ def _get_offline_docs(document_ids, user):
 
 
 def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
-    from django.contrib.auth import get_user_model
-
     from extractor import surreal_db
-    from extractor.views import _wrap_surreal_doc
-
-    user_model = get_user_model()
-    users_map = {str(u.id): u for u in user_model.objects.all()}
+    from extractor.views import _build_users_map, _wrap_surreal_doc
 
     docs_list = []
     raw_docs = surreal_db.get_documents(document_ids)
+    user_ids = {d.get("uploaded_by_id") for d in raw_docs if d and d.get("uploaded_by_id")}
+    users_map = _build_users_map(user_ids, fallback_user=user)
+
     for raw_doc in raw_docs:
         if not raw_doc or raw_doc.get("status") != "COMPLETED":
             continue
@@ -1285,16 +1283,6 @@ def get_google_oidc_token(audience: str) -> str | None:
     except Exception as exc:
         logger.warning("[OIDC] Failed to fetch OIDC identity (not in GCP?): %s", exc)
         return None
-
-
-def async_task_with_wakeup(task_name: str, payload: dict, countdown: int = 0) -> None:
-    """
-    Alias for cloud_tasks.enqueue — replaces the old Django-Q async_task wrapper.
-    Provides backward-compatible interface for call sites that used the old signature.
-    """
-    from extractor import cloud_tasks
-
-    cloud_tasks.enqueue(task_name, payload, countdown=countdown)
 
 
 def extract_pdf_diagrams_with_vision(pdf_path: str, max_pages: int = 5) -> str:

@@ -30,7 +30,6 @@ KNATIVE_MAX_SCALE = "autoscaling.knative.dev/maxScale"
 
 # ── Re-exports from file_utils.py ─────────────────────────────────────────────
 from extractor.file_utils import (
-    async_task_with_wakeup,
     calculate_file_sha256,
     clean_html_content,
     format_localized_cost,
@@ -231,7 +230,6 @@ __all__ = [
     "BudgetExceededException",
     "GeminiProcessingError",
     "UnifiedResponse",
-    "async_task_with_wakeup",
     "broadcast_status_change",
     "calculate_file_sha256",
     "calculate_gemini_cost",
