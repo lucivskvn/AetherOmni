@@ -13,8 +13,8 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.603-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-dd51d74-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.604-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-baab24e-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -388,43 +388,62 @@ extraction, and push retries.
 
 ### 1. Prerequisites
 
-- The Python runtime declared by `pyproject.toml` installed
-- Docker & Docker Compose (optional for SurrealDB)
+- **Python**: Target version declared in `pyproject.toml` (Python 3.14 recommended)
+- **Node.js**: Node.js v20+ & npm (for Vitest & ESLint 10)
+- **uv**: Astral `uv` Python package manager (recommended for sub-second installs)
+- **Docker**: Docker & Docker Compose (optional for local SurrealDB)
+- **Pulumi & gcloud CLI**: Optional for infrastructure deployment & DR testing
 
 ### 2. Environment Configuration
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory with the complete set of local settings:
 
 ```env
+# Core Django & Security
 DJANGO_SECRET_KEY="your-secure-development-secret-key"
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
+
+# LLM Gateway & APIs
 GEMINI_API_KEY="your-gemini-api-key"
+ADMIN_EMAIL="admin@example.com"
+
+# SurrealDB Vector & High-Throughput Engine (Local or Remote)
 SURREAL_URL="ws://localhost:8001/rpc"
 SURREAL_USER="root"
 SURREAL_PASS="root"
 SURREALDB_OFFLINE=False
+
+# Supabase Auth & PostgreSQL (Optional for local offline SQLite fallback)
+SUPABASE_URL="https://<YOUR_PROJECT_ID>.supabase.co"
+SUPABASE_PUBLIC_KEY="your-supabase-public-anon-key"
+SUPABASE_SERVICE_ROLE_KEY="your-supabase-service-role-key"
+
+# Cloudflare Turnstile Bot Defense (Optional in local development)
+CF_TURNSTILE_SITE_KEY="your-turnstile-site-key"
+
+# Sentry Observability (Optional in local development)
+SENTRY_DSN=""
 ```
 
-> Note: production and remote SurrealDB connections must use a WebSocket RPC URL configured via `SURREAL_URL` (e.g. `wss://<surrealdb-host>/rpc`).
+> [!NOTE]
+> For production and remote SurrealDB deployments, `SURREAL_URL` must use a secure WebSocket RPC endpoint (`wss://<surrealdb-host>/rpc`). For purely offline testing without a live SurrealDB server, set `SURREALDB_OFFLINE=True`.
 
 ### 3. Install Dependencies & Initialize Database
 
 ```bash
-# Recommended: use uv (fast Python package manager)
-# Install uv: https://docs.astral.sh/uv/getting-started/installation/
+# Recommended: use uv (ultra-fast Python package manager)
 uv venv .venv
 source .venv/bin/activate
 
-# Install requirements
+# Install Python & JS development dependencies
 uv pip install -r requirements-dev.txt
+npm install
 
-# Run migrations & initialize SurrealDB
+# Run database migrations & bootstrap SurrealDB schemas
 python manage.py migrate
 python scripts/init_surreal.py
 ```
-
-> **Alternative (standard venv):** create `.venv` with the interpreter required by `pyproject.toml`, activate it, and install `requirements-dev.txt`.
 
 ### 4. Launch Development Server
 
@@ -432,12 +451,16 @@ python scripts/init_surreal.py
 python manage.py runserver 0.0.0.0:8000
 ```
 
-Access the application at `http://localhost:8000`.
+Access the application in your browser at `http://localhost:8000`.
 
-### 5. Execute Test Suite
+### 5. Execute Full Quality & Test Verification
 
 ```bash
-DJANGO_SECRET_KEY=test_key SECURE_SSL_REDIRECT=False python manage.py test extractor.tests
+# Run fast differential pre-commit check (<0.3s):
+bash run_checks.sh --fast
+
+# Run the complete 5-layer DevSecOps test & security suite:
+bash run_checks.sh
 ```
 
 ---
@@ -446,7 +469,7 @@ DJANGO_SECRET_KEY=test_key SECURE_SSL_REDIRECT=False python manage.py test extra
 
 ### Deploying to GCP Cloud Run
 
-Refer to the complete deployment guide in [`gcp_deployment_guide.md`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/gcp_deployment_guide.md).
+Refer to the complete step-by-step deployment and Pulumi IaC guide in [`docs/gcp_deployment_guide.md`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/docs/gcp_deployment_guide.md).
 
 ### Live Cloud Diagnostics
 
