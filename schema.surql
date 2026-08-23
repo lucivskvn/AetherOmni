@@ -174,3 +174,39 @@ DEFINE FIELD IF NOT EXISTS expires_at      ON rate_limits TYPE datetime DEFAULT 
 
 DEFINE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits FIELDS key UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_rate_limits_exp ON rate_limits FIELDS expires_at;
+
+
+-- ── 10. entities (Knowledge Graph Nodes) ───────────────────────
+-- Multi-tenant entity nodes for Graph Relational RAG.
+DEFINE TABLE IF NOT EXISTS entities SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS name        ON entities TYPE string;
+DEFINE FIELD IF NOT EXISTS category    ON entities TYPE string DEFAULT "CONCEPT"; -- CONCEPT | PERSON | ORG | LAW | LOCATION
+DEFINE FIELD IF NOT EXISTS description ON entities TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS tenant_id   ON entities TYPE string;                  -- Supabase user/org UUID
+DEFINE FIELD IF NOT EXISTS embedding   ON entities TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS created_at  ON entities TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_entity_name ON entities FIELDS name, tenant_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_entity_user ON entities FIELDS tenant_id;
+DEFINE INDEX IF NOT EXISTS idx_entity_hnsw ON entities FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
+
+
+-- ── 11. chunk_references (Graph Relation Edge: chunks -> entities)
+-- Links text chunks to extracted knowledge graph entities.
+DEFINE TABLE IF NOT EXISTS chunk_references SCHEMAFULL TYPE RELATION FROM chunks TO entities;
+
+DEFINE FIELD IF NOT EXISTS relevance_score ON chunk_references TYPE float DEFAULT 1.0;
+DEFINE FIELD IF NOT EXISTS extracted_at    ON chunk_references TYPE datetime DEFAULT time::now();
+
+
+-- ── 12. entity_relations (Graph Relation Edge: entities -> entities)
+-- Inter-concept relationship edges within tenant boundary.
+DEFINE TABLE IF NOT EXISTS entity_relations SCHEMAFULL TYPE RELATION FROM entities TO entities;
+
+DEFINE FIELD IF NOT EXISTS relation_type   ON entity_relations TYPE string DEFAULT "RELATED_TO"; -- CITES | GOVERNS | PART_OF | AMENDS
+DEFINE FIELD IF NOT EXISTS confidence      ON entity_relations TYPE float DEFAULT 1.0;
+DEFINE FIELD IF NOT EXISTS tenant_id       ON entity_relations TYPE string;
+DEFINE FIELD IF NOT EXISTS created_at      ON entity_relations TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_rel_tenant  ON entity_relations FIELDS tenant_id;
