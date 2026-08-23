@@ -289,17 +289,20 @@ header {
 
 .alert-card {
     padding: 14px 20px;
-    border-radius: 12px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     gap: 12px;
     animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     font-size: 14px;
     font-weight: 500;
+    line-height: 1.4;
     transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     box-sizing: border-box;
-    max-height: 120px;
+    max-height: 140px;
     opacity: 1;
     overflow: hidden;
 }
@@ -326,15 +329,36 @@ header {
 }
 
 .alert-success {
-    background-color: #064e3b;
-    border: 1px solid #047857;
+    background: rgba(6, 78, 59, 0.85);
+    border: 1px solid rgba(16, 185, 129, 0.4);
     color: #ecfdf5;
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.2);
 }
 
 .alert-error {
-    background-color: #7f1d1d;
-    border: 1px solid #b91c1c;
+    background: rgba(127, 29, 29, 0.88);
+    border: 1px solid rgba(239, 68, 68, 0.4);
     color: #fef2f2;
+    box-shadow: 0 8px 24px rgba(239, 68, 68, 0.25);
+}
+
+.form-errors {
+    background: rgba(127, 29, 29, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+    color: #fee2e2;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.45;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.15);
+    animation: slide-in-top 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Main Container layout */
