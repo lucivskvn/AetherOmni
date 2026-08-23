@@ -91,12 +91,20 @@ class SurrealNamespaceMigrator:
 
     def apply_schema_to_target(self, schema_file: str) -> bool:
         logger.info("[Migration] Applying schema definitions to target namespace '%s'...", self.target_ns)
-        # Validate path to prevent directory traversal / file system escape
-        real_path = os.path.realpath(schema_file)
-        if not os.path.exists(real_path) or not os.path.isfile(real_path):
-            raise FileNotFoundError(f"Schema file '{schema_file}' does not exist or is invalid.")
+        # Whitelist and sanitize schema file path to prevent CWE-22 path traversal
+        filename = os.path.basename(schema_file)
+        if filename != "schema.surql":
+            raise ValueError(f"Unauthorized schema file '{filename}'. Only 'schema.surql' is allowed.")
 
-        with open(real_path, encoding="utf-8") as f:
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        safe_schema_path = os.path.join(root_dir, "schema.surql")
+        if not os.path.exists(safe_schema_path) and os.path.exists("/app/schema.surql"):
+            safe_schema_path = "/app/schema.surql"
+
+        if not os.path.exists(safe_schema_path):
+            raise FileNotFoundError(f"Schema file '{safe_schema_path}' does not exist.")
+
+        with open(safe_schema_path, encoding="utf-8") as f:
             schema_sql = f.read()
 
         result = self._execute_sql(self.target_ns, schema_sql)
