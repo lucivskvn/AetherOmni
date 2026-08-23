@@ -28,7 +28,7 @@
 # use single $ as normal.
 # ==============================================================================
 substitutions:
-  _REGION: asia-southeast2
+  _REGION: asia-southeast1
   _GITHUB_REPOSITORY: lucivskvn/AetherOmni
   # Optional public application URL. Defaults to the canonical domain.
   _APP_URL: "https://aether.fainko.my.id"
@@ -326,6 +326,28 @@ steps:
           --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
+
+  # 6. Automated Google-Managed Custom Domain Mapping
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
+    id: 'bind-custom-domain'
+    waitFor: ['deploy-web']
+    entrypoint: bash
+    args:
+      - '-euc'
+      - |
+        APP_URL='${_APP_URL}'
+        if [ -n "$${APP_URL}" ] && [[ "$${APP_URL}" == http* ]]; then
+          DOMAIN="$$(echo "$${APP_URL}" | sed -e 's|^[^/]*//||' -e 's|/.*$$||')"
+          if [ -n "$${DOMAIN}" ] && [[ "$${DOMAIN}" != *".run.app" ]]; then
+            echo "Automating Google-managed domain mapping for $${DOMAIN} in region ${_REGION}..."
+            gcloud beta run domain-mappings create \
+              --domain="$${DOMAIN}" \
+              --service=korda-web \
+              --region=${_REGION} \
+              --platform=managed \
+              --quiet 2>/dev/null || echo "Domain mapping for $${DOMAIN} already exists or is configured."
+          fi
+        fi
 
 options:
   logging: CLOUD_LOGGING_ONLY
