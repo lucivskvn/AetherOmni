@@ -14,7 +14,7 @@
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Version](https://img.shields.io/badge/version-v1.5.570-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-a89be23-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Commit](https://img.shields.io/badge/commit-503b4a7-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -234,7 +234,7 @@ flowchart LR
 ### ✅ Milestone 2.0 (MVP Core — Dual Database Engine & Multi-Model LLM Gateway)
 
 - [x] **SurrealDB HNSW Vector Storage**: Remote SurrealDB vector indexer (`DIMENSION 768 DIST COSINE`) paired with Supabase PostgreSQL (and SQLite offline).
-- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast2 (Jakarta) -> asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
+- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
 - [x] **Persisted Budget Accounting**: Hard monthly USD spend limits backed by immutable `MonthlySpendLog` ledgers.
 
 ### ✅ Milestone 3.0 (MVP Core — Hybrid RAG, Context Caching & Vision OCR)
@@ -315,8 +315,8 @@ flowchart LR
 | **High-Throughput Vector & Cache DB** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model vector store (HNSW 768 cosine), prompt prefix cache (`context_cache`), sliding rate limits (`rate_limits`), and `user_memories` |
 | **Knowledge Graph Engine** | SurrealDB | Graph Relational | Stores nodes (`entities`), semantic embeddings (HNSW 768), and bidirectional graph edges (`chunk_references`, `entity_relations`) for multi-hop RAG |
 | **Secrets & Keyless IAM** | GCP Secret Manager / IAM ADC | Application Default Credentials (ADC) | Keyless IAM runtime authentication, dynamic resolution of API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) with zero committed secrets |
-| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast2 (Jakarta) -> asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
-| **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast2` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
+| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
+| **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast1` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
 | **Asynchronous Task Queue** | GCP Cloud Tasks | OIDC Authenticated Worker Tasks | Production asynchronous document processing queue with localized thread fallbacks |
 | **Cloud Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw documents and curated export bundles |
 | **CI/CD & Git Automation** | GitHub Actions / GitHub CLI | Pinned commit SHAs · `gh` CLI | 3-Phase Shift-Left validation, CodeQL, and Dependabot security |

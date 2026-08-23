@@ -124,7 +124,7 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
         raise RuntimeError(message)
 
     project = details.get("project_id")
-    region = details.get("region") or getattr(settings, "GCP_REGION", "asia-southeast2")
+    region = details.get("region") or getattr(settings, "GCP_REGION", "asia-southeast1")
     queue_name = getattr(settings, "CLOUD_TASKS_QUEUE", "extractor-tasks")
     service_url = getattr(settings, "WORKER_URL", "") or getattr(settings, "APP_URL", "")
 

@@ -148,7 +148,7 @@ def get_gcp_project_details():
     from django.conf import settings as django_settings
 
     project_id = os.getenv("GCP_PROJECT_ID") or os.getenv("GCP_PROJECT", "")
-    region = os.getenv("GCP_REGION", "asia-southeast2")
+    region = os.getenv("GCP_REGION", "asia-southeast1")
     project_number = None
 
     # Fallback to local gcloud config if not set in environment

@@ -26,7 +26,7 @@ Infrastructure provisioning and teardown are managed declaratively using **Pulum
 Key operational policies:
 
 - **Zero Committed Secrets & Dynamic Project Resolution**: Cloud Run service manifests and Pulumi configurations resolve project IDs and Secret Manager references dynamically at runtime (`GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`).
-- **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks-v2`, and GCS bucket `<PROJECT_ID>-media-korda`) are colocated in **`asia-southeast2` (Jakarta)** to eliminate cross-region egress and intra-region data transfer fees.
+- **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks-v2`, and GCS bucket `<PROJECT_ID>-media-data-extractor`) are colocated in **`asia-southeast1` (Singapore)** to eliminate cross-region egress and intra-region data transfer fees.
 - **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching and SonarCloud Quality Gate verification.
 
 ---
@@ -41,7 +41,7 @@ cd infra/pulumi
 
 # Set your target project ID (if not already set in environment)
 pulumi config set gcp:project <YOUR_GCP_PROJECT_ID>
-pulumi config set gcp:region asia-southeast2
+pulumi config set gcp:region asia-southeast1
 
 # Preview resource topology
 pulumi preview --stack prod
@@ -60,11 +60,11 @@ Run these commands using the Google Cloud CLI (`gcloud`) or Cloud Shell if boots
 
 ```bash
 export PROJECT_ID="your-gcp-project-id"
-export REGION="asia-southeast2" # Primary region (Jakarta)
+export REGION="asia-southeast1" # Primary region (Singapore)
 export ARTIFACT_REGISTRY="cloud-run-source-deploy"
-export BUCKET_NAME="${PROJECT_ID}-media-korda"
+export BUCKET_NAME="${PROJECT_ID}-media-data-extractor"
 export SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-export QUEUE_NAME="extractor-tasks"
+export QUEUE_NAME="extractor-tasks-v2"
 ```
 
 ### B. Enable GCP Services
@@ -516,17 +516,16 @@ AI agents and platform operators leverage Model Context Protocol (MCP) servers f
 
 To minimize Google Cloud billing anomalies and eliminate **Intra-Region & Cross-Region Data Transfer Egress** charges:
 
-1. **Strict Same-Region Colocation (`asia-southeast2`)**:
-   - Cloud Run Web (`korda-web`), Cloud Run Worker (`korda-worker`), Cloud Tasks (`extractor-tasks-v2`), and Google Cloud Storage bucket (`<PROJECT_ID>-media-korda`) reside exclusively in `asia-southeast2` (Jakarta).
+1. **Strict Same-Region Colocation (`asia-southeast1`)**:
+   - Cloud Run Web (`korda-web`), Cloud Run Worker (`korda-worker`), Cloud Tasks (`extractor-tasks-v2`), and Google Cloud Storage bucket (`<PROJECT_ID>-media-data-extractor`) reside exclusively in `asia-southeast1` (Singapore).
    - Ingress and egress traffic between Cloud Run, Cloud Tasks, and Cloud Storage in the same GCP region is priced at **$0.00/GB** (free intra-region data transfer).
 
 2. **Vertex AI Multimodal Regional Gateway Routing (Latency-Ranked)**:
-   - `extractor/llm_gateway.py` evaluates the local region **ID (`asia-southeast2` Jakarta)** first for all Vertex AI Gemini 2.5 Flash and Flash-Lite inference calls.
+   - `extractor/llm_gateway.py` evaluates the primary region **SG (`asia-southeast1` Singapore)** first for all Vertex AI Gemini 2.5 Flash and Flash-Lite inference calls.
    - Cross-regional fallbacks cascade in strict order of network latency, data privacy, and carbon footprint:
-     1. **ID** (`asia-southeast2` — Jakarta: lowest latency origin)
-     2. **SG** (`asia-southeast1` — Singapore: nearest APAC secondary hub)
-     3. **EU** (`europe-west9` / `europe-west4` — Paris/Netherlands: GDPR-compliant EU hubs)
-     4. **CA** (`northamerica-northeast1` — Montreal: low-carbon, on-par Canadian privacy hub)
+     1. **SG** (`asia-southeast1` — Singapore: primary APAC hub with native Gemini 2.5 Flash availability)
+     2. **EU** (`europe-west9` / `europe-west4` — Paris/Netherlands: GDPR-compliant EU hubs)
+     3. **CA** (`northamerica-northeast1` — Montreal: low-carbon, on-par Canadian privacy hub)
 
 3. **Signed URLs & Streaming Content Delivery**:
    - Large raw PDF documents and curated ZIP export bundles stream directly from GCS via short-lived signed URLs rather than being proxied through the Web service container memory, avoiding double egress billing.
