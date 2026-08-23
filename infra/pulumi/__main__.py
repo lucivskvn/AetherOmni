@@ -105,8 +105,24 @@ gcp.storage.BucketIAMMember(
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
-# 4. Container Image Reference
-container_image = f"{region}-docker.pkg.dev/{project}/cloud-run-source-deploy/korda:{image_tag}"
+# 4. Artifact Registry Repository (for container images)
+artifact_repo_id = config.get("artifact_repo_id") or "cloud-run-source-deploy"
+artifact_repo = gcp.artifactregistry.Repository(
+    "korda-artifact-registry",
+    repository_id=artifact_repo_id,
+    location=region,
+    format="DOCKER",
+    description="Container images for KORDA platform",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+# Container Image Reference
+container_image = f"{region}-docker.pkg.dev/{project}/{artifact_repo_id}/korda:{image_tag}"
+
+# Custom Domain & App URL configuration
+custom_domain = config.get("custom_domain") or os.getenv("CUSTOM_DOMAIN") or ""
+extra_allowed_hosts = config.get("extra_allowed_hosts") or os.getenv("EXTRA_ALLOWED_HOSTS") or ""
+extra_csrf_origins = config.get("extra_csrf_origins") or os.getenv("EXTRA_CSRF_ORIGINS") or ""
 
 # Common Environment Variables
 common_env = [
@@ -125,6 +141,15 @@ common_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="CLOUD_TASKS_QUEUE", value=queue_name),
 ]
 
+if extra_allowed_hosts:
+    common_env.append(
+        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="EXTRA_ALLOWED_HOSTS", value=extra_allowed_hosts)
+    )
+if extra_csrf_origins:
+    common_env.append(
+        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="EXTRA_CSRF_ORIGINS", value=extra_csrf_origins)
+    )
+
 # Standard Secret Manager Volume / Environment Bindings
 secret_keys = [
     "DJANGO_SECRET_KEY",
@@ -137,6 +162,7 @@ secret_keys = [
     "SUPABASE_PUBLIC_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
     "CF_TURNSTILE_SITE_KEY",
+    "SENTRY_DSN",
 ]
 
 secret_envs = [
@@ -186,6 +212,13 @@ worker_service = gcp.cloudrunv2.Service(
 )
 
 # 6. Cloud Run Web Service (korda-web)
+web_env = [
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="2"),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="WORKER_URL", value=worker_service.uri),
+]
+if custom_domain:
+    web_env.append(gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="APP_URL", value=f"https://{custom_domain}"))
+
 web_service = gcp.cloudrunv2.Service(
     "korda-web",
     name="korda-web",
@@ -204,12 +237,7 @@ web_service = gcp.cloudrunv2.Service(
             gcp.cloudrunv2.ServiceTemplateContainerArgs(
                 image=container_image,
                 name="web",
-                envs=common_env
-                + secret_envs
-                + [
-                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="2"),
-                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="WORKER_URL", value=worker_service.uri),
-                ],
+                envs=common_env + secret_envs + web_env,
                 resources=gcp.cloudrunv2.ServiceTemplateContainerResourcesArgs(
                     limits={"cpu": "1000m", "memory": "1Gi"},
                 ),
@@ -230,9 +258,29 @@ gcp.cloudrunv2.ServiceIamMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
+# 7. Automated Google-Managed Custom Domain Mapping (Optional)
+domain_mapping = None
+if custom_domain:
+    domain_mapping = gcp.cloudrun.DomainMapping(
+        "korda-custom-domain-mapping",
+        name=custom_domain,
+        location=region,
+        project=project,
+        metadata=gcp.cloudrun.DomainMappingMetadataArgs(
+            namespace=project,
+        ),
+        spec=gcp.cloudrun.DomainMappingSpecArgs(
+            route_name=web_service.name,
+        ),
+        opts=pulumi.ResourceOptions(provider=gcp_provider),
+    )
+
 # Stack Outputs
 pulumi.export("web_url", web_service.uri)
 pulumi.export("worker_url", worker_service.uri)
 pulumi.export("bucket_name", media_bucket.name)
 pulumi.export("service_account_email", service_account.email)
 pulumi.export("queue_name", tasks_queue.name)
+pulumi.export("artifact_registry_name", artifact_repo.name)
+if custom_domain:
+    pulumi.export("custom_domain", custom_domain)
