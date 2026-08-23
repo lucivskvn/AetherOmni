@@ -462,7 +462,7 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
     """
     from django.core.cache import cache
 
-    resolved_region = region or os.getenv("CLOUD_ML_REGION") or os.getenv("GOOGLE_CLOUD_REGION") or "asia-southeast1"
+    resolved_region = region or os.getenv("CLOUD_ML_REGION") or os.getenv("GOOGLE_CLOUD_REGION") or "asia-southeast2"
     cache_key = f"cheapest_gemini_model_{resolved_region}_{is_vision}"
     cached_model = cache.get(cache_key)
     if cached_model:

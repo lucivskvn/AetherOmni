@@ -268,6 +268,10 @@ STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
+# 1-year immutable caching for fingerprinted static assets (Brotli/Gzip compressed)
+WHITENOISE_MAX_AGE = 31536000 if not DEBUG else 0
+WHITENOISE_IMMUTABLE_FILE_TEST = "whitenoise.storage.CompressedManifestStaticFilesStorage.immutable_file_test"
+
 if GS_BUCKET_NAME:
     GS_DEFAULT_ACL = None  # Use Bucket Uniform Level Access control (private)
     GS_QUERYSTRING_AUTH = True
