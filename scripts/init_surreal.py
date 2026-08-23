@@ -1,6 +1,7 @@
 APPLICATION_JSON = "application/json"
 import logging
 import os
+import sys
 import time
 
 import httpx
@@ -218,6 +219,12 @@ def _migrate_system_settings():
 def init_django_admin():
     logger.info("Initializing Django administrative superuser...")
     try:
+        from pathlib import Path
+
+        repo_root = str(Path(__file__).resolve().parents[1])
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+
         import django
 
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
