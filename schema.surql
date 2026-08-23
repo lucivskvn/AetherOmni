@@ -1,12 +1,12 @@
 -- ============================================================
--- AetherOmni — SurrealDB Schema (v3.x compatible)
+-- KORDA — SurrealDB Schema (v3.x compatible)
 -- Apply with:  surreal import --conn $SURREAL_URL \
---              --user <user> --pass <pass> --ns aetheromni --db extractor \
+--              --user <user> --pass <pass> --ns korda --db extractor \
 --              schema.surql
 --
 -- For local dev (docker-compose):
 --              surreal import --conn http://localhost:8001 \
---              --user root --pass root --ns aetheromni --db extractor \
+--              --user root --pass root --ns korda --db extractor \
 --              schema.surql
 -- ============================================================
 
@@ -136,10 +136,11 @@ DEFINE INDEX IF NOT EXISTS idx_mem_hnsw     ON user_memories FIELDS embedding HN
 
 -- ── 7. system_settings ───────────────────────────────────────
 DEFINE TABLE IF NOT EXISTS system_settings SCHEMAFULL;
-DEFINE FIELD IF NOT EXISTS monthly_budget_usd ON system_settings TYPE float DEFAULT 10.00;
-DEFINE FIELD IF NOT EXISTS selected_model     ON system_settings TYPE string DEFAULT "auto";
-DEFINE FIELD IF NOT EXISTS currency           ON system_settings TYPE string DEFAULT "auto";
-DEFINE FIELD IF NOT EXISTS openrouter_api_key ON system_settings TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS monthly_budget_usd   ON system_settings TYPE float  DEFAULT 10.00;
+DEFINE FIELD IF NOT EXISTS selected_model       ON system_settings TYPE string DEFAULT "auto";
+DEFINE FIELD IF NOT EXISTS currency             ON system_settings TYPE string DEFAULT "auto";
+DEFINE FIELD IF NOT EXISTS csrf_trusted_origins ON system_settings TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS openrouter_api_key   ON system_settings TYPE string DEFAULT "";
 
 
 -- ── 8. context_cache ─────────────────────────────────────────
