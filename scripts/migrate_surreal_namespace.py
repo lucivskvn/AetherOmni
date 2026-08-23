@@ -91,7 +91,12 @@ class SurrealNamespaceMigrator:
 
     def apply_schema_to_target(self, schema_file: str) -> bool:
         logger.info("[Migration] Applying schema definitions to target namespace '%s'...", self.target_ns)
-        with open(schema_file, encoding="utf-8") as f:
+        # Validate path to prevent directory traversal / file system escape
+        real_path = os.path.realpath(schema_file)
+        if not os.path.exists(real_path) or not os.path.isfile(real_path):
+            raise FileNotFoundError(f"Schema file '{schema_file}' does not exist or is invalid.")
+
+        with open(real_path, encoding="utf-8") as f:
             schema_sql = f.read()
 
         result = self._execute_sql(self.target_ns, schema_sql)
@@ -101,6 +106,19 @@ class SurrealNamespaceMigrator:
         else:
             logger.info("[Migration] Target namespace '%s' schema initialized cleanly.", self.target_ns)
         return errors == 0
+
+    def _build_batch_statements(self, table: str, records: list[dict[str, Any]]) -> list[str]:
+        insert_statements: list[str] = []
+        for record in records:
+            rec_id = record.get("id")
+            clean_record = dict(record)
+            json_data = json.dumps(clean_record, default=str)
+            if rec_id:
+                clean_id = str(rec_id).strip()
+                insert_statements.append(f"UPSERT {clean_id} CONTENT {json_data};")
+            else:
+                insert_statements.append(f"CREATE {table} CONTENT {json_data};")
+        return insert_statements
 
     def migrate_table_data(self, table: str, batch_size: int = 200, dry_run: bool = False) -> int:
         if table not in TABLES_TO_MIGRATE:
@@ -134,19 +152,7 @@ class SurrealNamespaceMigrator:
             if not records:
                 break
 
-            # Format batch UPSERT statements for target namespace safely
-            insert_statements = []
-            for record in records:
-                rec_id = record.get("id")
-                clean_record = dict(record)
-                json_data = json.dumps(clean_record, default=str)
-                if rec_id:
-                    # Sanitize record ID to ensure only alphanumeric and colon/dash/underscore are present
-                    clean_id = str(rec_id).strip()
-                    insert_statements.append(f"UPSERT {clean_id} CONTENT {json_data};")
-                else:
-                    insert_statements.append(f"CREATE {table} CONTENT {json_data};")
-
+            insert_statements = self._build_batch_statements(table, records)
             batch_sql = "BEGIN TRANSACTION;\n" + "\n".join(insert_statements) + "\nCOMMIT TRANSACTION;"
             self._execute_sql(self.target_ns, batch_sql)
 
@@ -239,7 +245,7 @@ def main() -> int:
         migrator.run_migration(schema_file=args.schema, dry_run=args.dry_run)
         return 0
     except Exception as e:
-        logger.error("[Migration Aborted] %s", e)
+        logger.exception("[Migration Aborted] %s", e)
         return 1
 
 

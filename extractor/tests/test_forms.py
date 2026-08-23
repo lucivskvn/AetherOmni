@@ -1,9 +1,9 @@
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 
 from extractor.forms import TurnstileAuthenticationForm
 
 
-class TurnstileAuthenticationFormTestCase(SimpleTestCase):
+class TurnstileAuthenticationFormTestCase(TestCase):
     """Unit tests for TurnstileAuthenticationForm captcha enforcement."""
 
     def setUp(self):
