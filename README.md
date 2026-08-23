@@ -13,8 +13,8 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.604-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-baab24e-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Version](https://img.shields.io/badge/version-v1.5.605-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-378316c-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -268,20 +268,20 @@ flowchart LR
 - [x] **Sentry Release Observability**: Correlated errors, performance tracing, profiling, and deployments with computed `RELEASE_VERSION` and verification test route (`/sentry-debug/`).
 - [x] **Declarative Pulumi IaC Foundation**: Modeled, tested, and provisioned Cloud Run (`korda-web`, `korda-worker`), Secret Manager bindings, IAM least-privilege roles, Artifact Registry, Cloud Tasks, and Storage bucket in `asia-southeast2` (Jakarta) with full Disaster Recovery lifecycle verification.
 
-### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & RBAC)
+### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & Automated Benchmarking)
 
 - [x] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (CC-BY-4.0, MIT), DOI, SHA-256 hash, and `validation_status` across schemas, models, and export headers.
 - [x] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, and `exported_by_username` in exported headers and manifest metadata.
 - [x] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)**, **Hugging Face SFT (`.jsonl`)**, **SQLite Mobile (`.db`)**, and **CSV Summary (`.csv`)** with formula injection sanitization.
 - [x] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search index for offline iOS / Android / Flutter integration.
-- [ ] **Real-Time Response Streaming**: Server-Sent Events (SSE) / WebSocket streaming for live token rendering in the dashboard.
+- [x] **Real-Time Response Streaming (SSE)**: Server-Sent Events (`text/event-stream`) streaming endpoint (`/api/v1/stream-query/`) with non-blocking token generators and live UI rendering.
+- [x] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness ($\ge 0.85$ quality score threshold) via synthetic evaluation pipelines.
 - [ ] **Enterprise RBAC & Multi-Tenant ACLs**: Fine-grained role-based access control with organizational tenant scoping via Supabase Auth.
-- [ ] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness via RAGAS and TruLens.
 
-### 🚀 Milestone 5.0 (Enterprise Roadmap — Graph RAG & Autonomous Agent Tools)
+### 🚀 Milestone 5.0 (Enterprise Roadmap — Knowledge Graph RAG & Autonomous Agent Tools)
 
-- [ ] **Multi-Tenant Knowledge Graph RAG**: SurrealDB Graph Relational RAG linking entities, concepts, and document nodes.
-- [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step workflow execution.
+- [ ] **Multi-Tenant Knowledge Graph RAG**: SurrealDB Graph Relational RAG (`entities`, `chunk_references`, `entity_relations`) linking concepts, authors, and document nodes.
+- [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step research and data ingestion workflows.
 
 ---
 
