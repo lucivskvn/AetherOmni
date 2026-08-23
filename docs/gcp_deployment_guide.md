@@ -475,9 +475,13 @@ To minimize Google Cloud billing anomalies and eliminate **Intra-Region & Cross-
    - Cloud Run Web (`korda-web`), Cloud Run Worker (`korda-worker`), Cloud Tasks (`extractor-tasks`), and Google Cloud Storage bucket (`esbpcs-lab-un-media-korda`) reside exclusively in `asia-southeast2` (Jakarta).
    - Ingress and egress traffic between Cloud Run, Cloud Tasks, and Cloud Storage in the same GCP region is priced at **$0.00/GB** (free intra-region data transfer).
 
-2. **Vertex AI Multimodal Regional Gateway Routing**:
-   - `extractor/llm_gateway.py` evaluates the local region `asia-southeast2` first for all Vertex AI Gemini 2.5 Flash and Flash-Lite inference calls.
-   - Cross-regional fallbacks (to Singapore `asia-southeast1`, US `us-central1`, or EU `europe-west9`) trigger only if model quota or regional outages occur, reducing inter-region data transfer billing.
+2. **Vertex AI Multimodal Regional Gateway Routing (Latency-Ranked)**:
+   - `extractor/llm_gateway.py` evaluates the local region **ID (`asia-southeast2` Jakarta)** first for all Vertex AI Gemini 2.5 Flash and Flash-Lite inference calls.
+   - Cross-regional fallbacks cascade in strict order of network latency and data residency:
+     1. **ID** (`asia-southeast2` — Jakarta: lowest latency origin)
+     2. **SG** (`asia-southeast1` — Singapore: nearest APAC secondary hub)
+     3. **EU** (`europe-west9` / `europe-west4` — Paris/Netherlands: GDPR-compliant EU hubs)
+     4. **US** (`us-central1` — Iowa: final universal fallback)
 
 3. **Signed URLs & Streaming Content Delivery**:
    - Large raw PDF documents and curated ZIP export bundles stream directly from GCS via short-lived signed URLs rather than being proxied through the Web service container memory, avoiding double egress billing.
