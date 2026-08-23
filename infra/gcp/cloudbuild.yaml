@@ -30,8 +30,8 @@
 substitutions:
   _REGION: asia-southeast2
   _GITHUB_REPOSITORY: lucivskvn/AetherOmni
-  # Optional public application URL. Defaults to the canonical domain.
-  _APP_URL: "https://aether.fainko.my.id"
+  # Optional public application URL. When unset, the deployed service URL is used.
+  _APP_URL: ""
   # Manual/rollback builds must identify a commit whose mainline SonarQube gate passed.
   _DEPLOY_COMMIT_SHA: ""
   # Leave empty for the canonical commit-derived version. A rollback trigger may
