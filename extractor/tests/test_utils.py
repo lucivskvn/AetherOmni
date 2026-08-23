@@ -781,8 +781,8 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         )
 
         self.assertEqual(response, mock_ai_studio_response)
-        # 5 regions in fallback chain * 5 retry attempts per region = 25 attempts
-        self.assertEqual(mock_vertex_client.models.embed_content.call_count, 25)
+        # 6 regions in fallback chain * 5 retry attempts per region = 30 attempts
+        self.assertEqual(mock_vertex_client.models.embed_content.call_count, 30)
         mock_ai_studio_client.models.embed_content.assert_called_once()
 
 
