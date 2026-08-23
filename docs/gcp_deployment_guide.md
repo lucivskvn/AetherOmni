@@ -179,7 +179,14 @@ echo -n "https://<YOUR_PROJECT_ID>.supabase.co" | gcloud secrets versions add SU
 gcloud secrets create SUPABASE_PUBLIC_KEY --replication-policy="automatic"
 echo -n "YOUR_SUPABASE_PUBLIC_KEY" | gcloud secrets versions add SUPABASE_PUBLIC_KEY --data-file=-
 
-# 6. Sentry Observability DSN (optional)
+gcloud secrets create SUPABASE_SERVICE_ROLE_KEY --replication-policy="automatic"
+echo -n "YOUR_SUPABASE_SERVICE_ROLE_KEY" | gcloud secrets versions add SUPABASE_SERVICE_ROLE_KEY --data-file=-
+
+# 6. Cloudflare Turnstile Bot Defense
+gcloud secrets create CF_TURNSTILE_SITE_KEY --replication-policy="automatic"
+echo -n "YOUR_CF_TURNSTILE_SITE_KEY" | gcloud secrets versions add CF_TURNSTILE_SITE_KEY --data-file=-
+
+# 7. Sentry Observability DSN (optional)
 gcloud secrets create SENTRY_DSN --replication-policy="automatic"
 echo -n "YOUR_SENTRY_DSN" | gcloud secrets versions add SENTRY_DSN --data-file=-
 ```
@@ -187,7 +194,7 @@ echo -n "YOUR_SENTRY_DSN" | gcloud secrets versions add SENTRY_DSN --data-file=-
 ### B. Grant Secret Access to the Service Account
 
 ```bash
-for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY SENTRY_DSN; do
+for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY SUPABASE_SERVICE_ROLE_KEY CF_TURNSTILE_SITE_KEY SENTRY_DSN; do
   gcloud secrets add-iam-policy-binding ${secret} \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
