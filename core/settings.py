@@ -135,7 +135,8 @@ if app_url:
     if parsed_host and parsed_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(parsed_host)
 
-for extra_host in [".", ".cloudflareaccess.com"]:
+extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", ".cloudflareaccess.com")
+for extra_host in [h.strip() for h in extra_hosts_env.split(",") if h.strip()]:
     if extra_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(extra_host)
 
@@ -436,12 +437,9 @@ if not DEBUG:
     if not CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append("https://*.run.app")
 
-    # Cloudflare Access & Custom Domain origins
-    cf_access_origins = [
-        "https://*.cloudflareaccess.com",
-        "https://*.",
-    ]
-    for o in cf_access_origins:
+    # Cloudflare Access & Extra trusted origins dynamically sourced
+    cf_access_origins_env = os.getenv("EXTRA_CSRF_ORIGINS", "https://*.cloudflareaccess.com")
+    for o in [x.strip() for x in cf_access_origins_env.split(",") if x.strip()]:
         if o not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(o)
 
