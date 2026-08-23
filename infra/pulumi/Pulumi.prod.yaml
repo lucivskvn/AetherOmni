@@ -1,5 +1,5 @@
 config:
-  gcp:project: ${GCP_PROJECT_ID}
+  gcp:project: esbpcs-lab-un
   gcp:region: asia-southeast1
   korda-infra:web_min_instances: 1
   korda-infra:web_max_instances: 5

@@ -97,10 +97,11 @@ steps:
         /kaniko/executor \
           --context=dir:///workspace \
           --dockerfile=/workspace/Dockerfile \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$SHORT_SHA \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni:$${IMAGE_TAG} \
+          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$SHORT_SHA \
+          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
+          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:latest \
           --cache=true \
-          --cache-repo=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/aetheromni-cache \
+          --cache-repo=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda-cache \
           --cache-ttl=24h \
           --image-download-retry=3 \
           --image-fs-extract-retry=3 \

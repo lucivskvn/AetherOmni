@@ -33,7 +33,7 @@ media_bucket = gcp.storage.Bucket(
     versioning=gcp.storage.BucketVersioningArgs(enabled=False),
 )
 
-# 2. Cloud Tasks Queue
+# 2. Cloud Tasks Queue (adopts existing queue or manages it)
 tasks_queue = gcp.cloudtasks.Queue(
     "korda-tasks-queue",
     name="extractor-tasks",
@@ -48,6 +48,7 @@ tasks_queue = gcp.cloudtasks.Queue(
         max_backoff="300s",
         max_doublings=4,
     ),
+    opts=pulumi.ResourceOptions(import_=f"projects/{project}/locations/{region}/queues/extractor-tasks"),
 )
 
 # 3. Dedicated Service Account for Cloud Run & Tasks
