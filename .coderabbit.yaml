@@ -1,87 +1,26 @@
-# CodeRabbit AI Reviewer Configuration
-# Project: KORDA — Knowledge Orchestration, Retrieval & Document Analysis Platform
-# Updated: 2026-08-05
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: "en-US"
+tone_instructions: "Be concise, analytical, and provide direct, tested diffs adhering to Python 3.14, ESLint 10, and SurrealDB v3 standards."
+early_access: false
+
 reviews:
   profile: "assertive"
   request_changes_workflow: false
   high_level_summary: true
   poem: false
   review_status: true
-  collapse_walkthrough: false
+  collapse_walkthrough: true
   auto_review:
     enabled: true
     drafts: false
-  path_filters:
-    # Exclude generated, cache, and binary artefacts from review
-    - "!static_root/**"
-    - "!media/**"
-    - "!**/__pycache__/**"
-    - "!**/*.pyc"
-    - "!**/migrations/**"
-    - "!.venv/**"
-    - "!.mypy_cache/**"
-    - "!.ruff_cache/**"
-    - "!uv.lock"
-    - "!coverage.xml"
-    - "!bandit-report.json"
-    - "!hadolint-report.json"
-    - "!scorecard.png"
-    - "!backups/**"
-    - "!verification/**"
-  path_instructions:
-    - path: "extractor/llm_gateway.py"
-      instructions: >
-        Review for: correct budget gate (`check_budget_and_api_limit`) invocation before
-        LLM calls; proper exponential backoff in `execute_with_backoff`; no hardcoded
-        model names outside the `KNOWN_GEMINI_MODELS` allowlist; all new LLM routes
-        must use `UnifiedResponse` as the return type; cost calculations must use
-        `Decimal` not `float`.
+    base_branches:
+      - "main"
+      - "next"
 
-    - path: "extractor/surreal_db.py"
-      instructions: >
-        Review for: all SurrealDB queries must use parameterised placeholders (`$var`)
-        — never f-string interpolation into SQL; async operations must use
-        `nest_asyncio` correctly; HNSW dimension must remain 768 to match the
-        embedding model output; TTL fields must be set on every cache write.
+chat:
+  auto_reply: true
 
-    - path: "extractor/views.py"
-      instructions: >
-        Review for: all state-changing endpoints require CSRF protection and
-        `@login_required`; audit log entries (`write_audit_log`) must be written for
-        every document create/delete/export action; `get_client_ip` must be used for
-        IP capture — never `request.META['REMOTE_ADDR']` directly.
-
-    - path: "extractor/auth.py"
-      instructions: >
-        Review for: no secrets logged; Supabase JWT validation must not be bypassed;
-        `ForcePasswordChangeMiddleware` logic must remain intact.
-
-    - path: "extractor/tests/**"
-      instructions: >
-        Tests must use `SURREALDB_OFFLINE=True` via Django test settings, not mock
-        the SurrealDB client directly unless testing the client itself. No
-        hardcoded credentials in assertions.
-
-    - path: "Dockerfile"
-      instructions: >
-        Review against OWASP container hardening: non-root `django-user` must remain
-        the runtime user; no secrets in ENV instructions; multi-stage build must be
-        preserved; `PYTHONDONTWRITEBYTECODE` and `PYTHONUNBUFFERED` must be set.
-
-    - path: "core/settings.py"
-      instructions: >
-        Review for: `ImproperlyConfigured` must be raised (not just logged) for
-        missing production secrets; `DEBUG=True` must never be the production default;
-        all new environment variables must have safe fallback defaults for local dev.
-
-    - path: "scripts/**"
-      instructions: >
-        All shell scripts must pass `bash -n` syntax check. Use `set -eo pipefail`.
-        No hardcoded tokens or passwords.
-
-    - path: "*.md"
-      instructions: >
-        Verify that version numbers, model names, and feature descriptions match the
-        actual code. Flag any references to Ollama, DeepSeek, or unimplemented
-        features. Confirm LLM model names match those in `extractor/llm_gateway.py`.
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: "repository"
