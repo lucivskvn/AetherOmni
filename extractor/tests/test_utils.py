@@ -781,8 +781,10 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         )
 
         self.assertEqual(response, mock_ai_studio_response)
-        # 5 regions in fallback chain * 5 retry attempts per region = 25 attempts
-        self.assertEqual(mock_vertex_client.models.embed_content.call_count, 25)
+        # regions in fallback chain * 5 retry attempts per region
+        from extractor.llm_gateway import VERTEX_REGION_FALLBACK_CHAIN
+
+        self.assertEqual(mock_vertex_client.models.embed_content.call_count, len(VERTEX_REGION_FALLBACK_CHAIN) * 5)
         mock_ai_studio_client.models.embed_content.assert_called_once()
 
 
