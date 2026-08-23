@@ -1,0 +1,26 @@
+name: Automated PR Auto-Merge & Branch Cleanup
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, next]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: Enable GitHub Auto-Merge with Branch Deletion
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Enable Auto-Merge via GitHub CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          echo "Enabling automatic squash merge and branch deletion on PR: $PR_URL"
+          gh pr merge "$PR_URL" --auto --squash --delete-branch || true
