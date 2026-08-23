@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -117,17 +118,43 @@ class SurrealNamespaceMigrator:
             logger.info("[Migration] Target namespace '%s' schema initialized cleanly.", self.target_ns)
         return errors == 0
 
+    @staticmethod
+    def _is_iso_datetime_string(val: Any) -> bool:
+        if (
+            isinstance(val, str)
+            and len(val) >= 19
+            and ("T" in val or " " in val)
+            and (val.endswith("Z") or "+" in val or "-" in val[10:])
+        ):
+            try:
+                datetime.fromisoformat(val.replace("Z", "+00:00"))
+                return True
+            except ValueError:
+                return False
+        return False
+
     def _build_batch_statements(self, table: str, records: list[dict[str, Any]]) -> list[str]:
         insert_statements: list[str] = []
         for record in records:
             rec_id = record.get("id")
             clean_record = dict(record)
-            json_data = json.dumps(clean_record, default=str)
+
+            # Format record dictionary, converting ISO datetime strings to SurrealQL type::datetime()
+            formatted_fields: list[str] = []
+            for k, v in clean_record.items():
+                if k == "id":
+                    continue
+                if self._is_iso_datetime_string(v):
+                    formatted_fields.append(f"{k}: type::datetime({json.dumps(v)})")
+                else:
+                    formatted_fields.append(f"{k}: {json.dumps(v, default=str)}")
+
+            fields_content = "{" + ", ".join(formatted_fields) + "}"
             if rec_id:
                 clean_id = str(rec_id).strip()
-                insert_statements.append(f"UPSERT {clean_id} CONTENT {json_data};")
+                insert_statements.append(f"UPSERT {clean_id} CONTENT {fields_content};")
             else:
-                insert_statements.append(f"CREATE {table} CONTENT {json_data};")
+                insert_statements.append(f"CREATE {table} CONTENT {fields_content};")
         return insert_statements
 
     def migrate_table_data(self, table: str, batch_size: int = 200, dry_run: bool = False) -> int:
