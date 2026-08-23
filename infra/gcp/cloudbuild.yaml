@@ -30,7 +30,7 @@
 substitutions:
   _REGION: asia-southeast2
   _GITHUB_REPOSITORY: lucivskvn/AetherOmni
-  # Optional public application URL. When unset, the deployed aether-web URL is used.
+  # Optional public application URL. Defaults to the canonical domain.
   _APP_URL: ""
   # Manual/rollback builds must identify a commit whose mainline SonarQube gate passed.
   _DEPLOY_COMMIT_SHA: ""
