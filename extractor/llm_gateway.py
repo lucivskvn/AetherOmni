@@ -226,7 +226,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                 for k, v in pricing_map.items()
             }
     except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
-        logger.error("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
+        logger.exception("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
 
     return None
 
@@ -798,9 +798,8 @@ def get_vertex_client() -> Any | None:
 def execute_embed_content_with_fallback(
     model_name: str,
     contents: Any,
-    config: Any = None,
 ) -> Any:
-    """ """
+    """Execute embedding content generation across fallback chains."""
     # 1. Prioritise Vertex AI via ADC across regions fallback chain
     for region in VERTEX_REGION_FALLBACK_CHAIN:
         vertex_client = get_vertex_client_for_location(region)

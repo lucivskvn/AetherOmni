@@ -90,9 +90,7 @@ def _is_loopback_origin(origin_str: str) -> bool:
     if clean in ("localhost", "127.0.0.1", "::1"):
         return True
     try:
-        url = (
-            clean if "://" in clean else f"http://{clean}"
-        )  # NOSONAR python:S5332 -- local scheme fallback for url parsing
+        url = clean if "://" in clean else f"https://{clean}"
         parsed = urllib.parse.urlparse(url)
         host = (parsed.hostname or "").strip("[]").lower()
         return host in ("localhost", "127.0.0.1", "::1")
