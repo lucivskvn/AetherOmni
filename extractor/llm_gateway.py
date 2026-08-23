@@ -173,7 +173,7 @@ def _get_cached_realtime_pricing(cache) -> dict[str, dict[str, Decimal]] | None:
                 for k, v in cached_pricing.items()
             }
         except (KeyError, ValueError, TypeError, AttributeError) as e:
-            logger.error("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
+            logger.exception("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
 
     return None
 

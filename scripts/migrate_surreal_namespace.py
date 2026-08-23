@@ -38,6 +38,8 @@ TABLES_TO_MIGRATE = [
     "entity_relations",
 ]
 
+SCHEMA_FILENAME = "schema.surql"
+
 
 class SurrealNamespaceMigrator:
     def __init__(
@@ -93,13 +95,13 @@ class SurrealNamespaceMigrator:
         logger.info("[Migration] Applying schema definitions to target namespace '%s'...", self.target_ns)
         # Whitelist and sanitize schema file path to prevent CWE-22 path traversal
         filename = os.path.basename(schema_file)
-        if filename != "schema.surql":
-            raise ValueError(f"Unauthorized schema file '{filename}'. Only 'schema.surql' is allowed.")
+        if filename != SCHEMA_FILENAME:
+            raise ValueError(f"Unauthorized schema file '{filename}'. Only '{SCHEMA_FILENAME}' is allowed.")
 
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        safe_schema_path = os.path.join(root_dir, "schema.surql")
-        if not os.path.exists(safe_schema_path) and os.path.exists("/app/schema.surql"):
-            safe_schema_path = "/app/schema.surql"
+        safe_schema_path = os.path.join(root_dir, SCHEMA_FILENAME)
+        if not os.path.exists(safe_schema_path) and os.path.exists(f"/app/{SCHEMA_FILENAME}"):
+            safe_schema_path = f"/app/{SCHEMA_FILENAME}"
 
         if not os.path.exists(safe_schema_path):
             raise FileNotFoundError(f"Schema file '{safe_schema_path}' does not exist.")
@@ -235,7 +237,7 @@ def main() -> int:
     parser.add_argument("--db", default=os.getenv("SURREAL_DB", "extractor"), help="Database Name")
     parser.add_argument("--source-ns", default="aetheromni", help="Source namespace to copy from")
     parser.add_argument("--target-ns", default="korda", help="Target namespace to write to")
-    parser.add_argument("--schema", default="schema.surql", help="Path to schema.surql")
+    parser.add_argument("--schema", default=SCHEMA_FILENAME, help=f"Path to {SCHEMA_FILENAME}")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without applying writes")
 
     args = parser.parse_args()
