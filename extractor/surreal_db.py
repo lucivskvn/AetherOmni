@@ -16,6 +16,7 @@ Capabilities:
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -274,7 +275,7 @@ async def _probe_namespaces(db, namespaces, db_name):
 
 
 def _prioritize_namespaces(namespaces: list[str]) -> list[str]:
-    pref = ["aetheromni", "omnirag"]
+    pref = ["korda", "aetheromni", "omnirag"]
     res = list(namespaces)
     for p in reversed(pref):
         if p in res:
@@ -289,11 +290,11 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
         return _detected_ns
 
     env_ns = os.getenv("SURREAL_NS") or getattr(settings, "SURREAL_NS", None)
-    if env_ns and env_ns not in ("", "aetheromni", "omrag", "omnirag"):
+    if env_ns and env_ns not in ("", "korda", "aetheromni", "omrag", "omnirag"):
         _detected_ns = env_ns
         return _detected_ns
 
-    fallback_ns = env_ns or "aetheromni"
+    fallback_ns = env_ns or "korda"
     try:
         async with AsyncSurreal(url) as db:
             await db.signin(auth)
@@ -316,9 +317,9 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
 
 def _get_surreal_ns_db() -> tuple[str, str]:
     global _detected_ns
-    ns = _detected_ns or getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "aetheromni"))
+    ns = _detected_ns or getattr(settings, "SURREAL_NS", os.getenv("SURREAL_NS", "korda"))
     db = getattr(settings, "SURREAL_DB", os.getenv("SURREAL_DB", "extractor"))
-    return str(ns or "aetheromni"), str(db or "extractor")
+    return str(ns or "korda"), str(db or "extractor")
 
 
 async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
@@ -367,8 +368,6 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
 
 def _run_in_thread(coro):
     """Run an async coroutine synchronously in a separate thread to prevent event loop blocking/corruption."""
-    import concurrent.futures
-
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(asyncio.run, coro)
         return future.result()
@@ -1471,3 +1470,92 @@ def check_rate_limit_atomic(key: str, max_requests: int) -> bool:
         return False
     _run("UPDATE rate_limits SET request_count += 1 WHERE key = $key;", {"key": key})
     return True
+
+
+# ── Knowledge Graph RAG & Graph-Relational Methods ───────────────────────────
+
+
+def upsert_entity(
+    name: str,
+    tenant_id: str,
+    category: str = "CONCEPT",
+    description: str = "",
+    embedding: list[float] | None = None,
+) -> dict[str, Any] | None:
+    """
+    Upserts an entity node in SurrealDB with optional HNSW embedding vector.
+    """
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return {"name": name, "tenant_id": tenant_id, "category": category, "description": description}
+
+    sql = """
+    UPSERT entities:[ $name, $tenant_id ] SET
+        name = $name,
+        tenant_id = $tenant_id,
+        category = $category,
+        description = $description,
+        embedding = $embedding,
+        created_at = time::now();
+    """
+    params = {
+        "name": name,
+        "tenant_id": str(tenant_id),
+        "category": category,
+        "description": description,
+        "embedding": embedding,
+    }
+    rows = _first_result(_run(sql, params))
+    return rows[0] if rows and isinstance(rows, list) else None
+
+
+def relate_chunk_to_entity(
+    chunk_id: str,
+    entity_name: str,
+    tenant_id: str,
+    relevance_score: float = 1.0,
+) -> None:
+    """
+    Creates a directed graph relation edge from a text chunk to a knowledge entity.
+    """
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return
+
+    sql = """
+    RELATE $chunk_id->chunk_references->(SELECT id FROM entities WHERE name = $entity_name AND tenant_id = $tenant_id LIMIT 1)
+    SET relevance_score = $relevance_score, extracted_at = time::now();
+    """
+    params = {
+        "chunk_id": chunk_id,
+        "entity_name": entity_name,
+        "tenant_id": str(tenant_id),
+        "relevance_score": float(relevance_score),
+    }
+    _run(sql, params)
+
+
+def query_knowledge_graph(
+    tenant_id: str,
+    entity_name: str,
+) -> dict[str, Any]:
+    """
+    Executes a 2-hop Graph Relational query returning connected documents, chunks, and related concepts.
+    """
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return {"entity": entity_name, "connected_documents": [], "related_concepts": []}
+
+    sql = """
+    SELECT 
+        name,
+        category,
+        description,
+        <-chunk_references<-chunks.doc_uuid AS connected_documents,
+        ->entity_relations->entities.name AS related_concepts
+    FROM entities
+    WHERE tenant_id = $tenant_id 
+      AND name = $entity_name
+    LIMIT 1;
+    """
+    rows = _first_result(_run(sql, {"tenant_id": str(tenant_id), "entity_name": entity_name}))
+    if rows and isinstance(rows, list) and len(rows) > 0:
+        return rows[0]
+    return {"entity": entity_name, "connected_documents": [], "related_concepts": []}

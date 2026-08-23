@@ -8,7 +8,6 @@ from scripts.update_docs import (
     get_health_scores,
     get_major_minor,
     get_test_count,
-    update_gcp_guide,
     update_readme,
     update_service_yamls,
 )
@@ -87,17 +86,6 @@ class UpdateDocsTestCase(unittest.TestCase):
         }
         changed = update_readme(info, "160", {"objective": "95.0", "strict": "98.0"})
         self.assertTrue(changed)
-
-    @patch("scripts.update_docs.ROOT")
-    def test_update_gcp_guide(self, mock_root):
-        mock_file = MagicMock()
-        mock_file.exists.return_value = True
-        mock_file.read_text.return_value = "# Google Cloud Run Production Deployment Guide"
-        mock_root.__truediv__.return_value.__truediv__.return_value = mock_file
-
-        info = {"semver": "1.2.3"}
-        changed = update_gcp_guide(info)
-        self.assertFalse(changed)
 
     @patch("scripts.update_docs.ROOT")
     def test_update_service_yamls(self, mock_root):

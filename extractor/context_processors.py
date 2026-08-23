@@ -24,7 +24,12 @@ def _resolve_release_version() -> str:
     return "0.0.0"
 
 
-def system_settings(request):
+from typing import Any
+
+from django.http import HttpRequest
+
+
+def system_settings(request: HttpRequest) -> dict[str, Any]:
     """
     Injects the single global SystemSettings instance dynamically into the template context.
     Provides easy access to dynamic configuration parameters like budget caps and source library URLs.

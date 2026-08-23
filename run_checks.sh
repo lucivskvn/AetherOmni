@@ -59,6 +59,11 @@ echo -e "${CYAN}================================================================
 
 export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-local-verification-only-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df0Jy}"
 
+# Session-scoped temp directory — cleaned up on exit regardless of success/failure.
+# Used by the test-output capture step to avoid /tmp/ path collisions.
+TMPDIR_AET=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_AET"' EXIT
+
 # Ensure SurrealDB CLI is in PATH (installed via https://install.surrealdb.com)
 if [[ -d "${HOME}/.surrealdb" ]]; then
     export PATH="${HOME}/.surrealdb:${PATH}"
@@ -291,6 +296,15 @@ else
     echo -e "${YELLOW}⚠ Hadolint not found in PATH (skipping).${NC}"
 fi
 
+echo -e "\n${YELLOW}[Infrastructure as Code] Auditing Pulumi Python Stack Integrity...${NC}"
+if [[ -f "infra/pulumi/Pulumi.yaml" && -f "infra/pulumi/__main__.py" ]]; then
+    $PYTHON_BIN -m ruff check infra/pulumi/
+    $PYTHON_BIN -m ruff format --check infra/pulumi/
+    echo -e "${GREEN}✓ Pulumi Python IaC stack verified cleanly.${NC}"
+else
+    echo -e "${YELLOW}⚠ Pulumi stack not found in infra/pulumi (skipping).${NC}"
+fi
+
 echo -e "\n${YELLOW}[SurrealQL] Validating SurrealQL schema syntax (surreal validate)...${NC}"
 if command -v surreal &> /dev/null && surreal version &> /dev/null; then
     SURQL_FILES=$(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" 2>/dev/null | tr '\n' ' ')
@@ -334,6 +348,9 @@ echo -e "${GREEN}✓ HTML templates verified for SRI integrity compliance.${NC}"
 echo -e "\n${YELLOW}[Type & Data Flow] Performing Mypy Static Type & Data Flow Analysis...${NC}"
 if $PYTHON_BIN -m mypy --version &> /dev/null; then
     $PYTHON_BIN -m mypy --ignore-missing-imports core/ extractor/
+    echo -e "${GREEN}✓ Static type definitions & data flow analysis passed cleanly (0 errors).${NC}"
+elif command -v mypy &> /dev/null; then
+    mypy --ignore-missing-imports core/ extractor/
     echo -e "${GREEN}✓ Static type definitions & data flow analysis passed cleanly (0 errors).${NC}"
 else
     echo -e "${YELLOW}⚠ mypy not found in PATH (skipping).${NC}"
@@ -396,13 +413,69 @@ echo -e "\n${YELLOW}[System Integrity] Verifying Django Application Configuratio
 $PYTHON_BIN manage.py check
 echo -e "${GREEN}✓ Django system integrity verification completed cleanly.${NC}"
 
+echo -e "\n${YELLOW}[Schema Drift] Checking for missing Django database migrations...${NC}"
+$PYTHON_BIN manage.py makemigrations --check --dry-run
+echo -e "${GREEN}✓ Database schema is synchronized with Django models (0 unapplied model changes).${NC}"
+
 echo -e "\n${YELLOW}[Automated Testing] Executing Django Unit Test Suite & Coverage Analysis...${NC}"
-echo -e "${YELLOW}Running tests in offline verification mode...${NC}"
-SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 $PYTHON_BIN -m coverage run --source='core,extractor' manage.py test --keepdb 2>&1 | tee /tmp/test_output.txt
-$PYTHON_BIN -m coverage xml -o coverage.xml 2>/dev/null || true
-TEST_COUNT=$(grep -oP '(?<=Ran )\d+' /tmp/test_output.txt 2>/dev/null | tail -1 || true)
+echo -e "${YELLOW}Running dynamic discovered tests in memory-bounded offline verification mode...${NC}"
+
+rm -f .coverage .coverage.* coverage.xml "$TMPDIR_AET"/test_output*.txt 2>/dev/null || true
+
+# Dynamic test module discovery & balanced partitioning (zero hardcoded lists)
+BATCH_DISPATCHER=$($PYTHON_BIN -c "
+import glob
+
+modules = [
+    p.replace('/', '.').removesuffix('.py')
+    for p in sorted(glob.glob('core/tests/**/test_*.py', recursive=True) + glob.glob('extractor/tests/**/test_*.py', recursive=True))
+    if not p.endswith('__init__.py')
+]
+view_mods = [m for m in modules if 'test_views' in m]
+non_view_mods = [m for m in modules if 'test_views' not in m]
+
+chunk_size = 10
+batches = [non_view_mods[i:i+chunk_size] for i in range(0, len(non_view_mods), chunk_size)]
+if view_mods:
+    batches.append(view_mods)
+
+for b in batches:
+    print(' '.join(b))
+")
+
+BATCH_NUM=1
+TESTS_FAILED=false
+
+while IFS= read -r BATCH_MODULES; do
+    [[ -z "$BATCH_MODULES" ]] && continue
+    echo -e "${CYAN}→ Executing Test Batch $BATCH_NUM: $BATCH_MODULES${NC}"
+    set +e
+    # shellcheck disable=SC2086
+    SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 MALLOC_ARENA_MAX=2 \
+        $PYTHON_BIN -m coverage run -p \
+        manage.py test $BATCH_MODULES --buffer --keepdb \
+        >"$TMPDIR_AET/test_output_batch_${BATCH_NUM}.txt" 2>&1
+    BATCH_STATUS=$?
+    set -e
+
+    cat "$TMPDIR_AET/test_output_batch_${BATCH_NUM}.txt" >> "$TMPDIR_AET/test_output.txt"
+    if [[ $BATCH_STATUS -ne 0 ]]; then
+        cat "$TMPDIR_AET/test_output_batch_${BATCH_NUM}.txt" >&2
+        TESTS_FAILED=true
+    fi
+    ((BATCH_NUM++))
+done <<< "$BATCH_DISPATCHER"
+
+if [[ "$TESTS_FAILED" = true ]]; then
+    echo -e "${RED}✗ Automated Django test suite encountered failures! See logs above.${NC}" >&2
+    exit 1
+fi
+
+$PYTHON_BIN -m coverage combine 2>/dev/null
+$PYTHON_BIN -m coverage xml -o coverage.xml 2>/dev/null
+TEST_COUNT=$(grep -oP '(?<=Ran )\d+' "$TMPDIR_AET/test_output.txt" 2>/dev/null | awk '{s+=$1} END {print s}')
 if [[ -n "$TEST_COUNT" ]]; then echo "$TEST_COUNT" > .test_count; fi
-echo -e "${GREEN}✓ Automated Django unit test suite executed successfully with coverage.xml generated.${NC}"
+echo -e "${GREEN}✓ Automated Django unit test suite executed successfully with coverage.xml generated (${TEST_COUNT:-0} tests passed).${NC}"
 
 echo -e "\n${YELLOW}[JavaScript Testing] Executing JavaScript Unit Test Suite & Coverage...${NC}"
 if [[ -x "./node_modules/.bin/vitest" ]]; then

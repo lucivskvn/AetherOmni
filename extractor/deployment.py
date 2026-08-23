@@ -148,7 +148,7 @@ def get_gcp_project_details():
     from django.conf import settings as django_settings
 
     project_id = os.getenv("GCP_PROJECT_ID") or os.getenv("GCP_PROJECT", "")
-    region = os.getenv("GCP_REGION", "asia-southeast1")
+    region = os.getenv("GCP_REGION", "asia-southeast2")
     project_number = None
 
     # Fallback to local gcloud config if not set in environment
@@ -163,11 +163,11 @@ def get_gcp_project_details():
         "project_number": project_number or project_id or None,
         "region": region,
         # Service names are configurable via environment variables so renaming
-        # Cloud Run services (e.g. data-extractor-web -> aether-web) requires
+        # Cloud Run services (e.g. data-extractor-web -> korda-web) requires
         # only a YAML env var change, not a code change.
-        "web_service": os.getenv("GCP_WEB_SERVICE") or getattr(django_settings, "GCP_WEB_SERVICE", "aether-web"),
+        "web_service": os.getenv("GCP_WEB_SERVICE") or getattr(django_settings, "GCP_WEB_SERVICE", "korda-web"),
         "worker_service": os.getenv("GCP_WORKER_SERVICE")
-        or getattr(django_settings, "GCP_WORKER_SERVICE", "aether-worker"),
+        or getattr(django_settings, "GCP_WORKER_SERVICE", "korda-worker"),
     }
 
 
@@ -200,7 +200,7 @@ def get_service_config(service_name):
     Fetches the active Knative service JSON configuration.
     Uses Google REST API in production or falls back to 'gcloud' CLI locally.
     """
-    safe_service = _sanitize_gcp_token(service_name, "aether-web")
+    safe_service = _sanitize_gcp_token(service_name, "korda-web")
     details = get_gcp_project_details()
     project_id = _sanitize_gcp_token(details.get("project_id"))
     raw_namespace = details.get("project_number") or details.get("project_id")
@@ -285,7 +285,7 @@ def update_service_scale(service_name, min_scale, max_scale):
     Updates the scaling settings of a Cloud Run service (min and max scale).
     Uses GCP REST PUT API in production or falls back to local gcloud updates.
     """
-    safe_service = _sanitize_gcp_token(service_name, "aether-web")
+    safe_service = _sanitize_gcp_token(service_name, "korda-web")
     details = get_gcp_project_details()
     project_id = _sanitize_gcp_token(details.get("project_id"))
     raw_namespace = details.get("project_number") or details.get("project_id")
@@ -387,7 +387,7 @@ def _parse_text_payload(entry):
 
 
 def _fallback_local_run_logs(service_name, region, project_id, limit):
-    safe_service = _sanitize_gcp_token(service_name, "aether-web")
+    safe_service = _sanitize_gcp_token(service_name, "korda-web")
     safe_region = _sanitize_gcp_token(region, "asia-southeast1")
     safe_project = _sanitize_gcp_token(project_id)
     try:
@@ -417,7 +417,7 @@ def _fallback_local_run_logs(service_name, region, project_id, limit):
 
 
 def _get_service_logs_gcp(service_name, project_id, limit, token):
-    safe_service = _sanitize_gcp_token(service_name, "aether-web")
+    safe_service = _sanitize_gcp_token(service_name, "korda-web")
     safe_project = _sanitize_gcp_token(project_id)
     url = "https://logging.googleapis.com/v2/entries:list"
     body = {
@@ -459,7 +459,7 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
 
 
 def _get_service_logs_local(service_name, project_id, region, limit):
-    safe_service = _sanitize_gcp_token(service_name, "aether-web")
+    safe_service = _sanitize_gcp_token(service_name, "korda-web")
     safe_project = _sanitize_gcp_token(project_id)
     safe_region = _sanitize_gcp_token(region, "asia-southeast1")
     try:

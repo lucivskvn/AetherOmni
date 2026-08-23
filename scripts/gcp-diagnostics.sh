@@ -1,17 +1,17 @@
 #!/bin/bash
 # Read-only Cloud Run health and error diagnostic tool.
-# Usage: bash scripts/gcp-diagnostics.sh [--service aether-web|aether-worker|all]
+# Usage: bash scripts/gcp-diagnostics.sh [--service korda-web|korda-worker|all]
 #        [--project PROJECT_ID] [--region REGION] [--since DURATION]
 
 set -euo pipefail
 
 PROJECT_ID="${GCP_PROJECT_ID:-${GOOGLE_CLOUD_PROJECT:-${GCP_PROJECT:-}}}"
-REGION="${GCP_REGION:-asia-southeast1}"
-SERVICE="aether-web"
+REGION="${GCP_REGION:-asia-southeast2}"
+SERVICE="korda-web"
 SINCE="1h"
 
 usage() {
-    echo "Usage: $0 [--service aether-web|aether-worker|all] [--project PROJECT_ID] [--region REGION] [--since DURATION]" >&2
+    echo "Usage: $0 [--service korda-web|korda-worker|all] [--project PROJECT_ID] [--region REGION] [--since DURATION]" >&2
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -39,8 +39,8 @@ if [[ -z "$PROJECT_ID" ]] || [[ "$PROJECT_ID" = "(unset)" ]]; then
 fi
 
 case "$SERVICE" in
-    aether-web|aether-worker) SERVICES=("$SERVICE") ;;
-    all) SERVICES=(aether-web aether-worker) ;;
+    korda-web|korda-worker) SERVICES=("$SERVICE") ;;
+    all) SERVICES=(korda-web korda-worker) ;;
     *) echo "ERROR: unsupported service: $SERVICE" >&2; exit 2 ;;
 esac
 

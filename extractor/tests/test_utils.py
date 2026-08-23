@@ -320,24 +320,24 @@ class TemplateFiltersTestCase(TestCase):
         self.assertEqual(normalize_language(None), "Unknown")
 
     @patch("time.time")
-    @patch.dict(os.environ, {}, clear=True)
     def test_cache_bust_fallback_time(self, mock_time):
         from extractor.templatetags import extractor_filters
 
         extractor_filters._CACHE_BUST_VAL = None
         mock_time.return_value = 123456789
 
-        # Test empty URLs
-        self.assertEqual(extractor_filters.cache_bust(""), "")
-        self.assertEqual(extractor_filters.cache_bust(None), "")
+        with patch.dict(os.environ, {}, clear=True), self.settings(BASE_DIR="/nonexistent-dir-for-cache-bust-test"):
+            # Test empty URLs
+            self.assertEqual(extractor_filters.cache_bust(""), "")
+            self.assertEqual(extractor_filters.cache_bust(None), "")
 
-        # Test path without query param
-        res = extractor_filters.cache_bust("/static/css/main.css")
-        self.assertEqual(res, "/static/css/main.css?v=123456789")
+            # Test path without query param
+            res = extractor_filters.cache_bust("/static/css/main.css")
+            self.assertEqual(res, "/static/css/main.css?v=123456789")
 
-        # Test path with existing query param
-        res_with_q = extractor_filters.cache_bust("/static/css/main.css?theme=dark")
-        self.assertEqual(res_with_q, "/static/css/main.css?theme=dark&v=123456789")
+            # Test path with existing query param
+            res_with_q = extractor_filters.cache_bust("/static/css/main.css?theme=dark")
+            self.assertEqual(res_with_q, "/static/css/main.css?theme=dark&v=123456789")
 
         # Clean up
         extractor_filters._CACHE_BUST_VAL = None
@@ -348,13 +348,13 @@ class TemplateFiltersTestCase(TestCase):
 
         extractor_filters._CACHE_BUST_VAL = None
 
-        # Test path without query param
+        # Test path without query param (v prefix stripped cleanly)
         res = extractor_filters.cache_bust("/static/js/app.js")
-        self.assertEqual(res, "/static/js/app.js?v=v1.2.3_test")
+        self.assertEqual(res, "/static/js/app.js?v=1.2.3_test")
 
         # Test path with existing query param
         res_with_q = extractor_filters.cache_bust("/static/js/app.js?debug=true")
-        self.assertEqual(res_with_q, "/static/js/app.js?debug=true&v=v1.2.3_test")
+        self.assertEqual(res_with_q, "/static/js/app.js?debug=true&v=1.2.3_test")
 
         # Clean up
         extractor_filters._CACHE_BUST_VAL = None
@@ -781,7 +781,8 @@ class LLMGatewayVertexFallbackTestCase(TestCase):
         )
 
         self.assertEqual(response, mock_ai_studio_response)
-        self.assertEqual(mock_vertex_client.models.embed_content.call_count, 20)
+        # 5 regions in fallback chain * 5 retry attempts per region = 25 attempts
+        self.assertEqual(mock_vertex_client.models.embed_content.call_count, 25)
         mock_ai_studio_client.models.embed_content.assert_called_once()
 
 

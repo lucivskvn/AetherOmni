@@ -1,6 +1,6 @@
 # Google Cloud Run Production Deployment Guide
 
-This guide describes how to provision, configure, build, and deploy the **AetherOmni** application to production on **Google Cloud Run**, utilizing Supabase PostgreSQL for Django relational state, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager. SQLite is restricted to explicit offline/test use.
+This guide describes how to provision, configure, build, and deploy the **KORDA** application to production on **Google Cloud Run**, utilizing Supabase PostgreSQL for Django relational state, **SurrealDB** for vector storage/RAG caches, **Google Cloud Tasks** for background task queuing, Google Cloud Storage, and Google Secret Manager. SQLite is restricted to explicit offline/test use.
 
 ---
 
@@ -8,44 +8,62 @@ This guide describes how to provision, configure, build, and deploy the **Aether
 
 The production system consists of:
 
-1. **Cloud Run Service (`aether-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Production users, sessions, audit logs, spend history, and settings persist in Supabase PostgreSQL; document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
-2. **Cloud Run Service (`aether-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
-3. **Google Cloud Tasks Queue (`extractor-tasks`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
+1. **Cloud Run Service (`korda-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Production users, sessions, audit logs, spend history, and settings persist in Supabase PostgreSQL; document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
+2. **Cloud Run Service (`korda-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
+3. **Google Cloud Tasks Queue (`extractor-tasks-v2`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
 4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (configured via `SURREAL_URL` WebSocket RPC). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
 5. **Vertex AI & Gemini Multi-Modal Gateway**: Direct Application Default Credentials (ADC) access (`roles/aiplatform.user`) for stable Vertex v1 Gemini 2.5 Flash / Flash-Lite and Vertex AI Vision.
 6. **Cloud Storage (GCS)**: Stores raw, uploaded PDF assets securely in GCP bucket (`GS_BUCKET_NAME`).
 7. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely (configured via `SUPABASE_URL`).
-8. **Secret Manager**: Securely stores environment credentials (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`, `SUPABASE_DATABASE_URL`).
+8. **GCP Secret Manager (Source of Truth for Credentials)**: Sourced and mounted at container runtime into environment variables (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CF_TURNSTILE_SITE_KEY`, `SENTRY_DSN`, `ADMIN_EMAIL`).
 
 ---
 
-## 2. Provisioning and Deployment Policy
+## 2. Infrastructure as Code (IaC) & Deployment Policy
 
-The legacy imperative provisioning script has been retired. It mixed local
-`.env` secrets, broad IAM changes, infrastructure creation, and deployment in a
-single command, making its results difficult to review and reproduce.
+Infrastructure provisioning and teardown are managed declaratively using **Pulumi Python IaC** (`infra/pulumi/`), replacing imperative manual provisioning scripts.
 
-For the existing project, manage deployment through the reviewed Cloud Build
-configuration in `infra/gcp/cloudbuild.yaml`. Infrastructure provisioning will
-move to Pulumi before any new environment is created or an existing environment
-is rebuilt. Until then, use the manual reference below and make narrowly scoped,
-reviewed GCP changes.
+Key operational policies:
+
+- **Zero Committed Secrets & Dynamic Project Resolution**: Cloud Run service manifests and Pulumi configurations resolve project IDs and Secret Manager references dynamically at runtime (`GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`).
+- **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks-v2`, and GCS bucket `<PROJECT_ID>-media-korda`) are colocated in **`asia-southeast2` (Jakarta)** to eliminate cross-region egress and intra-region data transfer fees.
+- **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching and SonarCloud Quality Gate verification.
 
 ---
 
-## 3. Manual Provisioning Reference
+## 3. Declarative Provisioning via Pulumi (Recommended)
 
-Run these commands using the Google Cloud CLI (`gcloud`) or Cloud Shell.
+Provision or update the entire platform topology across Cloud Run, Cloud Tasks, GCS, and IAM with Pulumi:
+
+```bash
+# Navigate to the Pulumi IaC stack
+cd infra/pulumi
+
+# Set your target project ID (if not already set in environment)
+pulumi config set gcp:project <YOUR_GCP_PROJECT_ID>
+pulumi config set gcp:region asia-southeast2
+
+# Preview resource topology
+pulumi preview --stack prod
+
+# Deploy infrastructure
+pulumi up --stack prod --yes
+```
+
+---
+
+## 4. Manual Provisioning Reference (Fallback)
+
+Run these commands using the Google Cloud CLI (`gcloud`) or Cloud Shell if bootstrapping without Pulumi:
 
 ### A. Set Environment Variables
 
 ```bash
 export PROJECT_ID="your-gcp-project-id"
-export REGION="asia-southeast1" # Choose your preferred region
-export SUFFIX="data-extractor"
-export ARTIFACT_REGISTRY="data-extractor-repo"
-export BUCKET_NAME="${PROJECT_ID}-media-${SUFFIX}"
-export SERVICE_ACCOUNT="run-service-account@${PROJECT_ID}.iam.gserviceaccount.com"
+export REGION="asia-southeast2" # Primary region (Jakarta)
+export ARTIFACT_REGISTRY="cloud-run-source-deploy"
+export BUCKET_NAME="${PROJECT_ID}-media-korda"
+export SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
 export QUEUE_NAME="extractor-tasks"
 ```
 
@@ -57,7 +75,8 @@ gcloud services enable \
   cloudtasks.googleapis.com \
   secretmanager.googleapis.com \
   artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com
+  cloudbuild.googleapis.com \
+  aiplatform.googleapis.com
 ```
 
 ### C. Create Artifact Registry
@@ -155,12 +174,19 @@ echo -n "admin@example.com" | gcloud secrets versions add ADMIN_EMAIL --data-fil
 
 # 5. Supabase Auth Configuration (for user authentication)
 gcloud secrets create SUPABASE_URL --replication-policy="automatic"
-echo -n "https://supabase.fainko.cloud" | gcloud secrets versions add SUPABASE_URL --data-file=-
+echo -n "https://<YOUR_PROJECT_ID>.supabase.co" | gcloud secrets versions add SUPABASE_URL --data-file=-
 
 gcloud secrets create SUPABASE_PUBLIC_KEY --replication-policy="automatic"
 echo -n "YOUR_SUPABASE_PUBLIC_KEY" | gcloud secrets versions add SUPABASE_PUBLIC_KEY --data-file=-
 
-# 6. Sentry Observability DSN (optional)
+gcloud secrets create SUPABASE_SERVICE_ROLE_KEY --replication-policy="automatic"
+echo -n "YOUR_SUPABASE_SERVICE_ROLE_KEY" | gcloud secrets versions add SUPABASE_SERVICE_ROLE_KEY --data-file=-
+
+# 6. Cloudflare Turnstile Bot Defense
+gcloud secrets create CF_TURNSTILE_SITE_KEY --replication-policy="automatic"
+echo -n "YOUR_CF_TURNSTILE_SITE_KEY" | gcloud secrets versions add CF_TURNSTILE_SITE_KEY --data-file=-
+
+# 7. Sentry Observability DSN (optional)
 gcloud secrets create SENTRY_DSN --replication-policy="automatic"
 echo -n "YOUR_SENTRY_DSN" | gcloud secrets versions add SENTRY_DSN --data-file=-
 ```
@@ -168,10 +194,48 @@ echo -n "YOUR_SENTRY_DSN" | gcloud secrets versions add SENTRY_DSN --data-file=-
 ### B. Grant Secret Access to the Service Account
 
 ```bash
-for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY SENTRY_DSN; do
+for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY SUPABASE_SERVICE_ROLE_KEY CF_TURNSTILE_SITE_KEY SENTRY_DSN; do
   gcloud secrets add-iam-policy-binding ${secret} \
     --member="serviceAccount:${SERVICE_ACCOUNT}" \
     --role="roles/secretmanager.secretAccessor" 2>/dev/null || true
+done
+```
+
+### C. Secure Batch Provisioning from Local `.env` (Automated & Zero-Leak)
+
+To provision all secrets directly from a local `.env` file without echoing values in shell history or logs:
+
+```bash
+# Safely parse .env and create/update secrets via STDIN pipeline
+while IFS='=' read -r key value || [ -n "$key" ]; do
+  # Skip comments and empty lines
+  [[ "$key" =~ ^[[:space:]]*# ]] && continue
+  [[ -z "$key" ]] && continue
+  
+  # Strip surrounding quotes and whitespace
+  key=$(echo "$key" | xargs)
+  value=$(echo "$value" | sed -e 's/^["'\''']//' -e 's/["'\''']$//')
+  
+  # Filter only required production secrets
+  case "$key" in
+    DJANGO_SECRET_KEY|GEMINI_API_KEY|SURREAL_URL|SURREAL_USER|SURREAL_PASS|ADMIN_EMAIL|SUPABASE_URL|SUPABASE_PUBLIC_KEY|SUPABASE_SERVICE_ROLE_KEY|CF_TURNSTILE_SITE_KEY|SENTRY_DSN)
+      echo "🔒 Syncing secret: $key"
+      # Create secret if it does not exist
+      gcloud secrets describe "$key" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+        gcloud secrets create "$key" --replication-policy="automatic" --project="${PROJECT_ID}"
+      
+      # Add new secret version securely via standard input
+      printf "%s" "$value" | gcloud secrets versions add "$key" --data-file=- --project="${PROJECT_ID}" >/dev/null
+      ;;
+  esac
+done < .env
+
+# Grant runtime IAM access to all synced secrets
+for secret in DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER SURREAL_PASS ADMIN_EMAIL SUPABASE_URL SUPABASE_PUBLIC_KEY SUPABASE_SERVICE_ROLE_KEY CF_TURNSTILE_SITE_KEY SENTRY_DSN; do
+  gcloud secrets add-iam-policy-binding "$secret" \
+    --project="${PROJECT_ID}" \
+    --member="serviceAccount:${SERVICE_ACCOUNT}" \
+    --role="roles/secretmanager.secretAccessor" >/dev/null 2>&1 || true
 done
 ```
 
@@ -445,3 +509,27 @@ AI agents and platform operators leverage Model Context Protocol (MCP) servers f
 - **SonarQube / SonarCloud MCP (`sonarqube`)**: Query real-time quality gate status, rule violations, and security hotspots (`get_project_quality_gate_status`, `search_sonar_issues_in_projects`).
 - **Chrome DevTools MCP (`chrome-devtools-mcp`)**: Audit production frontend performance, Core Web Vitals, accessibility compliance (`a11y-debugging`), and browser runtime console errors.
 - **Google Developer Knowledge MCP (`google-developer-knowledge`)**: Verify up-to-date Cloud Run and Vertex AI configuration blueprints.
+
+---
+
+## 10. Intra-Region & Inter-Service Network Cost Optimization
+
+To minimize Google Cloud billing anomalies and eliminate **Intra-Region & Cross-Region Data Transfer Egress** charges:
+
+1. **Strict Same-Region Colocation (`asia-southeast2`)**:
+   - Cloud Run Web (`korda-web`), Cloud Run Worker (`korda-worker`), Cloud Tasks (`extractor-tasks-v2`), and Google Cloud Storage bucket (`<PROJECT_ID>-media-korda`) reside exclusively in `asia-southeast2` (Jakarta).
+   - Ingress and egress traffic between Cloud Run, Cloud Tasks, and Cloud Storage in the same GCP region is priced at **$0.00/GB** (free intra-region data transfer).
+
+2. **Vertex AI Multimodal Regional Gateway Routing (Latency-Ranked)**:
+   - `extractor/llm_gateway.py` evaluates the local region **ID (`asia-southeast2` Jakarta)** first for all Vertex AI Gemini 2.5 Flash and Flash-Lite inference calls.
+   - Cross-regional fallbacks cascade in strict order of network latency, data privacy, and carbon footprint:
+     1. **ID** (`asia-southeast2` — Jakarta: lowest latency origin)
+     2. **SG** (`asia-southeast1` — Singapore: nearest APAC secondary hub)
+     3. **EU** (`europe-west9` / `europe-west4` — Paris/Netherlands: GDPR-compliant EU hubs)
+     4. **CA** (`northamerica-northeast1` — Montreal: low-carbon, on-par Canadian privacy hub)
+
+3. **Signed URLs & Streaming Content Delivery**:
+   - Large raw PDF documents and curated ZIP export bundles stream directly from GCS via short-lived signed URLs rather than being proxied through the Web service container memory, avoiding double egress billing.
+
+4. **Zero Scale-to-Idle Worker Strategy**:
+   - `korda-worker` scales to `0` minimum instances when idle (`min_instance_count: 0`). Cloud Tasks wakes the worker on-demand via OIDC authenticated HTTP invocation, preventing continuous compute fees.

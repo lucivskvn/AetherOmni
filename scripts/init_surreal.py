@@ -1,6 +1,7 @@
 APPLICATION_JSON = "application/json"
 import logging
 import os
+import sys
 import time
 
 import httpx
@@ -14,7 +15,7 @@ logger = logging.getLogger("init_surreal")
 SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "")
-SURREAL_NS = os.getenv("SURREAL_NS", "aetheromni")
+SURREAL_NS = os.getenv("SURREAL_NS", "korda")
 SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
 
 if not SURREAL_PASS and DJANGO_DEBUG:
@@ -100,32 +101,30 @@ def apply_schema(client: httpx.Client) -> None:
 def _create_local_superuser_stub(admin_email):
     from django.contrib.auth.models import User
 
-    from extractor.auth import _generate_unique_username
+    from extractor.auth import generate_unique_username
 
-    django_username = _generate_unique_username(admin_email)
-
+    django_username = generate_unique_username(admin_email)
     user, created = User.objects.get_or_create(
         email=admin_email,
         defaults={
             "username": django_username,
             "is_staff": True,
             "is_superuser": True,
-            "is_active": True,
         },
     )
-    if created:
-        user.set_unusable_password()
+    if not created:
+        user.is_staff = True
+        user.is_superuser = True
         user.save()
-        logger.info("Local account stub initialized.")
-    return user
+    logger.info("Successfully provisioned Django Admin user account.")
 
 
 def _create_local_superuser_full(admin_email, admin_password):
     from django.contrib.auth.models import User
 
-    from extractor.auth import _generate_unique_username
+    from extractor.auth import generate_unique_username
 
-    django_username = _generate_unique_username(admin_email)
+    django_username = generate_unique_username(admin_email)
 
     user, created = User.objects.get_or_create(
         email=admin_email,
@@ -220,6 +219,12 @@ def _migrate_system_settings():
 def init_django_admin():
     logger.info("Initializing Django administrative superuser...")
     try:
+        from pathlib import Path
+
+        repo_root = str(Path(__file__).resolve().parents[1])
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+
         import django
 
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")

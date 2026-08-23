@@ -93,21 +93,6 @@ def get_major_minor() -> str:
     return "0.1"
 
 
-def get_last_release_tag() -> str:
-    """Return the newest semantic release tag in the repo, if one exists."""
-    tag = _git("describe", "--tags", "--abbrev=0")
-    if tag:
-        return tag.strip()
-
-    tags = _git("tag", "--sort=-v:refname")
-    if tags:
-        for line in tags.splitlines():
-            candidate = line.strip()
-            if re.fullmatch(r"v?\d+\.\d+\.\d+", candidate):
-                return candidate
-    return ""
-
-
 def get_commit_count() -> str:
     """Return a monotonically increasing PATCH number for the current commit."""
     env_count = os.getenv("BUILD_NUMBER") or os.getenv("COMMIT_COUNT")
@@ -277,10 +262,14 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     badge_block = (
         f"[![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)\n"
         f"[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=coverage)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
         f"[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
         f"[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
         f"[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=bugs)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        f"[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
         f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)\n"
         f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)\n"
         f"[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)"
@@ -336,15 +325,6 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     readme.write_text(text, encoding="utf-8")
     print(f"[OK]   README.md — {v['badge_ver']} | {v['today']} | sha:{v['sha']}")
     return True
-
-
-# ── GCP deployment guide update ────────────────────────────────────────────────
-
-
-def update_gcp_guide(v: dict) -> bool:
-    """Keep the deployment guide free of generated version churn."""
-    _ = v
-    return False
 
 
 # ── service.yaml / service-worker.yaml update ─────────────────────────────────

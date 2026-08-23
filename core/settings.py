@@ -105,7 +105,9 @@ if not _raw_secret:
         raise ImproperlyConfigured(
             "DJANGO_SECRET_KEY environment variable is not set. Production deployments require an explicit secret key."
         )
-    _raw_secret = "django-insecure-local-dev-key-do-not-use-in-prod"  # nosec B105 B106
+    import secrets
+
+    _raw_secret = secrets.token_urlsafe(50)
 
 SECRET_KEY = _raw_secret
 
@@ -261,10 +263,20 @@ else:
             "Configure a GCS bucket for persistent file storage."
         )
 
+staticfiles_backend = (
+    "django.contrib.staticfiles.storage.StaticFilesStorage"
+    if ("test" in sys.argv or "test_coverage" in sys.argv or os.getenv("TESTING") == "true")
+    else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+)
+
 STORAGES = {
     "default": {"BACKEND": DEFAULT_STORAGE_BACKEND},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+    "staticfiles": {"BACKEND": staticfiles_backend},
 }
+
+# 1-year immutable caching for fingerprinted static assets (Brotli/Gzip compressed)
+WHITENOISE_MAX_AGE = 31536000 if not DEBUG else 0
+WHITENOISE_IMMUTABLE_FILE_TEST = "whitenoise.storage.CompressedManifestStaticFilesStorage.immutable_file_test"
 
 if GS_BUCKET_NAME:
     GS_DEFAULT_ACL = None  # Use Bucket Uniform Level Access control (private)
@@ -284,7 +296,7 @@ else:
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "aetheromni-locmem",
+        "LOCATION": "korda-locmem",
     }
 }
 
@@ -292,7 +304,7 @@ CACHES = {
 # ── SurrealDB Configuration ────────────────────────────────────────────────────
 
 SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
-SURREAL_NS = os.getenv("SURREAL_NS", "aetheromni")
+SURREAL_NS = os.getenv("SURREAL_NS", "korda")
 SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
 SURREAL_USER = os.getenv("SURREAL_USER", "")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "")
@@ -317,7 +329,7 @@ if (
 CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "extractor-tasks"
 # APP_URL is the fully-qualified URL of this Cloud Run service (used for task callbacks)
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")
-# WORKER_URL is the fully-qualified URL of the aether-worker service
+# WORKER_URL is the fully-qualified URL of the korda-worker service
 WORKER_URL = os.getenv("WORKER_URL", "")
 CLOUD_TASKS_SERVICE_ACCOUNT = os.getenv("CLOUD_TASKS_SERVICE_ACCOUNT", "")
 
@@ -466,9 +478,8 @@ if not DEBUG and not GEMINI_API_KEY and not os.getenv("GOOGLE_CLOUD_PROJECT") an
 
 # Google Cloud Platform (GCP) and Vertex AI Settings
 GCP_PROJECT = os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
-# Canonical default: asia-southeast1 — matches cloudbuild.yaml and deployment.py
-# All three defaults were previously inconsistent (settings=us-central1, deployment=asia-southeast1, cloud_tasks=us-central1)
-GCP_REGION = os.getenv("GCP_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "asia-southeast1"
+# Canonical default: asia-southeast2 (Jakarta) — matches cloudbuild.yaml, Pulumi, and deployment.py
+GCP_REGION = os.getenv("GCP_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "asia-southeast2"
 VERTEX_API_KEY = os.getenv("VERTEX_API_KEY")
 
 
@@ -515,14 +526,14 @@ if SENTRY_DSN:
             "integrations": [DjangoIntegration(), logging_integration],
             "traces_sample_rate": traces_rate,
             "send_default_pii": send_pii,
-            "release": f"aetheromni@{release_ver}",
+            "release": f"korda@{release_ver}",
             "environment": "production" if not DEBUG else "development",
         }
         if profile_session_rate > 0.0:
             sentry_kwargs["profile_session_sample_rate"] = profile_session_rate
             sentry_kwargs["profile_lifecycle"] = os.getenv("SENTRY_PROFILE_LIFECYCLE", "trace")
 
-        sentry_sdk.init(**sentry_kwargs)
+        sentry_sdk.init(**sentry_kwargs)  # type: ignore[arg-type]
         logger.info("[Observability] Sentry release tracking active (release=%s).", release_ver)
     except ImportError:
         logger.debug("[Observability] sentry-sdk not installed; skipping Sentry initialization.")

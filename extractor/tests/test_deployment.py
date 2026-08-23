@@ -60,7 +60,7 @@ class DeploymentFunctionsTestCase(TestCase):
 
         details = get_gcp_project_details()
         self.assertIsNone(details["project_id"])
-        self.assertEqual(details["region"], "asia-southeast1")
+        self.assertEqual(details["region"], "asia-southeast2")
 
     @patch("urllib.request.urlopen")
     def test_get_gcp_access_token_success(self, mock_urlopen):

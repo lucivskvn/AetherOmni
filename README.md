@@ -1,16 +1,20 @@
-# 🚀 AetherOmni — Enterprise Multi-Model RAG & Document Intelligence Platform
+# 🚀 KORDA — Knowledge Orchestration, Retrieval & Document Analysis Platform
 
-> **Production-grade Django 6.x platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
+> **Modern Django platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
 
 <!-- auto:badges -->
 [![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=coverage)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Version](https://img.shields.io/badge/version-v1.5.559-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
-[![Commit](https://img.shields.io/badge/commit-d138ce8-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=bugs)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![Version](https://img.shields.io/badge/version-v1.5.617-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)
+[![Commit](https://img.shields.io/badge/commit-92fa7b4-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 <!-- /auto:badges -->
 
@@ -20,13 +24,13 @@
 
 ## 📌 Executive Summary, Technical Outputs & Business Use Cases
 
-**AetherOmni** is an enterprise multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, TXT, scanned images, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
+**KORDA** (**K**nowledge **O**rchestration, **R**etrieval & **D**ocument **A**nalysis) is a multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, Excel, TXT, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
 
 ---
 
 ## 👁️ Multi-Perspective Architectural Evaluation & Value Analysis
 
-AetherOmni's architecture is evaluated across four primary stakeholder perspectives to articulate its concrete utility, engineering rigor, financial sustainability, and scholarly rigor.
+KORDA's architecture is evaluated across four primary stakeholder perspectives to articulate its concrete utility, engineering rigor, financial sustainability, and scholarly rigor.
 
 ```mermaid
 flowchart TD
@@ -35,7 +39,7 @@ flowchart TD
     Sub3["<b>💼 Business & Enterprise PoV</b><br>SHA-256 $0.00 Caching · Immutable Audit Trail"]
     Sub4["<b>🎓 Academic Research PoV</b><br>Verifiable Citations · Multilingual SFT Datasets"]
 
-    Sub1 --> Pipeline["<b>AetherOmni Core Engine</b>"]
+    Sub1 --> Pipeline["<b>KORDA Core Engine</b>"]
     Sub2 --> Pipeline
     Sub3 --> Pipeline
     Sub4 --> Pipeline
@@ -45,8 +49,8 @@ flowchart TD
 
 ### 1. 🟢 Non-Technical & Executive Perspective: "What Does It Do & Why Use It?"
 
-- **The Problem**: Organizations waste thousands of hours manually copying data from PDFs, scanned contracts, images, and mixed document archives into databases and internal wikis. Crucial knowledge remains locked in silos.
-- **The AetherOmni Solution**: AetherOmni acts as an **Automated Digital Knowledge Converter**. Simply upload your documents (PDFs, Word files, spreadsheets, scanned images, ZIP archives), and AetherOmni automatically cleans, organizes, transcribes, and connects your files into an intelligent, searchable library.
+- **The Problem**: Organizations waste thousands of hours manually copying data from PDFs, spreadsheets, and mixed document archives into databases and internal wikis. Crucial knowledge remains locked in silos.
+- **The KORDA Solution**: KORDA acts as an **Automated Digital Knowledge Converter**. Simply upload your documents (PDFs, Word files, spreadsheets, text files, ZIP archives), and KORDA automatically cleans, organizes, transcribes, and connects your files into an intelligent, searchable library.
 - **Key User Benefits**:
   - **Zero Manual Data Entry**: Reads complex tables, flowcharts, and multi-column pages automatically.
   - **Multilingual Support**: Natively handles complex languages like Arabic (with proper Right-to-Left formatting) alongside English.
@@ -92,7 +96,7 @@ flowchart TD
 
 ### 📊 Multi-Stakeholder Evaluation Summary Matrix
 
-| Stakeholder PoV | Primary Objective | AetherOmni Feature Implementation | Practical Business & Technical Value |
+| Stakeholder PoV | Primary Objective | KORDA Feature Implementation | Practical Business & Technical Value |
 | :--- | :--- | :--- | :--- |
 | **Non-Technical User** | Ease of Use & Automated Ingestion | Drag-and-drop uploads, simple markdown view, instant single-copy ZIP export (`documents/001_title.md`). | Zero technical learning curve; eliminates manual document transcription. |
 | **Software Engineer** | Architecture Rigor & Zero Hallucination | Decoupled 3-stage pipeline, SurrealDB HNSW vector RAG, RRF hybrid search (BM25 + HNSW). | High-precision sub-100ms retrieval with zero prompt context window waste. |
@@ -130,14 +134,14 @@ flowchart TD
    ```json
    [
      {
-       "question": "How does AetherOmni ensure sub-100ms vector search latency for hybrid RAG queries?",
-       "answer": "AetherOmni uses SurrealDB v3.x HNSW vector indexing combined with BM25 sparse term matching fused via Reciprocal Rank Fusion (RRF)."
+       "question": "How does KORDA ensure sub-100ms vector search latency for hybrid RAG queries?",
+       "answer": "KORDA uses SurrealDB v3.x HNSW vector indexing combined with BM25 sparse term matching fused via Reciprocal Rank Fusion (RRF)."
      }
    ]
    ```
 
 3. **Multi-Modal Visual Diagram & Schema Captions**:
-   - Extracts flowcharts, architectural schemas, and tabular diagrams into structured Markdown text using Gemini 3.6 Vision / Vertex AI Vision.
+   - Extracts flowcharts, architectural schemas, and tabular diagrams into structured Markdown text using Gemini 2.5 Flash / Vertex AI Vision.
 
    ```markdown
    ### 📊 Page 2 Visual Diagram & Schema Extraction
@@ -164,7 +168,7 @@ flowchart TD
 
 ### 🏢 Comprehensive Target Use Cases & Application Domains
 
-AetherOmni serves three core application tiers: Business Enterprise, Academic & Scholarly Research, and AI/ML Engineering & Developer Ecosystems.
+KORDA serves three core application tiers: Business Enterprise, Academic & Scholarly Research, and AI/ML Engineering & Developer Ecosystems.
 
 #### 1. 💼 Enterprise & Business Use Cases
 
@@ -181,7 +185,7 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 #### 3. 🛠️ Developer & AI Engineering Use Cases
 
 - **Zero-Cost SHA-256 Deduplication Caching**: Developers prevent duplicate API charges during iterative dataset processing via instant SHA-256 hash lookups.
-- **Multi-Provider Resilient LLM Gateway**: Fallback chain automatically switches between Gemini 3.6 Flash, Vertex AI, and OpenRouter free tiers to ensure 99.99% uptime.
+- **Multi-Provider Resilient LLM Gateway**: Fallback chain automatically switches between Gemini 2.5 Flash / 2.5 Flash-Lite, Vertex AI, and OpenRouter free tiers to ensure 99.99% uptime.
 - **Air-Gapped Local Verification**: Supports offline development (`SURREALDB_OFFLINE=True`) and the complete DevSecOps pipeline (`run_checks.sh`).
 
 ---
@@ -192,19 +196,21 @@ AetherOmni serves three core application tiers: Business Enterprise, Academic & 
 | -------------- | ---------------- | --------------------------- |
 | **Multi-Format Ingestion** | Ingests PDF, DOCX, CSV, TXT, and recursive ZIP batch archives with instant SHA-256 deduplication caching. | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) |
 | **Arabic & Multilingual RTL** | Automatic Arabic typography detection (`dir="rtl" class="arabic-text"`), Markdown rendering, HTML sanitization. | `parse_arabic_layout` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L48) |
-| **Multi-Model LLM Gateway** | Dynamic provider fallbacks across Gemini 3.6 Flash / 3.5 Flash-Lite, Vertex AI (multi-region), and OpenRouter (Llama 3, Gemma 2, Qwen 2 free tiers). | `generate_llm_content_unified` in [`llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) |
+| **Multi-Model LLM Gateway** | Dynamic provider fallbacks across Gemini 2.5 Flash / 2.5 Flash-Lite / 2.5 Pro, Vertex AI (multi-region), and OpenRouter (Llama 3, Gemma 2, Qwen 2 free tiers). | `generate_llm_content_unified` in [`llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) |
 | **SurrealDB HNSW Vector RAG** | High-dimensional HNSW similarity search, document UUID scope filtering, Reciprocal Rank Fusion (RRF), and TTL semantic cache. | `search_rag_cache_hnsw` in [`surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py#L880) |
 | **Persisted Budget Accounting** | Hard monthly USD budget caps; document deletion spend is persisted to `MonthlySpendLog`. | `MonthlySpendLog.add_cost()` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L865) |
 | **Curated ZIP & Single-Copy Exports** | Single-copy standardized document exports (`documents/001_title.md`) with optional multi-taxonomy views (`Language/`, `Author/`) and `manifest.json`. | `generate_curated_zip_bundle` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L322) |
 | **Automated Artifact Cleanup** | Automated DevSecOps file retention policy (`cleanup_stale_temp_artifacts`) purging temporary processing scratch files older than 24h. | `cleanup_stale_temp_artifacts` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L420) |
 | **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
 | **5-Phase DevSecOps Suite** | Automated verification pipeline: AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy static typing, Hadolint container hardening, **SurrealQL schema validation** (`surreal validate`), ShellCheck POSIX safety, SonarQube MQR Gatekeeper, and a comprehensive unit test suite with `coverage.xml` reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
+| **Knowledge Graph RAG** | Multi-hop reasoning via `entities`, `chunk_references`, and `entity_relations` graph edges with HNSW 768 entity embeddings. | `query_knowledge_graph` in [`surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py) |
+| **Real-Time SSE Streaming** | Server-Sent Events (`text/event-stream`) streaming endpoint (`/api/v1/stream-query/`) with non-blocking token generators. | [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py) |
 
 ---
 
 ## 🗺️ Engineering Milestones & Progressive Roadmap
 
-AetherOmni follows an **MVP-First Engineering Philosophy**, prioritizing solid core extraction, zero-cost caching, hybrid vector search, and clean batch exports before scaling to advanced multi-tenant agentic workflows.
+KORDA follows an **MVP-First Engineering Philosophy**, prioritizing solid core extraction, zero-cost caching, hybrid vector search, and clean batch exports before scaling to advanced multi-tenant agentic workflows.
 
 ```mermaid
 flowchart LR
@@ -228,14 +234,14 @@ flowchart LR
 ### ✅ Milestone 2.0 (MVP Core — Dual Database Engine & Multi-Model LLM Gateway)
 
 - [x] **SurrealDB HNSW Vector Storage**: Remote SurrealDB vector indexer (`DIMENSION 768 DIST COSINE`) paired with Supabase PostgreSQL (and SQLite offline).
-- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (EU-first primary regions), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
+- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast2 (Jakarta) -> asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
 - [x] **Persisted Budget Accounting**: Hard monthly USD spend limits backed by immutable `MonthlySpendLog` ledgers.
 
 ### ✅ Milestone 3.0 (MVP Core — Hybrid RAG, Context Caching & Vision OCR)
 
 - [x] **Native SurrealDB WebSocket Connection Pools**: Upgraded SurrealDB client logic for high-concurrency connection handling (`surrealdb==2.0.0`).
 - [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
-- [x] **Multi-Modal Diagram & Schema Vision OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 3.6 Vision / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
+- [x] **Multi-Modal Diagram & Schema Vision OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 2.5 Flash / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
 - [x] **Structural Context Chunking & Provenance Deep Linking**: Boundary-aware chunking preserving Surahs, Ayahs, and Hadiths with page and chapter metadata (`page_number`, `chapter_title`, `anchor_id`) stored in SurrealDB `chunks`.
 - [x] **SurrealDB Context Caching & Memories**: Zero-cost query short-circuiting via `rag_cache` (cosine distance $\le 0.15$), tokenized `context_cache`, and `user_memories`.
 
@@ -262,39 +268,41 @@ flowchart LR
 - [x] **Multi-MCP Triage & Observability**: Dedicated Model Context Protocol server workflows for SonarQube quality gates, Google Cloud Logging container inspections, Google Cloud Monitoring metrics, Chrome DevTools accessibility testing, and Google Developer Knowledge.
 - [x] **Operational Runbook & Diagnostic Tools**: Read-only GCP diagnostics CLI (`scripts/gcp-diagnostics.sh`) for Cloud Run revisions, readiness status, and bounded error log inspection.
 - [x] **Sentry Release Observability**: Correlated errors, performance tracing, profiling, and deployments with computed `RELEASE_VERSION` and verification test route (`/sentry-debug/`).
-- [ ] **Pulumi Foundation**: Model and import Cloud Run, Secret Manager, IAM, Artifact Registry, Cloud Tasks, and Storage before provisioning another environment.
+- [x] **Declarative Pulumi IaC Foundation**: Modeled, tested, and provisioned Cloud Run (`korda-web`, `korda-worker`), Secret Manager bindings, IAM least-privilege roles, Artifact Registry, Cloud Tasks, and Storage bucket in `asia-southeast2` (Jakarta) with full Disaster Recovery lifecycle verification.
 
-### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & RBAC)
+### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & Automated Benchmarking)
 
 - [x] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (CC-BY-4.0, MIT), DOI, SHA-256 hash, and `validation_status` across schemas, models, and export headers.
 - [x] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, and `exported_by_username` in exported headers and manifest metadata.
 - [x] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)**, **Hugging Face SFT (`.jsonl`)**, **SQLite Mobile (`.db`)**, and **CSV Summary (`.csv`)** with formula injection sanitization.
 - [x] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search index for offline iOS / Android / Flutter integration.
-- [ ] **Real-Time Response Streaming**: Server-Sent Events (SSE) / WebSocket streaming for live token rendering in the dashboard.
+- [x] **Real-Time Response Streaming (SSE)**: Server-Sent Events (`text/event-stream`) streaming endpoint (`/api/v1/stream-query/`) with non-blocking token generators and live UI rendering.
+- [x] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness ($\ge 0.85$ quality score threshold) via synthetic evaluation pipelines.
 - [ ] **Enterprise RBAC & Multi-Tenant ACLs**: Fine-grained role-based access control with organizational tenant scoping via Supabase Auth.
-- [ ] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness via RAGAS and TruLens.
 
-### 🚀 Milestone 5.0 (Enterprise Roadmap — Graph RAG & Autonomous Agent Tools)
+### 🚀 Milestone 5.0 (Enterprise Roadmap — Knowledge Graph RAG & Autonomous Agent Tools)
 
-- [ ] **Multi-Tenant Knowledge Graph RAG**: SurrealDB Graph Relational RAG linking entities, concepts, and document nodes.
-- [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step workflow execution.
+- [x] **Multi-Tenant Knowledge Graph RAG Schema**: SurrealDB Graph Relational RAG (`entities`, `chunk_references`, `entity_relations`) schema defined in `schema.surql` and wired via `upsert_entity()`, `relate_chunk_to_entity()`, and `query_knowledge_graph()` in `surreal_db.py`.
+- [ ] **Knowledge Graph Pipeline Ingestion**: Full pipeline ingestion and entity extraction for Graph RAG.
+- [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step research and data ingestion workflows.
 
 ---
 
 ## 🏗️ 3-Stage Architectural Pipeline
 
 ```text
-┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐
-│     STAGE 1: LAYOUT     │ ──> │   STAGE 2: REFINEMENT   │ ──> │     STAGE 3: VECTOR     │
-│   Ingestion & Parsing   │     │    Multi-Model LLM     │     │  SurrealDB HNSW Index  │
-└─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘
+┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐
+│     STAGE 1: LAYOUT     │ ──> │   STAGE 2: REFINEMENT   │ ──> │     STAGE 3: VECTOR     │ ──> │ STAGE 4: KNOWLEDGE GRAPH│
+│   Ingestion & Parsing   │     │    Multi-Model LLM      │     │  SurrealDB HNSW Index   │     │   Entities & Relations  │
+└─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘
 ```
 
 | Pipeline Stage | Implementation Module | Architecture & Operations |
 | ---------------- | ----------------- | ----------------------------------- |
 | **Stage 1: Layout & Ingestion** | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) | • Validates document headers, sanitizes HTML, computes SHA-256 hashes.<br>• Executes instant SHA-256 hash deduplication ($0.00 cost reuse).<br>• Parses Arabic RTL typography (`parse_arabic_layout`) and extracts YAML frontmatter.<br>• Unpacks ZIP archives recursively into single-copy standardized files (`documents/001_title.md`). |
-| **Stage 2: LLM Refinement & Cost Control** | [`extractor/llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) | • Evaluates `check_budget_and_api_limit()` against `MonthlySpendLog` USD caps.<br>• Dispatches prompts across primary LLM providers (Gemini / Vertex / OpenRouter) with exponential backoff.<br>• Extracts multi-modal visual diagrams and flowcharts via Gemini 3.6 Vision.<br>• Calculates real-time prompt/completion token spend and logs costs. |
+| **Stage 2: LLM Refinement & Cost Control** | [`extractor/llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) | • Evaluates `check_budget_and_api_limit()` against `MonthlySpendLog` USD caps.<br>• Dispatches prompts across primary LLM providers (Gemini / Vertex / OpenRouter) with exponential backoff.<br>• Extracts multi-modal visual diagrams and flowcharts via Gemini 2.5 Flash / Vertex AI Vision.<br>• Calculates real-time prompt/completion token spend and logs costs. |
 | **Stage 3: Vector HNSW Indexing & RAG** | [`extractor/rag.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/rag.py) | • Executes semantic boundary chunking (`chunk_document_semantically`).<br>• Generates text embeddings and writes to SurrealDB HNSW vector index (`DIMENSION 768`).<br>• Executes Reciprocal Rank Fusion (RRF) combining BM25 keyword matching with dense HNSW vector search.<br>• Manages TTL-enforced RAG cache (`upsert_rag_cache`) for fast semantic retrieval. |
+| **Stage 4: Knowledge Graph Storage** | [`extractor/surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py) | • Upserts semantic entities (`upsert_entity()`) with HNSW 768 vector embeddings.<br>• Connects document chunks to entities via `chunk_references` graph edges (`relate_chunk_to_entity()`).<br>• Establishes relationships between concepts via `entity_relations`.<br>• Facilitates multi-hop reasoning (`query_knowledge_graph()`). |
 
 ---
 
@@ -302,12 +310,13 @@ flowchart LR
 
 | Component Layer | Technology / Tool | Version / Details | Purpose |
 | ----------------- | ------------------- | ------------------- | --------- |
-| **Core Framework** | Python / Django | Python 3.14 · Django 5.x | Core MVC architecture, ORM data layer, admin backend, session management |
+| **Core Framework** | Python / Django | Python 3.14 · Django 6.x | Core MVC architecture, ORM data layer, admin backend, session management |
 | **Relational Storage & Auth** | Supabase PostgreSQL / Supabase Auth | PostgreSQL 17 · GoTrue REST API · Cloudflare Turnstile | User identity, authentication, session tokens with `gotrue_meta_security`, spend logs, and audit trails |
 | **High-Throughput Vector & Cache DB** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model vector store (HNSW 768 cosine), prompt prefix cache (`context_cache`), sliding rate limits (`rate_limits`), and `user_memories` |
+| **Knowledge Graph Engine** | SurrealDB | Graph Relational | Stores nodes (`entities`), semantic embeddings (HNSW 768), and bidirectional graph edges (`chunk_references`, `entity_relations`) for multi-hop RAG |
 | **Secrets & Keyless IAM** | GCP Secret Manager / IAM ADC | Application Default Credentials (ADC) | Keyless IAM runtime authentication, dynamic resolution of API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) with zero committed secrets |
-| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (EU-first primary), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
-| **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast1` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
+| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast2 (Jakarta) -> asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
+| **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast2` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
 | **Asynchronous Task Queue** | GCP Cloud Tasks | OIDC Authenticated Worker Tasks | Production asynchronous document processing queue with localized thread fallbacks |
 | **Cloud Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw documents and curated export bundles |
 | **CI/CD & Git Automation** | GitHub Actions / GitHub CLI | Pinned commit SHAs · `gh` CLI | 3-Phase Shift-Left validation, CodeQL, and Dependabot security |
@@ -319,6 +328,8 @@ flowchart LR
 
 ## ✨ Core Feature Matrix
 
+- 🧠 **Knowledge Graph RAG**: Employs SurrealDB's graph relational model to connect semantic entities, multi-hop `entity_relations`, and `chunk_references` for advanced reasoning.
+- ⚡ **Real-Time SSE Streaming**: Low-latency Server-Sent Events (`/api/v1/stream-query/`) endpoint for instant token streaming to live UIs.
 - 🌐 **Multilingual & RTL Layout Preservation**: Full support for Right-to-Left Arabic text formatting and multi-column document parsing.
 - 📦 **Curated ZIP Archival Export**: Bundles filtered documents into organized folder hierarchies (`Language/English`, `Author/Shakespeare`) complete with `manifest.json` and combined `master_archival_source.md`.
 - 🔎 **Hybrid Semantic RAG Search**: Combines SurrealDB HNSW vector search with BM25 sparse keyword matching using Reciprocal Rank Fusion (RRF).
@@ -329,7 +340,7 @@ flowchart LR
 
 ## 🛡️ DevSecOps & 5-Phase Quality Gates
 
-AetherOmni strictly enforces **Shift-Left Local Verification** before code can be committed or merged into production branches.
+KORDA strictly enforces **Shift-Left Local Verification** before code can be committed or merged into production branches.
 
 ### 🧪 Complete Verification Gate (`run_checks.sh`)
 
@@ -384,43 +395,62 @@ extraction, and push retries.
 
 ### 1. Prerequisites
 
-- The Python runtime declared by `pyproject.toml` installed
-- Docker & Docker Compose (optional for SurrealDB)
+- **Python**: Target version declared in `pyproject.toml` (Python 3.14 recommended)
+- **Node.js**: Node.js v20+ & npm (for Vitest & ESLint 10)
+- **uv**: Astral `uv` Python package manager (recommended for sub-second installs)
+- **Docker**: Docker & Docker Compose (optional for local SurrealDB)
+- **Pulumi & gcloud CLI**: Optional for infrastructure deployment & DR testing
 
 ### 2. Environment Configuration
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory with the complete set of local settings:
 
 ```env
+# Core Django & Security
 DJANGO_SECRET_KEY="your-secure-development-secret-key"
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
+
+# LLM Gateway & APIs
 GEMINI_API_KEY="your-gemini-api-key"
+ADMIN_EMAIL="admin@example.com"
+
+# SurrealDB Vector & High-Throughput Engine (Local or Remote)
 SURREAL_URL="ws://localhost:8001/rpc"
 SURREAL_USER="root"
 SURREAL_PASS="root"
 SURREALDB_OFFLINE=False
+
+# Supabase Auth & PostgreSQL (Optional for local offline SQLite fallback)
+SUPABASE_URL="https://<YOUR_PROJECT_ID>.supabase.co"
+SUPABASE_PUBLIC_KEY="your-supabase-public-anon-key"
+SUPABASE_SERVICE_ROLE_KEY="your-supabase-service-role-key"
+
+# Cloudflare Turnstile Bot Defense (Optional in local development)
+CF_TURNSTILE_SITE_KEY="your-turnstile-site-key"
+
+# Sentry Observability (Optional in local development)
+SENTRY_DSN=""
 ```
 
-> Note: production and remote SurrealDB connections must use a WebSocket RPC URL configured via `SURREAL_URL` (e.g. `wss://<surrealdb-host>/rpc`).
+> [!NOTE]
+> For production and remote SurrealDB deployments, `SURREAL_URL` must use a secure WebSocket RPC endpoint (`wss://<surrealdb-host>/rpc`). For purely offline testing without a live SurrealDB server, set `SURREALDB_OFFLINE=True`.
 
 ### 3. Install Dependencies & Initialize Database
 
 ```bash
-# Recommended: use uv (fast Python package manager)
-# Install uv: https://docs.astral.sh/uv/getting-started/installation/
+# Recommended: use uv (ultra-fast Python package manager)
 uv venv .venv
 source .venv/bin/activate
 
-# Install requirements
+# Install Python & JS development dependencies
 uv pip install -r requirements-dev.txt
+npm install
 
-# Run migrations & initialize SurrealDB
+# Run database migrations & bootstrap SurrealDB schemas
 python manage.py migrate
 python scripts/init_surreal.py
 ```
-
-> **Alternative (standard venv):** create `.venv` with the interpreter required by `pyproject.toml`, activate it, and install `requirements-dev.txt`.
 
 ### 4. Launch Development Server
 
@@ -428,12 +458,16 @@ python scripts/init_surreal.py
 python manage.py runserver 0.0.0.0:8000
 ```
 
-Access the application at `http://localhost:8000`.
+Access the application in your browser at `http://localhost:8000`.
 
-### 5. Execute Test Suite
+### 5. Execute Full Quality & Test Verification
 
 ```bash
-DJANGO_SECRET_KEY=test_key SECURE_SSL_REDIRECT=False python manage.py test extractor.tests
+# Run fast differential pre-commit check (<0.3s):
+bash run_checks.sh --fast
+
+# Run the complete 5-layer DevSecOps test & security suite:
+bash run_checks.sh
 ```
 
 ---
@@ -442,7 +476,7 @@ DJANGO_SECRET_KEY=test_key SECURE_SSL_REDIRECT=False python manage.py test extra
 
 ### Deploying to GCP Cloud Run
 
-Refer to the complete deployment guide in [`gcp_deployment_guide.md`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/gcp_deployment_guide.md).
+Refer to the complete step-by-step deployment and Pulumi IaC guide in [`docs/gcp_deployment_guide.md`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/docs/gcp_deployment_guide.md).
 
 ### Live Cloud Diagnostics
 

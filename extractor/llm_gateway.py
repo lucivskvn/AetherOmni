@@ -173,7 +173,7 @@ def _get_cached_realtime_pricing(cache) -> dict[str, dict[str, Decimal]] | None:
                 for k, v in cached_pricing.items()
             }
         except (KeyError, ValueError, TypeError, AttributeError) as e:
-            logger.warning("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
+            logger.exception("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
 
     return None
 
@@ -226,7 +226,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                 for k, v in pricing_map.items()
             }
     except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
-        logger.warning("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
+        logger.exception("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
 
     return None
 
@@ -462,7 +462,7 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
     """
     from django.core.cache import cache
 
-    resolved_region = region or os.getenv("CLOUD_ML_REGION") or os.getenv("GOOGLE_CLOUD_REGION") or "asia-southeast1"
+    resolved_region = region or os.getenv("CLOUD_ML_REGION") or os.getenv("GOOGLE_CLOUD_REGION") or "asia-southeast2"
     cache_key = f"cheapest_gemini_model_{resolved_region}_{is_vision}"
     cached_model = cache.get(cache_key)
     if cached_model:
@@ -487,7 +487,7 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
             MODEL_GEMINI_PRO,
         ]
 
-    selected_model = MODEL_GEMINI_FLASH
+    selected_model = candidates[0]
     for candidate in candidates:
         if getattr(settings, "SURREALDB_OFFLINE", False) or os.getenv("CI"):
             selected_model = candidate
@@ -733,15 +733,18 @@ def is_rate_limit_error(exception: Exception) -> bool:
 
 
 # Ordered list of Vertex AI regions to try when a model is unavailable in the
-# primary region.  asia-southeast1 (Singapore) is closest to Indonesia; if a
-# model hasn't been deployed there yet we cascade to us-central1 (global hub)
-# then europe-west4 (Netherlands) as a final option.
+# primary region. Prioritized for minimal latency, data protection, and low carbon:
+# 1. ID (asia-southeast2 — Jakarta: closest local APAC origin)
+# 2. SG (asia-southeast1 — Singapore: nearest APAC secondary hub)
+# 3. EU (europe-west9 / europe-west4 — Paris/Netherlands: GDPR-compliant EU hubs)
+# 4. CA (northamerica-northeast1 — Montreal: low-carbon, on-par data privacy Canadian hub)
 # Override via settings.VERTEX_REGION_FALLBACK_CHAIN or the env variable.
 VERTEX_REGION_FALLBACK_CHAIN: list[str] = getattr(settings, "VERTEX_REGION_FALLBACK_CHAIN", None) or [
-    "europe-west9",  # Paris — GDPR-compliant, primary region for Gemini 3.1 models
-    "europe-west4",  # Netherlands — GDPR-compliant fallback
-    "us-central1",  # Iowa — universal fallback, all models available
-    "asia-southeast1",  # Singapore — backup region
+    "asia-southeast2",  # ID: Jakarta — primary lowest latency
+    "asia-southeast1",  # SG: Singapore — secondary APAC low latency
+    "europe-west9",  # EU: Paris — GDPR compliant high-capacity hub
+    "europe-west4",  # EU: Netherlands — secondary EU fallback
+    "northamerica-northeast1",  # CA: Montreal — Canadian on-par data privacy hub
 ]
 
 
@@ -784,7 +787,7 @@ def get_vertex_client() -> Any | None:
     primary_location = (
         getattr(settings, "GCP_REGION", None)
         or os.getenv("GCP_REGION")
-        or (VERTEX_REGION_FALLBACK_CHAIN[0] if VERTEX_REGION_FALLBACK_CHAIN else "us-central1")
+        or (VERTEX_REGION_FALLBACK_CHAIN[0] if VERTEX_REGION_FALLBACK_CHAIN else "asia-southeast2")
     )
     client = get_vertex_client_for_location(primary_location)
     if client:
@@ -794,12 +797,9 @@ def get_vertex_client() -> Any | None:
 
 def execute_embed_content_with_fallback(
     model_name: str,
-    contents: list[str],
+    contents: Any,
 ) -> Any:
-    """
-    Retrieves embeddings for the given contents, trying first with Vertex AI
-    across the region fallback chain, and falling back to AI Studio if necessary.
-    """
+    """Execute embedding content generation across fallback chains."""
     # 1. Prioritise Vertex AI via ADC across regions fallback chain
     for region in VERTEX_REGION_FALLBACK_CHAIN:
         vertex_client = get_vertex_client_for_location(region)
@@ -927,9 +927,6 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
           - If the model succeeds → return immediately.
           - If NOT_FOUND / region-unavailable → try next region for that model.
           - Other errors (rate limit, quota) → try next model in same region.
-
-    This means asia-southeast1 is tried first (Singapore, closest to Indonesia).
-    If any model isn't available there, us-central1 is the universal fallback.
     """
     NOT_FOUND_SIGNALS = ("not found", "not_found", "404", "does not have access", "not available in")
 
