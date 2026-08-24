@@ -578,6 +578,13 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 }
 
 
+def _upload_title_from_filename(orig_name: str) -> str:
+    """Return a displayable title derived from a validated uploaded filename."""
+    import os
+
+    return os.path.splitext(os.path.basename(orig_name))[0].replace("_", " ").replace("-", " ").strip()
+
+
 def _validate_upload_file(orig_name: str, size: int) -> dict[str, str] | None:
     import os
 
@@ -587,6 +594,12 @@ def _validate_upload_file(orig_name: str, size: int) -> dict[str, str] | None:
             "status": "error",
             "name": orig_name,
             "error": f"Unsupported file type. Supported types: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+        }
+    if not _upload_title_from_filename(orig_name):
+        return {
+            "status": "error",
+            "name": orig_name,
+            "error": "Filename must include a meaningful title before its extension.",
         }
     if size > 31457280:
         return {"status": "error", "name": orig_name, "error": f"'{orig_name}' exceeds maximum 30MB constraint."}
@@ -722,7 +735,7 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
 
     orig_name = uploaded_file.name
     ip = get_client_ip(request)
-    title_guess = os.path.splitext(orig_name)[0].replace("_", " ").replace("-", " ").strip()
+    title_guess = _upload_title_from_filename(orig_name)
     ext_guess = os.path.splitext(orig_name)[1].replace(".", "").upper() or "PDF"
 
     file_id = str(uuid.uuid4())
@@ -738,7 +751,7 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
         "file_hash": file_hash,
         "status": "PENDING",
         "uploaded_by_id": get_request_actor_id(request),
-        "title": title_guess or "Untitled",
+        "title": title_guess,
         "document_type": ext_guess,
         "retry_count": 0,
         "created_at": format_datetime(timezone.now()),
@@ -1724,7 +1737,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
                 for entry in line.split(",")
                 if entry.strip()
             ]
-            bad_origins = [origin for origin in raw_entries if (parsed := urlparse(origin)).scheme != "https"]
+            bad_origins = [origin for origin in raw_entries if urlparse(origin).scheme != "https"]
             if bad_origins:
                 messages.error(
                     request,
@@ -2352,22 +2365,25 @@ def _validate_registration_inputs(email, password, confirm_password, supabase_ur
     return None
 
 
-def _register_supabase_user(
+def _call_supabase_auth_endpoint(
+    endpoint: str,
+    redirect_path: str,
+    request_body: dict[str, Any],
     supabase_url: str,
     supabase_key: str,
-    email: str,
-    password: str,
     app_url: str,
-    captcha_token: str | None = None,
+    captcha_token: str | None,
+    failure_prefix: str,
 ) -> tuple[bool, str | None]:
-    """Make the Supabase signup API call. Returns (success: bool, error_msg: str | None)."""
+    """POST a CAPTCHA-protected Supabase Auth request and normalize its errors."""
     import json
     import urllib.parse
     import urllib.request
 
     from extractor.utils import validate_url_scheme
 
-    url = f"{supabase_url.rstrip('/')}/auth/v1/signup?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/login')}"
+    redirect_url = urllib.parse.quote(app_url.rstrip("/") + redirect_path)
+    url = f"{supabase_url.rstrip('/')}/auth/v1/{endpoint}?redirect_to={redirect_url}"
     try:
         validate_url_scheme(url)
         headers = {
@@ -2375,10 +2391,9 @@ def _register_supabase_user(
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
-        body: dict = {"email": email, "password": password}
         if captcha_token:
-            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
-        payload = json.dumps(body).encode("utf-8")
+            request_body["gotrue_meta_security"] = {"captcha_token": captcha_token}
+        payload = json.dumps(request_body).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
             return True, None
@@ -2395,9 +2410,30 @@ def _register_supabase_user(
             )
         except (json.JSONDecodeError, KeyError, AttributeError):
             err_msg = body_bytes
-        return False, f"Supabase Signup Failed: {err_msg}"
+        return False, f"{failure_prefix}: {err_msg}"
     except Exception as e:
-        return False, f"Network error during registration: {e!s}"
+        return False, f"Network error during {endpoint}: {e!s}"
+
+
+def _register_supabase_user(
+    supabase_url: str,
+    supabase_key: str,
+    email: str,
+    password: str,
+    app_url: str,
+    captcha_token: str | None = None,
+) -> tuple[bool, str | None]:
+    """Make the Supabase signup API call. Returns (success: bool, error_msg: str | None)."""
+    return _call_supabase_auth_endpoint(
+        "signup",
+        "/login",
+        {"email": email, "password": password},
+        supabase_url,
+        supabase_key,
+        app_url,
+        captcha_token,
+        "Supabase Signup Failed",
+    )
 
 
 @require_http_methods(["GET", "POST"])
@@ -2444,43 +2480,16 @@ def _send_supabase_recovery(
     app_url: str,
     captcha_token: str | None = None,
 ) -> tuple[bool, str | None]:
-    import json
-    import urllib.parse
-    import urllib.request
-
-    from extractor.utils import validate_url_scheme
-
-    url = f"{supabase_url.rstrip('/')}/auth/v1/recover?redirect_to={urllib.parse.quote(app_url.rstrip('/') + '/reset-password-confirm')}"
-    try:
-        validate_url_scheme(url)
-        headers = {
-            "apikey": supabase_key,
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        }
-        body: dict = {"email": email}
-        if captcha_token:
-            body["gotrue_meta_security"] = {"captcha_token": captcha_token}
-        payload = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
-            return True, None
-    except urllib.error.HTTPError as e:
-        body_bytes = e.read().decode("utf-8")
-        try:
-            err_data = json.loads(body_bytes)
-            err_msg = (
-                err_data.get("msg")
-                or err_data.get("message")
-                or err_data.get("error_description")
-                or err_data.get("error")
-                or body_bytes
-            )
-        except (json.JSONDecodeError, KeyError, AttributeError):
-            err_msg = body_bytes
-        return False, f"Supabase Recovery Failed: {err_msg}"
-    except Exception as e:
-        return False, f"Network error: {e!s}"
+    return _call_supabase_auth_endpoint(
+        "recover",
+        "/reset-password-confirm",
+        {"email": email},
+        supabase_url,
+        supabase_key,
+        app_url,
+        captcha_token,
+        "Supabase Recovery Failed",
+    )
 
 
 @require_http_methods(["GET", "POST"])

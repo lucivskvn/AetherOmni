@@ -101,7 +101,7 @@ function isSafePreviewUrl(value) {
         return false;
     }
     try {
-        const baseOrigin = globalThis.location?.origin || 'https://aetheromni.local';
+        const baseOrigin = globalThis.location?.origin || 'https://korda.local';
         const parsed = new URL(value, baseOrigin);
         return parsed.protocol === 'https:' || parsed.protocol === 'http:';
     } catch {

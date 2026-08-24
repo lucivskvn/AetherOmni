@@ -1,5 +1,5 @@
 """
-Async Worker Tasks — AetherOmni v2.0
+KORDA Async Worker Tasks
 
 Pipeline: Stage 1 (Gemini Multimodal OCR) → Stage 2 (Editorial Refinement)
           → Stage 3 (SurrealDB Semantic Chunking + Vector Embeddings)
@@ -360,17 +360,24 @@ def _get_working_path_surreal(doc_or_id: Any, download: bool) -> str:
         raise ValueError(f"Document {doc_id} not found in SurrealDB")
     if not download:
         return ""
-    gcs_uri = doc.get("file")
-    if not gcs_uri:
+    file_reference = str(doc.get("file") or "").strip()
+    if not file_reference:
         raise ValueError(f"Document {doc_id} has no GCS file URI")
-    if not gcs_uri.startswith("gs://"):
-        raise ValueError(f"Document {doc_id} has an invalid GCS URI: {gcs_uri}")
-    parsed = urllib.parse.urlparse(gcs_uri)
-    bucket_name = parsed.netloc
-    blob_name = parsed.path.lstrip("/")
     bucket = _get_gcs_bucket()
-    if bucket.name != bucket_name:
-        raise ValueError(f"Document {doc_id} is in bucket {bucket_name}, but worker is configured for {bucket.name}")
+    if file_reference.startswith("gs://"):
+        parsed = urllib.parse.urlparse(file_reference)
+        bucket_name = parsed.netloc
+        blob_name = parsed.path.lstrip("/")
+        if bucket.name != bucket_name:
+            raise ValueError(
+                f"Document {doc_id} is in bucket {bucket_name}, but worker is configured for {bucket.name}"
+            )
+    else:
+        # django-storages returns an object key from default_storage.save(), not
+        # a gs:// URI. Accept that canonical Django representation as well.
+        blob_name = file_reference.lstrip("/")
+    if not blob_name or blob_name.startswith("../"):
+        raise ValueError(f"Document {doc_id} has an invalid GCS object path")
     blob = bucket.blob(blob_name)
     if not blob.exists():
         raise ValueError(f"Document {doc_id} GCS blob {blob_name} does not exist")

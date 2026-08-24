@@ -40,6 +40,7 @@ runbook. This file remains the authoritative cross-agent policy.
      3. Quality Gate Gatekeeper — publishes the actionable condition table in both the Actions log and summary, annotates failures, and blocks violations
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
   - Cloud Build may construct the immutable image in parallel, but it must wait for a successful GitHub SonarCloud Quality Gate check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
+  - Before deployment, Cloud Build must verify the Pulumi-managed media bucket, the dedicated runtime service account, and that account's `roles/storage.objectAdmin` binding. These checks are blocking and must use the same dynamic project-derived names as Pulumi.
   - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
   - Pin every GitHub Action to a full commit SHA, retaining the reviewed release tag only as an adjacent comment.
 

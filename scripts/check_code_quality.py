@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Code Quality, Cognitive Complexity & Literal Deduplication Gatekeeper — AetherOmni v2.0
+KORDA Code Quality, Cognitive Complexity & Literal Deduplication Gatekeeper
 
 Verifies that:
 1. No function or method exceeds Cognitive Complexity of 15 (aligned with SonarQube rules).
@@ -50,7 +50,6 @@ ALLOWED_LITERALS = {
     "accumulated_input_tokens",
     "accumulated_output_tokens",
     "asia-southeast1",
-    "asia-southeast2",
     "europe-west9",
     "europe-west4",
     "northamerica-northeast1",

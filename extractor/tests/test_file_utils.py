@@ -180,7 +180,7 @@ class FileUtilsTestCase(TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a mock temporary file
-            stale_file = os.path.join(tmp_dir, "aetheromni_test_stale.tmp")
+            stale_file = os.path.join(tmp_dir, "korda_test_stale.tmp")
             with open(stale_file, "w") as f:
                 f.write("test")
             # Run cleanup with max_age_seconds=-1 to force removal

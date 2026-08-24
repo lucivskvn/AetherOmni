@@ -91,6 +91,25 @@ class ResilienceAndSafetyTestCase(TestCase):
             if temp_local_path and os.path.exists(temp_local_path):
                 os.unlink(temp_local_path)
 
+    @patch("extractor.file_utils._get_gcs_bucket")
+    @patch("extractor.tasks.surreal_db.get_document")
+    def test_get_working_path_surreal_accepts_django_storage_object_key(self, mock_get_document, mock_get_bucket):
+        from extractor.tasks import _get_working_path_surreal
+
+        mock_get_document.return_value = {"doc_uuid": "doc-1", "file": "uploads/2026/08/24/document.pdf"}
+        bucket = MagicMock()
+        bucket.name = "test-media"
+        blob = bucket.blob.return_value
+        blob.exists.return_value = True
+        mock_get_bucket.return_value = bucket
+
+        temp_path = _get_working_path_surreal("doc-1", download=True)
+
+        self.assertTrue(temp_path.endswith(".pdf"))
+        bucket.blob.assert_called_once_with("uploads/2026/08/24/document.pdf")
+        blob.download_to_filename.assert_called_once_with(temp_path)
+        os.unlink(temp_path)
+
     @patch("extractor.cloud_tasks.enqueue")
     @patch("django.utils.timezone.now")
     def test_reap_stale_tasks(self, mock_now, mock_enqueue):

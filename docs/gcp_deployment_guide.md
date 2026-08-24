@@ -85,7 +85,7 @@ gcloud services enable \
 gcloud artifacts repositories create ${ARTIFACT_REGISTRY} \
   --repository-format=docker \
   --location=${REGION} \
-  --description="Docker repository for AetherOmni"
+  --description="Docker repository for KORDA"
 ```
 
 ### D. Create GCS Media Bucket
@@ -116,9 +116,9 @@ To follow security best practices (OWASP/SOC2 compliance), create a dedicated se
 ### A. Create Service Account
 
 ```bash
-gcloud iam service-accounts create run-service-account \
-  --description="Service account for running AetherOmni on Cloud Run" \
-  --display-name="run-service-account"
+gcloud iam service-accounts create korda-runtime \
+  --description="Runtime identity for KORDA Cloud Run services" \
+  --display-name="KORDA Cloud Run Runtime"
 ```
 
 ### B. Grant Storage, Tasks, and Invoker Roles
@@ -273,6 +273,11 @@ analyzes the same commit, but the web and worker deployment steps wait for that
 exact SHA's successful SonarCloud quality gate check. Failed, cancelled, missing, or
 timed-out checks stop deployment. The Actions log and summary both contain the
 condition table, and failing metrics are emitted as annotations for automated triage.
+
+Before worker deployment, Cloud Build also verifies the Pulumi-managed media bucket,
+the dedicated runtime service account, and that account's object-storage IAM binding.
+This blocks deployment when the storage name or runtime identity has drifted from the
+declarative infrastructure contract.
 
 Supabase CAPTCHA-protected password, signup, and recovery calls forward the
 Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
