@@ -59,6 +59,44 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeAuditSearch();
 });
 
+const MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+    '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.tiff', '.heic', '.heif',
+    '.csv', '.txt', '.md', '.markdown', '.json', '.docx', '.doc', '.xlsx', '.xls'
+]);
+
+function filterUploadFiles(files) {
+    const valid = [];
+    for (const file of files) {
+        const hasExtension = file.name.includes('.') && !file.name.startsWith('.');
+        const extension = hasExtension ? `.${file.name.split('.').pop().toLowerCase()}` : '';
+        if (!extension || !ALLOWED_UPLOAD_EXTENSIONS.has(extension)) {
+            showClientSideAlert(`Skipped "${file.name}": Unsupported format. Supported: PDF, Images (PNG, JPG, WEBP, GIF, TIFF, HEIC), Markdown, Text, CSV, JSON, Word, Excel.`);
+            continue;
+        }
+        if (file.size > MAX_UPLOAD_FILE_SIZE) {
+            showClientSideAlert(`Skipped "${file.name}": Exceeds maximum size limit of 30MB.`);
+            continue;
+        }
+        valid.push(file);
+    }
+    return valid;
+}
+
+async function executeRagFetch(url) {
+    const response = await fetch(url);
+    let data = null;
+    try {
+        data = await response.json();
+    } catch {
+        // A non-JSON error response is handled by the common error path below.
+    }
+    if (!response.ok || !data || data.error) {
+        throw new Error(data?.error || data?.message || 'An error occurred during vector search.');
+    }
+    return data;
+}
+
 /**
  * Enables keyboard shortcuts and instant clearing for the Audit Logs search input.
  */
@@ -631,31 +669,8 @@ function initializeDragAndDrop() {
 
     if (!dropZone || !fileInput || !uploadForm) return;
 
-    function _filterUploadFiles(files) {
-        const MAX_SIZE = 31457280; // 30MB
-        const ALLOWED_EXTENSIONS = new Set([
-            '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.tiff', '.heic', '.heif',
-            '.csv', '.txt', '.md', '.markdown', '.json', '.docx', '.doc', '.xlsx', '.xls'
-        ]);
-        const valid = [];
-        for (const file of files) {
-            const hasExt = file.name.includes('.') && !file.name.startsWith('.');
-            const ext = hasExt ? '.' + file.name.split('.').pop().toLowerCase() : '';
-            if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
-                showClientSideAlert(`Skipped "${file.name}": Unsupported format. Supported: PDF, Images (PNG, JPG, WEBP, GIF, TIFF, HEIC), Markdown, Text, CSV, JSON, Word, Excel.`);
-                continue;
-            }
-            if (file.size > MAX_SIZE) {
-                showClientSideAlert(`Skipped "${file.name}": Exceeds maximum size limit of 30MB.`);
-                continue;
-            }
-            valid.push(file);
-        }
-        return valid;
-    }
-
     function validateFilesAndSubmit(files) {
-        const validFiles = _filterUploadFiles(files);
+        const validFiles = filterUploadFiles(files);
         if (validFiles.length === 0) {
             fileInput.value = '';
             return;
@@ -1098,21 +1113,6 @@ function initializeRAGSearch() {
         return url;
     }
 
-    async function executeRagFetch(url) {
-        const res = await fetch(url);
-        let data = null;
-        try {
-            data = await res.json();
-        } catch {
-            data = null;
-        }
-        if (!res.ok || !data || data.error) {
-            const errorMsg = data?.error || data?.message || 'An error occurred during vector search.';
-            throw new Error(errorMsg);
-        }
-        return data;
-    }
-
     async function runSemanticRAG() {
         if (!ragQuery || !ragBtn || !ragLoader || !ragResults || !ragAnswer || !ragSourcesList) return;
         const query = ragQuery.value.trim();
@@ -1478,11 +1478,11 @@ function updateDocumentDetailScreen(data) {
     const hasEditorForm = document.getElementById('editor-form');
     const hasFailureBoard = document.querySelector('.timeline-step.failed') || document.querySelector('[data-doc-status="FAILED"]');
     
-    if (currentStatus === 'COMPLETED' && !hasEditorForm) {
-        globalThis.location.reload();
-    } else if (currentStatus === 'FAILED' && !hasFailureBoard) {
-        globalThis.location.reload();
-    } else if (!isCurrentlyProcessing && !hasEditorForm && !hasFailureBoard) {
+    const shouldReloadForTerminalState = !isCurrentlyProcessing
+        && ((currentStatus === 'COMPLETED' && !hasEditorForm)
+            || (currentStatus === 'FAILED' && !hasFailureBoard)
+            || (!hasEditorForm && !hasFailureBoard));
+    if (shouldReloadForTerminalState) {
         globalThis.location.reload();
     }
 }
@@ -1498,11 +1498,14 @@ function _renderTimelineStepNode(stepEl, node, state) {
         return;
     }
     const labelText = stepEl.querySelector('.step-label')?.textContent || '';
-    node.textContent = labelText.includes('Reasoning') ? '3' : labelText.includes('Vector') ? '4' : '2';
+    const matchingStep = [['Reasoning', '3'], ['Vector', '4']].find(([label]) => labelText.includes(label));
+    node.textContent = matchingStep?.[1] || '2';
 }
 
 function updateTimelineStep(stepEl, isActive, isCompleted) {
-    const state = isCompleted ? 'completed' : isActive ? 'active' : 'pending';
+    let state = 'pending';
+    if (isCompleted) state = 'completed';
+    else if (isActive) state = 'active';
     stepEl.classList.remove('active', 'completed');
     stepEl.removeAttribute('aria-current');
     if (state !== 'pending') stepEl.classList.add(state);
