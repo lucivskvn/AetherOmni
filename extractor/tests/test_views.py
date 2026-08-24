@@ -47,6 +47,14 @@ class ViewsTestCase(TestCase):
         self.assertIn("documents", response.context)
         self.assertIn("stats", response.context)
 
+    @patch.dict("os.environ", {"RELEASE_VERSION": "1.2.3", "BUILD_SHA": "1234567890abcdef"})
+    def test_release_metadata_view_reports_runtime_environment(self):
+        response = self.client.get(reverse("release_metadata"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"release_version": "1.2.3", "commit_sha": "1234567"})
+        self.assertEqual(response["Cache-Control"], "no-store")
+
     def test_document_status_api_view_get(self):
         response = self.client.get(reverse("document_status_api"))
         self.assertEqual(response.status_code, 200)
@@ -65,14 +73,14 @@ class ViewsTestCase(TestCase):
             {
                 "monthly_budget_usd": "25.50",
                 "selected_model": "auto",
-                "csrf_trusted_origins": "https://my-good-domain.com, http://my-second-domain.com",
+                "csrf_trusted_origins": "https://my-good-domain.com, https://my-second-domain.com",
             },
         )
         self.assertEqual(response.status_code, 302)
         settings_refreshed = SystemSettings.get_settings()
         self.assertEqual(settings_refreshed.monthly_budget_usd, Decimal("25.50"))
         self.assertEqual(
-            settings_refreshed.csrf_trusted_origins, "https://my-good-domain.com, http://my-second-domain.com"
+            settings_refreshed.csrf_trusted_origins, "https://my-good-domain.com, https://my-second-domain.com"
         )
 
     def test_save_settings_view_post_invalid_budget(self):
@@ -97,11 +105,22 @@ class ViewsTestCase(TestCase):
             patch("extractor.cloud_tasks.enqueue") as mock_enqueue,
         ):
             response = self.client.post(
-                reverse("save_document", args=[self.doc.uuid]), {"refined_markdown": "### Highly Refined Markdown"}
+                reverse("save_document", args=[self.doc.uuid]),
+                {
+                    "refined_markdown": "### Highly Refined Markdown",
+                    "publisher": "Cambridge University Press",
+                    "publication_year": "2025",
+                    "license_type": "MIT",
+                    "doi": "10.1017/cup.2025",
+                },
             )
             self.assertEqual(response.status_code, 302)
             self.doc.refresh_from_db()
             self.assertEqual(self.doc.refined_markdown, "### Highly Refined Markdown")
+            self.assertEqual(self.doc.publisher, "Cambridge University Press")
+            self.assertEqual(self.doc.publication_year, "2025")
+            self.assertEqual(self.doc.license_type, "MIT")
+            self.assertEqual(self.doc.doi, "10.1017/cup.2025")
             mock_enqueue.assert_called_once_with("reembed_document", {"document_id": self.doc.id})
 
     def test_document_delete_view_post_success(self):
@@ -567,6 +586,42 @@ class SecurityGatewayAndAuthTestCase(TestCase):
             HTTP_ACCEPT="application/json",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_clone_deduplicated_doc_legal_metadata_preservation(self):
+        """Verify _clone_deduplicated_doc preserves publisher, publication_year, license_type, doi."""
+        from extractor.views import _clone_deduplicated_doc
+
+        user = User.objects.create_user(username="dedup_tester", password="Password123!")
+        existing_doc = SourceDocument.objects.create(
+            original_filename="legal_paper.pdf",
+            file_hash="unique-legal-hash-12345",
+            title="Scholarly Legal Corpus",
+            author="Dr. Legal Scholar",
+            publisher="Oxford Academic Press",
+            publication_year="2026",
+            license_type="CC-BY-4.0",
+            doi="10.1093/oxford/2026.01",
+            status="COMPLETED",
+            uploaded_by=user,
+        )
+
+        request = MagicMock()
+        request.user = user
+        request.META = {"REMOTE_ADDR": "127.0.0.1"}
+
+        with (
+            patch("extractor.surreal_db.create_document") as mock_create,
+            patch("extractor.surreal_db.clone_chunks"),
+        ):
+            mock_create.return_value = {"id": "doc:new-clone-uuid"}
+            _clone_deduplicated_doc(request, existing_doc, "new_upload.pdf", "unique-legal-hash-12345")
+
+            self.assertTrue(mock_create.called)
+            created_data = mock_create.call_args[0][0]
+            self.assertEqual(created_data["publisher"], "Oxford Academic Press")
+            self.assertEqual(created_data["publication_year"], "2026")
+            self.assertEqual(created_data["license_type"], "CC-BY-4.0")
+            self.assertEqual(created_data["doi"], "10.1093/oxford/2026.01")
 
 
 class DynamicCsrfMiddlewareTestCase(TestCase):
@@ -1542,11 +1597,17 @@ class BulkDocumentActionTestCase(TestCase):
         self.doc1.refresh_from_db()
         self.doc2.refresh_from_db()
 
-        # Verify status reset to PENDING
+        # Verify status reset to PENDING and metrics reset to zero
         self.assertEqual(self.doc1.status, "PENDING")
         self.assertEqual(self.doc2.status, "PENDING")
         self.assertEqual(self.doc1.retry_count, 0)
         self.assertEqual(self.doc2.retry_count, 0)
+        self.assertEqual(float(self.doc1.cost_usd), 0.0)
+        self.assertEqual(self.doc1.input_tokens, 0)
+        self.assertEqual(self.doc1.output_tokens, 0)
+
+        # Verify audit logs created
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.DOCUMENT_REQUEUED, user=self.user).exists())
 
     @patch("django.core.files.storage.default_storage.exists", return_value=False)
     @patch("django.core.files.storage.default_storage.delete")
@@ -1762,6 +1823,17 @@ class SupabaseSessionExchangeTestCase(TestCase):
             self.assertEqual(data["user"], "oauth.user")
             self.assertEqual(self.client.session.get("supabase_user_id"), "oauth-uuid-123")
 
+    def test_supabase_session_exchange_malformed_json_guard(self):
+        """Verify SupabaseSessionExchangeView returns 400 on malformed JSON payload."""
+        response = self.client.post(
+            reverse("supabase_session_exchange"),
+            data="not a valid json string {",
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertEqual(data.get("error"), "Malformed JSON payload.")
+
 
 class ViewsExceptionPathsTestCase(TestCase):
     """Direct unit tests for helper functions and exception paths in views.py."""
@@ -1892,3 +1964,137 @@ class ViewsExceptionPathsTestCase(TestCase):
                 supabase_key="secret-key",
             )
             self.assertEqual(err, "Invalid email format.")
+
+    def test_save_settings_csrf_origin_format_validation(self):
+        """Verify SaveSettingsView rejects origins without http:// or https:// scheme."""
+        user = User.objects.create_superuser(
+            username="settings_admin", password="Password123!", email="admin@example.com"
+        )
+        self.client.force_login(user)
+        # Invalid origin without scheme
+        response = self.client.post(
+            reverse("save_settings"),
+            {
+                "csrf_trusted_origins": "example.com, https://valid.com",
+                "monthly_budget_usd": "20.00",
+                "currency": "USD",
+                "selected_model": "auto",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        # Verify invalid origin was rejected and settings remain default
+        settings_obj = SystemSettings.get_settings()
+        self.assertNotEqual(settings_obj.csrf_trusted_origins, "example.com, https://valid.com")
+
+        # Valid HTTPS origins (multiline and comma-separated)
+        response = self.client.post(
+            reverse("save_settings"),
+            {
+                "csrf_trusted_origins": "https://example.com, https://localhost:3000\nhttps://sub.domain.org",
+                "monthly_budget_usd": "25.00",
+                "currency": "USD",
+                "selected_model": "auto",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        settings_obj = SystemSettings.get_settings()
+        self.assertEqual(
+            settings_obj.csrf_trusted_origins,
+            "https://example.com, https://localhost:3000\nhttps://sub.domain.org",
+        )
+
+    def test_document_retry_conflict_on_in_flight_document(self):
+        """Verify DocumentRetryView rejects in-flight documents with 409 Conflict."""
+        user = User.objects.create_user(username="retry_tester", password="Password123!")
+        self.client.force_login(user)
+        in_flight_doc = SourceDocument.objects.create(
+            original_filename="inflight.pdf",
+            file_hash="inflight-hash-409",
+            title="In Flight Doc",
+            status="EXTRACTING",
+            uploaded_by=user,
+        )
+        response = self.client.post(
+            reverse("retry_document", kwargs={"doc_uuid": in_flight_doc.uuid}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 409)
+        data = response.json()
+        self.assertIn("being processed", data.get("error", "").lower())
+
+    def test_bulk_delete_with_uuid_strings_offline(self):
+        """Verify bulk delete and _get_docs_for_delete handle string UUIDs in offline mode."""
+        from extractor.views import _get_docs_for_delete
+
+        user = User.objects.create_user(username="bulk_del_tester", password="Password123!")
+        doc = SourceDocument.objects.create(
+            original_filename="bulk_uuid.pdf",
+            file_hash="bulk-uuid-hash-999",
+            title="Bulk UUID Doc",
+            status="COMPLETED",
+            uploaded_by=user,
+        )
+        request = MagicMock()
+        request.user = user
+
+        with self.settings(SURREALDB_OFFLINE=True):
+            resolved = _get_docs_for_delete(request, [str(doc.uuid)])
+            self.assertEqual(len(resolved), 1)
+            self.assertEqual(resolved[0].id, doc.id)
+
+    def test_filter_audit_logs_metadata_search_fields(self):
+        """Verify _filter_audit_logs correctly filters by document metadata (doi, publisher, year)."""
+        from types import SimpleNamespace
+
+        from extractor.views import _filter_audit_logs
+
+        doc = SimpleNamespace(
+            original_filename="sample_paper.pdf",
+            title="Deep Learning in Biology",
+            publisher="Nature Publishing",
+            publication_year="2026",
+            doi="10.1038/s41586-026-0001",
+        )
+        log1 = SimpleNamespace(
+            action="UPLOAD",
+            details="Uploaded file sample_paper.pdf",
+            ip_address="127.0.0.1",
+            document=doc,
+            user=None,
+        )
+        logs = [log1]
+
+        # Search by DOI
+        filtered_doi = _filter_audit_logs(logs, False, "", "", "10.1038")
+        self.assertEqual(len(filtered_doi), 1)
+
+        # Search by Publisher
+        filtered_pub = _filter_audit_logs(logs, False, "", "", "nature")
+        self.assertEqual(len(filtered_pub), 1)
+
+        # Search by Year
+        filtered_year = _filter_audit_logs(logs, False, "", "", "2026")
+        self.assertEqual(len(filtered_year), 1)
+
+        # Non-matching search
+        filtered_none = _filter_audit_logs(logs, False, "", "", "nonexistent-query")
+        self.assertEqual(len(filtered_none), 0)
+
+    @patch("extractor.rag.stream_query_rag")
+    def test_stream_query_rag_view(self, mock_stream):
+        user = User.objects.create_user(username="stream_tester", password="Password123!")
+        self.client.force_login(user)
+
+        def fake_generator(*args, **kwargs):
+            yield 'data: {"sources": []}\n\n'
+            yield 'data: {"token": "Hello"}\n\n'
+            yield 'data: {"done": true}\n\n'
+
+        mock_stream.side_effect = fake_generator
+
+        response = self.client.get(reverse("stream_query_rag") + "?q=TestQuery")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/event-stream")
+        content = b"".join(response.streaming_content).decode("utf-8")
+        self.assertIn("Hello", content)
+        self.assertIn('"done": true', content)

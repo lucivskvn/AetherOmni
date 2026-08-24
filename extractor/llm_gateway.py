@@ -690,6 +690,105 @@ def generate_llm_content_unified(
         return _call_gemini_with_fallback(prompt, system_instruction, final_model, files, openrouter_api_key)
 
 
+def _try_stream_vertex_fallback_chain(model_name: str, contents: list[Any], config: types.GenerateContentConfig):
+    """Attempt streaming content across regional Vertex AI endpoints."""
+    for region in VERTEX_REGION_FALLBACK_CHAIN:
+        vertex_client = get_vertex_client_for_location(region)
+        if vertex_client:
+            try:
+                logger.info(
+                    "[Gateway Stream] Attempting streaming on Vertex AI in %s using model %s...",
+                    region,
+                    model_name,
+                )
+                stream_resp = vertex_client.models.generate_content_stream(
+                    model=model_name, contents=contents, config=config
+                )
+                yield from (chunk.text for chunk in stream_resp if chunk.text)
+                return
+            except Exception as e:
+                logger.warning("[Gateway Stream] Vertex AI streaming in region %s failed: %s.", region, e)
+
+
+def _try_stream_ai_studio(model_name: str, contents: list[Any], config: types.GenerateContentConfig):
+    """Attempt streaming content on AI Studio fallback."""
+    api_key = getattr(settings, "GEMINI_API_KEY", "")
+    if api_key and api_key.strip().lower() not in ["", "none", "your-gemini-api-key", "placeholder"]:
+        try:
+            logger.info("[Gateway Stream] Attempting streaming on AI Studio using model %s...", model_name)
+            client = genai.Client(api_key=api_key)
+            stream_resp = client.models.generate_content_stream(model=model_name, contents=contents, config=config)
+            yield from (chunk.text for chunk in stream_resp if chunk.text)
+            return
+        except Exception as e:
+            logger.warning("[Gateway Stream] AI Studio streaming failed: %s.", e)
+
+
+def _stream_gemini_direct(model_name: str, prompt: str, system_instruction: str | None):
+    gemini_model = model_name
+    if gemini_model.startswith(PREFIX_GOOGLE):
+        gemini_model = gemini_model.replace(PREFIX_GOOGLE, "")
+
+    config = types.GenerateContentConfig(temperature=0.2)
+    if system_instruction:
+        config.system_instruction = system_instruction
+    contents = [prompt]
+
+    # 1. Try Vertex AI regional streaming
+    yielded_any = False
+    try:
+        for text_chunk in _try_stream_vertex_fallback_chain(gemini_model, contents, config):
+            yield text_chunk
+            yielded_any = True
+        if yielded_any:
+            return
+    except Exception as err:
+        logger.warning("[Gateway Stream] Vertex streaming encountered error: %s", err)
+
+    # 2. Try AI Studio streaming
+    try:
+        for text_chunk in _try_stream_ai_studio(gemini_model, contents, config):
+            yield text_chunk
+            yielded_any = True
+        if yielded_any:
+            return
+    except Exception as err:
+        logger.warning("[Gateway Stream] AI Studio streaming encountered error: %s", err)
+
+
+def generate_llm_stream_unified(
+    prompt: str,
+    system_instruction: str | None = None,
+    model_name: str | None = None,
+):
+    """
+    Yields incremental text chunks from Google Gemini or OpenRouter in realtime.
+    Falls back gracefully to non-streaming response if streaming fails or is unsupported.
+    """
+    import unicodedata
+
+    prompt = unicodedata.normalize("NFC", prompt)
+    if system_instruction:
+        system_instruction = unicodedata.normalize("NFC", system_instruction)
+
+    model_name = _resolve_model_name(model_name)
+    openrouter_api_key = _get_openrouter_api_key()
+    final_model, use_openrouter = _determine_api_routing(model_name, False, openrouter_api_key)
+
+    if not use_openrouter:
+        streamed = False
+        for chunk in _stream_gemini_direct(final_model, prompt, system_instruction):
+            yield chunk
+            streamed = True
+        if streamed:
+            return
+
+    # Fallback: non-streaming unified generation yielded as a single block
+    full_resp = generate_llm_content_unified(prompt, system_instruction, final_model)
+    if full_resp and full_resp.text:
+        yield full_resp.text
+
+
 def extract_retry_delay(exception: Exception) -> float | None:
     """Parses the exception string to find a suggested retry delay in seconds."""
     err_str = str(exception)
@@ -1152,13 +1251,16 @@ def _run_ocr_with_upload(client: Any, file_path: str, model_name: str, ocr_promp
             client, model_name, contents=[file_ref, ocr_prompt], file_path_for_vertex=file_path
         )
     except Exception as e:
-        if is_rate_limit_error(e):
-            logger.warning(
-                "[OCR Stage 1] AI Studio rate limited during file upload or generation. Attempting Vertex AI fallback..."
-            )
+        logger.warning(
+            "[OCR Stage 1] AI Studio file upload or generation failed: %s. Attempting Vertex AI direct fallback...",
+            e,
+        )
+        try:
             vertex_client = get_vertex_client()
             if vertex_client:
                 return _run_ocr_vertex(vertex_client, file_path, model_name, ocr_prompt)
+        except Exception as v_err:
+            logger.warning("[OCR Stage 1] Vertex AI direct fallback also encountered: %s", v_err)
         raise e
     finally:
         if file_ref:

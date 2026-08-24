@@ -68,6 +68,9 @@ runbook. This file remains the authoritative cross-agent policy.
 
 - Compute the release version before SonarCloud analysis and Cloud Build; never
   manually edit a release version or deploy a `latest` fallback.
+- Treat the public `/release/` response as the deployed release authority. Cloud
+  Build must verify its version and commit SHA after deployment; README must not pin
+  computed release values that can drift after squash merges.
 - Cloud Build trigger checkouts are shallow. Unshallow them before deriving the
   commit-count patch so SonarCloud, Cloud Run, image tags, and the UI use one version.
 - Supabase CAPTCHA tokens must be sent in GoTrue `gotrue_meta_security`; require

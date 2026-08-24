@@ -62,7 +62,6 @@ function setupScrollSync(editor, preview) {
         editor.scrollTop = ratio * (editor.scrollHeight - editor.clientHeight);
     });
 }
-
 function replaceMarkdownLinks(text) {
     let output = '';
     let remaining = text;
@@ -168,6 +167,45 @@ document.addEventListener('DOMContentLoaded', () => {
             applyPostRenderFeatures(preview);
         }
         updateCounts();
+
+        // Keyboard formatting and Tab indentation handling
+        editor.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = editor.selectionStart;
+                const end = editor.selectionEnd;
+                if (e.shiftKey) {
+                    // Shift+Tab: Unindent current line
+                    const lineStart = editor.value.lastIndexOf('\n', start - 1) + 1;
+                    if (editor.value.startsWith('    ', lineStart)) {
+                        editor.setRangeText('', lineStart, lineStart + 4, 'end');
+                        editor.dispatchEvent(new Event('input'));
+                    } else if (editor.value.startsWith('  ', lineStart)) {
+                        editor.setRangeText('', lineStart, lineStart + 2, 'end');
+                        editor.dispatchEvent(new Event('input'));
+                    } else if (editor.value.startsWith('\t', lineStart)) {
+                        editor.setRangeText('', lineStart, lineStart + 1, 'end');
+                        editor.dispatchEvent(new Event('input'));
+                    }
+                } else {
+                    // Tab: Insert 2 spaces
+                    editor.setRangeText('  ', start, end, 'end');
+                    editor.dispatchEvent(new Event('input'));
+                }
+            } else if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                const key = e.key.toLowerCase();
+                if (key === 'b') {
+                    e.preventDefault();
+                    insertFormatting('bold');
+                } else if (key === 'i') {
+                    e.preventDefault();
+                    insertFormatting('italic');
+                } else if (key === 'k') {
+                    e.preventDefault();
+                    insertFormatting('link');
+                }
+            }
+        });
 
         // Live recompile as user types
         editor.addEventListener('input', () => {
@@ -532,6 +570,10 @@ if (typeof module !== 'undefined' && module.exports) {
         parseInline,
         replaceMarkdownLinks,
         isSafePreviewUrl,
-        _escapeCssIdentifier
+        _escapeCssIdentifier,
+        insertFormatting,
+        applyPostRenderFeatures,
+        initDeepLinkScroll,
+        setupScrollSync
     };
 }

@@ -66,6 +66,10 @@ class FileUtilsTestCase(TestCase):
         doc.page_count = 500
         doc.cost_usd = 0.05
         doc.file_hash = "abc123hash"
+        doc.publisher = "Dar al-Kutub"
+        doc.publication_year = "1377"
+        doc.doi = "10.1000/muqaddimah"
+        doc.license_type = "Public Domain"
         doc.refined_markdown = "# Introduction"
 
         zip_buffer = io.BytesIO()
@@ -83,11 +87,19 @@ class FileUtilsTestCase(TestCase):
                 ctx=ctx,
             )
 
-        # Check path additions
+        # Check path additions and manifest attributes
         self.assertEqual(len(seen_lang_paths), 1)
         self.assertEqual(len(seen_author_paths), 1)
         self.assertEqual(len(manifest["documents"]), 1)
-        self.assertIn("Introduction", "".join(master_content))
+        self.assertEqual(manifest["documents"][0]["publisher"], "Dar al-Kutub")
+        self.assertEqual(manifest["documents"][0]["doi"], "10.1000/muqaddimah")
+        self.assertEqual(manifest["documents"][0]["license_type"], "Public Domain")
+        master_str = "".join(master_content)
+        self.assertIn("Introduction", master_str)
+        self.assertIn("**Publisher:** Dar al-Kutub", master_str)
+        self.assertIn("**Publication Year:** 1377", master_str)
+        self.assertIn("**DOI:** 10.1000/muqaddimah", master_str)
+        self.assertIn("**License:** Public Domain", master_str)
 
     def test_get_client_ip_with_x_forwarded_for(self):
         request = MagicMock()
@@ -256,3 +268,51 @@ class FileUtilsTestCase(TestCase):
         self.assertEqual(file_utils._sanitize_csv_cell("Normal Document Title"), "Normal Document Title")
         self.assertEqual(file_utils._sanitize_csv_cell(12345), 12345)
         self.assertIsNone(file_utils._sanitize_csv_cell(None))
+
+    def test_generate_sft_dataset_pairs_and_jsonl_bundle(self):
+        with self.settings(SURREALDB_OFFLINE=True):
+            doc = SourceDocument.objects.create(
+                original_filename="sft_sample.pdf",
+                file_hash="sft_hash_123",
+                title="Instruction Theory",
+                author="Dr. Turing",
+                language="en",
+                status="COMPLETED",
+                refined_markdown="# Chapter 1\nMachine reasoning algorithms and their architectures.",
+            )
+            pairs = file_utils.generate_sft_dataset_pairs([doc.id], limit=10)
+            self.assertIsInstance(pairs, list)
+            self.assertGreaterEqual(len(pairs), 1)
+            self.assertIn("prompt", pairs[0])
+            self.assertIn("completion", pairs[0])
+            self.assertIn("messages", pairs[0])
+
+            jsonl_bytes = file_utils.generate_sft_jsonl_bundle([doc.id])
+            self.assertIsInstance(jsonl_bytes, bytes)
+            jsonl_str = jsonl_bytes.decode("utf-8")
+            self.assertIn("Instruction Theory", jsonl_str)
+
+            # Verify legal metadata fields in SFT pairs
+            doc_legal = SourceDocument.objects.create(
+                original_filename="legal_sft.pdf",
+                file_hash="legal_sft_hash_456",
+                title="Legal Research Protocol",
+                author="Prof. Scholar",
+                publisher="MIT Press",
+                publication_year="2026",
+                license_type="Apache-2.0",
+                doi="10.1145/sft.2026",
+                language="en",
+                status="COMPLETED",
+                refined_markdown="# Legal Chapter\nJurisprudence and computational legal modeling.",
+            )
+            pairs_legal = file_utils.generate_sft_dataset_pairs([doc_legal.id], limit=5)
+            self.assertEqual(pairs_legal[0]["metadata"]["publisher"], "MIT Press")
+            self.assertEqual(pairs_legal[0]["metadata"]["publication_year"], "2026")
+            self.assertEqual(pairs_legal[0]["metadata"]["license_type"], "Apache-2.0")
+            self.assertEqual(pairs_legal[0]["metadata"]["doi"], "10.1145/sft.2026")
+
+            # Assert ValueError when no completed documents exist
+            with self.assertRaises(ValueError) as ctx:
+                file_utils.generate_sft_dataset_pairs([99999])
+            self.assertIn("No completed documents", str(ctx.exception))
