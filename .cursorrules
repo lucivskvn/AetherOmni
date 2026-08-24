@@ -65,6 +65,7 @@ runbook. This file remains the authoritative cross-agent policy.
 ### 7. Release, GCP, and Agent Hand-off
 
 - Compute the release version before SonarCloud analysis and Cloud Build; never manually edit it or deploy a `latest` fallback. Cloud Build must unshallow trigger checkouts before deriving the commit-count patch.
+- Treat the public `/release/` response as the deployed release authority. Cloud Build must verify its version and commit SHA after deployment; README must not pin computed release values that can drift after squash merges.
 - Send Supabase CAPTCHA tokens in GoTrue `gotrue_meta_security`; require Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL` or server-controlled Supabase app metadata. Never auto-promote the first user.
 - In production, use the Supabase Auth subject UUID for document ownership, tenant filtering, exports, RAG access, and rate-limit keys; Django/SQLite IDs are offline-only implementation details.
 - Default the worker to bounded Cloud Run on-demand scaling with periodic maintenance disabled. Cloud Tasks wakes it for queued work; only opt into an always-on worker for an explicit scheduled-maintenance requirement. Web instances must not start maintenance threads.

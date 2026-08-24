@@ -6,6 +6,7 @@ from extractor.forms import TurnstileAuthenticationForm
 
 urlpatterns = [
     path("favicon.ico", views.favicon_view, name="favicon"),
+    path("release/", views.release_metadata_view, name="release_metadata"),
     path(
         "login/",
         auth_views.LoginView.as_view(

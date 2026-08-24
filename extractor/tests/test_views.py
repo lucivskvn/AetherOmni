@@ -47,6 +47,14 @@ class ViewsTestCase(TestCase):
         self.assertIn("documents", response.context)
         self.assertIn("stats", response.context)
 
+    @patch.dict("os.environ", {"RELEASE_VERSION": "1.2.3", "BUILD_SHA": "1234567890abcdef"})
+    def test_release_metadata_view_reports_runtime_environment(self):
+        response = self.client.get(reverse("release_metadata"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"release_version": "1.2.3", "commit_sha": "1234567"})
+        self.assertEqual(response["Cache-Control"], "no-store")
+
     def test_document_status_api_view_get(self):
         response = self.client.get(reverse("document_status_api"))
         self.assertEqual(response.status_code, 200)

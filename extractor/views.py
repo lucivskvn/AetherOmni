@@ -22,6 +22,8 @@ from django.utils.safestring import mark_safe
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
+from extractor.context_processors import _resolve_commit_sha, _resolve_release_version
+
 if TYPE_CHECKING:  # nosonar
     # Statically import ingest_sources to satisfy desloppify importer analyzer
     import extractor.management.commands.ingest_sources  # noqa: F401
@@ -78,6 +80,15 @@ def _validate_email_format(email: str) -> bool:
 def favicon_view(_request):
     """Serve a lightweight transparent 204 No Content for favicon.ico requests."""
     return HttpResponse(status=204, content_type="image/x-icon")
+
+
+@require_http_methods(["GET", "HEAD"])
+def release_metadata_view(_request):
+    """Expose the release identity injected into this running Cloud Run revision."""
+    return JsonResponse(
+        {"release_version": _resolve_release_version(), "commit_sha": _resolve_commit_sha()},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 from types import SimpleNamespace

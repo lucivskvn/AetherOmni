@@ -467,6 +467,11 @@ it needs BusyBox to source computed release metadata; the standard executor imag
 does not include a shell. Its layer cache is stored in Artifact Registry and
 network-sensitive operations use bounded retries:
 
+After deploying the worker and web service, Cloud Build calls the web service’s public
+`/release/` endpoint and fails unless its release version and commit SHA match the
+computed build identity. This runtime response—not static README text—is the source
+of truth for a deployed release.
+
 ```bash
 # Run the pipeline to build and deploy web + worker services
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)

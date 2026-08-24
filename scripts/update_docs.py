@@ -19,8 +19,8 @@ VERSION SCHEME
 
 WHAT IS UPDATED
 ---------------
-  README.md              — version badge, last-updated badge, commit SHA badge,
-                           test count, desloppify scores
+  README.md              — quality badges, test count, and desloppify scores.
+                           Runtime release identity is intentionally not written here.
   docs/gcp_deployment_guide.md — guide version heading
   infra/gcp/service.yaml           — RELEASE_VERSION env var
   infra/gcp/service-worker.yaml    — RELEASE_VERSION env var
@@ -260,19 +260,17 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
 
     # Badge block — use sentinel if present, else inline patch
     badge_block = (
-        f"[![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)\n"
-        f"[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=bugs)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
-        f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)](https://github.com/lucivskvn/AetherOmni/releases)\n"
-        f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](https://github.com/lucivskvn/AetherOmni/commits/main)\n"
-        f"[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)"
+        "[![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)\n"
+        "[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=bugs)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)\n"
+        "[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)"
     )
 
     text, replaced = _replace_sentinel(text, "badges", badge_block)
@@ -280,17 +278,14 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
         lines = []
         for line in text.splitlines(keepends=True):
             if "[![Version](https://img.shields.io/badge/version-" in line:
-                line = (
-                    f"[![Version](https://img.shields.io/badge/version-{v['badge_ver']}-blue.svg)]"
-                    f"(https://github.com/lucivskvn/AetherOmni)\n"
-                )
+                line = ""
             elif "[![Last Updated](https://img.shields.io/badge/last%20updated-" in line:
                 line = (
                     f"[![Last Updated](https://img.shields.io/badge/last%20updated-"
                     f"{v['today'].replace('-', '--')}-green.svg)](#)\n"
                 )
             elif "[![Commit](https://img.shields.io/badge/commit-" in line:
-                line = f"[![Commit](https://img.shields.io/badge/commit-{v['sha']}-lightgrey.svg)](#)\n"
+                line = ""
             lines.append(line)
         text = "".join(lines)
 
