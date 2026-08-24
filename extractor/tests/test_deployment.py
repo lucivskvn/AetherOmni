@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
@@ -220,3 +221,31 @@ class DeploymentFunctionsTestCase(TestCase):
         self.assertIn("✓ [Ruff Linter]", report)
         self.assertIn("✓ [Ruff Formatter]", report)
         self.assertIn("✓ [Django System Check]", report)
+
+
+class ProductionDeploymentContractTestCase(TestCase):
+    """Prevent Cloud Build and Pulumi storage/runtime contract drift."""
+
+    @staticmethod
+    def _repo_file(*parts: str) -> str:
+        repo_root = Path(__file__).resolve().parents[2]
+        return (repo_root.joinpath(*parts)).read_text(encoding="utf-8")
+
+    def test_cloud_build_uses_the_pulumi_managed_bucket_and_runtime_account(self):
+        cloudbuild = self._repo_file("infra", "gcp", "cloudbuild.yaml")
+        pulumi_program = self._repo_file("infra", "pulumi", "__main__.py")
+
+        self.assertIn('name=f"{project}-media-korda"', pulumi_program)
+        self.assertIn('name="GS_BUCKET_NAME", value=media_bucket.name', pulumi_program)
+        self.assertEqual(cloudbuild.count("GS_BUCKET_NAME=${PROJECT_ID}-media-korda"), 2)
+        self.assertEqual(
+            cloudbuild.count('RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"'), 3
+        )
+        self.assertEqual(cloudbuild.count('--service-account="$${RUNTIME_SERVICE_ACCOUNT}"'), 2)
+
+    def test_cloud_build_blocks_deployment_without_bucket_runtime_iam_contract(self):
+        cloudbuild = self._repo_file("infra", "gcp", "cloudbuild.yaml")
+
+        self.assertIn('gcloud storage buckets describe "gs://$${MEDIA_BUCKET}"', cloudbuild)
+        self.assertIn('gcloud iam service-accounts describe "$${RUNTIME_SERVICE_ACCOUNT}"', cloudbuild)
+        self.assertIn("roles/storage.objectAdmin", cloudbuild)

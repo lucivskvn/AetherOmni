@@ -227,6 +227,28 @@ steps:
         done
         echo "All required secrets verified in GCP Secret Manager."
 
+        MEDIA_BUCKET="${PROJECT_ID}-media-korda"
+        RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+        RUNTIME_MEMBER="serviceAccount:$${RUNTIME_SERVICE_ACCOUNT}"
+        echo "Validating Pulumi-managed storage and runtime identity..."
+        gcloud storage buckets describe "gs://$${MEDIA_BUCKET}" --project="${PROJECT_ID}" >/dev/null
+        gcloud iam service-accounts describe "$${RUNTIME_SERVICE_ACCOUNT}" --project="${PROJECT_ID}" >/dev/null
+        gcloud storage buckets get-iam-policy "gs://$${MEDIA_BUCKET}" --project="${PROJECT_ID}" --format=json |
+          python3 -c '
+        import json
+        import sys
+
+        member = sys.argv[1]
+        policy = json.load(sys.stdin)
+        has_access = any(
+            binding.get("role") == "roles/storage.objectAdmin" and member in binding.get("members", [])
+            for binding in policy.get("bindings", [])
+        )
+        if not has_access:
+            raise SystemExit(f"Missing roles/storage.objectAdmin for {member} on the media bucket")
+        ' "$${RUNTIME_MEMBER}"
+        echo "Media bucket and runtime identity contract verified."
+
   # 4. Production GCP Cloud Run Worker Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-worker'

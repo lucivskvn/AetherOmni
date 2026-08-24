@@ -274,6 +274,11 @@ exact SHA's successful SonarCloud quality gate check. Failed, cancelled, missing
 timed-out checks stop deployment. The Actions log and summary both contain the
 condition table, and failing metrics are emitted as annotations for automated triage.
 
+Before worker deployment, Cloud Build also verifies the Pulumi-managed media bucket,
+the dedicated runtime service account, and that account's object-storage IAM binding.
+This blocks deployment when the storage name or runtime identity has drifted from the
+declarative infrastructure contract.
+
 Supabase CAPTCHA-protected password, signup, and recovery calls forward the
 Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
 from the configured `ADMIN_EMAIL` or server-controlled Supabase app metadata;
