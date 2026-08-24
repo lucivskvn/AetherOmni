@@ -233,6 +233,47 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     }
+
+    // ── 3. Copy to Clipboard Functionality ───────────────────────────────────
+    const btnCopySft = document.getElementById('btn-copy-sft');
+    if (btnCopySft) {
+        btnCopySft.addEventListener('click', async () => {
+            try {
+                const jsonScript = document.getElementById('qa-dataset-json');
+                if (jsonScript) {
+                    const jsonData = JSON.parse(jsonScript.textContent);
+                    await navigator.clipboard.writeText(JSON.stringify(jsonData, null, 2));
+                    if (typeof globalThis.showClientSideAlert === 'function') {
+                        globalThis.showClientSideAlert('Copied JSON Dataset to clipboard!', 'success');
+                    }
+                } else {
+                    throw new Error("JSON script not found");
+                }
+            } catch (err) {
+                console.error("Failed to copy SFT dataset", err);
+                if (typeof globalThis.showClientSideAlert === 'function') {
+                    globalThis.showClientSideAlert('Failed to copy SFT dataset.', 'error');
+                }
+            }
+        });
+    }
+
+    const btnCopyMarkdown = document.getElementById('btn-copy-markdown');
+    if (btnCopyMarkdown && editor) {
+        btnCopyMarkdown.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(editor.value);
+                if (typeof globalThis.showClientSideAlert === 'function') {
+                    globalThis.showClientSideAlert('Copied Markdown to clipboard!', 'success');
+                }
+            } catch (err) {
+                console.error("Failed to copy Markdown", err);
+                if (typeof globalThis.showClientSideAlert === 'function') {
+                    globalThis.showClientSideAlert('Failed to copy Markdown.', 'error');
+                }
+            }
+        });
+    }
 });
 
 
