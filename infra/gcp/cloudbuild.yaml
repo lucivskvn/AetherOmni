@@ -334,10 +334,44 @@ steps:
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 
-  # 6. Automated Google-Managed Custom Domain Mapping
+  # 6. Verify the public runtime reports the exact Cloud Build release identity.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
+    id: 'verify-release-identity'
+    waitFor: ['deploy-web']
+    entrypoint: bash
+    args:
+      - '-euc'
+      - |
+        . /workspace/release_version.env
+        WEB_URL="$$(gcloud run services describe korda-web --region=${_REGION} --format='value(status.url)')"
+        export WEB_URL RELEASE_VERSION BUILD_SHA
+        python3 - <<'PY'
+        import json
+        import os
+        import time
+        from urllib.request import urlopen
+
+        expected = {"release_version": os.environ["RELEASE_VERSION"], "commit_sha": os.environ["BUILD_SHA"][:7]}
+        url = f"{os.environ['WEB_URL'].rstrip('/')}/release/"
+        last_error = None
+        for _ in range(6):
+            try:
+                with urlopen(url, timeout=10) as response:  # nosec B310: Cloud Run URL is resolved by gcloud.
+                    actual = json.load(response)
+                if actual == expected:
+                    print(f"Verified runtime release identity: {actual['release_version']} / {actual['commit_sha']}")
+                    raise SystemExit(0)
+                last_error = f"expected {expected}, received {actual}"
+            except Exception as exc:
+                last_error = str(exc)
+            time.sleep(5)
+        raise SystemExit(f"Runtime release identity verification failed for {url}: {last_error}")
+        PY
+
+  # 7. Automated Google-Managed Custom Domain Mapping
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'bind-custom-domain'
-    waitFor: ['deploy-web']
+    waitFor: ['verify-release-identity']
     entrypoint: bash
     args:
       - '-euc'
