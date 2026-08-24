@@ -44,6 +44,7 @@ runbook. This file remains the authoritative cross-agent policy.
 ### 4.1 Native GitHub Auto-Merge & PR Creation Protocol
 
 - The repository is configured with `allow_auto_merge = true` and `allow_update_branch = true` alongside strict required status checks (`required_status_checks.strict = true`).
+- The auto-sync workflow must set `GH_REPO` to the current repository before invoking `gh`, compare each PR base SHA with its target branch, and fail visibly on refresh, conflict, or auto-merge errors. A green lifecycle job is evidence that it acted, not merely that its shell script exited.
 - When the user commands opening a Pull Request, use the GitHub CLI with `--auto --squash --delete-branch`:
 
   ```bash

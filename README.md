@@ -386,6 +386,11 @@ Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (
 2. **SonarCloud Deep SAST & Multi-Language Quality Gate**: Runs Ruff, ESLint, Python coverage tests (`coverage.xml`), JavaScript coverage tests (Vitest LCOV), and SonarCloud code analysis, alongside a separate parallel Semgrep Cloud SAST job across both pull requests and mainline pushes with native GitHub PR annotations.
 3. **Quality Gate Gatekeeper**: Publishes the actionable condition table to the Actions log and summary, annotates failing metrics, and blocks failed gates. Cloud Build independently waits for that exact commit check before mutating Cloud Run.
 
+The PR lifecycle workflow automatically compares every open PR with its target
+branch after a merge, updates a stale branch, and enables squash auto-merge only
+after it is mergeable. Refresh, conflict, and GitHub CLI errors fail the workflow
+visibly so a successful lifecycle check proves it performed the intended action.
+
 Cloud Build uses Kaniko's BusyBox-enabled debug image, pinned by immutable
 digest, when a build step must source computed release metadata. The standard
 executor image is shell-less. It uses a registry-backed cache and bounded pull,
