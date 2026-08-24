@@ -249,7 +249,10 @@ steps:
         APP_URL="$${APP_URL:-$${WEB_URL}}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},BUILD_SHA=$${BUILD_SHA},SHORT_SHA=$${BUILD_SHA}"
         ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=1"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
+        # Keep the deploy contract aligned with the Pulumi-managed media bucket
+        # and its least-privilege runtime identity.
+        RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
@@ -275,7 +278,7 @@ steps:
           --allow-unauthenticated \
           --min-instances=0 \
           --max-instances=5 \
-          --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+          --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 
@@ -306,7 +309,10 @@ steps:
         APP_URL="$${APP_URL:-$${WEB_URL}}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},BUILD_SHA=$${BUILD_SHA},SHORT_SHA=$${BUILD_SHA}"
         ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=2"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
+        # Keep the deploy contract aligned with the Pulumi-managed media bucket
+        # and its least-privilege runtime identity.
+        RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL},EXTRA_ALLOWED_HOSTS=$${CUSTOM_DOMAINS}"
@@ -330,7 +336,7 @@ steps:
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
-          --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+          --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 

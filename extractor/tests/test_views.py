@@ -47,6 +47,14 @@ class ViewsTestCase(TestCase):
         self.assertIn("documents", response.context)
         self.assertIn("stats", response.context)
 
+    def test_upload_validation_rejects_filename_without_a_title(self):
+        from extractor.views import _validate_upload_file
+
+        result = _validate_upload_file("---.pdf", 1)
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("meaningful title", result["error"])
+
     @patch.dict("os.environ", {"RELEASE_VERSION": "1.2.3", "BUILD_SHA": "1234567890abcdef"})
     def test_release_metadata_view_reports_runtime_environment(self):
         response = self.client.get(reverse("release_metadata"))
