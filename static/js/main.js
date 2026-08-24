@@ -1487,28 +1487,27 @@ function updateDocumentDetailScreen(data) {
     }
 }
 
+function _renderTimelineStepNode(stepEl, node, state) {
+    if (!node) return;
+    const icons = {
+        completed: '<i data-lucide="check" style="width:14px; height:14px;"></i>',
+        active: '<i data-lucide="loader" class="spinner" style="width:14px; height:14px;"></i>'
+    };
+    if (icons[state]) {
+        node.innerHTML = icons[state];
+        return;
+    }
+    const labelText = stepEl.querySelector('.step-label')?.textContent || '';
+    node.textContent = labelText.includes('Reasoning') ? '3' : labelText.includes('Vector') ? '4' : '2';
+}
+
 function updateTimelineStep(stepEl, isActive, isCompleted) {
+    const state = isCompleted ? 'completed' : isActive ? 'active' : 'pending';
     stepEl.classList.remove('active', 'completed');
     stepEl.removeAttribute('aria-current');
-    const node = stepEl.querySelector('.step-node');
-    
-    if (isCompleted) {
-        stepEl.classList.add('completed');
-        if (node) node.innerHTML = '<i data-lucide="check" style="width:14px; height:14px;"></i>';
-    } else if (isActive) {
-        stepEl.classList.add('active');
-        stepEl.setAttribute('aria-current', 'step');
-        if (node) node.innerHTML = '<i data-lucide="loader" class="spinner" style="width:14px; height:14px;"></i>';
-    } else {
-        // Set index
-        const labelEl = stepEl.querySelector('.step-label');
-        const labelText = labelEl ? labelEl.textContent : '';
-        let idx = '2';
-        if (labelText.includes('Reasoning')) idx = '3';
-        if (labelText.includes('Vector')) idx = '4';
-        if (node) node.textContent = idx;
-    }
-
+    if (state !== 'pending') stepEl.classList.add(state);
+    if (state === 'active') stepEl.setAttribute('aria-current', 'step');
+    _renderTimelineStepNode(stepEl, stepEl.querySelector('.step-node'), state);
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }

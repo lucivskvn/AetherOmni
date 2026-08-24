@@ -669,8 +669,6 @@ def stream_query_rag(
     from extractor.models import SystemSettings
 
     query_cleaned = query.strip()
-    user_part = actor_id or (str(user.id) if (user and user.is_authenticated) else "guest")
-
     try:
         query_emb_resp = execute_embed_content_with_fallback(model_name="text-embedding-004", contents=[query_cleaned])
         query_embedding = query_emb_resp.embeddings[0].values

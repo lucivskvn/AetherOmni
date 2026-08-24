@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib import messages
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 TEMPLATE_REGISTER = "extractor/register.html"
 TEMPLATE_FORGOT_PASSWORD = "extractor/forgot_password.html"  # nosec B105
+LOCAL_DEVELOPMENT_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def _turnstile_token_error(request) -> str | None:
@@ -1704,8 +1706,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             messages.error(request, "Invalid budget value provided. Must be a valid positive number.")
             return redirect("dashboard")
 
-        # Validate csrf_trusted_origins: each non-empty entry must include scheme
-        # to avoid silently breaking Django's CSRF protection (e.g. 'myapp.com' vs 'https://myapp.com')
+        # Trust HTTPS origins, permitting HTTP only for explicit loopback development hosts.
         if csrf_trusted_origins:
             raw_entries = [
                 entry.strip()
@@ -1713,11 +1714,16 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
                 for entry in line.split(",")
                 if entry.strip()
             ]
-            bad_origins = [o for o in raw_entries if not o.startswith(("https://", "http://"))]
+            bad_origins = [
+                origin
+                for origin in raw_entries
+                if (parsed := urlparse(origin)).scheme != "https"
+                and not (parsed.scheme == "http" and parsed.hostname in LOCAL_DEVELOPMENT_HOSTNAMES)
+            ]
             if bad_origins:
                 messages.error(
                     request,
-                    f"Invalid trusted origin(s): {', '.join(bad_origins)}. Each entry must start with https:// or http://.",
+                    f"Invalid trusted origin(s): {', '.join(bad_origins)}. Use HTTPS, except for loopback development hosts.",
                 )
                 return redirect("dashboard")
 

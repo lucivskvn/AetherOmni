@@ -65,14 +65,14 @@ class ViewsTestCase(TestCase):
             {
                 "monthly_budget_usd": "25.50",
                 "selected_model": "auto",
-                "csrf_trusted_origins": "https://my-good-domain.com, http://my-second-domain.com",
+                "csrf_trusted_origins": "https://my-good-domain.com, https://my-second-domain.com",
             },
         )
         self.assertEqual(response.status_code, 302)
         settings_refreshed = SystemSettings.get_settings()
         self.assertEqual(settings_refreshed.monthly_budget_usd, Decimal("25.50"))
         self.assertEqual(
-            settings_refreshed.csrf_trusted_origins, "https://my-good-domain.com, http://my-second-domain.com"
+            settings_refreshed.csrf_trusted_origins, "https://my-good-domain.com, https://my-second-domain.com"
         )
 
     def test_save_settings_view_post_invalid_budget(self):
