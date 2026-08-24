@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Template & Static Asset Integrity Gatekeeper — AetherOmni v2.0
+KORDA Template & Static Asset Integrity Gatekeeper
 
 Verifies that:
 1. All static assets referenced in Django templates (`{% static '...' %}`) exist on the filesystem.

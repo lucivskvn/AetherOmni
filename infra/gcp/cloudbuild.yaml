@@ -138,7 +138,7 @@ steps:
             endpoint,
             headers={
                 "Accept": "application/vnd.github+json",
-                "User-Agent": "AetherOmni-CloudBuild-Gate",
+                "User-Agent": "KORDA-CloudBuild-Gate",
             },
         )
         sonar_names = {

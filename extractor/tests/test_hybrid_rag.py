@@ -31,8 +31,8 @@ class HybridRAGTestCase(TestCase):
 
         mock_generate.return_value = "This is a verified RAG answer [Smith, 2026]."
         answer = _generate_rag_answer(
-            query_cleaned="What is AetherOmni?",
-            context_str="AetherOmni is an Enterprise Document Intelligence platform.",
+            query_cleaned="What is KORDA?",
+            context_str="KORDA is a knowledge operations workspace.",
             user_memories_block="",
             selected_model="gemini-2.5-flash",
         )

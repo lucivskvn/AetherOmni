@@ -270,7 +270,7 @@ flowchart LR
 - [x] **Multi-MCP Triage & Observability**: Dedicated Model Context Protocol server workflows for SonarQube quality gates, Google Cloud Logging container inspections, Google Cloud Monitoring metrics, Chrome DevTools accessibility testing, and Google Developer Knowledge.
 - [x] **Operational Runbook & Diagnostic Tools**: Read-only GCP diagnostics CLI (`scripts/gcp-diagnostics.sh`) for Cloud Run revisions, readiness status, and bounded error log inspection.
 - [x] **Sentry Release Observability**: Correlated errors, performance tracing, profiling, and deployments with computed `RELEASE_VERSION` and verification test route (`/sentry-debug/`).
-- [x] **Declarative Pulumi IaC Foundation**: Modeled, tested, and provisioned Cloud Run (`korda-web`, `korda-worker`), Secret Manager bindings, IAM least-privilege roles, Artifact Registry, Cloud Tasks, and Storage bucket in `asia-southeast2` (Jakarta) with full Disaster Recovery lifecycle verification.
+- [x] **Declarative Pulumi IaC Foundation**: Modeled, tested, and provisioned Cloud Run (`korda-web`, `korda-worker`), Secret Manager bindings, IAM least-privilege roles, Artifact Registry, Cloud Tasks, and Storage bucket in `asia-southeast1` (Singapore) with full Disaster Recovery lifecycle verification.
 
 ### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & Automated Benchmarking)
 

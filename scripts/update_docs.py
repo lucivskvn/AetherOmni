@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AetherOmni — Automatic Documentation & Version Updater
-=======================================================
+KORDA — Automatic Documentation & Version Updater
+==================================================
 Computes the canonical application version from live git metadata on every
 invocation — no hardcoded numbers, no manual version bumps for patches.
 
@@ -365,7 +365,7 @@ def update_service_yamls(_v: dict) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="AetherOmni auto documentation updater.")
+    parser = argparse.ArgumentParser(description="KORDA auto documentation updater.")
     parser.add_argument("--ci", action="store_true", help="CI mode: compact output.")
     parser.add_argument("--dry-run", action="store_true", help="Show changes without writing.")
     parser.add_argument("--print-version", action="store_true", help="Print semver only (machine-readable) and exit.")
@@ -382,7 +382,7 @@ def main() -> int:
         print(v["release_ver"])
         return 0
 
-    print("AetherOmni Doc Updater")
+    print("KORDA Doc Updater")
     print(f"  Semver        : {v['semver']}")
     print(f"  Release ver   : {v['release_ver']}")
     print(f"  Branch        : {v['branch']}")

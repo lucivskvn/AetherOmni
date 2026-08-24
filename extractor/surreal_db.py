@@ -1,5 +1,5 @@
 """
-SurrealDB Multi-Model & Vector Engine Adapter — AetherOmni v2.0
+KORDA SurrealDB Knowledge Engine Adapter
 
 Implements an asynchronous SurrealDB client adapter powered by AsyncSurreal
 and async-to-sync boundaries for thread safety and high-throughput execution.

@@ -85,7 +85,7 @@ gcloud services enable \
 gcloud artifacts repositories create ${ARTIFACT_REGISTRY} \
   --repository-format=docker \
   --location=${REGION} \
-  --description="Docker repository for AetherOmni"
+  --description="Docker repository for KORDA"
 ```
 
 ### D. Create GCS Media Bucket
@@ -116,9 +116,9 @@ To follow security best practices (OWASP/SOC2 compliance), create a dedicated se
 ### A. Create Service Account
 
 ```bash
-gcloud iam service-accounts create run-service-account \
-  --description="Service account for running AetherOmni on Cloud Run" \
-  --display-name="run-service-account"
+gcloud iam service-accounts create korda-runtime \
+  --description="Runtime identity for KORDA Cloud Run services" \
+  --display-name="KORDA Cloud Run Runtime"
 ```
 
 ### B. Grant Storage, Tasks, and Invoker Roles

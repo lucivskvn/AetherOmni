@@ -1,19 +1,19 @@
-# Copyright (c) 2026 AetherOmni Contributors.
+# Copyright (c) 2026 KORDA Contributors.
 #
-# This file is part of AetherOmni.
+# This file is part of KORDA.
 #
-# AetherOmni is free software: you can redistribute it and/or modify
+# KORDA is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# AetherOmni is distributed in the hope that it will be useful,
+# KORDA is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with AetherOmni.  If not, see <https://www.gnu.org/licenses/>.
+# along with KORDA.  If not, see <https://www.gnu.org/licenses/>.
 
 
 from __future__ import annotations
@@ -884,7 +884,7 @@ def get_vertex_client() -> Any | None:
     primary_location = (
         getattr(settings, "GCP_REGION", None)
         or os.getenv("GCP_REGION")
-        or (VERTEX_REGION_FALLBACK_CHAIN[0] if VERTEX_REGION_FALLBACK_CHAIN else "asia-southeast2")
+        or (VERTEX_REGION_FALLBACK_CHAIN[0] if VERTEX_REGION_FALLBACK_CHAIN else "asia-southeast1")
     )
     client = get_vertex_client_for_location(primary_location)
     if client:
@@ -1445,7 +1445,7 @@ def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = MODEL_G
        - `semantic_signature`: A 64-character hex-like unique signature based on major concepts in the text.
        - `isbn`: International Standard Book Number (ISBN) if present in the text. If not found, write "".
        - `source_link`: The source URL, QR code reference link, or publisher website link if found in the text. If not found, write "".
-       - `translator`: Translator or editor name in English if the booklet is translated. If not found, write "".
+       - `translator`: Translator or editor name in English if the document is translated. If not found, write "".
        - `publisher`: The publisher of the document, if available. Write "Unknown" if not found.
        - `publication_year`: The year of publication (4 digits). Write "" if not found.
        - `license_type`: The license or copyright status (e.g., "Public Domain", "Copyrighted", "CC-BY"). Write "Unknown" if not explicitly stated.
