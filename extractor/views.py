@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 TEMPLATE_REGISTER = "extractor/register.html"
 TEMPLATE_FORGOT_PASSWORD = "extractor/forgot_password.html"  # nosec B105
-LOCAL_DEVELOPMENT_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def _turnstile_token_error(request) -> str | None:
@@ -1706,7 +1705,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             messages.error(request, "Invalid budget value provided. Must be a valid positive number.")
             return redirect("dashboard")
 
-        # Trust HTTPS origins, permitting HTTP only for explicit loopback development hosts.
+        # Require HTTPS origins so saved configuration cannot weaken CSRF transport security.
         if csrf_trusted_origins:
             raw_entries = [
                 entry.strip()
@@ -1714,16 +1713,11 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
                 for entry in line.split(",")
                 if entry.strip()
             ]
-            bad_origins = [
-                origin
-                for origin in raw_entries
-                if (parsed := urlparse(origin)).scheme != "https"
-                and not (parsed.scheme == "http" and parsed.hostname in LOCAL_DEVELOPMENT_HOSTNAMES)
-            ]
+            bad_origins = [origin for origin in raw_entries if (parsed := urlparse(origin)).scheme != "https"]
             if bad_origins:
                 messages.error(
                     request,
-                    f"Invalid trusted origin(s): {', '.join(bad_origins)}. Use HTTPS, except for loopback development hosts.",
+                    f"Invalid trusted origin(s): {', '.join(bad_origins)}. Each entry must use HTTPS.",
                 )
                 return redirect("dashboard")
 

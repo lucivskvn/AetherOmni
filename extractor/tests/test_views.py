@@ -1978,11 +1978,11 @@ class ViewsExceptionPathsTestCase(TestCase):
         settings_obj = SystemSettings.get_settings()
         self.assertNotEqual(settings_obj.csrf_trusted_origins, "example.com, https://valid.com")
 
-        # Valid origins with http/https schemes (multiline and comma-separated)
+        # Valid HTTPS origins (multiline and comma-separated)
         response = self.client.post(
             reverse("save_settings"),
             {
-                "csrf_trusted_origins": "https://example.com, http://localhost:3000\nhttps://sub.domain.org",
+                "csrf_trusted_origins": "https://example.com, https://localhost:3000\nhttps://sub.domain.org",
                 "monthly_budget_usd": "25.00",
                 "currency": "USD",
                 "selected_model": "auto",
@@ -1992,7 +1992,7 @@ class ViewsExceptionPathsTestCase(TestCase):
         settings_obj = SystemSettings.get_settings()
         self.assertEqual(
             settings_obj.csrf_trusted_origins,
-            "https://example.com, http://localhost:3000\nhttps://sub.domain.org",
+            "https://example.com, https://localhost:3000\nhttps://sub.domain.org",
         )
 
     def test_document_retry_conflict_on_in_flight_document(self):
