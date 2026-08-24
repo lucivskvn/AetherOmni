@@ -310,6 +310,11 @@ If you need to manually initialize or verify the SurrealDB schema, run the follo
 
 GitHub Action dependencies are pinned to reviewed commit SHAs, preventing a mutable action tag from changing the deployment or quality-gate workflow unexpectedly.
 
+The PR lifecycle workflow uses the repository identity explicitly when it refreshes
+open branches after a `main` merge. It compares the PR base SHA to its target
+branch before updating, enables squash auto-merge only for a mergeable PR, and
+fails visibly if GitHub cannot refresh the branch or enable auto-merge.
+
 ```surrealql
 -- ── 1. documents ─────────────────────────────────────────────
 DEFINE TABLE IF NOT EXISTS documents SCHEMAFULL;

@@ -23,6 +23,7 @@ jobs:
       - name: Process Open PRs (Sync, Conflict Check, Auto-Merge)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           # 1. Resolve PR URL depending on trigger event (PR event vs main push event)
           if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "pull_request_review" ]]; then
@@ -38,8 +39,15 @@ jobs:
             echo "🔍 Processing PR #${PR}..."
 
             # 2. Automatically update branch from base (keeps PR branch synchronized with main)
-            echo "🔄 Synchronizing PR #${PR} with latest main..."
-            gh pr update-branch "$PR" 2>/dev/null || echo "ℹ️ Branch already up to date or has conflict."
+            BASE_REF=$(gh pr view "$PR" --json baseRefName --jq '.baseRefName')
+            PR_BASE_SHA=$(gh pr view "$PR" --json baseRefOid --jq '.baseRefOid')
+            BASE_SHA=$(gh api "repos/${GH_REPO}/git/ref/heads/${BASE_REF}" --jq '.object.sha')
+            if [[ "$PR_BASE_SHA" != "$BASE_SHA" ]]; then
+              echo "🔄 Synchronizing PR #${PR} with latest ${BASE_REF}..."
+              gh pr update-branch "$PR"
+            else
+              echo "ℹ️ PR #${PR} is already synchronized with ${BASE_REF}."
+            fi
 
             # 3. Check mergeable status & detect conflicts
             MERGEABLE_STATE=$(gh pr view "$PR" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")
@@ -48,10 +56,19 @@ jobs:
             if [[ "$MERGEABLE_STATE" == "CONFLICTING" ]]; then
               echo "⚠️ Merge conflict detected on PR #${PR}!"
               CONFLICT_MSG="⚠️ **Merge Conflict Detected**: This branch has merge conflicts with \`main\`. Please rebase against latest \`main\` to resume automated checks."
-              gh pr comment "$PR" --body "$CONFLICT_MSG" 2>/dev/null || true
+              gh pr comment "$PR" --body "$CONFLICT_MSG"
+              exit 1
+            elif [[ "$MERGEABLE_STATE" != "MERGEABLE" ]]; then
+              echo "::error title=PR mergeability::PR #${PR} is ${MERGEABLE_STATE}; refusing to enable auto-merge."
+              exit 1
             else
               # 4. Enable automatic squash-merge with remote branch deletion upon green checks
-              echo "✅ Enabling Auto-Merge & Auto-Branch-Deletion on PR #${PR}..."
-              gh pr merge "$PR" --auto --squash --delete-branch 2>/dev/null || true
+              AUTO_MERGE_ENABLED=$(gh pr view "$PR" --json autoMergeRequest --jq '.autoMergeRequest != null')
+              if [[ "$AUTO_MERGE_ENABLED" == "true" ]]; then
+                echo "ℹ️ Auto-merge is already enabled for PR #${PR}."
+              else
+                echo "✅ Enabling Auto-Merge & Auto-Branch-Deletion on PR #${PR}..."
+                gh pr merge "$PR" --auto --squash --delete-branch
+              fi
             fi
           done
