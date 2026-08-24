@@ -523,12 +523,20 @@ def render_markdown_to_html(markdown_text: str) -> str:
 
 def _build_yaml_frontmatter(doc: Any) -> str:
     """Build a YAML frontmatter header for export markdown files."""
+    publisher = _get_doc_field_str(doc, "publisher")
+    publication_year = _get_doc_field_str(doc, "publication_year")
+    doi = _get_doc_field_str(doc, "doi")
+    license_type = _get_doc_field_str(doc, "license_type")
     return (
         "---\n"
         f'title: "{doc.title}"\n'
         f'author: "{doc.author}"\n'
         f'language: "{doc.language}"\n'
         f'document_type: "{doc.document_type}"\n'
+        f'publisher: "{publisher}"\n'
+        f'publication_year: "{publication_year}"\n'
+        f'doi: "{doi}"\n'
+        f'license_type: "{license_type}"\n'
         f'source_hash: "{doc.file_hash}"\n'
         f'exported_at: "{datetime.now(UTC).isoformat()}"\n'
         "---\n\n"
@@ -543,6 +551,54 @@ class ZipExportContext:
     master_content: list[str]
     zip_file: zipfile.ZipFile
     include_taxonomic_views: bool = True
+
+
+def _write_taxonomic_views(
+    base_slug: str, clean_lang: str, clean_author: str, full_content: str, ctx: ZipExportContext
+):
+    """Helper to write duplicate organized views by language and author."""
+    lang_slug = f"{base_slug}.md"
+    lang_path = f"Language/{clean_lang}/{lang_slug}"
+    counter = 1
+    while lang_path in ctx.seen_lang_paths:
+        counter += 1
+        lang_slug = f"{base_slug}_{counter}.md"
+        lang_path = f"Language/{clean_lang}/{lang_slug}"
+    ctx.seen_lang_paths.add(lang_path)
+
+    author_slug = f"{base_slug}.md"
+    author_path = f"Author/{clean_author}/{author_slug}"
+    counter = 1
+    while author_path in ctx.seen_author_paths:
+        counter += 1
+        author_slug = f"{base_slug}_{counter}.md"
+        author_path = f"Author/{clean_author}/{author_slug}"
+    ctx.seen_author_paths.add(author_path)
+
+    ctx.zip_file.writestr(lang_path, full_content)
+    ctx.zip_file.writestr(author_path, full_content)
+
+
+def _append_master_source_block(idx: int, doc: Any, doc_type: str, doc_markdown: str, ctx: ZipExportContext):
+    """Helper to append structured markdown source section to master document."""
+    ctx.master_content.append(
+        f"<!-- SOURCE_START_{idx + 1}: {doc.title} by {doc.author} ({doc.language}) [Type: {doc_type}, Hash: {doc.file_hash}] -->"
+    )
+    ctx.master_content.append(f"\n# SOURCE: {doc.title}\n")
+    ctx.master_content.append(f"**Author:** {doc.author}  ")
+    ctx.master_content.append(f"**Language:** {doc.language}  ")
+    ctx.master_content.append(f"**Document Type:** {doc_type}  ")
+    if _get_doc_field_str(doc, "publisher"):
+        ctx.master_content.append(f"**Publisher:** {_get_doc_field_str(doc, 'publisher')}  ")
+    if _get_doc_field_str(doc, "publication_year"):
+        ctx.master_content.append(f"**Publication Year:** {_get_doc_field_str(doc, 'publication_year')}  ")
+    if _get_doc_field_str(doc, "doi"):
+        ctx.master_content.append(f"**DOI:** {_get_doc_field_str(doc, 'doi')}  ")
+    if _get_doc_field_str(doc, "license_type"):
+        ctx.master_content.append(f"**License:** {_get_doc_field_str(doc, 'license_type')}  ")
+    ctx.master_content.append("\n")
+    ctx.master_content.append(doc_markdown)
+    ctx.master_content.append(f"\n<!-- SOURCE_END_{idx + 1} -->\n\n---\n")
 
 
 def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
@@ -565,26 +621,7 @@ def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
     ctx.zip_file.writestr(doc_path, full_content)
 
     if ctx.include_taxonomic_views:
-        lang_slug = f"{base_slug}.md"
-        lang_path = f"Language/{clean_lang}/{lang_slug}"
-        counter = 1
-        while lang_path in ctx.seen_lang_paths:
-            counter += 1
-            lang_slug = f"{base_slug}_{counter}.md"
-            lang_path = f"Language/{clean_lang}/{lang_slug}"
-        ctx.seen_lang_paths.add(lang_path)
-
-        author_slug = f"{base_slug}.md"
-        author_path = f"Author/{clean_author}/{author_slug}"
-        counter = 1
-        while author_path in ctx.seen_author_paths:
-            counter += 1
-            author_slug = f"{base_slug}_{counter}.md"
-            author_path = f"Author/{clean_author}/{author_slug}"
-        ctx.seen_author_paths.add(author_path)
-
-        ctx.zip_file.writestr(lang_path, full_content)
-        ctx.zip_file.writestr(author_path, full_content)
+        _write_taxonomic_views(base_slug, clean_lang, clean_author, full_content, ctx)
 
     ctx.manifest["documents"].append(
         {
@@ -594,22 +631,18 @@ def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
             "author": doc.author,
             "language": doc.language,
             "type": doc_type,
-            "page_count": doc.page_count,
-            "cost_usd": float(doc.cost_usd),
+            "publisher": _get_doc_field_str(doc, "publisher"),
+            "publication_year": _get_doc_field_str(doc, "publication_year"),
+            "doi": _get_doc_field_str(doc, "doi"),
+            "license_type": _get_doc_field_str(doc, "license_type"),
+            "page_count": int(getattr(doc, "page_count", 1) or 1),
+            "cost_usd": float(getattr(doc, "cost_usd", 0.0) or 0.0),
             "hash": doc.file_hash,
             "export_path": doc_path,
         }
     )
 
-    ctx.master_content.append(
-        f"<!-- SOURCE_START_{idx + 1}: {doc.title} by {doc.author} ({doc.language}) [Type: {doc_type}, Hash: {doc.file_hash}] -->"
-    )
-    ctx.master_content.append(f"\n# SOURCE: {doc.title}\n")
-    ctx.master_content.append(f"**Author:** {doc.author}  ")
-    ctx.master_content.append(f"**Language:** {doc.language}  ")
-    ctx.master_content.append(f"**Document Type:** {doc_type}\n")
-    ctx.master_content.append(doc_markdown)
-    ctx.master_content.append(f"\n<!-- SOURCE_END_{idx + 1} -->\n\n---\n")
+    _append_master_source_block(idx, doc, doc_type, doc_markdown, ctx)
 
 
 def _get_offline_docs(document_ids, user):
@@ -714,8 +747,10 @@ def generate_curated_zip_bundle(
     return zip_buffer.getvalue()
 
 
-def _build_sft_pair(doc_info: tuple[str, str, str, str], chunk_item: dict[str, Any]) -> dict[str, Any] | None:
-    doc_uuid, title, author, language = doc_info
+def _build_sft_pair(
+    doc_info: tuple[str, str, str, str, str, str, str, str], chunk_item: dict[str, Any]
+) -> dict[str, Any] | None:
+    doc_uuid, title, author, language, publisher, publication_year, doi, license_type = doc_info
     chunk_content = str(chunk_item.get("content") or "")
     if not chunk_content.strip():
         return None
@@ -747,6 +782,10 @@ def _build_sft_pair(doc_info: tuple[str, str, str, str], chunk_item: dict[str, A
             "title": title,
             "author": author,
             "language": language,
+            "publisher": publisher,
+            "publication_year": publication_year,
+            "doi": doi,
+            "license_type": license_type,
             "page_number": page,
             "chapter_title": chapter,
             "anchor_id": anchor,
@@ -795,6 +834,10 @@ def _collect_pairs_for_document(doc, limit: int, current_count: int) -> list[dic
         getattr(doc, "title", None) or "Document",
         getattr(doc, "author", None) or "Author",
         getattr(doc, "language", None) or "en",
+        _get_doc_field_str(doc, "publisher"),
+        _get_doc_field_str(doc, "publication_year"),
+        _get_doc_field_str(doc, "doi"),
+        _get_doc_field_str(doc, "license_type"),
     )
     doc_pairs: list[dict[str, Any]] = []
     chunks = _get_doc_chunks(doc, doc_uuid, limit)
@@ -823,6 +866,9 @@ def generate_sft_dataset_pairs(
         docs_list = _get_offline_docs(document_ids, user)
     else:
         docs_list = _get_surreal_docs(document_ids, user, actor_id=actor_id)
+
+    if not docs_list:
+        raise ValueError(NO_COMPLETED_DOCS_MSG)
 
     pairs: list[dict[str, Any]] = []
     for doc in docs_list:

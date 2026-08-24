@@ -35,6 +35,7 @@ urlpatterns = [
     path("bulk-action/", views.BulkDocumentActionView.as_view(), name="bulk_action"),
     path("save-settings/", views.SaveSettingsView.as_view(), name="save_settings"),
     path("api/documents/status/", views.DocumentStatusAPIView.as_view(), name="document_status_api"),
+    path("api/v1/stream-query/", views.StreamQueryRAGView.as_view(), name="stream_query_rag"),
     path("deployment-controller/", views.DeploymentControllerView.as_view(), name="deployment_controller"),
     path(
         "password-change/",

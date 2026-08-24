@@ -334,3 +334,25 @@ class CleanupExpiredDocumentsTestCase(TestCase):
         self.assertIsNone(res)
         # Budget check shouldn't even be reached if document cannot be claimed
         mock_budget.assert_not_called()
+
+    @patch("extractor.tasks._run_stage1")
+    @patch("extractor.tasks._run_stage2")
+    @patch("extractor.tasks._run_stage3")
+    @patch("extractor.surreal_db.get_document")
+    def test_pipeline_aborts_when_cancelled_or_deleted(self, mock_get_doc, mock_s3, mock_s2, mock_s1):
+        from extractor.tasks import _run_pipeline_stages
+
+        mock_s1.return_value = {"doc_uuid": "doc-123", "raw_markdown": "# Stage 1 text"}
+        # Simulate document was cancelled (status=FAILED) right after Stage 1
+        mock_get_doc.side_effect = [
+            {"doc_uuid": "doc-123", "status": "EXTRACTING"},  # pre-stage 1 check
+            {"doc_uuid": "doc-123", "status": "FAILED"},  # post-stage 1 check
+        ]
+
+        success = _run_pipeline_stages(
+            {"doc_uuid": "doc-123", "original_filename": "test.pdf"}, "/tmp/test.pdf", "doc-123"
+        )
+        self.assertFalse(success)
+        mock_s1.assert_called_once()
+        mock_s2.assert_not_called()
+        mock_s3.assert_not_called()

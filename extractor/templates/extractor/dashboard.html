@@ -83,11 +83,11 @@
         <div class="glass-card padding-lg">
             <form id="upload-form" action="{% url 'upload_document' %}" method="post" enctype="multipart/form-data">
                 {% csrf_token %}
-                <input type="file" id="file-input" name="file" accept=".pdf,.png,.jpg,.jpeg,.csv,.txt" class="visually-hidden" multiple aria-label="Upload files">
+                <input type="file" id="file-input" name="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.tiff,.heic,.heif,.csv,.txt,.md,.markdown,.json,.docx,.doc,.xlsx,.xls" class="visually-hidden" multiple aria-label="Upload files">
                 <button type="button" id="drop-zone" class="upload-zone" aria-label="Ingest and upload documents and files">
                     <i data-lucide="cloud-lightning"></i>
                     <div class="upload-title">Ingest Documents & Files</div>
-                    <div class="upload-subtitle">Drag & drop files or click here to upload (Supports batch uploads of PDF, JPEG, PNG, CSV, TXT up to 30MB)</div>
+                    <div class="upload-subtitle">Drag & drop files or click here to upload (Supports batch uploads of PDF, Images, Markdown, Text, CSV, JSON, Word, Excel up to 30MB)</div>
                 </button>
             </form>
         </div>
@@ -170,12 +170,10 @@
                                 {% for d in documents %}
                                 <tr data-doc-id="{{ d.obj.id }}" data-status="{{ d.obj.status }}">
                                     <td>
-                                        {% if d.obj.status == 'COMPLETED' or d.obj.status == 'FAILED' or d.obj.status == 'PENDING' %}
                                         <label class="custom-checkbox" for="chk-doc-{{ d.obj.id }}">
                                             <input type="checkbox" id="chk-doc-{{ d.obj.id }}" name="selected_documents" value="{{ d.obj.id }}" class="doc-selector visually-hidden" aria-label="Select {{ d.obj.title }}" data-status="{{ d.obj.status }}">
                                             <span class="checkmark"></span>
                                         </label>
-                                        {% endif %}
                                     </td>
                                     <td>
                                         <div class="doc-title-cell">

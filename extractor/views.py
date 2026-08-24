@@ -7,13 +7,14 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db import transaction  # noqa: F401
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -144,6 +145,25 @@ def format_datetime(dt):
     return dt.strftime(ISO_8601_FORMAT)
 
 
+def _extract_clean_doc_uuid(doc_or_id: Any) -> str:
+    """Safely extract clean UUID string from dict, model, RecordID, or prefixed string."""
+    if not doc_or_id:
+        return ""
+    if hasattr(doc_or_id, "uuid"):
+        raw = str(doc_or_id.uuid)
+    elif hasattr(doc_or_id, "doc_uuid"):
+        raw = str(doc_or_id.doc_uuid)
+    elif hasattr(doc_or_id, "id"):
+        raw = str(doc_or_id.id)
+    elif isinstance(doc_or_id, dict):
+        raw = str(doc_or_id.get("doc_uuid") or doc_or_id.get("uuid") or doc_or_id.get("id") or "")
+    else:
+        raw = str(doc_or_id).strip()
+    if ":" in raw:
+        raw = raw.split(":", 1)[1]
+    return raw.strip()
+
+
 def _build_users_map(user_ids=None, fallback_user=None) -> dict:
     """
     Build a mapping of {str(user_id): user_obj} targeting only requested user_ids
@@ -226,6 +246,7 @@ def _wrap_surreal_doc(d, users_map=None):
 from extractor.utils import (
     APPLICATION_JSON,
     KNATIVE_MIN_SCALE,
+    broadcast_status_change,
     calculate_file_sha256,
     clean_html_content,
     format_localized_cost,
@@ -573,12 +594,21 @@ def _find_existing_doc_by_hash(file_hash: str, user_id: str | None = None) -> di
     return existing_doc
 
 
+def _get_dedup_field(existing_doc: Any, field_name: str, default: Any = None) -> Any:
+    """Helper to extract field values from either an ORM model or dict."""
+    if hasattr(existing_doc, field_name):
+        return getattr(existing_doc, field_name)
+    if isinstance(existing_doc, dict):
+        return existing_doc.get(field_name, default)
+    return default
+
+
 def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: str) -> dict[str, str]:
     import uuid
 
     ip = get_client_ip(request)
     new_uuid = str(uuid.uuid4())
-    file_path = existing_doc.file if hasattr(existing_doc, "file") else existing_doc.get("file")
+    file_path = _get_dedup_field(existing_doc, "file")
 
     data = {
         "doc_uuid": new_uuid,
@@ -587,31 +617,21 @@ def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: st
         "file_hash": file_hash,
         "status": "COMPLETED",
         "uploaded_by_id": get_request_actor_id(request),
-        "language": existing_doc.language if hasattr(existing_doc, "language") else existing_doc.get("language"),
-        "author": existing_doc.author if hasattr(existing_doc, "author") else existing_doc.get("author"),
-        "title": existing_doc.title if hasattr(existing_doc, "title") else existing_doc.get("title"),
-        "document_type": existing_doc.document_type
-        if hasattr(existing_doc, "document_type")
-        else existing_doc.get("document_type"),
-        "page_count": existing_doc.page_count
-        if hasattr(existing_doc, "page_count")
-        else existing_doc.get("page_count", 0),
-        "raw_markdown": existing_doc.raw_markdown
-        if hasattr(existing_doc, "raw_markdown")
-        else existing_doc.get("raw_markdown"),
-        "refined_markdown": existing_doc.refined_markdown
-        if hasattr(existing_doc, "refined_markdown")
-        else existing_doc.get("refined_markdown"),
-        "yaml_metadata": existing_doc.yaml_metadata
-        if hasattr(existing_doc, "yaml_metadata")
-        else existing_doc.get("yaml_metadata"),
-        "qa_dataset": existing_doc.qa_dataset
-        if hasattr(existing_doc, "qa_dataset")
-        else existing_doc.get("qa_dataset"),
+        "language": _get_dedup_field(existing_doc, "language"),
+        "author": _get_dedup_field(existing_doc, "author"),
+        "title": _get_dedup_field(existing_doc, "title"),
+        "publisher": _get_dedup_field(existing_doc, "publisher"),
+        "publication_year": _get_dedup_field(existing_doc, "publication_year"),
+        "license_type": _get_dedup_field(existing_doc, "license_type"),
+        "doi": _get_dedup_field(existing_doc, "doi"),
+        "document_type": _get_dedup_field(existing_doc, "document_type"),
+        "page_count": _get_dedup_field(existing_doc, "page_count", 0),
+        "raw_markdown": _get_dedup_field(existing_doc, "raw_markdown"),
+        "refined_markdown": _get_dedup_field(existing_doc, "refined_markdown"),
+        "yaml_metadata": _get_dedup_field(existing_doc, "yaml_metadata"),
+        "qa_dataset": _get_dedup_field(existing_doc, "qa_dataset"),
         "cost_usd": 0.0,
-        "semantic_signature": existing_doc.semantic_signature
-        if hasattr(existing_doc, "semantic_signature")
-        else existing_doc.get("semantic_signature"),
+        "semantic_signature": _get_dedup_field(existing_doc, "semantic_signature"),
         "retry_count": 0,
         "created_at": format_datetime(timezone.now()),
         "updated_at": format_datetime(timezone.now()),
@@ -622,9 +642,9 @@ def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: st
     doc = surreal_db.create_document(data)
 
     try:
-        surreal_db.clone_chunks(
-            str(existing_doc.uuid if hasattr(existing_doc, "uuid") else existing_doc.get("doc_uuid")), new_uuid
-        )
+        source_doc_uuid = _extract_clean_doc_uuid(existing_doc)
+        if source_doc_uuid:
+            surreal_db.clone_chunks(source_doc_uuid, new_uuid)
     except Exception as clone_err:
         logger.warning("[Upload] SurrealDB chunk clone failed: %s", clone_err)
 
@@ -635,6 +655,7 @@ def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: st
         document=doc,
         ip=ip,
     )
+    broadcast_status_change(new_uuid, "COMPLETED")
     return {"status": "cached", "name": orig_name}
 
 
@@ -650,7 +671,7 @@ def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
             "error": f"Maximum retry limit of 3 exceeded for file '{orig_name}'.",
         }
 
-    doc_uuid = existing_doc.uuid if hasattr(existing_doc, "uuid") else existing_doc.get("doc_uuid")
+    doc_uuid = _extract_clean_doc_uuid(existing_doc)
     doc_ref = surreal_db.update_document(
         doc_uuid,
         {
@@ -676,6 +697,7 @@ def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
         cloud_tasks.enqueue("process_document", {"document_id": doc_id})
     else:
         cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+    broadcast_status_change(str(doc_uuid), "PENDING")
     return {"status": "success", "name": f"{orig_name} (re-enqueued)"}
 
 
@@ -927,6 +949,10 @@ class DocumentSaveView(LoginRequiredMixin, View):
         new_title = request.POST.get("title")
         new_author = request.POST.get("author")
         new_language = request.POST.get("language")
+        new_publisher = request.POST.get("publisher")
+        new_publication_year = request.POST.get("publication_year")
+        new_license_type = request.POST.get("license_type")
+        new_doi = request.POST.get("doi")
 
         # Sanitize HTML elements safely
         sanitized_markdown = clean_html_content(new_markdown)
@@ -941,6 +967,14 @@ class DocumentSaveView(LoginRequiredMixin, View):
             payload["author"] = new_author.strip()
         if new_language is not None:
             payload["language"] = new_language.strip()
+        if new_publisher is not None:
+            payload["publisher"] = new_publisher.strip()
+        if new_publication_year is not None:
+            payload["publication_year"] = new_publication_year.strip()
+        if new_license_type is not None:
+            payload["license_type"] = new_license_type.strip()
+        if new_doi is not None:
+            payload["doi"] = new_doi.strip()
 
         doc_ref = surreal_db.update_document(doc_uuid, payload)
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
@@ -962,6 +996,7 @@ class DocumentSaveView(LoginRequiredMixin, View):
             cloud_tasks.enqueue("reembed_document", {"document_id": doc_id})
         else:
             cloud_tasks.enqueue("reembed_document", {"document_uuid": doc_uuid})
+        broadcast_status_change(str(doc_uuid), "EMBEDDING")
 
         messages.success(request, "Changes saved and re-indexing queued successfully!")
         return redirect("document_detail", doc_uuid=doc_uuid)
@@ -976,15 +1011,24 @@ class DocumentDeleteView(LoginRequiredMixin, View):
 
     def _count_shared_references(self, doc_uuid, file_hash):
         from django.conf import settings
+        from django.db.models import Q
 
         if getattr(settings, "SURREALDB_OFFLINE", False):
             from extractor.models import SourceDocument
 
-            return SourceDocument.objects.filter(file_hash=file_hash).exclude(uuid=doc_uuid).count()
+            try:
+                int_id = int(doc_uuid)
+                return (
+                    SourceDocument.objects.filter(file_hash=file_hash)
+                    .exclude(Q(id=int_id) | Q(uuid=str(doc_uuid)))
+                    .count()
+                )
+            except (ValueError, TypeError):
+                return SourceDocument.objects.filter(file_hash=file_hash).exclude(uuid=str(doc_uuid)).count()
 
         sql = "SELECT doc_uuid FROM documents WHERE file_hash = $file_hash;"
         rows = surreal_db._first_result(surreal_db._run(sql, {"file_hash": file_hash}))
-        other_uuids = [r["doc_uuid"] for r in rows if r["doc_uuid"] != doc_uuid]
+        other_uuids = [r["doc_uuid"] for r in rows if str(r.get("doc_uuid")) != str(doc_uuid)]
         return len(other_uuids)
 
     def post(self, request, doc_uuid):
@@ -1025,6 +1069,19 @@ class DocumentDeleteView(LoginRequiredMixin, View):
             except Exception as e:
                 logger.warning("[De-duplication Delete] Failed to physically delete file for hash %s: %s", file_hash, e)
 
+        # If document is actively processing, transition to FAILED so in-flight worker immediately aborts
+        if getattr(doc, "status", None) in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
+            try:
+                surreal_db.update_document(
+                    doc_uuid,
+                    {"status": "FAILED", "error_message": "Document deleted while processing was in-flight."},
+                )
+                broadcast_status_change(str(doc_uuid), "FAILED")
+            except Exception as abort_err:
+                logger.debug(
+                    "[Document Delete] Could not set FAILED state on in-flight doc %s: %s", doc_uuid, abort_err
+                )
+
         # Delete from SurrealDB: cascades chunk deletion
         surreal_db.delete_document(doc_uuid)
 
@@ -1051,17 +1108,9 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
     def test_func(self):
         return self.request.user.is_superuser or self.request.user.is_staff
 
-    def post(self, request):
-        raw_docs = surreal_db.list_documents()
-        ip = get_client_ip(request)
-
-        _record_view_audit(
-            request,
-            AuditAction.PURGE_ALL,
-            f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
-            ip=ip,
-        )
-
+    @staticmethod
+    def _delete_physical_files(raw_docs):
+        """Delete the physical file on storage for each document record."""
         from django.core.files.storage import default_storage
 
         for doc in raw_docs:
@@ -1073,14 +1122,44 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
                 except Exception as e:
                     logger.warning("[Purge All] Failed to delete file for %s: %s", doc.get("title"), e)
 
-        # Flush SurrealDB entirely to delete any leftover chunks, metadata, caches
+    @staticmethod
+    def _abort_inflight_docs(raw_docs):
+        """Broadcast FAILED to any in-flight workers before wiping SurrealDB."""
+        _IN_FLIGHT = {"PENDING", "EXTRACTING", "REFINING", "EMBEDDING"}
+        for doc in raw_docs:
+            if doc.get("status", "") not in _IN_FLIGHT:
+                continue
+            doc_uuid = doc.get("doc_uuid") or doc.get("id")
+            if not doc_uuid:
+                continue
+            try:
+                surreal_db.update_document(doc_uuid, {"status": "FAILED", "error_message": "Purged by administrator."})
+                broadcast_status_change(str(doc_uuid), "FAILED")
+            except Exception as abort_err:
+                logger.debug("[Purge All] Could not abort in-flight doc %s: %s", doc_uuid, abort_err)
+
+    def post(self, request):
+        raw_docs = surreal_db.list_documents()
+        ip = get_client_ip(request)
+
+        _record_view_audit(
+            request,
+            AuditAction.PURGE_ALL,
+            f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
+            ip=ip,
+        )
+
+        self._delete_physical_files(raw_docs)
+        self._abort_inflight_docs(raw_docs)
+
         try:
             surreal_db.purge_all()
         except Exception as exc:
             logger.warning("[Purge All] Failed to flush SurrealDB database: %s", exc)
 
-        # Delete all chunks JSON files in storage
         try:
+            from django.core.files.storage import default_storage
+
             _dirs, files = default_storage.listdir("chunks")
             for f in files:
                 default_storage.delete(f"chunks/{f}")
@@ -1124,6 +1203,8 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
         for i in document_ids_str.split(","):
             i_clean = i.strip()
             if i_clean:
+                if ":" in i_clean:
+                    i_clean = i_clean.split(":", 1)[1]
                 try:
                     document_ids.append(int(i_clean))
                 except ValueError:
@@ -1359,12 +1440,19 @@ class ExportCsvView(LoginRequiredMixin, View):
 
 
 def _restart_single_document(doc, request, cloud_tasks):
-    doc_uuid_val = doc.get("doc_uuid") or doc.get("uuid") or str(doc.get("id"))
-    if isinstance(doc_uuid_val, str) and ":" in doc_uuid_val:
-        doc_uuid_val = doc_uuid_val.split(":", 1)[1]
-    doc_uuid = str(doc_uuid_val)
-    uploaded_by_id = doc.get("uploaded_by_id")
-    if not (request.user.is_staff or request.user.is_superuser or str(uploaded_by_id) == get_request_actor_id(request)):
+    doc_uuid = _extract_clean_doc_uuid(doc)
+    if not doc_uuid:
+        return False
+    uploaded_by_id = str(doc.get("uploaded_by_id") or "")
+    actor_id = get_request_actor_id(request)
+    is_authorized = (
+        request.user.is_staff
+        or request.user.is_superuser
+        or not uploaded_by_id
+        or uploaded_by_id == actor_id
+        or (hasattr(request.user, "id") and uploaded_by_id == str(request.user.id))
+    )
+    if not is_authorized:
         return False
 
     status = doc.get("status")
@@ -1373,10 +1461,14 @@ def _restart_single_document(doc, request, cloud_tasks):
             doc_uuid,
             {
                 "status": "PENDING",
+                "cost_usd": 0.0,
+                "input_tokens": 0,
+                "output_tokens": 0,
                 "retry_count": 0,
                 "error_message": "",
             },
         )
+
         from django.conf import settings
 
         if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -1384,6 +1476,14 @@ def _restart_single_document(doc, request, cloud_tasks):
             cloud_tasks.enqueue("process_document", {"document_id": doc_id})
         else:
             cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+        broadcast_status_change(doc_uuid, "PENDING")
+
+        doc_title = doc.get("title") or doc.get("original_filename") or doc_uuid
+        _record_view_audit(
+            request,
+            AuditAction.DOCUMENT_REQUEUED,
+            f"User re-enqueued pipeline processing for document '{doc_title}'.",
+        )
         return True
     return False
 
@@ -1392,7 +1492,8 @@ def _handle_bulk_restart(request, document_ids):
     from extractor import cloud_tasks
 
     restarted_count = 0
-    docs = surreal_db.get_documents(document_ids)
+    clean_ids = [_extract_clean_doc_uuid(i) for i in document_ids if i]
+    docs = surreal_db.get_documents(clean_ids)
     for doc in docs:
         if _restart_single_document(doc, request, cloud_tasks):
             restarted_count += 1
@@ -1403,7 +1504,7 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
     file_hash = doc.file_hash
     orig_name = doc.original_filename
     file_rel_path = doc.file
-    doc_uuid = doc.uuid
+    doc_uuid = _extract_clean_doc_uuid(doc)
 
     total_refs = hash_ref_counts.get(file_hash, 0)
     shared_references = max(0, total_refs - 1)
@@ -1427,34 +1528,70 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
         except Exception as e:
             logger.warning("[Bulk Delete] Failed to physically delete file: %s", e)
 
+    # If document is actively processing, transition to FAILED so in-flight worker immediately aborts
+    if getattr(doc, "status", None) in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
+        try:
+            surreal_db.update_document(
+                doc_uuid,
+                {"status": "FAILED", "error_message": "Document deleted while processing was in-flight."},
+            )
+            broadcast_status_change(str(doc_uuid), "FAILED")
+        except Exception as abort_err:
+            logger.debug("[Bulk Delete] Could not set FAILED state on in-flight doc %s: %s", doc_uuid, abort_err)
+
     surreal_db.delete_document(doc_uuid)
+
+
+def _get_offline_docs_for_delete(request, document_ids):
+    from django.db.models import Q
+
+    from extractor.models import SourceDocument
+
+    int_ids = []
+    uuid_strs = []
+    for item in document_ids:
+        try:
+            int_ids.append(int(item))
+        except (ValueError, TypeError):
+            clean_str = _extract_clean_doc_uuid(item)
+            if clean_str:
+                uuid_strs.append(clean_str)
+
+    qs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs))
+    if not (request.user.is_staff or request.user.is_superuser):
+        qs = qs.filter(Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True))
+    return list(qs)
+
+
+def _get_surreal_docs_for_delete(request, document_ids, users_map=None):
+    clean_ids = [_extract_clean_doc_uuid(i) for i in document_ids if i]
+    raw_docs = surreal_db.get_documents(clean_ids)
+    if users_map is None:
+        user_ids = {d.get("uploaded_by_id") for d in raw_docs if d and d.get("uploaded_by_id")}
+        users_map = _build_users_map(user_ids, fallback_user=request.user)
+    docs = []
+    actor_id = get_request_actor_id(request)
+    for raw_doc in raw_docs:
+        uploaded_by_id = str(raw_doc.get("uploaded_by_id") or "")
+        is_authorized = (
+            request.user.is_staff
+            or request.user.is_superuser
+            or not uploaded_by_id
+            or uploaded_by_id == actor_id
+            or (hasattr(request.user, "id") and uploaded_by_id == str(request.user.id))
+        )
+        if not is_authorized:
+            continue
+        docs.append(_wrap_surreal_doc(raw_doc, users_map))
+    return docs
 
 
 def _get_docs_for_delete(request, document_ids, users_map=None):
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        from extractor.models import SourceDocument
-
-        # Optimization: retrieve all records in a single SELECT query during tests
-        if request.user.is_staff or request.user.is_superuser:
-            return list(SourceDocument.objects.filter(id__in=document_ids))
-        else:
-            return list(SourceDocument.objects.filter(id__in=document_ids, uploaded_by=request.user))
-    else:
-        raw_docs = surreal_db.get_documents(document_ids)
-        if users_map is None:
-            user_ids = {d.get("uploaded_by_id") for d in raw_docs if d and d.get("uploaded_by_id")}
-            users_map = _build_users_map(user_ids, fallback_user=request.user)
-        docs = []
-        for raw_doc in raw_docs:
-            uploaded_by_id = raw_doc.get("uploaded_by_id")
-            if not (
-                request.user.is_staff or request.user.is_superuser or uploaded_by_id == get_request_actor_id(request)
-            ):
-                continue
-            docs.append(_wrap_surreal_doc(raw_doc, users_map))
-        return docs
+        return _get_offline_docs_for_delete(request, document_ids)
+    return _get_surreal_docs_for_delete(request, document_ids, users_map=users_map)
 
 
 def _get_hash_ref_counts(file_hashes):
@@ -1537,20 +1674,21 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
         csrf_trusted_origins = request.POST.get("csrf_trusted_origins", "").strip()
         openrouter_api_key = request.POST.get("openrouter_api_key", "").strip()
 
+        from extractor.llm_gateway import KNOWN_GEMINI_MODELS
+
         # Strict validation whitelist for SystemSettings selected_model to prevent unauthorized/expensive models
-        ALLOWED_MODELS = {
-            "auto",
-            "openrouter/free",
-            "openrouter/auto",
-            "google/gemini-2.5-flash",
-            "google/gemini-2.5-flash-lite",
-            "google/gemini-3.5-flash",
-            "google/gemini-3.1-flash-lite",
-            "google/gemini-3.1-flash",
-            "meta-llama/llama-3-8b-instruct:free",
-            "google/gemma-2-9b-it:free",
-            "qwen/qwen-2-7b-instruct:free",
-        }
+        ALLOWED_MODELS = (
+            {
+                "auto",
+                "openrouter/free",
+                "openrouter/auto",
+                "meta-llama/llama-3-8b-instruct:free",
+                "google/gemma-2-9b-it:free",
+                "qwen/qwen-2-7b-instruct:free",
+            }
+            | KNOWN_GEMINI_MODELS
+            | {f"google/{m}" for m in KNOWN_GEMINI_MODELS}
+        )
         if selected_model not in ALLOWED_MODELS:
             messages.error(request, "Invalid model selection.")
             return redirect("dashboard")
@@ -1566,6 +1704,22 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
         except (ValueError, ArithmeticError):
             messages.error(request, "Invalid budget value provided. Must be a valid positive number.")
             return redirect("dashboard")
+
+        # Require HTTPS origins so saved configuration cannot weaken CSRF transport security.
+        if csrf_trusted_origins:
+            raw_entries = [
+                entry.strip()
+                for line in csrf_trusted_origins.splitlines()
+                for entry in line.split(",")
+                if entry.strip()
+            ]
+            bad_origins = [origin for origin in raw_entries if (parsed := urlparse(origin)).scheme != "https"]
+            if bad_origins:
+                messages.error(
+                    request,
+                    f"Invalid trusted origin(s): {', '.join(bad_origins)}. Each entry must use HTTPS.",
+                )
+                return redirect("dashboard")
 
         payload = {
             "monthly_budget_usd": float(budget_val),
@@ -1606,7 +1760,7 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
                     "status": d.status,
                     "status_display": d.status.title() if d.status else "Unknown",
                     "title": d.title,
-                    "cost_usd": float(d.cost_usd),
+                    "cost_usd": float(round(d.cost_usd, 6)),
                     "formatted_cost": format_localized_cost(d.cost_usd, stats["currency_details"]),
                     "input_tokens": d.input_tokens,
                     "output_tokens": d.output_tokens,
@@ -1632,7 +1786,7 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
                 "total_tokens": stats["total_tokens_spent"],
                 "prompt_tokens": stats["prompt_tokens"],
                 "candidates_tokens": stats["candidates_tokens"],
-                "monthly_spent": float(stats["monthly_spent"]),
+                "monthly_spent": float(round(stats["monthly_spent"], 6)),
                 "formatted_monthly_spent": stats["formatted_monthly_spent"],
                 "formatted_total_spent": stats["formatted_total_spent"],
                 "formatted_budget_cap": stats["formatted_budget_cap"],
@@ -1660,6 +1814,12 @@ class DocumentRetryView(LoginRequiredMixin, View):
         )
         if not (request.user.is_staff or request.user.is_superuser or is_owner):
             return "Permission denied to retry this document.", 403
+
+        # Refuse to re-queue a document that is already actively processing — two concurrent
+        # workers on the same document would race and corrupt its pipeline state.
+        _IN_FLIGHT = {"PENDING", "EXTRACTING", "REFINING", "EMBEDDING"}
+        if doc.status in _IN_FLIGHT:
+            return "Document is currently being processed. Stop it first before retrying.", 409
 
         is_restart = doc.status == "COMPLETED"
         retry_cnt = doc.retry_count
@@ -1728,6 +1888,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
 
         self._requeue_document_task(doc_wrapped, doc_uuid, request)
+        broadcast_status_change(str(doc_uuid), "PENDING")
 
         if is_ajax:
             return JsonResponse({"status": "success", "message": "Curation pipeline re-enqueued."})
@@ -1769,6 +1930,7 @@ class DocumentCancelView(LoginRequiredMixin, View):
                 "updated_at": format_datetime(timezone.now()),
             },
         )
+        broadcast_status_change(str(doc_uuid), "FAILED")
 
         _record_view_audit(
             request,
@@ -1896,10 +2058,13 @@ def _filter_audit_logs(logs, is_staff_or_superuser, action_filter, user_query, s
         logs = [
             log_item
             for log_item in logs
-            if sq in log_item.details.lower()
-            or sq in log_item.ip_address.lower()
+            if sq in (log_item.details or "").lower()
+            or sq in (log_item.ip_address or "").lower()
             or (log_item.document and sq in getattr(log_item.document, "original_filename", "").lower())
             or (log_item.document and sq in getattr(log_item.document, "title", "").lower())
+            or (log_item.document and sq in getattr(log_item.document, "publisher", "").lower())
+            or (log_item.document and sq in getattr(log_item.document, "publication_year", "").lower())
+            or (log_item.document and sq in getattr(log_item.document, "doi", "").lower())
         ]
     return logs
 
@@ -2209,7 +2374,14 @@ def _register_supabase_user(
     except urllib.error.HTTPError as e:
         body_bytes = e.read().decode("utf-8")
         try:
-            err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
+            err_data = json.loads(body_bytes)
+            err_msg = (
+                err_data.get("msg")
+                or err_data.get("message")
+                or err_data.get("error_description")
+                or err_data.get("error")
+                or body_bytes
+            )
         except (json.JSONDecodeError, KeyError, AttributeError):
             err_msg = body_bytes
         return False, f"Supabase Signup Failed: {err_msg}"
@@ -2285,7 +2457,14 @@ def _send_supabase_recovery(
     except urllib.error.HTTPError as e:
         body_bytes = e.read().decode("utf-8")
         try:
-            err_msg = json.loads(body_bytes).get("msg") or json.loads(body_bytes).get("error_description") or body_bytes
+            err_data = json.loads(body_bytes)
+            err_msg = (
+                err_data.get("msg")
+                or err_data.get("message")
+                or err_data.get("error_description")
+                or err_data.get("error")
+                or body_bytes
+            )
         except (json.JSONDecodeError, KeyError, AttributeError):
             err_msg = body_bytes
         return False, f"Supabase Recovery Failed: {err_msg}"
@@ -2357,17 +2536,21 @@ class SupabaseSessionExchangeView(View):
     """
 
     def post(self, request):
+        import json
+        import urllib.request
+
+        from django.contrib.auth import login
+
+        from extractor.auth import _sync_supabase_user
+        from extractor.utils import APPLICATION_JSON, validate_url_scheme
+
         try:
-            import json
-            import urllib.request
-
-            from django.contrib.auth import login
-
-            from extractor.auth import _sync_supabase_user
-            from extractor.utils import APPLICATION_JSON, validate_url_scheme
-
             body = json.loads(request.body.decode("utf-8")) if request.body else {}
-            access_token = body.get("access_token", "").strip()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse({"error": "Malformed JSON payload."}, status=400)
+
+        try:
+            access_token = body.get("access_token", "").strip() if isinstance(body, dict) else ""
             if not access_token:
                 return JsonResponse({"error": "Missing access token."}, status=400)
 
@@ -2406,3 +2589,78 @@ def sentry_debug_view(request):
 
         return HttpResponseForbidden("Sentry debug endpoint is restricted.")
     raise ZeroDivisionError("Sentry verification debug error: division by zero trigger.")
+
+
+class StreamQueryRAGView(LoginRequiredMixin, View):
+    """
+    Server-Sent Events (SSE) streaming endpoint for Real-Time RAG answers.
+    Dispatches query across hybrid HNSW+BM25 index and streams token chunks.
+    """
+
+    def _check_stream_limits(self, request, actor_id: str):
+        from django.core.cache import cache
+
+        rl_key = f"rag_ratelimit_{actor_id}"
+        rl_count = cache.get(rl_key, 0)
+        if rl_count >= 10:
+            return JsonResponse(
+                {"error": "Search rate limit reached. Please wait a moment before sending another query."},
+                status=429,
+            )
+        cache.set(rl_key, rl_count + 1, 60)
+
+        if _is_budget_exceeded(request.user, actor_id):
+            return JsonResponse(
+                {"error": "Monthly AI budget has been reached. Intelligent search is paused until the budget resets."},
+                status=402,
+            )
+        return None
+
+    def _parse_doc_ids(self, document_ids_str: str) -> list[Any] | None:
+        if not document_ids_str:
+            return None
+        ids: list[Any] = []
+        for i in document_ids_str.split(","):
+            i_clean = i.strip()
+            if not i_clean:
+                continue
+            if ":" in i_clean:
+                i_clean = i_clean.split(":", 1)[1]
+            try:
+                ids.append(int(i_clean))
+            except ValueError:
+                ids.append(i_clean)
+        return ids
+
+    def get(self, request):
+        from extractor.rag import stream_query_rag
+
+        query = request.GET.get("q", "").strip()
+        if not query:
+            return JsonResponse({"error": "Empty search query."}, status=400)
+
+        actor_id = get_request_actor_id(request)
+        limit_resp = self._check_stream_limits(request, actor_id)
+        if limit_resp:
+            return limit_resp
+
+        document_ids = self._parse_doc_ids(request.GET.get("document_ids", "").strip())
+
+        from django.utils.functional import SimpleLazyObject
+
+        user = request.user
+        if isinstance(user, SimpleLazyObject):
+            user = user._wrapped
+
+        generator = stream_query_rag(
+            query=query,
+            document_ids=document_ids,
+            top_k=5,
+            user=user,
+            actor_id=actor_id,
+        )
+
+        response = StreamingHttpResponse(generator, content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
