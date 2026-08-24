@@ -1035,6 +1035,21 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
     return updated
 
 
+def _check_pipeline_active(doc_uuid: str) -> bool:
+    """
+    Check if a document pipeline is still active and valid to continue.
+    Returns False if document was deleted or marked FAILED/canceled by user.
+    """
+    doc = surreal_db.get_document(doc_uuid)
+    if not doc:
+        logger.info("[Worker] Document %s was deleted. Aborting pipeline.", doc_uuid)
+        return False
+    if doc.get("status") == "FAILED":
+        logger.info("[Worker] Document %s was cancelled or failed. Aborting pipeline.", doc_uuid)
+        return False
+    return True
+
+
 def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) -> bool:
     from extractor.surreal_db import _model_to_dict
 
@@ -1042,6 +1057,11 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
         initial_doc = _model_to_dict(initial_doc)
 
     logger.info("[Worker] Running pipeline stages for document: %s", initial_doc.get("original_filename"))
+
+    # Pre-Stage 1 check
+    if not _check_pipeline_active(doc_uuid):
+        return False
+
     # Stage 1
     try:
         doc = _run_stage1(working_path, doc_uuid)
@@ -1049,6 +1069,10 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
             doc = _model_to_dict(doc)
     except Exception as exc:
         _handle_stage_failure(doc_uuid, "Stage 1", exc)
+        return False
+
+    # Check cancellation before budget & Stage 2
+    if not _check_pipeline_active(doc_uuid):
         return False
 
     # Mid-pipeline budget circuit breaker
@@ -1063,6 +1087,10 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
         )
         return False
 
+    # Check cancellation before Stage 2
+    if not _check_pipeline_active(doc_uuid):
+        return False
+
     # Stage 2
     try:
         doc = _run_stage2(doc.get("raw_markdown", ""), doc_uuid)
@@ -1070,6 +1098,10 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
             doc = _model_to_dict(doc)
     except Exception as exc:
         _handle_stage_failure(doc_uuid, "Stage 2", exc)
+        return False
+
+    # Check cancellation before Stage 3
+    if not _check_pipeline_active(doc_uuid):
         return False
 
     # Stage 3

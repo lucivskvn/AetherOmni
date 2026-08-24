@@ -400,7 +400,15 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const url = previewBtn.dataset.previewUrl;
                 const resp = await fetch(url);
-                const data = await resp.json();
+                let data;
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    throw new Error(`Server returned HTTP ${resp.status}`);
+                }
+                if (!resp.ok) {
+                    throw new Error(data?.error || data?.message || `Server returned HTTP ${resp.status}`);
+                }
                 if (data.status === 'success' && data.pairs && data.pairs.length > 0) {
                     let html = '';
                     data.pairs.forEach((p, idx) => {

@@ -258,3 +258,23 @@ class SurrealDBClientTestCase(TestCase):
         self.assertIsInstance(payload["updated_at"], datetime)
         self.assertEqual(payload["updated_at"].tzinfo, UTC)
         self.assertIsInstance(payload["expires_at"], datetime)
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    def test_get_documents_mixed_ids_offline(self):
+        from extractor.models import SourceDocument
+
+        doc1 = SourceDocument.objects.create(
+            original_filename="doc1.pdf",
+            file_hash="hash_doc_1",
+            title="Doc 1",
+        )
+        doc2 = SourceDocument.objects.create(
+            original_filename="doc2.pdf",
+            file_hash="hash_doc_2",
+            title="Doc 2",
+        )
+        # Query using a mix of integer ID (str or int) and UUID string
+        res = surreal_db.get_documents([str(doc1.id), str(doc2.uuid)])
+        self.assertEqual(len(res), 2)
+        resolved_titles = {d["title"] for d in res}
+        self.assertEqual(resolved_titles, {"Doc 1", "Doc 2"})

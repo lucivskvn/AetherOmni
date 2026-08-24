@@ -33,7 +33,7 @@ import re
 import uuid
 from typing import Any
 
-from extractor.llm_gateway import generate_llm_content_unified
+from extractor.llm_gateway import generate_llm_content_unified, generate_llm_stream_unified
 
 logger = logging.getLogger(__name__)
 
@@ -639,16 +639,100 @@ def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_blo
     rag_prompt = f"""
     Validated Source Context:
     {context_str}
-    
+
     Query:
     {query_cleaned}
-    
+
     Answer:
     """
 
     return generate_llm_content_unified(
         prompt=rag_prompt, system_instruction=system_instruction.strip(), model_name=selected_model
     )
+
+
+def stream_query_rag(
+    query: str,
+    document_ids: list[int] | None = None,
+    top_k: int = 5,
+    user: Any = None,
+    actor_id: str | None = None,
+):
+    """
+    Streams grounded RAG answers as Server-Sent Events (SSE).
+    Yields initial JSON metadata event with sources, followed by incremental tokens, and a final done event.
+    """
+    import json
+
+    from extractor import surreal_db
+    from extractor.llm_gateway import execute_embed_content_with_fallback
+    from extractor.models import SystemSettings
+
+    query_cleaned = query.strip()
+    user_part = actor_id or (str(user.id) if (user and user.is_authenticated) else "guest")
+
+    try:
+        query_emb_resp = execute_embed_content_with_fallback(model_name="text-embedding-004", contents=[query_cleaned])
+        query_embedding = query_emb_resp.embeddings[0].values
+    except Exception as e:
+        logger.warning("[Stream RAG] Embedding API fallback: %s", e)
+        query_embedding = generate_deterministic_embedding(query_cleaned)
+
+    user_memories_block = _fetch_user_memories_block(user, query_embedding)
+    allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
+    _ensure_chunks_loaded(allowed_uuids)
+
+    try:
+        dense_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
+        sparse_chunks = surreal_db.search_chunks_bm25(query_cleaned, limit=top_k, allowed_doc_uuids=allowed_uuids)
+        matching_chunks = reciprocal_rank_fusion(dense_chunks, sparse_chunks, k=60, top_k=top_k)
+    except (OSError, RuntimeError):
+        logger.exception("[Stream RAG] SurrealDB search failed.")
+        matching_chunks = []
+
+    if not matching_chunks:
+        yield f"data: {json.dumps({'error': 'No relevant source context found in the knowledge database.'})}\n\n"
+        return
+
+    context_str, sources = _get_grounded_context_and_sources(matching_chunks)
+
+    # 1. Send initial event with grounded sources
+    yield f"data: {json.dumps({'sources': sources})}\n\n"
+
+    try:
+        settings_obj = SystemSettings.get_settings()
+        selected_model = settings_obj.selected_model
+    except Exception:
+        selected_model = "auto"
+
+    system_instruction = f"""
+    You are a Digital Preservation Librarian and Archival Scholar.
+    Your task is to answer the query accurately, grounding your answers ONLY in the validated source context block below.
+    When answering, you MUST provide explicit inline academic citations (e.g., [Author, Year]) and explicitly acknowledge the legal provenance and source of the preserved literature.
+    You MUST preserve the author's original meaning and intent. Do NOT summarize away nuance or change the original points.
+    If the context block doesn't contain sufficient knowledge to answer, explain humbly that the context is insufficient, and do not make up external claims.
+    Keep your tone highly respectful, academic, and professional.
+    {user_memories_block}
+    """.strip()
+
+    rag_prompt = f"""
+    Validated Source Context:
+    {context_str}
+
+    Query:
+    {query_cleaned}
+
+    Answer:
+    """
+
+    # 2. Stream answer tokens
+    for token in generate_llm_stream_unified(
+        prompt=rag_prompt, system_instruction=system_instruction, model_name=selected_model
+    ):
+        yield f"data: {json.dumps({'token': token})}\n\n"
+
+    # 3. Final completion event
+    yield f"data: {json.dumps({'done': True})}\n\n"
 
 
 def _parse_offline_document_ids(document_ids):

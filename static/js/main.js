@@ -417,6 +417,8 @@ function setFormSubmitLoadingState(form) {
         text = 'Saving Curation...';
     } else if (btn.classList.contains('btn-confirm-submit')) {
         text = 'Updating Password...';
+    } else if (form.id === 'delete-document-form') {
+        text = 'Deleting Document...';
     } else if (form.id === 'settings-form') {
         text = 'Saving Configurations...';
     } else if (form.id === 'purge-all-form' || form.dataset.action === 'purge') {
@@ -437,7 +439,7 @@ function setFormSubmitLoadingState(form) {
  */
 function initializeFormSubmitSpinners() {
     const forms = document.querySelectorAll(
-        '.login-card form, .register-card form, .forgot-card form, .password-change-card form, #editor-form, #settings-form, .confirm-card form, #purge-all-form, form[data-action="purge"]'
+        '.login-card form, .register-card form, .forgot-card form, .password-change-card form, #editor-form, #settings-form, .confirm-card form, #purge-all-form, #delete-document-form, form[data-action="purge"]'
     );
 
     forms.forEach(form => {
@@ -506,24 +508,27 @@ globalThis.showClientSideAlert = showClientSideAlert;
 function dismissCard(card) {
     if (!card || card.classList.contains('fade-out')) return;
     card.classList.add('fade-out');
+
+    let cleanedUp = false;
+    const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        card.remove();
+        const container = document.querySelector('.alert-container');
+        if (container?.querySelectorAll('.alert-card').length === 0) {
+            container.remove();
+        }
+    };
+
     card.addEventListener('transitionend', function handler(e) {
         if (['opacity', 'max-height', 'transform'].includes(e.propertyName)) {
             card.removeEventListener('transitionend', handler);
-            card.remove();
-            
-            // Clean up alert-container if it becomes empty
-            const container = document.querySelector('.alert-container');
-            if (container?.querySelectorAll('.alert-card').length === 0) {
-                container.remove();
-            }
+            cleanup();
         }
     });
 
-    // Re-apply library table filtering on dynamic live updates
-    const filterInput = document.getElementById('table-filter');
-    if (filterInput && filterInput.value.trim().length > 0) {
-        applyLibraryFilter(filterInput.value);
-    }
+    // Fallback safety timeout in case CSS transitions are skipped or reduced-motion is active
+    setTimeout(cleanup, 400);
 }
 
 /**
@@ -626,31 +631,45 @@ function initializeDragAndDrop() {
 
     if (!dropZone || !fileInput || !uploadForm) return;
 
-    function validateFilesAndSubmit(files) {
+    function _filterUploadFiles(files) {
         const MAX_SIZE = 31457280; // 30MB
-        const ALLOWED_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.csv', '.txt']);
-        const dt = new DataTransfer();
-
+        const ALLOWED_EXTENSIONS = new Set([
+            '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.tiff', '.heic', '.heif',
+            '.csv', '.txt', '.md', '.markdown', '.json', '.docx', '.doc', '.xlsx', '.xls'
+        ]);
+        const valid = [];
         for (const file of files) {
-            const ext = '.' + file.name.split('.').pop().toLowerCase();
-            if (!ALLOWED_EXTENSIONS.has(ext)) {
-                showClientSideAlert(`Skipped "${file.name}": Unsupported format. (Use PDF, PNG, JPG, JPEG, CSV, TXT)`);
+            const hasExt = file.name.includes('.') && !file.name.startsWith('.');
+            const ext = hasExt ? '.' + file.name.split('.').pop().toLowerCase() : '';
+            if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
+                showClientSideAlert(`Skipped "${file.name}": Unsupported format. Supported: PDF, Images (PNG, JPG, WEBP, GIF, TIFF, HEIC), Markdown, Text, CSV, JSON, Word, Excel.`);
                 continue;
             }
             if (file.size > MAX_SIZE) {
                 showClientSideAlert(`Skipped "${file.name}": Exceeds maximum size limit of 30MB.`);
                 continue;
             }
-            dt.items.add(file);
+            valid.push(file);
         }
+        return valid;
+    }
 
-        if (dt.files.length === 0) {
+    function validateFilesAndSubmit(files) {
+        const validFiles = _filterUploadFiles(files);
+        if (validFiles.length === 0) {
             fileInput.value = '';
             return;
         }
 
-        fileInput.files = dt.files;
-        const validFiles = fileInput.files;
+        if (typeof DataTransfer !== 'undefined') {
+            const dt = new DataTransfer();
+            for (const file of validFiles) {
+                dt.items.add(file);
+            }
+            fileInput.files = dt.files;
+        }
+
+
 
         // Show immediate loading state inside dropZone & prevent double submissions
         const loaderSvg = `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader spinner" style="color: var(--primary);"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
@@ -667,12 +686,30 @@ function initializeDragAndDrop() {
     }
 
     dropZone.addEventListener('click', () => fileInput.click());
-
-
+    dropZone.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.click();
+        }
+    });
 
     fileInput.addEventListener('change', () => {
         if (fileInput.files.length > 0) {
             validateFilesAndSubmit(fileInput.files);
+        }
+    });
+
+
+    const originalDropZoneHtml = dropZone.innerHTML;
+
+    globalThis.addEventListener('pageshow', (event) => {
+        if (event.persisted && dropZone) {
+            dropZone.innerHTML = originalDropZoneHtml;
+            dropZone.style.pointerEvents = '';
+            dropZone.style.borderColor = '';
+            dropZone.style.background = '';
+            if (fileInput) fileInput.value = '';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
     });
 
@@ -729,14 +766,15 @@ function initializeExportActions() {
     const exportFormatSelect = document.getElementById('export-format');
     if (exportForm) {
         exportForm.addEventListener('submit', () => {
-            const actionInput = exportForm.querySelector('input[name="action"]');
-            if (!actionInput) {
-                if (exportFormatSelect) {
-                    const selectedOpt = exportFormatSelect.options[exportFormatSelect.selectedIndex];
-                    exportForm.action = selectedOpt.dataset.action || '/export/';
-                } else {
-                    exportForm.action = '/export/';
-                }
+            const staleActionInput = exportForm.querySelector('input[name="action"]');
+            if (staleActionInput) {
+                staleActionInput.remove();
+            }
+            if (exportFormatSelect) {
+                const selectedOpt = exportFormatSelect.options[exportFormatSelect.selectedIndex];
+                exportForm.action = selectedOpt.dataset.action || '/export/';
+            } else {
+                exportForm.action = '/export/';
             }
         });
     }
@@ -807,6 +845,25 @@ function initializeExportActions() {
             }
         });
     }
+
+    const bulkRestartOrigHtml = bulkRestartBtn?.innerHTML;
+    const bulkDeleteOrigHtml = bulkDeleteBtn?.innerHTML;
+
+    globalThis.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            if (bulkRestartBtn && bulkRestartOrigHtml) {
+                bulkRestartBtn.innerHTML = bulkRestartOrigHtml;
+                bulkRestartBtn.style.pointerEvents = '';
+                bulkRestartBtn.style.opacity = '';
+            }
+            if (bulkDeleteBtn && bulkDeleteOrigHtml) {
+                bulkDeleteBtn.innerHTML = bulkDeleteOrigHtml;
+                bulkDeleteBtn.style.pointerEvents = '';
+                bulkDeleteBtn.style.opacity = '';
+            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    });
 }
 
 function toggleExportFooter() {
@@ -917,8 +974,15 @@ function applyLibraryFilter(filterValue) {
         const metaText = cells[2] ? cells[2].textContent : '';
         const textToSearch = (titleText + ' ' + metaText).toLowerCase();
         const matches = textToSearch.includes(query);
-        row.style.display = matches ? '' : 'none';
-        if (matches) visibleCount++;
+        if (matches) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+            // Uncheck hidden rows so they can't ghost-pollute the export footer count
+            const cb = row.querySelector('.doc-selector');
+            if (cb) cb.checked = false;
+        }
     });
 
     // Dynamic filtered empty-state block
@@ -955,6 +1019,9 @@ function applyLibraryFilter(filterValue) {
     } else if (emptyStateRow) {
         emptyStateRow.remove();
     }
+
+    // Sync the export footer count after any row visibility / checked-state changes
+    toggleExportFooter();
 }
 
 /**
@@ -985,7 +1052,68 @@ function initializeRAGSearch() {
         });
     }
 
-    function runSemanticRAG() {
+    function renderRagSources(sources) {
+        ragSourcesList.innerHTML = '';
+        if (!sources || sources.length === 0) {
+            const li = document.createElement('li');
+            li.textContent = 'No sources linked';
+            ragSourcesList.appendChild(li);
+            return;
+        }
+        sources.forEach(src => {
+            const li = document.createElement('li');
+            li.style.marginBottom = '6px';
+            if (src.uuid) {
+                const a = document.createElement('a');
+                a.href = `/document/${encodeURIComponent(src.uuid)}/`;
+                a.style.color = 'var(--accent)';
+                a.style.textDecoration = 'none';
+                a.style.fontWeight = '600';
+                a.textContent = src.title || 'Untitled Document';
+                li.appendChild(a);
+            } else {
+                const spanTitle = document.createElement('span');
+                spanTitle.style.fontWeight = '600';
+                spanTitle.textContent = src.title || 'Untitled Document';
+                li.appendChild(spanTitle);
+            }
+            const span = document.createElement('span');
+            span.textContent = ` (Lang: ${src.language || 'auto'}, Chunk: #${Number(src.chunk_index) + 1})`;
+            li.appendChild(span);
+            ragSourcesList.appendChild(li);
+        });
+    }
+
+    function getSelectedDocIds() {
+        const checkedBoxes = document.querySelectorAll('.doc-selector:checked');
+        return Array.from(checkedBoxes).map(cb => cb.value);
+    }
+
+    function buildRagUrl(query) {
+        const docIds = getSelectedDocIds();
+        let url = `/rag-search/?q=${encodeURIComponent(query)}`;
+        if (docIds.length > 0) {
+            url += `&document_ids=${docIds.join(',')}`;
+        }
+        return url;
+    }
+
+    async function executeRagFetch(url) {
+        const res = await fetch(url);
+        let data = null;
+        try {
+            data = await res.json();
+        } catch {
+            data = null;
+        }
+        if (!res.ok || !data || data.error) {
+            const errorMsg = data?.error || data?.message || 'An error occurred during vector search.';
+            throw new Error(errorMsg);
+        }
+        return data;
+    }
+
+    async function runSemanticRAG() {
         if (!ragQuery || !ragBtn || !ragLoader || !ragResults || !ragAnswer || !ragSourcesList) return;
         const query = ragQuery.value.trim();
         if (!query) {
@@ -1000,57 +1128,28 @@ function initializeRAGSearch() {
         ragResults.style.display = 'none';
         ragBtn.disabled = true;
 
-        const checkedBoxes = document.querySelectorAll('.doc-selector:checked');
-        const docIds = Array.from(checkedBoxes).map(cb => cb.value);
-        let url = `/rag-search/?q=${encodeURIComponent(query)}`;
-        if (docIds.length > 0) {
-            url += `&document_ids=${docIds.join(',')}`;
+        try {
+            const data = await executeRagFetch(buildRagUrl(query));
+            ragLoader.style.display = 'none';
+            ragBtn.disabled = false;
+            ragResults.style.display = 'block';
+            ragAnswer.innerHTML = data.answer_html;
+            renderRagSources(data.sources);
+        } catch (err) {
+            ragLoader.style.display = 'none';
+            ragBtn.disabled = false;
+            showClientSideAlert(err.message || 'An error occurred during vector search.');
+            console.error(err);
         }
-
-        fetch(url)
-            .then(res => res.json())
-            .then(data => {
-                ragLoader.style.display = 'none';
-                ragBtn.disabled = false;
-                
-                if (data.error) {
-                    showClientSideAlert(data.error);
-                    return;
-                }
-
-                ragResults.style.display = 'block';
-                ragAnswer.innerHTML = data.answer_html;
-                
-                ragSourcesList.innerHTML = '';
-                if (data.sources && data.sources.length > 0) {
-                    data.sources.forEach(src => {
-                        const li = document.createElement('li');
-                        li.style.marginBottom = '6px';
-                        const a = document.createElement('a');
-                        a.href = `/document/${encodeURIComponent(src.uuid)}/`;
-                        a.style.color = 'var(--accent)';
-                        a.style.textDecoration = 'none';
-                        a.style.fontWeight = '600';
-                        a.textContent = src.title || 'Untitled Document';
-                        li.appendChild(a);
-                        const span = document.createElement('span');
-                        span.textContent = ` (Lang: ${src.language || 'auto'}, Chunk: #${Number(src.chunk_index) + 1})`;
-                        li.appendChild(span);
-                        ragSourcesList.appendChild(li);
-                    });
-                } else {
-                    const li = document.createElement('li');
-                    li.textContent = 'No sources linked';
-                    ragSourcesList.appendChild(li);
-                }
-            })
-            .catch(err => {
-                ragLoader.style.display = 'none';
-                ragBtn.disabled = false;
-                showClientSideAlert('An error occurred during vector search.');
-                console.error(err);
-            });
     }
+
+
+    globalThis.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            if (ragLoader) ragLoader.style.display = 'none';
+            if (ragBtn) ragBtn.disabled = false;
+        }
+    });
 }
 
 /**
@@ -1141,22 +1240,24 @@ function initializeStatusPoller() {
         setInterval(runPoller, POLL_INTERVAL);
     }
 
-    function runPoller() {
+    async function runPoller() {
         if (activePoll) return;
         activePoll = true;
-
-        fetch('/api/documents/status/')
-            .then(res => res.json())
-            .then(data => {
-                activePoll = false;
-                updateDashboardStats(data.stats);
-                updateDocumentsTable(data.documents);
-                updateDocumentDetailScreen(data);
-            })
-            .catch(err => {
-                activePoll = false;
-                console.error('Poller error:', err);
-            });
+        try {
+            const res = await fetch('/api/documents/status/');
+            if (!res.ok) {
+                console.warn(`[Poller] Status endpoint returned HTTP ${res.status}. Skipping update.`);
+                return;
+            }
+            const data = await res.json();
+            updateDashboardStats(data.stats);
+            updateDocumentsTable(data.documents);
+            updateDocumentDetailScreen(data);
+        } catch (err) {
+            console.error('[Poller] Fetch error:', err);
+        } finally {
+            activePoll = false;
+        }
     }
 }
 
@@ -1193,21 +1294,24 @@ function initializeSupabaseRealtime() {
         });
 
     let activeFetch = false;
-    function triggerUpdate() {
+    async function triggerUpdate() {
         if (activeFetch) return;
         activeFetch = true;
-        fetch('/api/documents/status/')
-            .then(res => res.json())
-            .then(data => {
-                activeFetch = false;
-                updateDashboardStats(data.stats);
-                updateDocumentsTable(data.documents);
-                updateDocumentDetailScreen(data);
-            })
-            .catch(err => {
-                activeFetch = false;
-                console.error('[Realtime] State update fetch error:', err);
-            });
+        try {
+            const res = await fetch('/api/documents/status/');
+            if (!res.ok) {
+                console.warn(`[Realtime] Status endpoint returned HTTP ${res.status}. Skipping update.`);
+                return;
+            }
+            const data = await res.json();
+            updateDashboardStats(data.stats);
+            updateDocumentsTable(data.documents);
+            updateDocumentDetailScreen(data);
+        } catch (err) {
+            console.error('[Realtime] State update fetch error:', err);
+        } finally {
+            activeFetch = false;
+        }
     }
     
     // Initial fetch to load stats and populate active state on page load
@@ -1310,6 +1414,15 @@ function updateDocumentsTable(documents) {
             }
         }
     });
+
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+
+    const filterInput = document.getElementById('table-filter');
+    if (filterInput && filterInput.value.trim() !== '') {
+        applyLibraryFilter(filterInput.value);
+    }
 }
 
 function _updateDetailMetaFields(currentDoc, currentStatus) {
@@ -1360,18 +1473,23 @@ function updateDocumentDetailScreen(data) {
         updateTimelineStep(steps[3], ['EMBEDDING'].includes(currentStatus), ['COMPLETED'].includes(currentStatus));
     }
 
-    // Check if finished. If so, reload once to load the rich SFT Q&A + Markdown textareas
+    // Check if finished or failed. If so, reload once to render the rich SFT Q&A + Markdown textareas or the failure board
     const isCurrentlyProcessing = ['PENDING', 'EXTRACTING', 'REFINING', 'EMBEDDING'].includes(currentStatus);
     const hasEditorForm = document.getElementById('editor-form');
     const hasFailureBoard = document.querySelector('.timeline-step.failed') || document.querySelector('[data-doc-status="FAILED"]');
     
-    if (!isCurrentlyProcessing && !hasEditorForm && !hasFailureBoard) {
+    if (currentStatus === 'COMPLETED' && !hasEditorForm) {
+        globalThis.location.reload();
+    } else if (currentStatus === 'FAILED' && !hasFailureBoard) {
+        globalThis.location.reload();
+    } else if (!isCurrentlyProcessing && !hasEditorForm && !hasFailureBoard) {
         globalThis.location.reload();
     }
 }
 
 function updateTimelineStep(stepEl, isActive, isCompleted) {
     stepEl.classList.remove('active', 'completed');
+    stepEl.removeAttribute('aria-current');
     const node = stepEl.querySelector('.step-node');
     
     if (isCompleted) {
@@ -1383,7 +1501,8 @@ function updateTimelineStep(stepEl, isActive, isCompleted) {
         if (node) node.innerHTML = '<i data-lucide="loader" class="spinner" style="width:14px; height:14px;"></i>';
     } else {
         // Set index
-        const labelText = stepEl.querySelector('.step-label').textContent;
+        const labelEl = stepEl.querySelector('.step-label');
+        const labelText = labelEl ? labelEl.textContent : '';
         let idx = '2';
         if (labelText.includes('Reasoning')) idx = '3';
         if (labelText.includes('Vector')) idx = '4';
@@ -1394,6 +1513,7 @@ function updateTimelineStep(stepEl, isActive, isCompleted) {
         lucide.createIcons();
     }
 }
+
 
 function getStatusBadgeHTML(status, display) {
     if (status === 'COMPLETED') {
@@ -1443,17 +1563,24 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
                 'Accept': 'application/json'
             }
         })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
+        .then(async response => {
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                data = null;
             }
-            return response.json();
+            if (!response.ok) {
+                const errMsg = data?.error || data?.message || defaultErrorMsg;
+                throw new Error(errMsg);
+            }
+            return data;
         })
         .then(data => {
-            if (data.status === 'success') {
+            if (data?.status === 'success') {
                 globalThis.location.reload();
             } else {
-                showClientSideAlert(data.message || defaultErrorMsg);
+                showClientSideAlert(data?.message || data?.error || defaultErrorMsg);
                 if (icon) {
                     icon.classList.remove('spinner');
                 }
@@ -1462,12 +1589,22 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
         })
         .catch(err => {
             console.error('Error executing document action:', err);
-            showClientSideAlert(defaultErrorMsg);
+            showClientSideAlert(err.message || defaultErrorMsg);
             if (icon) {
                 icon.classList.remove('spinner');
             }
             btn.disabled = false;
         });
+    });
+
+    globalThis.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            document.querySelectorAll(buttonClass).forEach(b => {
+                b.disabled = false;
+                const icon = b.querySelector('[data-lucide]') || b.querySelector('i');
+                if (icon) icon.classList.remove('spinner');
+            });
+        }
     });
 }
 
@@ -1533,6 +1670,36 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         formatCompact,
         getStatusBadgeHTML,
-        showClientSideAlert
+        showClientSideAlert,
+        dismissCard,
+        initializeAlerts,
+        initializeDragAndDrop,
+        updateTimelineStep,
+        selectAllCheckbox,
+        toggleExportFooter,
+        applyLibraryFilter,
+        initializeLibraryFilter,
+        initializeSettingsModal,
+        cancelResetConfirmation,
+        initializeRetryActions,
+        initializeCancelActions,
+        initializeRAGSearch,
+        initializeExportActions,
+        initializeLocalTimezones,
+        initializePasswordToggles,
+        initializeCapsLockDetector,
+        initializePasswordMatchFeedback,
+        initializeAuditSearch,
+        initializeSearchShortcuts,
+        setFormSubmitLoadingState,
+        initializeFormSubmitSpinners,
+        initializeTokensChart,
+        _updateTokenMetricCard,
+        updateDashboardStats,
+        updateDocumentsTable,
+        updateDocumentDetailScreen,
+        _updateDetailMetaFields,
+        _checkNeedsPolling,
+        initializeSupabaseRealtime
     };
 }

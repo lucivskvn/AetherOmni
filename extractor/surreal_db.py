@@ -720,19 +720,42 @@ def get_documents(doc_uuids: list[str]) -> list[dict]:
     if not doc_uuids:
         return []
 
+    # Clean and strip possible table prefix (e.g. 'documents:uuid')
+    clean_uuids = []
+    for u in doc_uuids:
+        u_str = str(u).strip()
+        if ":" in u_str:
+            u_str = u_str.split(":", 1)[1]
+        if u_str:
+            clean_uuids.append(u_str)
+
+    if not clean_uuids:
+        return []
+
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
+        from django.db.models import Q
+
         from extractor.models import SourceDocument
 
         try:
-            docs = SourceDocument.objects.filter(uuid__in=doc_uuids)
+            int_ids = []
+            uuid_strs = []
+            for item in clean_uuids:
+                try:
+                    int_ids.append(int(item))
+                except (ValueError, TypeError):
+                    uuid_strs.append(str(item))
+
+            docs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs))
             return [_model_to_dict(doc) for doc in docs]
         except Exception:
             return []
 
     sql = "SELECT * FROM documents WHERE doc_uuid IN $doc_uuids;"
-    results = _run(sql, {"doc_uuids": doc_uuids})
+
+    results = _run(sql, {"doc_uuids": clean_uuids})
     return _first_result(results)
 
 
@@ -1064,6 +1087,13 @@ def get_document_chunks(doc_uuid: str, limit: int = 100) -> list[dict[str, Any]]
 
 def clone_chunks(source_uuid: str, target_uuid: str) -> None:
     """Copy all chunks from source_uuid to target_uuid (deduplication flow)."""
+    source_uuid = str(source_uuid).strip()
+    target_uuid = str(target_uuid).strip()
+    if ":" in source_uuid:
+        source_uuid = source_uuid.split(":", 1)[1]
+    if ":" in target_uuid:
+        target_uuid = target_uuid.split(":", 1)[1]
+
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):

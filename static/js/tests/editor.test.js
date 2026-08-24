@@ -7,7 +7,7 @@
  * all function declarations land on window (== globalThis) — exactly as a
  * browser <script> tag would behave.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   escapeHtml,
   _slugifyHeading,
@@ -16,7 +16,12 @@ import {
   _escapeCssIdentifier,
   compileMarkdown,
   replaceMarkdownLinks,
+  insertFormatting,
+  applyPostRenderFeatures,
+  initDeepLinkScroll,
+  setupScrollSync
 } from '../editor.js';
+
 
 // ---------------------------------------------------------------------------
 // escapeHtml
@@ -259,5 +264,142 @@ describe('replaceMarkdownLinks', () => {
 
   it('leaves plain text without links unchanged', () => {
     expect(replaceMarkdownLinks('no links here')).toBe('no links here');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// insertFormatting
+// ---------------------------------------------------------------------------
+describe('insertFormatting', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('wraps selected text with bold formatting', () => {
+    const textarea = document.createElement('textarea');
+    textarea.id = 'markdown-input';
+    textarea.value = 'Hello World';
+    document.body.appendChild(textarea);
+
+    textarea.selectionStart = 6;
+    textarea.selectionEnd = 11;
+
+    insertFormatting('bold');
+    expect(textarea.value).toBe('Hello **World**');
+  });
+
+  it('inserts default text when no text is selected', () => {
+    const textarea = document.createElement('textarea');
+    textarea.id = 'markdown-input';
+    textarea.value = '';
+    document.body.appendChild(textarea);
+
+    textarea.selectionStart = 0;
+    textarea.selectionEnd = 0;
+
+    insertFormatting('italic');
+    expect(textarea.value).toBe('_Italic Text_');
+  });
+
+  it('handles quote and heading block formatters', () => {
+    const textarea = document.createElement('textarea');
+    textarea.id = 'markdown-input';
+    textarea.value = '';
+    document.body.appendChild(textarea);
+
+    insertFormatting('heading');
+    expect(textarea.value).toBe('### Heading');
+  });
+});
+
+describe('applyPostRenderFeatures & RTL Detection', () => {
+  it('adds dir="rtl" and .arabic-text to Arabic content blocks', () => {
+    const container = document.createElement('div');
+    const p = document.createElement('p');
+    p.textContent = 'مرحبا بالعالم - هذا نص تجريبي باللغة العربية';
+    container.appendChild(p);
+
+    applyPostRenderFeatures(container);
+
+    expect(p.getAttribute('dir')).toBe('rtl');
+    expect(p.classList.contains('arabic-text')).toBe(true);
+    expect(p.classList.contains('rtl')).toBe(true);
+  });
+
+  it('leaves Latin text as LTR and removes RTL attributes if present', () => {
+    const container = document.createElement('div');
+    const p = document.createElement('p');
+    p.textContent = 'Hello World in English';
+    p.setAttribute('dir', 'rtl');
+    p.classList.add('arabic-text', 'rtl');
+    container.appendChild(p);
+
+    applyPostRenderFeatures(container);
+
+    expect(p.hasAttribute('dir')).toBe(false);
+    expect(p.classList.contains('arabic-text')).toBe(false);
+  });
+});
+
+describe('initDeepLinkScroll & Anchor Deep Linking', () => {
+  it('matches target anchor matching window.location.hash and triggers pulse', () => {
+    const container = document.createElement('div');
+    const target = document.createElement('div');
+    target.id = 'section-intro';
+    target.scrollIntoView = () => {};
+    container.appendChild(target);
+
+    globalThis.location.hash = '#section-intro';
+    initDeepLinkScroll(container);
+
+    expect(target.id).toBe('section-intro');
+  });
+
+  it('safely handles empty or missing hash', () => {
+    const container = document.createElement('div');
+    globalThis.location.hash = '';
+    expect(() => initDeepLinkScroll(container)).not.toThrow();
+  });
+});
+
+describe('setupScrollSync', () => {
+  it('synchronizes scroll positions between editor and preview', () => {
+    const editor = document.createElement('div');
+    const preview = document.createElement('div');
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.id = 'sync-scroll-toggle';
+    toggle.checked = true;
+    document.body.append(editor, preview, toggle);
+
+    setupScrollSync(editor, preview);
+
+    Object.defineProperty(editor, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(editor, 'clientHeight', { value: 200, configurable: true });
+    Object.defineProperty(preview, 'scrollHeight', { value: 2000, configurable: true });
+    Object.defineProperty(preview, 'clientHeight', { value: 400, configurable: true });
+
+    editor.scrollTop = 400; // 50%
+    editor.dispatchEvent(new Event('scroll'));
+
+    expect(preview.scrollTop).toBe(800); // 50% of 1600
+  });
+
+  it('respects sync-scroll-toggle disabled state', () => {
+    const editor = document.createElement('div');
+    const preview = document.createElement('div');
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.id = 'sync-scroll-toggle';
+    toggle.checked = false;
+    document.body.append(editor, preview, toggle);
+
+    setupScrollSync(editor, preview);
+
+    preview.scrollTop = 0;
+    editor.scrollTop = 400;
+    editor.dispatchEvent(new Event('scroll'));
+
+    expect(preview.scrollTop).toBe(0);
   });
 });
