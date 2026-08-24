@@ -849,7 +849,7 @@ class ArabicLayoutTestCase(TestCase):
     def test_parse_arabic_layout_latin_passthrough(self):
         from extractor.file_utils import parse_arabic_layout
 
-        english_html = "<p>Welcome to AetherOmni Platform</p>"
+        english_html = "<p>Welcome to KORDA</p>"
         result = parse_arabic_layout(english_html)
         self.assertNotIn('dir="rtl"', result)
         self.assertNotIn('class="arabic-text"', result)

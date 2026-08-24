@@ -578,6 +578,13 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 }
 
 
+def _upload_title_from_filename(orig_name: str) -> str:
+    """Return a displayable title derived from a validated uploaded filename."""
+    import os
+
+    return os.path.splitext(os.path.basename(orig_name))[0].replace("_", " ").replace("-", " ").strip()
+
+
 def _validate_upload_file(orig_name: str, size: int) -> dict[str, str] | None:
     import os
 
@@ -587,6 +594,12 @@ def _validate_upload_file(orig_name: str, size: int) -> dict[str, str] | None:
             "status": "error",
             "name": orig_name,
             "error": f"Unsupported file type. Supported types: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+        }
+    if not _upload_title_from_filename(orig_name):
+        return {
+            "status": "error",
+            "name": orig_name,
+            "error": "Filename must include a meaningful title before its extension.",
         }
     if size > 31457280:
         return {"status": "error", "name": orig_name, "error": f"'{orig_name}' exceeds maximum 30MB constraint."}
@@ -722,7 +735,7 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
 
     orig_name = uploaded_file.name
     ip = get_client_ip(request)
-    title_guess = os.path.splitext(orig_name)[0].replace("_", " ").replace("-", " ").strip()
+    title_guess = _upload_title_from_filename(orig_name)
     ext_guess = os.path.splitext(orig_name)[1].replace(".", "").upper() or "PDF"
 
     file_id = str(uuid.uuid4())
@@ -738,7 +751,7 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
         "file_hash": file_hash,
         "status": "PENDING",
         "uploaded_by_id": get_request_actor_id(request),
-        "title": title_guess or "Untitled",
+        "title": title_guess,
         "document_type": ext_guess,
         "retry_count": 0,
         "created_at": format_datetime(timezone.now()),

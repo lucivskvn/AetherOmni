@@ -138,7 +138,7 @@ steps:
             endpoint,
             headers={
                 "Accept": "application/vnd.github+json",
-                "User-Agent": "AetherOmni-CloudBuild-Gate",
+                "User-Agent": "KORDA-CloudBuild-Gate",
             },
         )
         sonar_names = {
@@ -227,6 +227,28 @@ steps:
         done
         echo "All required secrets verified in GCP Secret Manager."
 
+        MEDIA_BUCKET="${PROJECT_ID}-media-korda"
+        RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+        RUNTIME_MEMBER="serviceAccount:$${RUNTIME_SERVICE_ACCOUNT}"
+        echo "Validating Pulumi-managed storage and runtime identity..."
+        gcloud storage buckets describe "gs://$${MEDIA_BUCKET}" --project="${PROJECT_ID}" >/dev/null
+        gcloud iam service-accounts describe "$${RUNTIME_SERVICE_ACCOUNT}" --project="${PROJECT_ID}" >/dev/null
+        gcloud storage buckets get-iam-policy "gs://$${MEDIA_BUCKET}" --project="${PROJECT_ID}" --format=json |
+          python3 -c '
+        import json
+        import sys
+
+        member = sys.argv[1]
+        policy = json.load(sys.stdin)
+        has_access = any(
+            binding.get("role") == "roles/storage.objectAdmin" and member in binding.get("members", [])
+            for binding in policy.get("bindings", [])
+        )
+        if not has_access:
+            raise SystemExit(f"Missing roles/storage.objectAdmin for {member} on the media bucket")
+        ' "$${RUNTIME_MEMBER}"
+        echo "Media bucket and runtime identity contract verified."
+
   # 4. Production GCP Cloud Run Worker Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-worker'
@@ -249,7 +271,10 @@ steps:
         APP_URL="$${APP_URL:-$${WEB_URL}}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},BUILD_SHA=$${BUILD_SHA},SHORT_SHA=$${BUILD_SHA}"
         ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=1"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
+        # Keep the deploy contract aligned with the Pulumi-managed media bucket
+        # and its least-privilege runtime identity.
+        RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
@@ -275,7 +300,7 @@ steps:
           --allow-unauthenticated \
           --min-instances=0 \
           --max-instances=5 \
-          --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+          --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 
@@ -306,7 +331,10 @@ steps:
         APP_URL="$${APP_URL:-$${WEB_URL}}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},BUILD_SHA=$${BUILD_SHA},SHORT_SHA=$${BUILD_SHA}"
         ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=2"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-data-extractor"
+        # Keep the deploy contract aligned with the Pulumi-managed media bucket
+        # and its least-privilege runtime identity.
+        RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL},EXTRA_ALLOWED_HOSTS=$${CUSTOM_DOMAINS}"
@@ -330,7 +358,7 @@ steps:
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
-          --service-account=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+          --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 

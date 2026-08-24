@@ -270,7 +270,7 @@ flowchart LR
 - [x] **Multi-MCP Triage & Observability**: Dedicated Model Context Protocol server workflows for SonarQube quality gates, Google Cloud Logging container inspections, Google Cloud Monitoring metrics, Chrome DevTools accessibility testing, and Google Developer Knowledge.
 - [x] **Operational Runbook & Diagnostic Tools**: Read-only GCP diagnostics CLI (`scripts/gcp-diagnostics.sh`) for Cloud Run revisions, readiness status, and bounded error log inspection.
 - [x] **Sentry Release Observability**: Correlated errors, performance tracing, profiling, and deployments with computed `RELEASE_VERSION` and verification test route (`/sentry-debug/`).
-- [x] **Declarative Pulumi IaC Foundation**: Modeled, tested, and provisioned Cloud Run (`korda-web`, `korda-worker`), Secret Manager bindings, IAM least-privilege roles, Artifact Registry, Cloud Tasks, and Storage bucket in `asia-southeast2` (Jakarta) with full Disaster Recovery lifecycle verification.
+- [x] **Declarative Pulumi IaC Foundation**: Modeled, tested, and provisioned Cloud Run (`korda-web`, `korda-worker`), Secret Manager bindings, IAM least-privilege roles, Artifact Registry, Cloud Tasks, and Storage bucket in `asia-southeast1` (Singapore) with full Disaster Recovery lifecycle verification.
 
 ### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & Automated Benchmarking)
 
@@ -385,6 +385,8 @@ Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (
 1. **Pre-Scan Validation**: Blocks on shell-script or container-file lint failures (`hadolint`).
 2. **SonarCloud Deep SAST & Multi-Language Quality Gate**: Runs Ruff, ESLint, Python coverage tests (`coverage.xml`), JavaScript coverage tests (Vitest LCOV), and SonarCloud code analysis, alongside a separate parallel Semgrep Cloud SAST job across both pull requests and mainline pushes with native GitHub PR annotations.
 3. **Quality Gate Gatekeeper**: Publishes the actionable condition table to the Actions log and summary, annotates failing metrics, and blocks failed gates. Cloud Build independently waits for that exact commit check before mutating Cloud Run.
+
+Before either Cloud Run deployment, Cloud Build also verifies the Pulumi-managed media bucket, dedicated runtime service account, and its object-storage IAM binding. A deployment cannot replace a healthy revision when that storage contract is missing or inconsistent.
 
 The PR lifecycle workflow automatically compares every open PR with its target
 branch after a merge, updates a stale branch, and enables squash auto-merge only

@@ -1,5 +1,5 @@
 """
-Cloud Tasks Webhook Receivers — AetherOmni v2.0
+KORDA Cloud Tasks Webhook Receivers
 
 Handles authenticated HTTP POST callbacks from Google Cloud Tasks.
 Each task type is registered in TASK_REGISTRY and dispatched to the

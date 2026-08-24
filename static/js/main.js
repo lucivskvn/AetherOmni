@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 8. Initialize Realtime WebSocket updates or Fallback Poller
     initializeSupabaseRealtime();
 
-    // 9. Curation Pipeline Booklet Retries & Cancellations
+    // 9. Curation Pipeline Document Retries & Cancellations
     initializeRetryActions();
     initializeCancelActions();
 
@@ -1618,7 +1618,7 @@ function initializeRetryActions() {
         buttonClass: '.btn-retry-doc',
         confirmMsg: '',
         endpointSuffix: 'retry',
-        defaultErrorMsg: 'Failed to re-enqueue booklet.'
+        defaultErrorMsg: 'Failed to re-enqueue document.'
     });
 }
 

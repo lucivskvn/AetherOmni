@@ -15,14 +15,14 @@ from extractor.utils import calculate_file_sha256, check_budget_and_api_limit
 
 
 class Command(BaseCommand):
-    help = "Scan the data/samples/ booklet directory and ingest all booklets into the SurrealDB knowledge base."
+    help = "Scan the data/samples directory and ingest supported documents into the KORDA knowledge base."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--sources-dir",
             type=str,
             default=os.path.join(settings.BASE_DIR, "data", "samples"),
-            help="Directory containing the booklet files to ingest.",
+            help="Directory containing document files to ingest.",
         )
         parser.add_argument(
             "--sync",
@@ -40,7 +40,7 @@ class Command(BaseCommand):
         sync_mode = options["sync"]
         force_mode = options["force"]
 
-        self.stdout.write(self.style.SUCCESS("=== Starting Booklet Ingestion Process ==="))
+        self.stdout.write(self.style.SUCCESS("=== Starting Document Ingestion Process ==="))
         self.stdout.write(f"Sources Directory: {sources_dir}")
         self.stdout.write(f"Processing Mode: {'SYNCHRONOUS (Live logs)' if sync_mode else 'ASYNCHRONOUS (Queue)'}")
         self.stdout.write(f"Force Re-ingest: {force_mode}\n")
@@ -50,10 +50,10 @@ class Command(BaseCommand):
 
         files_to_ingest = self._find_files(sources_dir)
         if not files_to_ingest:
-            self.stdout.write(self.style.WARNING("No supported booklet documents found in the data/samples directory."))
+            self.stdout.write(self.style.WARNING("No supported documents found in the data/samples directory."))
             return
 
-        self.stdout.write(self.style.SUCCESS(f"Found {len(files_to_ingest)} candidate booklet(s) to process.\n"))
+        self.stdout.write(self.style.SUCCESS(f"Found {len(files_to_ingest)} candidate document(s) to process.\n"))
 
         for idx, file_path in enumerate(files_to_ingest, 1):
             filename = os.path.basename(file_path)
@@ -95,7 +95,7 @@ class Command(BaseCommand):
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(f"   - [ERROR] Failed to ingest {filename}: {exc!s}\n"))
 
-        self.stdout.write(self.style.SUCCESS("=== Booklet Ingestion Process Completed ==="))
+        self.stdout.write(self.style.SUCCESS("=== Document Ingestion Process Completed ==="))
 
     def _find_files(self, sources_dir):
         """Scan for supported document files."""

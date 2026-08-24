@@ -52,7 +52,7 @@ echo -e "${GREEN}✓ Python bytecode compiled cleanly with 0 syntax errors.${NC}
 APP_VERSION=$($PYTHON_BIN scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
 
 echo -e "${CYAN}======================================================================${NC}"
-echo -e "${CYAN} 🚀 AetherOmni Pre-Production Quality & DevSecOps Verification Suite   ${NC}"
+echo -e "${CYAN} 🚀 KORDA Pre-Production Quality & DevSecOps Verification Suite        ${NC}"
 echo -e "${CYAN}    Release Version: ${APP_VERSION}                                         ${NC}"
 echo -e "${CYAN}    Automated Fix Mode: ${AUTOFIX}                                       ${NC}"
 echo -e "${CYAN}======================================================================${NC}"
