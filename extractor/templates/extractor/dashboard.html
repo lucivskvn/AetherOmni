@@ -84,7 +84,7 @@
             <form id="upload-form" action="{% url 'upload_document' %}" method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 <input type="file" id="file-input" name="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.tiff,.heic,.heif,.csv,.txt,.md,.markdown,.json,.docx,.doc,.xlsx,.xls" class="visually-hidden" multiple aria-label="Upload files">
-                <button type="button" id="drop-zone" class="upload-zone" aria-label="Ingest and upload documents and files">
+                <button type="button" id="drop-zone" class="upload-zone">
                     <i data-lucide="cloud-lightning"></i>
                     <div class="upload-title">Ingest Documents & Files</div>
                     <div class="upload-subtitle">Drag & drop files or click here to upload (Supports batch uploads of PDF, Images, Markdown, Text, CSV, JSON, Word, Excel up to 30MB)</div>
@@ -121,8 +121,8 @@
                                 <option value="-status" {% if sort_by == '-status' %}selected{% endif %}>Status (Z-A)</option>
                             </select>
                         </div>
-                        <button type="button" id="btn-select-all" class="btn btn-secondary" aria-label="Select All Documents">Select All</button>
-                        <button type="button" id="btn-clear-all" class="btn btn-secondary" aria-label="Clear All Selected Documents">Clear</button>
+                        <button type="button" id="btn-select-all" class="btn btn-secondary">Select All</button>
+                        <button type="button" id="btn-clear-all" class="btn btn-secondary">Clear</button>
                     </div>
                 </div>
 
@@ -236,7 +236,7 @@
                                     <td colspan="6" class="empty-table-cell">
                                         <i data-lucide="inbox"></i>
                                         <p style="margin-bottom: 12px;">No documents ingested yet. Upload files above to get started.</p>
-                                        <button type="button" class="btn btn-primary" onclick="document.getElementById('file-input').click()" aria-label="Upload files" title="Select files to upload">
+                                        <button type="button" class="btn btn-primary" onclick="document.getElementById('file-input').click()" title="Select files to upload">
                                             <i data-lucide="upload" aria-hidden="true" style="width: 14px; height: 14px; display: inline-block; margin-right: 6px;"></i> Upload Files
                                         </button>
                                     </td>
@@ -304,14 +304,14 @@
                 <option value="csv" data-action="{% url 'export_csv' %}">📊 Metadata Summary (.csv)</option>
             </select>
         </div>
-        <button type="submit" form="export-form" id="btn-export-submit" class="btn btn-primary" aria-label="Export Selected Documents">
-            <i data-lucide="download-cloud"></i> Export Selected
+        <button type="submit" form="export-form" id="btn-export-submit" class="btn btn-primary" title="Export Selected Documents">
+            <i data-lucide="download-cloud" aria-hidden="true"></i> Export Selected
         </button>
-        <button type="button" id="btn-bulk-restart" class="btn btn-secondary" aria-label="Bulk Restart Processing" data-action-url="{% url 'bulk_action' %}">
-            <i data-lucide="refresh-cw"></i> Bulk Restart
+        <button type="button" id="btn-bulk-restart" class="btn btn-secondary" title="Bulk Restart Processing" data-action-url="{% url 'bulk_action' %}">
+            <i data-lucide="refresh-cw" aria-hidden="true"></i> Bulk Restart
         </button>
-        <button type="button" id="btn-bulk-delete" class="btn btn-danger" aria-label="Bulk Delete Documents" data-action-url="{% url 'bulk_action' %}">
-            <i data-lucide="trash-2"></i> Bulk Delete
+        <button type="button" id="btn-bulk-delete" class="btn btn-danger" title="Bulk Delete Documents" data-action-url="{% url 'bulk_action' %}">
+            <i data-lucide="trash-2" aria-hidden="true"></i> Bulk Delete
         </button>
     </div>
 </div>
