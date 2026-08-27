@@ -243,17 +243,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (jsonScript) {
                     const jsonData = JSON.parse(jsonScript.textContent);
                     await navigator.clipboard.writeText(JSON.stringify(jsonData, null, 2));
-                    if (typeof globalThis.showClientSideAlert === 'function') {
-                        globalThis.showClientSideAlert('Copied JSON Dataset to clipboard!', 'success');
-                    }
+                    globalThis.showClientSideAlert?.('Copied JSON Dataset to clipboard!', 'success');
                 } else {
                     throw new Error("JSON script not found");
                 }
             } catch (err) {
                 console.error("Failed to copy SFT dataset", err);
-                if (typeof globalThis.showClientSideAlert === 'function') {
-                    globalThis.showClientSideAlert('Failed to copy SFT dataset.', 'error');
-                }
+                globalThis.showClientSideAlert?.('Failed to copy SFT dataset.', 'error');
             }
         });
     }
@@ -263,14 +259,10 @@ document.addEventListener('DOMContentLoaded', () => {
         btnCopyMarkdown.addEventListener('click', async () => {
             try {
                 await navigator.clipboard.writeText(editor.value);
-                if (typeof globalThis.showClientSideAlert === 'function') {
-                    globalThis.showClientSideAlert('Copied Markdown to clipboard!', 'success');
-                }
+                globalThis.showClientSideAlert?.('Copied Markdown to clipboard!', 'success');
             } catch (err) {
                 console.error("Failed to copy Markdown", err);
-                if (typeof globalThis.showClientSideAlert === 'function') {
-                    globalThis.showClientSideAlert('Failed to copy Markdown.', 'error');
-                }
+                globalThis.showClientSideAlert?.('Failed to copy Markdown.', 'error');
             }
         });
     }
