@@ -87,3 +87,30 @@ class IngestSourcesTestCase(TestCase):
         self.assertEqual(new_doc.status, "COMPLETED")
         self.assertEqual(new_doc.cost_usd, Decimal("0.00"))
         mock_clone_chunks.assert_called_once_with(str(existing_doc.uuid), str(new_doc.uuid))
+
+    @patch("extractor.management.commands.ingest_sources.calculate_file_sha256")
+    @patch("extractor.management.commands.ingest_sources.check_budget_and_api_limit")
+    @patch("extractor.management.commands.ingest_sources.cloud_tasks.enqueue")
+    def test_ingest_force_mode_cleans_up_duplicates(self, mock_enqueue, mock_check_budget, mock_hash):
+        mock_hash.return_value = "forcehash123"
+
+        # Pre-create 3 existing documents with the same file_hash
+        for i in range(3):
+            SourceDocument.objects.create(
+                original_filename=f"old_{i}.pdf",
+                file_hash="forcehash123",
+                status="COMPLETED",
+            )
+
+        self.assertEqual(SourceDocument.objects.filter(file_hash="forcehash123").count(), 3)
+
+        file_path = os.path.join(self.sources_dir, "new_doc.pdf")
+        with open(file_path, "wb") as f:
+            f.write(b"Force Content")
+
+        call_command("ingest_sources", sources_dir=self.sources_dir, sync=False, force=True)
+
+        # The old 3 documents should be removed and 1 new pending document created
+        docs = SourceDocument.objects.filter(file_hash="forcehash123")
+        self.assertEqual(docs.count(), 1)
+        self.assertEqual(docs.first().original_filename, "new_doc.pdf")
