@@ -614,7 +614,6 @@ function initializeSettingsModal() {
             }
             if (finalResetBtn) {
                 finalResetBtn.disabled = true;
-                finalResetBtn.title = 'Type RESET to enable';
             }
         });
     }
@@ -628,11 +627,6 @@ function initializeSettingsModal() {
             if (finalResetBtn) {
                 const val = resetConfirmInput.value.trim().toUpperCase();
                 finalResetBtn.disabled = (val !== 'RESET');
-                if (finalResetBtn.disabled) {
-                    finalResetBtn.title = 'Type RESET to enable';
-                } else {
-                    finalResetBtn.removeAttribute('title');
-                }
             }
         });
     }
