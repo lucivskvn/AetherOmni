@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from threading import get_ident
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from django.test import TestCase, override_settings
@@ -31,32 +32,54 @@ class SurrealDBClientTestCase(TestCase):
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_check_health_running_event_loop_dispatches_to_thread(self, mock_surreal):
         mock_db = self._create_mock_db()
-        mock_surreal.return_value = mock_db
+        caller_thread = get_ident()
+        constructor_threads = []
+
+        def construct_db(*args, **kwargs):
+            constructor_threads.append(get_ident())
+            return mock_db
+
+        mock_surreal.side_effect = construct_db
 
         import asyncio
 
         async def run_test():
-            return surreal_db.check_health()
+            result = surreal_db.check_health()
+            await asyncio.sleep(0)
+            return result
 
         result = asyncio.run(run_test())
         self.assertTrue(result)
         mock_surreal.assert_called()
+        self.assertTrue(constructor_threads)
+        self.assertTrue(all(thread_id != caller_thread for thread_id in constructor_threads))
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_run_running_event_loop_dispatches_to_thread(self, mock_surreal):
         query_res = [{"result": [{"status": "OK"}]}]
         mock_db = self._create_mock_db(query_res)
-        mock_surreal.return_value = mock_db
+        caller_thread = get_ident()
+        constructor_threads = []
+
+        def construct_db(*args, **kwargs):
+            constructor_threads.append(get_ident())
+            return mock_db
+
+        mock_surreal.side_effect = construct_db
 
         import asyncio
 
         async def run_test():
-            return surreal_db._run("SELECT * FROM documents;")
+            result = surreal_db._run("SELECT * FROM documents;")
+            await asyncio.sleep(0)
+            return result
 
         result = surreal_db._first_result(asyncio.run(run_test()))
         self.assertEqual(result, [{"status": "OK"}])
         mock_db.query.assert_called_once()
+        self.assertTrue(constructor_threads)
+        self.assertTrue(all(thread_id != caller_thread for thread_id in constructor_threads))
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
