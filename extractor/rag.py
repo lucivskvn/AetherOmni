@@ -260,11 +260,11 @@ generate_pgvector_embeddings = generate_surreal_embeddings
 
 
 def _sync_postgres_memories_to_surreal(user, surreal_db, user_memory):
-    pg_memories = user_memory.objects.filter(user=user)
-    if pg_memories.exists():
+    pg_memories = list(user_memory.objects.filter(user=user))
+    if pg_memories:
         logger.info(
             "[Memories Sync] Restoring %s memories from PostgreSQL to SurrealDB for user %s...",
-            pg_memories.count(),
+            len(pg_memories),
             user.username,
         )
         for mem in pg_memories:
