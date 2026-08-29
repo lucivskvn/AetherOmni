@@ -295,24 +295,43 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
         return _detected_ns
 
     fallback_ns = env_ns or "korda"
-    try:
-        async with AsyncSurreal(url) as db:
-            await db.signin(auth)
-            root_info_res = await db.query("INFO FOR ROOT;")
-            namespaces = _prioritize_namespaces(_extract_namespaces(root_info_res))
+    _max_attempts = 3
+    for attempt in range(_max_attempts):
+        try:
+            async with AsyncSurreal(url) as db:
+                await db.signin(auth)
+                root_info_res = await db.query("INFO FOR ROOT;")
+                namespaces = _prioritize_namespaces(_extract_namespaces(root_info_res))
 
-            if not namespaces:
+                if not namespaces:
+                    _detected_ns = fallback_ns
+                    return _detected_ns
+
+                probed_ns = await _probe_namespaces(db, namespaces, db_name)
+                _detected_ns = probed_ns or (namespaces[0] if namespaces else fallback_ns)
+                return _detected_ns
+        except Exception as e:
+            if attempt < _max_attempts - 1:
+                wait_secs = 2**attempt
+                logger.warning(
+                    "[SurrealDB] Namespace detection attempt %d/%d failed (%s). Retrying in %ds...",
+                    attempt + 1,
+                    _max_attempts,
+                    e,
+                    wait_secs,
+                )
+                await asyncio.sleep(wait_secs)
+            else:
+                logger.warning(
+                    "[SurrealDB] Failed to auto-detect namespaces after %d attempts, falling back to '%s': %s",
+                    _max_attempts,
+                    fallback_ns,
+                    e,
+                )
                 _detected_ns = fallback_ns
                 return _detected_ns
-
-            probed_ns = await _probe_namespaces(db, namespaces, db_name)
-            _detected_ns = probed_ns or (namespaces[0] if namespaces else fallback_ns)
-            return _detected_ns
-
-    except Exception as e:
-        logger.warning("[SurrealDB] Failed to auto-detect namespaces, falling back to '%s': %s", fallback_ns, e)
-        _detected_ns = fallback_ns
-        return _detected_ns
+    _detected_ns = fallback_ns
+    return _detected_ns
 
 
 def _get_surreal_ns_db() -> tuple[str, str]:
