@@ -831,6 +831,13 @@ dialog.settings-dialog .dialog-footer {
     color: var(--text-main);
 }
 
+.table-filter-clear-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+    color: var(--text-main);
+}
+
 .panel-header {
     display: flex;
     justify-content: space-between;
@@ -2310,3 +2317,32 @@ dialog.settings-dialog .dialog-footer button i {
     }
 }
 
+
+/* Audit and RAG Search Clear Button */
+.search-clear-btn {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    z-index: 5;
+    transition: color 0.2s;
+}
+
+.search-clear-btn:hover {
+    color: var(--text-main);
+}
+
+.search-clear-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+    color: var(--text-main);
+}
