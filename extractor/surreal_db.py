@@ -284,6 +284,17 @@ def _prioritize_namespaces(namespaces: list[str]) -> list[str]:
     return res
 
 
+async def _perform_ns_detection(url: str, auth: dict, db_name: str, fallback_ns: str) -> str:
+    async with AsyncSurreal(url) as db:
+        await db.signin(auth)
+        root_info_res = await db.query("INFO FOR ROOT;")
+        namespaces = _prioritize_namespaces(_extract_namespaces(root_info_res))
+        if not namespaces:
+            return fallback_ns
+        probed_ns = await _probe_namespaces(db, namespaces, db_name)
+        return probed_ns or (namespaces[0] if namespaces else fallback_ns)
+
+
 async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
     global _detected_ns
     if _detected_ns:
@@ -298,18 +309,8 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
     _max_attempts = 3
     for attempt in range(_max_attempts):
         try:
-            async with AsyncSurreal(url) as db:
-                await db.signin(auth)
-                root_info_res = await db.query("INFO FOR ROOT;")
-                namespaces = _prioritize_namespaces(_extract_namespaces(root_info_res))
-
-                if not namespaces:
-                    _detected_ns = fallback_ns
-                    return _detected_ns
-
-                probed_ns = await _probe_namespaces(db, namespaces, db_name)
-                _detected_ns = probed_ns or (namespaces[0] if namespaces else fallback_ns)
-                return _detected_ns
+            _detected_ns = await _perform_ns_detection(url, auth, db_name, fallback_ns)
+            return _detected_ns
         except Exception as e:
             if attempt < _max_attempts - 1:
                 wait_secs = 2**attempt
