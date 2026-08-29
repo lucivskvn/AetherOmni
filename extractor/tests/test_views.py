@@ -995,6 +995,52 @@ class StableSupabaseIdentityTestCase(TestCase):
             _parse_surreal_audit_details({"metadata": '{"details": "Serialized event"}'}), "Serialized event"
         )
 
+    @patch("extractor.views._build_users_map")
+    @patch("extractor.surreal_db._run")
+    @patch("extractor.surreal_db._first_result")
+    @patch("extractor.surreal_db.get_document")
+    @patch("extractor.surreal_db.get_documents")
+    def test_surreal_audit_logs_batch_fetches_documents(
+        self, mock_get_docs, mock_get_doc, mock_first_result, mock_run, mock_users_map
+    ):
+        from extractor.views import _get_surreal_audit_logs
+
+        user = User.objects.create_user(username="batch-audit-user", password="password123")
+        request = RequestFactory().get("/")
+        request.user = user
+        request.session = {}
+
+        raw_logs = [
+            {
+                "id": f"audit:{i}",
+                "timestamp": "2026-08-12T02:00:00Z",
+                "action": "UPLOAD",
+                "user_id": str(user.id),
+                "doc_uuid": f"00000000-0000-0000-0000-00000000000{i % 5}",
+                "details": f"Details {i}",
+                "ip_address": "127.0.0.1",
+            }
+            for i in range(20)
+        ]
+        mock_run.return_value = [raw_logs]
+        mock_first_result.return_value = raw_logs
+        mock_users_map.return_value = {str(user.id): user}
+        mock_get_docs.return_value = [
+            {
+                "doc_uuid": f"00000000-0000-0000-0000-00000000000{i}",
+                "title": f"Doc {i}",
+                "original_filename": f"file_{i}.pdf",
+                "status": "COMPLETED",
+            }
+            for i in range(5)
+        ]
+
+        result = _get_surreal_audit_logs(request, True, "", "", "")
+
+        self.assertEqual(len(result["logs"]), 20)
+        mock_get_docs.assert_called_once()
+        mock_get_doc.assert_not_called()
+
 
 class DeploymentControllerViewTestCase(TestCase):
     """Verifies DeploymentControllerView behaviour under various roles and scaling options."""
