@@ -626,6 +626,7 @@ function initializeSettingsModal() {
             }
             if (finalResetBtn) {
                 finalResetBtn.disabled = true;
+                finalResetBtn.setAttribute('title', 'Type RESET to enable');
             }
         });
     }
@@ -639,6 +640,11 @@ function initializeSettingsModal() {
             if (finalResetBtn) {
                 const val = resetConfirmInput.value.trim().toUpperCase();
                 finalResetBtn.disabled = (val !== 'RESET');
+                if (finalResetBtn.disabled) {
+                    finalResetBtn.setAttribute('title', 'Type RESET to enable');
+                } else {
+                    finalResetBtn.removeAttribute('title');
+                }
             }
         });
     }
@@ -1010,7 +1016,7 @@ function applyLibraryFilter(filterValue) {
                 <td colspan="6" class="empty-table-cell" style="text-align: center; padding: 32px 16px;">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted); margin-bottom: 12px; display: inline-block;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
                     <p id="table-filter-empty-text" style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-muted); font-weight: 500;"></p>
-                    <button type="button" class="btn btn-secondary" id="table-filter-empty-clear-btn">Clear Filter</button>
+                    <button type="button" class="btn btn-secondary" id="table-filter-empty-clear-btn" title="Clear Filter">Clear Filter</button>
                 </td>
             `;
             document.querySelector('.files-panel table tbody').appendChild(emptyStateRow);
