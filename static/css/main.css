@@ -810,7 +810,8 @@ dialog.settings-dialog .dialog-footer {
     outline: none;
 }
 
-.table-filter-clear-btn {
+.table-filter-clear-btn,
+.search-clear-btn {
     position: absolute;
     right: 8px;
     top: 50%;
@@ -827,8 +828,16 @@ dialog.settings-dialog .dialog-footer {
     transition: color 0.2s;
 }
 
-.table-filter-clear-btn:hover {
+.table-filter-clear-btn:hover,
+.search-clear-btn:hover {
     color: var(--text-main);
+}
+
+.table-filter-clear-btn:focus-visible,
+.search-clear-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 4px;
 }
 
 .panel-header {
