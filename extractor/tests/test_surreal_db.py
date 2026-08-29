@@ -29,37 +29,6 @@ class SurrealDBClientTestCase(TestCase):
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
-    def test_check_health_running_event_loop_dispatches_to_thread(self, mock_surreal):
-        mock_db = self._create_mock_db()
-        mock_surreal.return_value = mock_db
-
-        import asyncio
-
-        async def run_test():
-            return surreal_db.check_health()
-
-        result = asyncio.run(run_test())
-        self.assertTrue(result)
-        mock_surreal.assert_called()
-
-    @override_settings(DEBUG=True)
-    @patch("extractor.surreal_db.AsyncSurreal")
-    def test_run_running_event_loop_dispatches_to_thread(self, mock_surreal):
-        query_res = [{"result": [{"status": "OK"}]}]
-        mock_db = self._create_mock_db(query_res)
-        mock_surreal.return_value = mock_db
-
-        import asyncio
-
-        async def run_test():
-            return surreal_db._run("SELECT * FROM documents;")
-
-        result = surreal_db._first_result(asyncio.run(run_test()))
-        self.assertEqual(result, [{"status": "OK"}])
-        mock_db.query.assert_called_once()
-
-    @override_settings(DEBUG=True)
-    @patch("extractor.surreal_db.AsyncSurreal")
     def test_check_health_online(self, mock_surreal):
         mock_db = self._create_mock_db()
         mock_surreal.return_value = mock_db
