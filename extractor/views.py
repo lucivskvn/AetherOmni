@@ -198,8 +198,19 @@ def _build_users_map(user_ids=None, fallback_user=None) -> dict:
     needed_ids = {str(uid) for uid in user_ids if uid and str(uid) not in users_map}
     if needed_ids:
         try:
-            for u in user_model.objects.filter(id__in=needed_ids):
-                users_map[str(u.id)] = u
+            query_ids = []
+            pk_field = user_model._meta.pk
+            for uid_str in needed_ids:
+                if hasattr(pk_field, "to_python"):
+                    try:
+                        query_ids.append(pk_field.to_python(uid_str))
+                    except Exception:
+                        pass
+                else:
+                    query_ids.append(uid_str)
+            if query_ids:
+                for pk_val, user_obj in user_model.objects.in_bulk(query_ids).items():
+                    users_map[str(pk_val)] = user_obj
         except Exception as exc:
             logger.debug("[Users Map] Scoped user query skipped: %s", exc)
     return users_map
