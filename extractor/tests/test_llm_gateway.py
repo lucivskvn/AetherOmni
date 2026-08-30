@@ -5,12 +5,15 @@ from django.test import TestCase, override_settings
 
 from extractor.llm_gateway import (
     BudgetExceededException,
+    GeminiProcessingError,
     UnifiedResponse,
+    _call_openrouter,
     _parse_refinement_output,
     calculate_gemini_cost,
     calculate_openrouter_cost,
     check_budget_and_api_limit,
     extract_retry_delay,
+    fetch_realtime_model_pricing,
     is_rate_limit_error,
 )
 
@@ -119,3 +122,52 @@ class LLMGatewayTestCase(TestCase):
 
         with self.assertRaises(BudgetExceededException):
             check_budget_and_api_limit()
+
+    @patch("extractor.llm_gateway.httpx.post")
+    @patch("extractor.llm_gateway._get_openrouter_api_key", return_value="test-key-123")
+    def test_call_openrouter_enforces_ssl_verification(self, mock_key, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "Response from OpenRouter"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+        }
+        mock_post.return_value = mock_response
+
+        res = _call_openrouter("Hello prompt", "System instruction", "openrouter/free")
+
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertTrue(kwargs.get("verify"))
+        self.assertEqual(kwargs.get("timeout"), 60.0)
+        self.assertEqual(res.text, "Response from OpenRouter")
+        self.assertEqual(res.input_tokens, 10)
+        self.assertEqual(res.output_tokens, 20)
+
+    @patch("extractor.llm_gateway.httpx.post", side_effect=Exception("Connection reset"))
+    @patch("extractor.llm_gateway._get_openrouter_api_key", return_value="test-key-123")
+    def test_call_openrouter_handles_exception(self, mock_key, mock_post):
+        with self.assertRaises(GeminiProcessingError):
+            _call_openrouter("Hello prompt", None, "openrouter/free")
+
+    @patch("django.core.cache.cache.get", return_value=None)
+    @patch("extractor.llm_gateway._get_cached_realtime_pricing", return_value=None)
+    @patch("extractor.llm_gateway.httpx.get")
+    def test_fetch_realtime_pricing_enforces_ssl_verification(self, mock_get, mock_cached_db, mock_cache_get):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "id": "openrouter/free",
+                    "pricing": {"prompt": "0.0001", "completion": "0.0002"},
+                }
+            ]
+        }
+        mock_get.return_value = mock_response
+
+        pricing = fetch_realtime_model_pricing()
+
+        mock_get.assert_called_once()
+        _, kwargs = mock_get.call_args
+        self.assertTrue(kwargs.get("verify"))
+        self.assertIsNotNone(pricing)

@@ -977,6 +977,8 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str) -> None:
     title = str(getattr(doc, "title", None) or "Untitled")
     author = str(getattr(doc, "author", None) or "Unknown")
     chunks = _get_doc_chunks(doc, doc_uuid, limit=10000)
+    chunk_rows = []
+    fts_rows = []
     for chunk in chunks:
         content_str = str(chunk.get("content") or "").strip()
         if not content_str:
@@ -986,21 +988,25 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str) -> None:
         anch = str(chunk.get("anchor_id") or f"page-{p_num}")
         c_idx = int(chunk.get("chunk_index") or 0)
 
-        cursor.execute(
+        chunk_rows.append((doc_uuid, c_idx, p_num, chap, anch, content_str))
+        fts_rows.append((content_str, title, author, doc_uuid, str(p_num), anch))
+
+    if chunk_rows:
+        cursor.executemany(
             """
             INSERT INTO chunks (
                 doc_uuid, chunk_index, page_number, chapter_title, anchor_id, content
             ) VALUES (?, ?, ?, ?, ?, ?);
             """,
-            (doc_uuid, c_idx, p_num, chap, anch, content_str),
+            chunk_rows,
         )
-        cursor.execute(
+        cursor.executemany(
             """
             INSERT INTO chunks_fts (
                 content, title, author, doc_uuid, page_number, anchor_id
             ) VALUES (?, ?, ?, ?, ?, ?);
             """,
-            (content_str, title, author, doc_uuid, str(p_num), anch),
+            fts_rows,
         )
 
 
