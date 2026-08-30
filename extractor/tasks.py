@@ -964,7 +964,7 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
 
 
 def _build_chunk_payload(
-    chunk_index: int, chunk_text: str, emb: list[float], doc_language: str
+    chunk_index: int, chunk_text: str, emb: list[float] | None, doc_language: str
 ) -> tuple[dict, int, str]:
     """Helper to parse chunk markers and construct SurrealDB chunk payload."""
     page_match = re.search(r"## Page (\d+)", chunk_text, re.IGNORECASE)
@@ -1566,9 +1566,13 @@ def store_user_memory_task(payload: dict) -> None:
 
     try:
         embeddings = generate_surreal_embeddings([distilled], model_name="text-embedding-004")
-        vector = embeddings[0]
+        vector = embeddings[0] if embeddings else None
     except Exception as exc:
         logger.exception("[Memory Task] Failed to generate embedding for distilled preference: %s", exc)
+        return
+
+    if not vector:
+        logger.warning("[Memory Task] No valid embedding generated for preference '%s'. Skipped.", distilled)
         return
 
     try:

@@ -205,13 +205,16 @@ def _build_users_map(user_ids=None, fallback_user=None) -> dict:
     return users_map
 
 
-def _wrap_surreal_doc(d, users_map=None):
+def _wrap_surreal_doc(d, users_map=None, skip_offline_lookup=False):
     if not d:
         return None
     from django.conf import settings
 
-    if getattr(settings, "SURREALDB_OFFLINE", False):
+    if getattr(settings, "SURREALDB_OFFLINE", False) and not skip_offline_lookup:
         from extractor.models import SourceDocument
+
+        if isinstance(d, SourceDocument):
+            return d
 
         try:
             return SourceDocument.objects.get(uuid=d.get("doc_uuid"))
@@ -2026,10 +2029,12 @@ def _get_surreal_audit_document(raw_log, users_map, docs_map=None):
         return None
     if docs_map is not None:
         raw_document = docs_map.get(document_id)
+        if raw_document:
+            return _wrap_surreal_doc(raw_document, users_map, skip_offline_lookup=True)
     else:
         raw_document = surreal_db.get_document(document_id)
-    if raw_document:
-        return _wrap_surreal_doc(raw_document, users_map)
+        if raw_document:
+            return _wrap_surreal_doc(raw_document, users_map)
     # If the document was deleted or purged, provide a fallback object so Target File displays gracefully
     fallback = SimpleNamespace()
     fallback.uuid = document_id

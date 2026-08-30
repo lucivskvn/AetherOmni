@@ -2175,3 +2175,61 @@ class ViewsExceptionPathsTestCase(TestCase):
         pending_doc.refresh_from_db()
         self.assertEqual(pending_doc.retry_count, 0)
         mock_enqueue.assert_called_once()
+
+    def test_audit_logs_batch_fetch_offline_avoids_per_row_lookup(self):
+        """Verify audit logs parsing with preloaded docs_map does not execute per-log SourceDocument.objects.get."""
+        from extractor.models import SourceDocument
+        from extractor.views import _build_audit_docs_map, _parse_surreal_audit_log
+
+        user = User.objects.create_user(username="audit_n1_tester", password="Password123!")
+        doc1 = SourceDocument.objects.create(
+            original_filename="doc1.pdf",
+            file_hash="hash1",
+            title="Doc 1",
+            status="COMPLETED",
+            uploaded_by=user,
+        )
+        doc2 = SourceDocument.objects.create(
+            original_filename="doc2.pdf",
+            file_hash="hash2",
+            title="Doc 2",
+            status="COMPLETED",
+            uploaded_by=user,
+        )
+
+        raw_logs = [
+            {
+                "id": "audit:1",
+                "doc_uuid": str(doc1.uuid),
+                "user_id": str(user.id),
+                "action": "UPLOAD",
+                "timestamp": "2026-08-30T00:00:00Z",
+            },
+            {
+                "id": "audit:2",
+                "doc_uuid": str(doc2.uuid),
+                "user_id": str(user.id),
+                "action": "UPLOAD",
+                "timestamp": "2026-08-30T00:00:01Z",
+            },
+            {
+                "id": "audit:3",
+                "doc_uuid": str(doc1.uuid),
+                "user_id": str(user.id),
+                "action": "EXTRACTION_COMPLETED",
+                "timestamp": "2026-08-30T00:00:02Z",
+            },
+        ]
+
+        with self.settings(SURREALDB_OFFLINE=True):
+            docs_map = _build_audit_docs_map(raw_logs)
+            with patch.object(
+                SourceDocument.objects,
+                "get",
+                side_effect=AssertionError("Redundant SourceDocument.objects.get executed!"),
+            ):
+                parsed_logs = [_parse_surreal_audit_log(rl, {str(user.id): user}, docs_map=docs_map) for rl in raw_logs]
+                self.assertEqual(len(parsed_logs), 3)
+                self.assertEqual(parsed_logs[0].document.title, "Doc 1")
+                self.assertEqual(parsed_logs[1].document.title, "Doc 2")
+                self.assertEqual(parsed_logs[2].document.title, "Doc 1")
