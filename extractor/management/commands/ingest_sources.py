@@ -150,12 +150,15 @@ class Command(BaseCommand):
 
     def _cleanup_force_mode_duplicates(self, file_hash: str) -> None:
         """Deletes existing documents with the same file_hash when force mode is active."""
-        for old_doc in SourceDocument.objects.filter(file_hash=file_hash):
+        old_docs = list(SourceDocument.objects.filter(file_hash=file_hash))
+        if not old_docs:
+            return
+        for old_doc in old_docs:
             try:
                 old_doc.file.delete(save=False)
             except Exception as exc:
                 self.stdout.write(self.style.WARNING(f"   - [WARNING] Failed to delete old file: {exc}"))
-            old_doc.delete()
+        SourceDocument.objects.filter(file_hash=file_hash).delete()
 
     def _create_pending_document(self, file_path, filename, file_hash, force_mode):
         """Create document record and handle force mode deletions."""
