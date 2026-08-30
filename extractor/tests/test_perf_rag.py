@@ -47,3 +47,23 @@ class RagPerformanceTestCase(TestCase):
         params = args[1] if len(args) > 1 else kwargs.get("params", {})
         self.assertIn("doc_uuids", params)
         self.assertEqual(params["doc_uuids"], doc_uuids)
+
+    def test_sync_postgres_memories_to_surreal_queries(self):
+        from unittest.mock import MagicMock
+
+        from django.contrib.auth import get_user_model
+
+        from extractor.models import UserMemory
+        from extractor.rag import _sync_postgres_memories_to_surreal
+
+        User = get_user_model()
+        user = User.objects.create_user(username="testsyncuser", password="password")
+        UserMemory.objects.create(user=user, memory_text="mem1", embedding=[0.1] * 768)
+        UserMemory.objects.create(user=user, memory_text="mem2", embedding=[0.2] * 768)
+
+        mock_surreal_db = MagicMock()
+
+        with self.assertNumQueries(1):
+            _sync_postgres_memories_to_surreal(user, mock_surreal_db, UserMemory)
+
+        self.assertEqual(mock_surreal_db.add_user_memory.call_count, 2)
