@@ -185,8 +185,8 @@ def _parse_user_query_ids(needed_ids: set[str], pk_field: Any) -> list[Any]:
             continue
         try:
             query_ids.append(pk_field.to_python(uid_str))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[Users Map] Failed to coerce user ID '%s' with pk field to_python: %s", uid_str, exc)
     return query_ids
 
 

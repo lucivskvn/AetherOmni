@@ -238,7 +238,9 @@ def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
                 final_embeddings[idx] = _EMBEDDING_FAILED_SENTINEL
 
 
-def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-embedding-004") -> list[list[float]]:
+def generate_surreal_embeddings(
+    chunks_list: list[str], model_name: str = "text-embedding-004"
+) -> list[list[float] | None]:
     """
     Fetch 768-dimension text embeddings from Google Vertex AI / AI Studio for a list of text chunks.
     Replaces the old generate_pgvector_embeddings function.
