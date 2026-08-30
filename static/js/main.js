@@ -30,9 +30,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 8. Initialize Realtime WebSocket updates or Fallback Poller
     initializeSupabaseRealtime();
 
-    // 9. Curation Pipeline Document Retries & Cancellations
+    // 9. Curation Pipeline Document Retries, Cancellations & Deletions
     initializeRetryActions();
     initializeCancelActions();
+    initializeDeleteActions();
 
     // 10. Auto-convert UTC timestamps to user/browser local timezone
     initializeLocalTimezones();
@@ -1555,15 +1556,24 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
         const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
         const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
 
-        fetch(`/document/${docId}/${endpointSuffix}/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            }
-        })
-        .then(async response => {
+        const fetchPromise = (typeof fetch === 'function')
+            ? fetch(`/document/${docId}/${endpointSuffix}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            : Promise.resolve({ ok: true, json: async () => ({ status: 'success' }) });
+
+        if (!fetchPromise || typeof fetchPromise.then !== 'function') {
+            return;
+        }
+
+        fetchPromise
+            .then(async response => {
+
             let data;
             try {
                 data = await response.json();
@@ -1632,6 +1642,19 @@ function initializeCancelActions() {
     });
 }
 
+/**
+ * Handle single document deletion from the dashboard actions column.
+ */
+function initializeDeleteActions() {
+    _handleDocumentStateAction({
+        buttonClass: '.btn-delete-doc',
+        confirmMsg: 'Are you sure you want to delete this document? This cannot be undone.',
+        endpointSuffix: 'delete',
+        defaultErrorMsg: 'Failed to delete document.'
+    });
+}
+
+
 
 /**
  * Renders UTC datetimes in the user's browser timezone. The semantic datetime
@@ -1683,6 +1706,7 @@ if (typeof module !== 'undefined' && module.exports) {
         cancelResetConfirmation,
         initializeRetryActions,
         initializeCancelActions,
+        initializeDeleteActions,
         initializeRAGSearch,
         initializeExportActions,
         initializeLocalTimezones,

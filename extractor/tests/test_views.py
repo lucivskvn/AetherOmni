@@ -2175,3 +2175,24 @@ class ViewsExceptionPathsTestCase(TestCase):
         pending_doc.refresh_from_db()
         self.assertEqual(pending_doc.retry_count, 0)
         mock_enqueue.assert_called_once()
+
+    def test_document_delete_ajax_json_response(self):
+        """Verify DocumentDeleteView returns JSON response for AJAX requests."""
+        user = User.objects.create_user(username="delete_ajax_tester", password="Password123!")
+        self.client.force_login(user)
+        doc = SourceDocument.objects.create(
+            original_filename="delete_me.pdf",
+            file_hash="delete-hash-456",
+            title="Delete Me",
+            status="FAILED",
+            uploaded_by=user,
+        )
+        response = self.client.post(
+            reverse("delete_document", kwargs={"doc_uuid": doc.uuid}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("status"), "success")
+        self.assertIn("deleted successfully", data.get("message", ""))
+        self.assertFalse(SourceDocument.objects.filter(uuid=doc.uuid).exists())

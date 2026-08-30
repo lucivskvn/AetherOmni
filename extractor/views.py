@@ -1075,69 +1075,72 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         other_uuids = [r["doc_uuid"] for r in rows if str(r.get("doc_uuid")) != str(doc_uuid)]
         return len(other_uuids)
 
+    @staticmethod
+    def _purge_physical_file(file_rel_path: str, file_hash: str, shared_references: int) -> None:
+        if shared_references != 0:
+            logger.info(
+                "[De-duplication Delete] Preserved file hash %s (Shared with %s entries).", file_hash, shared_references
+            )
+            return
+        try:
+            from django.core.files.storage import default_storage
+
+            path_str = str(file_rel_path or "").strip()
+            if path_str and default_storage.exists(path_str):
+                default_storage.delete(path_str)
+            logger.info("[De-duplication Delete] Purged file hash %s physically.", file_hash)
+        except Exception as e:
+            logger.warning("[De-duplication Delete] Failed to physically delete file for hash %s: %s", file_hash, e)
+
+    @staticmethod
+    def _abort_active_processing(doc, doc_uuid) -> None:
+        if getattr(doc, "status", None) not in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
+            return
+        try:
+            surreal_db.update_document(
+                doc_uuid,
+                {"status": "FAILED", "error_message": "Document deleted while processing was in-flight."},
+            )
+            broadcast_status_change(str(doc_uuid), "FAILED")
+        except Exception as abort_err:
+            logger.debug("[Document Delete] Could not set FAILED state on in-flight doc %s: %s", doc_uuid, abort_err)
+
     def post(self, request, doc_uuid):
+        is_ajax = (
+            request.headers.get("x-requested-with") == "XMLHttpRequest"
+            or request.headers.get("accept") == APPLICATION_JSON
+        )
         raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid)
         if not raw_doc:
+            if is_ajax:
+                return JsonResponse({"error": DOCUMENT_NOT_FOUND_MSG}, status=404)
             messages.error(request, DOCUMENT_NOT_FOUND_MSG)
             return redirect("dashboard")
 
         if not is_authorized:
+            if is_ajax:
+                return JsonResponse({"error": "Permission denied to delete this document."}, status=403)
             messages.error(request, "Permission denied to delete this document.")
             return redirect("dashboard")
 
         file_hash = doc.file_hash
         orig_name = doc.original_filename
-        file_rel_path = raw_doc.get("file", "")
-
         shared_references = self._count_shared_references(doc_uuid, file_hash)
-        ip = get_client_ip(request)
 
         _record_view_audit(
             request,
             AuditAction.DELETE,
             f"Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
             document=doc,
-            ip=ip,
+            ip=get_client_ip(request),
         )
 
-        # Flip delete order: delete file first if shared_references == 0
-        if shared_references == 0:
-            try:
-                from django.core.files.storage import default_storage
-
-                # Ensure file_rel_path is a valid non-empty string path
-                path_str = str(file_rel_path or "").strip()
-                if path_str and default_storage.exists(path_str):
-                    default_storage.delete(path_str)
-                logger.info("[De-duplication Delete] Purged file hash %s physically.", file_hash)
-            except Exception as e:
-                logger.warning("[De-duplication Delete] Failed to physically delete file for hash %s: %s", file_hash, e)
-
-        # If document is actively processing, transition to FAILED so in-flight worker immediately aborts
-        if getattr(doc, "status", None) in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
-            try:
-                surreal_db.update_document(
-                    doc_uuid,
-                    {"status": "FAILED", "error_message": "Document deleted while processing was in-flight."},
-                )
-                broadcast_status_change(str(doc_uuid), "FAILED")
-            except Exception as abort_err:
-                logger.debug(
-                    "[Document Delete] Could not set FAILED state on in-flight doc %s: %s", doc_uuid, abort_err
-                )
-
-        # Delete from SurrealDB: cascades chunk deletion
+        self._purge_physical_file(raw_doc.get("file", ""), file_hash, shared_references)
+        self._abort_active_processing(doc, doc_uuid)
         surreal_db.delete_document(doc_uuid)
 
-        if shared_references != 0:
-            logger.info(
-                "[De-duplication Delete] Preserved file hash %s (Shared with %s entries).",
-                file_hash,
-                shared_references,
-            )
-
-        # Purge SurrealDB chunks and backup JSON
-        from django.core.files.storage import default_storage
+        if is_ajax:
+            return JsonResponse({"status": "success", "message": f"Document '{orig_name}' deleted successfully."})
 
         messages.success(request, f"Document '{orig_name}' deleted successfully.")
         return redirect("dashboard")

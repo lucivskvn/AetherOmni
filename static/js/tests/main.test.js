@@ -23,6 +23,7 @@ import {
   cancelResetConfirmation,
   initializeRetryActions,
   initializeCancelActions,
+  initializeDeleteActions,
   initializeRAGSearch,
   initializeExportActions,
   initializeLocalTimezones,
@@ -700,7 +701,35 @@ describe('Document State Actions (Retry and Cancel)', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
+
+  it('triggers confirmation before POST to /document/:id/delete/ on delete button click', async () => {
+    document.body.innerHTML += `
+      <button class="btn btn-secondary btn-delete-doc" data-doc-id="doc-uuid-789">
+        <i data-lucide="trash-2"></i> Delete
+      </button>
+    `;
+    initializeDeleteActions();
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: 'success', message: 'Deleted' }),
+    });
+
+    const deleteBtn = document.querySelector('.btn-delete-doc');
+    deleteBtn.click();
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/document/doc-uuid-789/delete/',
+      expect.objectContaining({
+        method: 'POST',
+      })
+    );
+    confirmSpy.mockRestore();
+  });
 });
+
 
 // ---------------------------------------------------------------------------
 // initializeRAGSearch — Semantic Spotlight Search Flow
