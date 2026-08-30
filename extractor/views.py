@@ -1895,7 +1895,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
             messages.error(request, err_msg)
             return redirect("dashboard")
 
-        is_restart = doc.status == "COMPLETED"
+        is_restart = doc.status in ["COMPLETED", "PENDING"]
         retry_cnt = doc.retry_count
 
         doc_ref = surreal_db.update_document(

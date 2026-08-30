@@ -2109,7 +2109,7 @@ class ViewsExceptionPathsTestCase(TestCase):
 
     @patch("extractor.cloud_tasks.enqueue")
     def test_document_retry_pending_document_succeeds(self, mock_enqueue):
-        """Verify DocumentRetryView allows restarting documents stuck in PENDING status."""
+        """Verify DocumentRetryView allows restarting documents stuck in PENDING status and resets retry_count."""
         user = User.objects.create_user(username="pending_retry_tester", password="Password123!")
         self.client.force_login(user)
         pending_doc = SourceDocument.objects.create(
@@ -2126,4 +2126,6 @@ class ViewsExceptionPathsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data.get("status"), "success")
+        pending_doc.refresh_from_db()
+        self.assertEqual(pending_doc.retry_count, 0)
         mock_enqueue.assert_called_once()

@@ -2442,3 +2442,24 @@ dialog.settings-dialog .dialog-footer button i {
     border-color: #a5b4fc !important;
     color: #3730a3 !important;
 }
+
+/* Light-theme status badge foreground contrast */
+[data-theme="light"] .badge-completed {
+    color: #047857 !important;
+    border-color: rgba(4, 120, 87, 0.3) !important;
+}
+
+[data-theme="light"] .badge-pending {
+    color: #92400e !important;
+    border-color: rgba(146, 64, 14, 0.3) !important;
+}
+
+[data-theme="light"] .badge-processing {
+    color: #3730a3 !important;
+    border-color: rgba(55, 48, 163, 0.3) !important;
+}
+
+[data-theme="light"] .badge-failed {
+    color: #b91c1c !important;
+    border-color: rgba(185, 28, 28, 0.3) !important;
+}
