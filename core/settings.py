@@ -135,7 +135,7 @@ if app_url:
     if parsed_host and parsed_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(parsed_host)
 
-extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", ".cloudflareaccess.com")
+extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", ".cloudflareaccess.com,.fainko.my.id,.fainko.id")
 for extra_host in [h.strip() for h in extra_hosts_env.split(",") if h.strip()]:
     if extra_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(extra_host)
