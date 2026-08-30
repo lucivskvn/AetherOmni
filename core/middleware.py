@@ -98,6 +98,30 @@ def _is_loopback_origin(origin_str: str) -> bool:
         return False
 
 
+def _extract_host_from_origin(origin: str) -> str | None:
+    try:
+        url = origin if "://" in origin else f"https://{origin}"
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.netloc or parsed.path
+        if host and ":" in host:
+            host = host.split(":", 1)[0]
+        return host or None
+    except Exception as parse_err:
+        logger.debug("[Middleware] Could not parse host from origin '%s': %s", origin, parse_err)
+        return None
+
+
+def _load_db_origins_tuple() -> tuple[str, ...]:
+    try:
+        from extractor.models import SystemSettings
+
+        settings_obj = SystemSettings.get_settings()
+        return _parse_db_origins(settings_obj.csrf_trusted_origins)
+    except (AttributeError, RuntimeError, ValueError) as db_err:
+        logger.debug("[Middleware] Could not load CSRF trusted origins from DB: %s", db_err)
+        return ()
+
+
 class DynamicCsrfTrustedOriginsMiddleware:
     """
     Dynamically registers the request's origin and referer in CSRF_TRUSTED_ORIGINS
@@ -139,31 +163,24 @@ class DynamicCsrfTrustedOriginsMiddleware:
         return self.get_response(request)
 
     def _trust_database_origins(self):
-        """Load CSRF trusted origins from the database with eventual consistency (60s cache).
-
-        Queries database at most once every 60 seconds per process.
-        Origins are merged into the shared settings list.
-        """
+        """Load CSRF trusted origins and sync allowed hosts from the database with eventual consistency (60s cache)."""
         import time
 
         now = time.time()
-        if not DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded or (
+        should_reload = not DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded or (
             now - DynamicCsrfTrustedOriginsMiddleware._last_query_time >= 60
-        ):
-            try:
-                from extractor.models import SystemSettings
-
-                settings_obj = SystemSettings.get_settings()
-                db_origins = settings_obj.csrf_trusted_origins
-                DynamicCsrfTrustedOriginsMiddleware._cached_db_origins = _parse_db_origins(db_origins)
-                DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = True
-                DynamicCsrfTrustedOriginsMiddleware._last_query_time = now
-            except (AttributeError, RuntimeError, ValueError) as db_err:
-                logger.debug("[Middleware] Could not load CSRF trusted origins from DB: %s", db_err)
+        )
+        if should_reload:
+            DynamicCsrfTrustedOriginsMiddleware._cached_db_origins = _load_db_origins_tuple()
+            DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = True
+            DynamicCsrfTrustedOriginsMiddleware._last_query_time = now
 
         for origin in DynamicCsrfTrustedOriginsMiddleware._cached_db_origins:
             if origin not in settings.CSRF_TRUSTED_ORIGINS:
                 settings.CSRF_TRUSTED_ORIGINS.append(origin)
+            origin_host = _extract_host_from_origin(origin)
+            if origin_host and origin_host not in settings.ALLOWED_HOSTS:
+                settings.ALLOWED_HOSTS.append(origin_host)
 
     def _trust_host_origin(self, request):
         host = request.get_host()
