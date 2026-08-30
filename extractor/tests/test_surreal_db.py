@@ -37,6 +37,21 @@ class SurrealDBClientTestCase(TestCase):
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
+    def test_check_health_in_running_event_loop(self, mock_surreal):
+        import asyncio
+
+        mock_db = self._create_mock_db()
+        mock_surreal.return_value = mock_db
+
+        async def _test():
+            return surreal_db.check_health()
+
+        result = asyncio.run(_test())
+        self.assertTrue(result)
+        mock_surreal.assert_called_once()
+
+    @override_settings(DEBUG=True)
+    @patch("extractor.surreal_db.AsyncSurreal")
     def test_check_health_offline(self, mock_surreal):
         mock_surreal.side_effect = Exception("Connection refused")
         self.assertFalse(surreal_db.check_health())

@@ -63,6 +63,21 @@ class AuditLogSignalsTestCase(TestCase):
         log = AuditLog.objects.filter(user=user, action="LOGIN").first()
         self.assertEqual(log.ip_address, "198.51.100.1")
 
+    def test_audit_log_timestamp_alias(self):
+        user = User.objects.create_user(username="timestampuser", password="password123")
+        log = AuditLog.objects.create(user=user, action="TEST_ACTION", details="Testing timestamp property alias")
+        self.assertIsNotNone(log.created_at)
+        self.assertEqual(log.timestamp, log.created_at)
+
+    def test_audit_log_to_dict_serialization(self):
+        from extractor.surreal_db import _audit_log_to_dict
+
+        user = User.objects.create_user(username="todictuser", password="password123")
+        log = AuditLog.objects.create(user=user, action="TEST_ACTION", details="Testing dict serialization")
+        log_dict = _audit_log_to_dict(log)
+        self.assertEqual(log_dict["timestamp"], log.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        self.assertEqual(log_dict["action"], "TEST_ACTION")
+
 
 class GdrpReferenceCountingTestCase(TestCase):
     """Verifies that physical file deletions follow GDPR rules and reference-counting constraints."""
