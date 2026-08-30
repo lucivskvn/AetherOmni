@@ -1,6 +1,8 @@
 from unittest import TestCase
 from unittest.mock import patch
 
+from django.test import override_settings
+
 from extractor.rag import reciprocal_rank_fusion
 from extractor.surreal_db import search_chunks_bm25
 
@@ -74,3 +76,25 @@ class HybridRAGTestCase(TestCase):
         self.assertEqual(len(result[0]), 768)
         self.assertEqual(len(result[1]), 768)
         mock_embed.assert_called_once()
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback", side_effect=RuntimeError("API Error"))
+    def test_fill_missing_fallbacks_sentinel_online(self, mock_embed):
+        from extractor.rag import _EMBEDDING_FAILED_SENTINEL, _fill_missing_fallbacks
+
+        final_embeddings = [None]
+        chunks_list = ["Failed chunk"]
+        _fill_missing_fallbacks(final_embeddings, chunks_list, "text-embedding-004")
+        self.assertEqual(final_embeddings[0], _EMBEDDING_FAILED_SENTINEL)
+        self.assertIsNone(final_embeddings[0])
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.rag._lookup_cached_embeddings", return_value=([None], [0], ["Test chunk"]))
+    @patch("extractor.rag._fetch_missing_embeddings", return_value={})
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback", side_effect=RuntimeError("API Error"))
+    def test_generate_surreal_embeddings_failed_sentinel(self, mock_embed, mock_fetch, mock_lookup):
+        from extractor.rag import _EMBEDDING_FAILED_SENTINEL, generate_surreal_embeddings
+
+        embeddings = generate_surreal_embeddings(["Test chunk"])
+        self.assertEqual(len(embeddings), 1)
+        self.assertEqual(embeddings[0], _EMBEDDING_FAILED_SENTINEL)
