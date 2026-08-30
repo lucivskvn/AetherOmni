@@ -1,6 +1,7 @@
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+import httpx
 from django.test import TestCase, override_settings
 
 from extractor.llm_gateway import (
@@ -123,6 +124,49 @@ class LLMGatewayTestCase(TestCase):
         with self.assertRaises(BudgetExceededException):
             check_budget_and_api_limit()
 
+    @patch("extractor.llm_gateway._get_cached_realtime_pricing", return_value=None)
+    @patch("extractor.llm_gateway.httpx.get")
+    def test_fetch_realtime_model_pricing_success(self, mock_httpx_get, mock_get_cached):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "id": "google/gemini-2.5-flash",
+                    "pricing": {"prompt": "0.00000015", "completion": "0.00000060"},
+                }
+            ]
+        }
+        mock_httpx_get.return_value = mock_response
+
+        pricing = fetch_realtime_model_pricing()
+
+        mock_httpx_get.assert_called_once_with("https://openrouter.ai/api/v1/models", timeout=5.0, verify=True)
+        self.assertIsNotNone(pricing)
+        self.assertIn("google/gemini-2.5-flash", pricing)
+        self.assertEqual(pricing["google/gemini-2.5-flash"]["prompt"], Decimal("0.00000015"))
+        self.assertEqual(pricing["google/gemini-2.5-flash"]["completion"], Decimal("0.00000060"))
+
+    @patch("extractor.llm_gateway._get_cached_realtime_pricing")
+    @patch("extractor.llm_gateway.httpx.get")
+    def test_fetch_realtime_model_pricing_cached(self, mock_httpx_get, mock_get_cached):
+        cached_data = {"test-model": {"prompt": Decimal("0.001"), "completion": Decimal("0.002")}}
+        mock_get_cached.return_value = cached_data
+
+        pricing = fetch_realtime_model_pricing()
+
+        mock_get_cached.assert_called_once()
+        mock_httpx_get.assert_not_called()
+        self.assertEqual(pricing, cached_data)
+
+    @patch("extractor.llm_gateway._get_cached_realtime_pricing", return_value=None)
+    @patch("extractor.llm_gateway.httpx.get", side_effect=httpx.HTTPError("Request failed"))
+    def test_fetch_realtime_model_pricing_http_error(self, mock_httpx_get, mock_get_cached):
+        pricing = fetch_realtime_model_pricing()
+
+        mock_httpx_get.assert_called_once_with("https://openrouter.ai/api/v1/models", timeout=5.0, verify=True)
+        self.assertIsNone(pricing)
+
     @patch("extractor.llm_gateway.httpx.post")
     @patch("extractor.llm_gateway._get_openrouter_api_key", return_value="test-key-123")
     def test_call_openrouter_enforces_ssl_verification(self, mock_key, mock_post):
@@ -148,26 +192,3 @@ class LLMGatewayTestCase(TestCase):
     def test_call_openrouter_handles_exception(self, mock_key, mock_post):
         with self.assertRaises(GeminiProcessingError):
             _call_openrouter("Hello prompt", None, "openrouter/free")
-
-    @patch("django.core.cache.cache.get", return_value=None)
-    @patch("extractor.llm_gateway._get_cached_realtime_pricing", return_value=None)
-    @patch("extractor.llm_gateway.httpx.get")
-    def test_fetch_realtime_pricing_enforces_ssl_verification(self, mock_get, mock_cached_db, mock_cache_get):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "data": [
-                {
-                    "id": "openrouter/free",
-                    "pricing": {"prompt": "0.0001", "completion": "0.0002"},
-                }
-            ]
-        }
-        mock_get.return_value = mock_response
-
-        pricing = fetch_realtime_model_pricing()
-
-        mock_get.assert_called_once()
-        _, kwargs = mock_get.call_args
-        self.assertTrue(kwargs.get("verify"))
-        self.assertIsNotNone(pricing)
