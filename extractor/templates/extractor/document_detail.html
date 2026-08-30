@@ -14,7 +14,7 @@
         {% if document.status == 'COMPLETED' or document.refined_markdown %}
         <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 12px;">
             <label for="doc-title-input" style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Document Title <span class="text-danger" aria-hidden="true">*</span></label>
-            <input type="text" id="doc-title-input" name="title" value="{{ document.title }}" form="editor-form" style="font-family: var(--font-display); font-size: 20px; font-weight: 700; background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: var(--text-main); max-width: 600px; outline: none; transition: border-color 0.2s; margin-bottom: 4px;" required>
+            <input type="text" id="doc-title-input" name="title" value="{{ document.title }}" form="editor-form" style="font-family: var(--font-display); font-size: 20px; font-weight: 700; background: var(--surface-subtle); border: 1px solid var(--border-glass); border-radius: 8px; padding: 6px 12px; color: var(--text-main); max-width: 600px; outline: none; transition: border-color 0.2s; margin-bottom: 4px;" required>
             <span class="original-filename">Original Filename: {{ document.original_filename }} (Hash: {{ document.file_hash }})</span>
         </div>
         {% else %}
@@ -99,7 +99,7 @@
                 {% elif document.status != 'COMPLETED' and document.language == 'Unknown' %}
                     <span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>
                 {% elif document.status == 'COMPLETED' or document.refined_markdown %}
-                    <input type="text" id="doc-language-input" name="language" value="{{ document.language }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: var(--text-main); width: 100%; max-width: 180px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
+                    <input type="text" id="doc-language-input" name="language" value="{{ document.language }}" form="editor-form" style="background: var(--surface-subtle); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: var(--text-main); width: 100%; max-width: 180px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
                 {% else %}
                     {{ document.language|normalize_language }}
                 {% endif %}
@@ -118,7 +118,7 @@
                 {% elif document.status != 'COMPLETED' and document.author == 'Unknown' %}
                     <span class="detecting-pulse"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> Detecting...</span>
                 {% elif document.status == 'COMPLETED' or document.refined_markdown %}
-                    <input type="text" id="doc-author-input" name="author" value="{{ document.author }}" form="editor-form" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: var(--text-main); width: 100%; max-width: 280px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
+                    <input type="text" id="doc-author-input" name="author" value="{{ document.author }}" form="editor-form" style="background: var(--surface-subtle); border: 1px solid var(--border-glass); border-radius: 6px; padding: 4px 8px; color: var(--text-main); width: 100%; max-width: 280px; font-size: 13px; font-family: inherit; font-weight: 500; outline: none; margin-top: 2px;">
                 {% else %}
                     {{ document.author }}
                 {% endif %}
@@ -273,7 +273,7 @@
             </div>
             
             <!-- Toolbar bar section -->
-            <div class="editor-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-glass);">
+            <div class="editor-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: var(--surface-subtle); border-bottom: 1px solid var(--border-glass);">
                 <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
                     <button type="button" class="tb-btn" data-action="bold" title="Bold (Ctrl+B)" aria-label="Bold (Ctrl+B)" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="bold" style="width:15px; height:15px;"></i></button>
                     <button type="button" class="tb-btn" data-action="italic" title="Italic (Ctrl+I)" aria-label="Italic (Ctrl+I)" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:6px; border-radius:4px; display:inline-flex; align-items:center; transition: all 0.2s;"><i data-lucide="italic" style="width:15px; height:15px;"></i></button>
@@ -301,7 +301,7 @@
 
             <div class="pane-body">
                 <textarea id="markdown-input" name="refined_markdown" class="markdown-editor" aria-labelledby="editor-title" placeholder="Write refined Markdown text here...">{{ document.refined_markdown }}</textarea>
-                <div class="editor-status-bar" style="padding: 6px 16px; background: rgba(0, 0, 0, 0.25); border-top: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); font-weight: 500; font-family: var(--font-body); pointer-events: none;" aria-live="polite">
+                <div class="editor-status-bar" style="padding: 6px 16px; background: var(--surface-editor); border-top: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); font-weight: 500; font-family: var(--font-body); pointer-events: none;" aria-live="polite">
                     <span id="editor-char-word-count">0 characters | 0 words</span>
                 </div>
             </div>
@@ -365,7 +365,7 @@
 {% endif %}
 
 <!-- SFT Dataset Interactive Preview Modal -->
-<dialog id="sft-preview-modal" style="border: 1px solid var(--border-glass); border-radius: 12px; background: rgba(15, 23, 42, 0.96); color: var(--text-main); max-width: 760px; width: 90%; max-height: 85vh; padding: 24px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px); margin: auto;">
+<dialog id="sft-preview-modal" style="border: 1px solid var(--border-glass); border-radius: 12px; background: var(--dialog-bg); color: var(--text-main); max-width: 760px; width: 90%; max-height: 85vh; padding: 24px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); backdrop-filter: blur(16px); margin: auto;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-glass); padding-bottom: 12px;">
         <h3 style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.1rem;">
             <i data-lucide="database" style="color: var(--accent);"></i> SFT Instruction Dataset Pairs
@@ -417,13 +417,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         const page = p.metadata?.page_number || 1;
                         const anchor = p.metadata?.anchor_id || `page-${page}`;
                         html += `
-                        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-glass); border-radius:8px; padding:12px; margin-bottom:8px;">
+                        <div style="background:var(--surface-subtle); border:1px solid var(--border-glass); border-radius:8px; padding:12px; margin-bottom:8px;">
                             <div style="font-size:11px; color:var(--accent); font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">
                                 <span>PAIR #${idx + 1} (Page ${page})</span>
                                 <span style="color:var(--text-muted); font-family:monospace;">#${anchor}</span>
                             </div>
                             <div style="font-size:13px; font-weight:600; color:var(--text-main); margin-bottom:6px; white-space:pre-wrap;">${q}</div>
-                            <div style="font-size:12px; color:var(--text-muted); background:rgba(0,0,0,0.2); padding:8px; border-radius:6px; white-space:pre-wrap;">${a}</div>
+                            <div style="font-size:12px; color:var(--text-muted); background:var(--surface-editor); padding:8px; border-radius:6px; white-space:pre-wrap;">${a}</div>
                         </div>`;
                     });
                     modalBody.innerHTML = html;
