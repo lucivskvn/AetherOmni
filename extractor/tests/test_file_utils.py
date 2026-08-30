@@ -316,3 +316,44 @@ class FileUtilsTestCase(TestCase):
             with self.assertRaises(ValueError) as ctx:
                 file_utils.generate_sft_dataset_pairs([99999])
             self.assertIn("No completed documents", str(ctx.exception))
+
+    def test_insert_sqlite_chunks_batching_and_special_chars(self):
+        import sqlite3
+
+        class DummyDoc:
+            doc_uuid = "doc-special-123"
+            title = "O'Connor & Special <Characters> -- SQL Injection Test"
+            author = "Author's Name & Co."
+            refined_markdown = (
+                "Chunk 1 with single quotes and double quotes. "
+                + ("A" * 1000)
+                + "\n\n---\n\nChunk 2 with ? parameters and % percent signs. "
+                + ("B" * 1000)
+            )
+
+        conn = sqlite3.connect(":memory:")
+        cursor = conn.cursor()
+        file_utils._init_sqlite_export_schema(cursor)
+
+        doc = DummyDoc()
+        doc_uuid = file_utils._insert_sqlite_document(cursor, doc)
+        file_utils._insert_sqlite_chunks(cursor, doc, doc_uuid)
+        conn.commit()
+
+        cursor.execute(
+            "SELECT doc_uuid, chunk_index, page_number, chapter_title, anchor_id, content FROM chunks WHERE doc_uuid = ?;",
+            (doc_uuid,),
+        )
+        chunks = cursor.fetchall()
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(chunks[0][0], doc_uuid)
+        self.assertIn("single quotes", chunks[0][5])
+        self.assertIn("parameters", chunks[1][5])
+
+        cursor.execute("SELECT content, title, author FROM chunks_fts WHERE doc_uuid = ?;", (doc_uuid,))
+        fts_chunks = cursor.fetchall()
+        self.assertEqual(len(fts_chunks), 2)
+        self.assertEqual(fts_chunks[0][1], doc.title)
+        self.assertEqual(fts_chunks[0][2], doc.author)
+
+        conn.close()

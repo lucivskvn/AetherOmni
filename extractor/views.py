@@ -175,6 +175,21 @@ def _extract_clean_doc_uuid(doc_or_id: Any) -> str:
     return raw.strip()
 
 
+def _parse_user_query_ids(needed_ids: set[str], pk_field: Any) -> list[Any]:
+    """Parse candidate user string IDs into valid primary key lookup types."""
+    query_ids = []
+    has_to_python = hasattr(pk_field, "to_python")
+    for uid_str in needed_ids:
+        if not has_to_python:
+            query_ids.append(uid_str)
+            continue
+        try:
+            query_ids.append(pk_field.to_python(uid_str))
+        except Exception:
+            pass
+    return query_ids
+
+
 def _build_users_map(user_ids=None, fallback_user=None) -> dict:
     """
     Build a mapping of {str(user_id): user_obj} targeting only requested user_ids
@@ -196,12 +211,17 @@ def _build_users_map(user_ids=None, fallback_user=None) -> dict:
         return users_map
 
     needed_ids = {str(uid) for uid in user_ids if uid and str(uid) not in users_map}
-    if needed_ids:
-        try:
-            for u in user_model.objects.filter(id__in=needed_ids):
-                users_map[str(u.id)] = u
-        except Exception as exc:
-            logger.debug("[Users Map] Scoped user query skipped: %s", exc)
+    if not needed_ids:
+        return users_map
+
+    try:
+        query_ids = _parse_user_query_ids(needed_ids, user_model._meta.pk)
+        if query_ids:
+            for pk_val, user_obj in user_model.objects.in_bulk(query_ids).items():
+                users_map[str(pk_val)] = user_obj
+    except Exception as exc:
+        logger.debug("[Users Map] Scoped user query skipped: %s", exc)
+
     return users_map
 
 
@@ -215,7 +235,7 @@ def _wrap_surreal_doc(d, users_map=None):
 
         try:
             return SourceDocument.objects.get(uuid=d.get("doc_uuid"))
-        except SourceDocument.DoesNotExist:
+        except (SourceDocument.DoesNotExist, ValueError, TypeError):
             logger.warning(
                 "[SurrealDB Wrapper] SourceDocument with doc_uuid=%s not found in database.", d.get("doc_uuid")
             )
@@ -2020,11 +2040,14 @@ def _parse_surreal_audit_details(raw_log):
     return str(decoded_metadata.get("details", "") if isinstance(decoded_metadata, dict) else metadata)
 
 
-def _get_surreal_audit_document(raw_log, users_map):
+def _get_surreal_audit_document(raw_log, users_map, docs_map=None):
     document_id = raw_log.get("doc_uuid")
     if not document_id:
         return None
-    raw_document = surreal_db.get_document(document_id)
+    if docs_map is not None:
+        raw_document = docs_map.get(document_id)
+    else:
+        raw_document = surreal_db.get_document(document_id)
     if raw_document:
         return _wrap_surreal_doc(raw_document, users_map)
     # If the document was deleted or purged, provide a fallback object so Target File displays gracefully
@@ -2034,7 +2057,7 @@ def _get_surreal_audit_document(raw_log, users_map):
     return fallback
 
 
-def _parse_surreal_audit_log(rl, users_map):
+def _parse_surreal_audit_log(rl, users_map, docs_map=None):
     if not rl:
         return None
     ts = rl.get("timestamp")
@@ -2058,7 +2081,7 @@ def _parse_surreal_audit_log(rl, users_map):
     a.id = rl.get("id", "")
     a.user = u
     a.action = normalize_audit_action(rl.get("action"))
-    a.document = _get_surreal_audit_document(rl, users_map)
+    a.document = _get_surreal_audit_document(rl, users_map, docs_map=docs_map)
     a.details = _parse_surreal_audit_details(rl)
     a.ip_address = rl.get("ip_address", "")
     a.created_at = ts_parsed
@@ -2093,6 +2116,28 @@ def _filter_audit_logs(logs, is_staff_or_superuser, action_filter, user_query, s
     return logs
 
 
+def _build_audit_docs_map(raw_logs):
+    """Retrieve and map documents for the given audit logs in a single batch query."""
+    doc_uuids = list({rl.get("doc_uuid") for rl in raw_logs if rl.get("doc_uuid")})
+    if not doc_uuids:
+        return {}
+
+    raw_docs = surreal_db.get_documents(doc_uuids)
+    docs_map = {}
+    for d in raw_docs:
+        if not d:
+            continue
+        doc_uuid = d.get("doc_uuid")
+        if doc_uuid:
+            docs_map[doc_uuid] = d
+            docs_map[str(doc_uuid)] = d
+        doc_id = d.get("id")
+        if doc_id:
+            docs_map[doc_id] = d
+            docs_map[str(doc_id)] = d
+    return docs_map
+
+
 def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query):
     where_clauses = []
     params = {}
@@ -2114,9 +2159,11 @@ def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_
     if actor_id:
         users_map[actor_id] = request.user
 
+    docs_map = _build_audit_docs_map(raw_logs)
+
     logs = []
     for rl in raw_logs:
-        a = _parse_surreal_audit_log(rl, users_map)
+        a = _parse_surreal_audit_log(rl, users_map, docs_map=docs_map)
         if a:
             logs.append(a)
 
