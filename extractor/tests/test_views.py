@@ -2106,3 +2106,24 @@ class ViewsExceptionPathsTestCase(TestCase):
         content = b"".join(response.streaming_content).decode("utf-8")
         self.assertIn("Hello", content)
         self.assertIn('"done": true', content)
+
+    @patch("extractor.cloud_tasks.enqueue")
+    def test_document_retry_pending_document_succeeds(self, mock_enqueue):
+        """Verify DocumentRetryView allows restarting documents stuck in PENDING status."""
+        user = User.objects.create_user(username="pending_retry_tester", password="Password123!")
+        self.client.force_login(user)
+        pending_doc = SourceDocument.objects.create(
+            original_filename="pending_stuck.pdf",
+            file_hash="pending-hash-123",
+            title="Pending Stuck Doc",
+            status="PENDING",
+            uploaded_by=user,
+        )
+        response = self.client.post(
+            reverse("retry_document", kwargs={"doc_uuid": pending_doc.uuid}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("status"), "success")
+        mock_enqueue.assert_called_once()

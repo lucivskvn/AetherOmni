@@ -1480,7 +1480,7 @@ def _restart_single_document(doc, request, cloud_tasks):
         return False
 
     status = doc.get("status")
-    if status in ["FAILED", "COMPLETED"]:
+    if status in ["PENDING", "FAILED", "COMPLETED"]:
         surreal_db.update_document(
             doc_uuid,
             {
@@ -1839,13 +1839,13 @@ class DocumentRetryView(LoginRequiredMixin, View):
         if not (request.user.is_staff or request.user.is_superuser or is_owner):
             return "Permission denied to retry this document.", 403
 
-        # Refuse to re-queue a document that is already actively processing — two concurrent
-        # workers on the same document would race and corrupt its pipeline state.
-        _IN_FLIGHT = {"PENDING", "EXTRACTING", "REFINING", "EMBEDDING"}
-        if doc.status in _IN_FLIGHT:
+        # Refuse to re-queue a document that is actively in mid-flight (EXTRACTING, REFINING, EMBEDDING)
+        # to prevent two concurrent workers on the same document from racing.
+        _ACTIVE_PROCESSING = {"EXTRACTING", "REFINING", "EMBEDDING"}
+        if doc.status in _ACTIVE_PROCESSING:
             return "Document is currently being processed. Stop it first before retrying.", 409
 
-        is_restart = doc.status == "COMPLETED"
+        is_restart = doc.status in ["COMPLETED", "PENDING"]
         retry_cnt = doc.retry_count
 
         if not is_restart and retry_cnt >= 3:

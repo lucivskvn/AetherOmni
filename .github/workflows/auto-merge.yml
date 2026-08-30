@@ -49,9 +49,16 @@ jobs:
               echo "ℹ️ PR #${PR} is already synchronized with ${BASE_REF}."
             fi
 
-            # 3. Check mergeable status & detect conflicts
-            MERGEABLE_STATE=$(gh pr view "$PR" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")
-            echo "📊 Mergeable state for PR #${PR}: ${MERGEABLE_STATE}"
+            # 3. Check mergeable status & detect conflicts (with backoff polling for UNKNOWN status)
+            MERGEABLE_STATE="UNKNOWN"
+            for attempt in {1..5}; do
+              MERGEABLE_STATE=$(gh pr view "$PR" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")
+              echo "📊 Mergeable state for PR #${PR} (attempt ${attempt}/5): ${MERGEABLE_STATE}"
+              if [[ "$MERGEABLE_STATE" != "UNKNOWN" && -n "$MERGEABLE_STATE" ]]; then
+                break
+              fi
+              sleep 3
+            done
 
             if [[ "$MERGEABLE_STATE" == "CONFLICTING" ]]; then
               echo "⚠️ Merge conflict detected on PR #${PR}!"
