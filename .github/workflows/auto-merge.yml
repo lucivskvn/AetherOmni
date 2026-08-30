@@ -1,81 +1,119 @@
 name: Automated PR Auto-Merge & Branch Cleanup
 
+# Safety note:
+# This workflow intentionally preserves its historical workflow/job names because
+# branch protection may require that check context. Its behavior is read-only.
+# PR synchronization, conversation handling, merging, and branch pruning are
+# performed sequentially by the repository's monitored merge process.
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, next]
   pull_request_review:
     types: [submitted]
     branches: [main, next]
   push:
-    branches: [main]
+    branches: [main, next]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-mergeability-guard-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   manage-pr-lifecycle:
+    # Keep this name stable for branch-protection check compatibility.
     name: Auto-Sync, Conflict Guard & Auto-Merge
-    if: github.event_name == 'push' || github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'next'
     runs-on: ubuntu-latest
     steps:
-      - name: Process Open PRs (Sync, Conflict Check, Auto-Merge)
+      - name: Inspect PR mergeability without modifying repository state
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PUSH_REF_NAME: ${{ github.ref_name }}
+        shell: bash
         run: |
-          # 1. Resolve PR URL depending on trigger event (PR event vs main push event)
-          if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "pull_request_review" ]]; then
-            PR_NUMBERS="${{ github.event.pull_request.number }}"
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" == "pull_request" || "${EVENT_NAME}" == "pull_request_review" ]]; then
+            PR_NUMBERS="${EVENT_PR_NUMBER}"
           else
-            # On pushes to main, update and check all open PRs targeting main
-            PR_NUMBERS=$(gh pr list --state open --base main --json number --jq '.[].number' || true)
+            # A base-branch push can change mergeability for every PR targeting it.
+            PR_NUMBERS="$(gh pr list               --repo "${GH_REPO}"               --state open               --base "${PUSH_REF_NAME}"               --json number               --jq '.[].number')"
           fi
 
-          for PR in $PR_NUMBERS; do
-            [[ -z "$PR" ]] && continue
-            echo "=========================================================="
-            echo "🔍 Processing PR #${PR}..."
+          if [[ -z "${PR_NUMBERS}" ]]; then
+            echo "No open pull requests require mergeability inspection."
+            exit 0
+          fi
 
-            # 2. Automatically update branch from base (keeps PR branch synchronized with main)
-            BASE_REF=$(gh pr view "$PR" --json baseRefName --jq '.baseRefName')
-            PR_BASE_SHA=$(gh pr view "$PR" --json baseRefOid --jq '.baseRefOid')
-            BASE_SHA=$(gh api "repos/${GH_REPO}/git/ref/heads/${BASE_REF}" --jq '.object.sha')
-            if [[ "$PR_BASE_SHA" != "$BASE_SHA" ]]; then
-              echo "🔄 Synchronizing PR #${PR} with latest ${BASE_REF}..."
-              gh pr update-branch "$PR"
-            else
-              echo "ℹ️ PR #${PR} is already synchronized with ${BASE_REF}."
+          FAILED=0
+
+          for PR in ${PR_NUMBERS}; do
+            [[ -z "${PR}" ]] && continue
+            echo "Inspecting PR #${PR}."
+
+            if ! DETAILS="$(gh pr view "${PR}"               --repo "${GH_REPO}"               --json number,isDraft,baseRefName,headRefName,headRefOid,mergeable,mergeStateStatus,reviewDecision,autoMergeRequest)"; then
+              echo "::error title=PR inspection failed::Unable to inspect PR #${PR}; refusing to report it safe."
+              FAILED=1
+              continue
             fi
 
-            # 3. Check mergeable status & detect conflicts
-            MERGEABLE_STATE=$(gh pr view "$PR" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")
+            MERGEABLE_STATE="$(jq -r '.mergeable // "UNKNOWN"' <<<"${DETAILS}")"
             RETRY_COUNT=0
-            while [[ "$MERGEABLE_STATE" == "UNKNOWN" && $RETRY_COUNT -lt 6 ]]; do
-              echo "⏳ PR #${PR} mergeability is UNKNOWN; waiting 5s for GitHub calculation... (attempt $((RETRY_COUNT + 1))/6)"
-              sleep 5
-              ((RETRY_COUNT++))
-              MERGEABLE_STATE=$(gh pr view "$PR" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")
-            done
-            echo "📊 Final mergeable state for PR #${PR}: ${MERGEABLE_STATE}"
 
-            if [[ "$MERGEABLE_STATE" == "CONFLICTING" ]]; then
-              echo "⚠️ Merge conflict detected on PR #${PR}!"
-              CONFLICT_MSG="⚠️ **Merge Conflict Detected**: This branch has merge conflicts with \`main\`. Please rebase against latest \`main\` to resume automated checks."
-              gh pr comment "$PR" --body "$CONFLICT_MSG"
-              exit 1
-            elif [[ "$MERGEABLE_STATE" != "MERGEABLE" ]]; then
-              echo "::error title=PR mergeability::PR #${PR} is ${MERGEABLE_STATE}; refusing to enable auto-merge."
-              exit 1
-            else
-              # 4. Enable automatic squash-merge with remote branch deletion upon green checks
-              AUTO_MERGE_ENABLED=$(gh pr view "$PR" --json autoMergeRequest --jq '.autoMergeRequest != null')
-              if [[ "$AUTO_MERGE_ENABLED" == "true" ]]; then
-                echo "ℹ️ Auto-merge is already enabled for PR #${PR}."
-              else
-                echo "✅ Enabling Auto-Merge & Auto-Branch-Deletion on PR #${PR}..."
-                gh pr merge "$PR" --auto --squash --delete-branch
-              fi
+            while [[ "${MERGEABLE_STATE}" == "UNKNOWN" && ${RETRY_COUNT} -lt 6 ]]; do
+              echo "GitHub is still calculating PR #${PR} mergeability (attempt $((RETRY_COUNT + 1))/6)."
+              sleep 5
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              MERGEABLE_STATE="$(gh pr view "${PR}"                 --repo "${GH_REPO}"                 --json mergeable                 --jq '.mergeable // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")"
+            done
+
+            IS_DRAFT="$(jq -r '.isDraft' <<<"${DETAILS}")"
+            BASE_REF="$(jq -r '.baseRefName' <<<"${DETAILS}")"
+            HEAD_REF="$(jq -r '.headRefName' <<<"${DETAILS}")"
+            HEAD_SHA="$(jq -r '.headRefOid' <<<"${DETAILS}")"
+            MERGE_STATE_STATUS="$(jq -r '.mergeStateStatus // "UNKNOWN"' <<<"${DETAILS}")"
+            REVIEW_DECISION="$(jq -r '.reviewDecision // "UNSET"' <<<"${DETAILS}")"
+            AUTO_MERGE_ENABLED="$(jq -r 'if .autoMergeRequest == null then "false" else "true" end' <<<"${DETAILS}")"
+
+            {
+              echo "### PR #${PR} mergeability guard"
+              echo
+              echo "- Branch: \`${HEAD_REF}\` → \`${BASE_REF}\`"
+              echo "- Head: \`${HEAD_SHA}\`"
+              echo "- Draft: \`${IS_DRAFT}\`"
+              echo "- Mergeable: \`${MERGEABLE_STATE}\`"
+              echo "- Merge state: \`${MERGE_STATE_STATUS}\`"
+              echo "- Review decision: \`${REVIEW_DECISION}\`"
+              echo "- Existing auto-merge request: \`${AUTO_MERGE_ENABLED}\`"
+              echo
+            } >> "${GITHUB_STEP_SUMMARY}"
+
+            if [[ "${AUTO_MERGE_ENABLED}" == "true" ]]; then
+              echo "::warning title=Existing auto-merge request::PR #${PR} already has auto-merge enabled. This guard will not alter it."
             fi
+
+            case "${MERGEABLE_STATE}" in
+              MERGEABLE)
+                echo "PR #${PR} has no GitHub-detected merge conflict."
+                ;;
+              CONFLICTING)
+                echo "::error title=Merge conflict detected::PR #${PR} conflicts with ${BASE_REF}. No branch update or merge was attempted."
+                FAILED=1
+                ;;
+              *)
+                echo "::error title=Mergeability unresolved::PR #${PR} remained ${MERGEABLE_STATE}. No branch update or merge was attempted."
+                FAILED=1
+                ;;
+            esac
           done
+
+          exit "${FAILED}"
