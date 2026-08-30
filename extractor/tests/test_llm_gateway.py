@@ -106,6 +106,23 @@ class LLMGatewayTestCase(TestCase):
         with self.assertRaises(BudgetExceededException):
             check_budget_and_api_limit()
 
+    @patch("extractor.models.MonthlySpendLog.total_for_month", return_value=Decimal("4.00"))
+    @patch("extractor.models.SourceDocument.objects.filter")
+    @patch("extractor.models.SystemSettings.get_settings")
+    @override_settings(SURREALDB_OFFLINE=True)
+    def test_check_budget_exceeded_with_deleted_documents(self, mock_settings, mock_filter, mock_spend):
+        """Test that spend from deleted documents (flushed to MonthlySpendLog) causes budget limit exception when combined with live spend."""
+        mock_settings_obj = MagicMock()
+        mock_settings_obj.monthly_budget_usd = Decimal("5.00")
+        mock_settings.return_value = mock_settings_obj
+
+        mock_aggregate = MagicMock()
+        mock_aggregate.aggregate.return_value = {"total": Decimal("1.50")}
+        mock_filter.return_value = mock_aggregate
+
+        with self.assertRaises(BudgetExceededException):
+            check_budget_and_api_limit()
+
     @patch("extractor.llm_gateway.httpx.post")
     @patch("extractor.llm_gateway._get_openrouter_api_key", return_value="test-key-123")
     def test_call_openrouter_enforces_ssl_verification(self, mock_key, mock_post):
