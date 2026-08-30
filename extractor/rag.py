@@ -111,14 +111,26 @@ def _chunk_long_paragraph(paragraph: str, max_chunk_size: int, chunks: list[str]
     return [], 0
 
 
+def _fallback_batch_embeddings(batch: list[str], err: Exception, is_offline: bool) -> list[Any]:
+    if is_offline:
+        logger.warning("[Embeddings] Batch embedding API failed, falling back to deterministic embeddings: %s", err)
+        return [generate_deterministic_embedding(text) for text in batch]
+
+    logger.warning("[Embeddings] Batch embedding API failed, storing sentinel value: %s", err)
+    return [_EMBEDDING_FAILED_SENTINEL for _ in batch]
+
+
 def _fetch_missing_embeddings(
     missing_indices: list[int],
     missing_texts: list[str],
     model_name: str,
 ) -> dict[int, list[float]]:
     """Batch-fetch embeddings for texts not found in the SurrealDB cache."""
+    from django.conf import settings
+
     from extractor.llm_gateway import execute_embed_content_with_fallback
 
+    is_offline = getattr(settings, "SURREALDB_OFFLINE", False)
     logger.info("[Embeddings] Fetching %s new embeddings from API...", len(missing_texts))
     batch_size = 20
     generated_embeddings = []
@@ -129,9 +141,7 @@ def _fetch_missing_embeddings(
             for embedding_obj in response.embeddings:
                 generated_embeddings.append(embedding_obj.values)
         except Exception as e:
-            logger.warning("[Embeddings] Batch embedding API failed, falling back to deterministic embeddings: %s", e)
-            for text in batch:
-                generated_embeddings.append(generate_deterministic_embedding(text))
+            generated_embeddings.extend(_fallback_batch_embeddings(batch, e, is_offline))
 
     return dict(zip(missing_indices, generated_embeddings, strict=False))
 
@@ -222,10 +232,10 @@ def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
                 final_embeddings[idx] = response.embeddings[0].values
             except (RuntimeError, ValueError, AttributeError):
                 logger.warning(
-                    "[Embeddings] Live embedding failed for chunk %s — falling back to deterministic embedding.",
+                    "[Embeddings] Live embedding failed for chunk %s — storing sentinel value to exclude from HNSW queries.",
                     idx,
                 )
-                final_embeddings[idx] = generate_deterministic_embedding(chunks_list[idx])
+                final_embeddings[idx] = _EMBEDDING_FAILED_SENTINEL
 
 
 def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-embedding-004") -> list[list[float]]:
@@ -249,10 +259,7 @@ def generate_surreal_embeddings(chunks_list: list[str], model_name: str = "text-
 
     _fill_missing_fallbacks(final_embeddings, chunks_list, model_name)
 
-    return [
-        emb if emb is not None else generate_deterministic_embedding(chunks_list[i])
-        for i, emb in enumerate(final_embeddings)
-    ]
+    return final_embeddings
 
 
 # Keep old name as alias for backward compatibility with any remaining call sites
