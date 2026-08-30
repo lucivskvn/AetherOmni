@@ -5,6 +5,12 @@ from unittest.mock import MagicMock, patch
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase
 
+try:
+    import google.genai  # noqa: F401
+    from google.genai import types  # noqa: F401
+except ImportError:
+    pass
+
 from extractor.models import SourceDocument
 from extractor.utils import (
     calculate_file_sha256,
