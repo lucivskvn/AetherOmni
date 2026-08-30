@@ -293,3 +293,36 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(len(res), 2)
         resolved_titles = {d["title"] for d in res}
         self.assertEqual(resolved_titles, {"Doc 1", "Doc 2"})
+
+    @override_settings(DEBUG=True)
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    @patch("extractor.surreal_db.AsyncSurreal")
+    def test_async_run_transient_failure_recovery(self, mock_surreal, mock_sleep):
+        surreal_db._detected_ns = "korda"
+        mock_failing_db = MagicMock()
+        mock_failing_db.__aenter__.side_effect = Exception("Connection reset by peer")
+
+        mock_working_db = self._create_mock_db([{"result": [{"id": "1"}]}])
+
+        mock_surreal.side_effect = [mock_failing_db, mock_working_db]
+
+        res = surreal_db._run("SELECT * FROM test;")
+        self.assertEqual(res, [{"result": [{"id": "1"}]}])
+        self.assertEqual(mock_surreal.call_count, 2)
+        mock_sleep.assert_called_once_with(1)
+
+    @override_settings(DEBUG=True)
+    @patch("asyncio.sleep", new_callable=AsyncMock)
+    @patch("extractor.surreal_db.AsyncSurreal")
+    def test_async_run_retry_exhaustion(self, mock_surreal, mock_sleep):
+        surreal_db._detected_ns = "korda"
+        mock_failing_db = MagicMock()
+        mock_failing_db.__aenter__.side_effect = Exception("TCP reset")
+        mock_surreal.return_value = mock_failing_db
+
+        with self.assertRaisesRegex(RuntimeError, "SurrealDB error after 3 attempts: TCP reset"):
+            surreal_db._run("SELECT * FROM test;")
+
+        self.assertEqual(mock_surreal.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+        mock_sleep.assert_has_calls([call(1), call(2)])
