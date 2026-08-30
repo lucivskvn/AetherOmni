@@ -110,7 +110,7 @@ function initializeAuditSearch() {
     clearBtn.setAttribute('aria-label', 'Clear search input');
     clearBtn.title = 'Clear search';
     clearBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-    clearBtn.style = "position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; display: none; align-items: center; justify-content: center; padding: 4px; z-index: 5;";
+
 
     const hint = document.getElementById('audit-search-hint');
     input.closest('.search-input-container')?.appendChild(clearBtn);
@@ -258,24 +258,12 @@ function initializeSearchShortcuts() {
     // Create clear button dynamically to avoid markup modification
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
+
     clearBtn.className = 'search-clear-btn';
     clearBtn.setAttribute('aria-label', 'Clear search query');
     clearBtn.title = 'Clear search';
-    clearBtn.style.position = 'absolute';
-    clearBtn.style.right = '12px';
-    clearBtn.style.top = '50%';
-    clearBtn.style.transform = 'translateY(-50%)';
-    clearBtn.style.background = 'none';
-    clearBtn.style.border = 'none';
-    clearBtn.style.color = 'var(--text-muted)';
-    clearBtn.style.cursor = 'pointer';
-    clearBtn.style.display = 'none';
-    clearBtn.style.alignItems = 'center';
-    clearBtn.style.justifyContent = 'center';
-    clearBtn.style.padding = '4px';
-    clearBtn.style.zIndex = '5';
-    clearBtn.style.transition = 'color 0.2s';
     clearBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
 
     const container = ragQuery.closest('.search-input-container');
     const shortcutHint = document.getElementById('search-hint');
@@ -800,6 +788,7 @@ function initializeExportActions() {
         bulkRestartBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to restart curation for the selected documents?')) {
                 bulkRestartBtn.innerHTML = `${spinnerSvg} Restarting...`;
+                bulkRestartBtn.setAttribute('aria-disabled', 'true');
                 bulkRestartBtn.style.pointerEvents = 'none';
                 bulkRestartBtn.style.opacity = '0.85';
 
@@ -821,6 +810,7 @@ function initializeExportActions() {
         bulkDeleteBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to delete the selected documents? This cannot be undone.')) {
                 bulkDeleteBtn.innerHTML = `${spinnerSvg} Deleting...`;
+                bulkDeleteBtn.setAttribute('aria-disabled', 'true');
                 bulkDeleteBtn.style.pointerEvents = 'none';
                 bulkDeleteBtn.style.opacity = '0.85';
 
@@ -868,11 +858,13 @@ function initializeExportActions() {
         if (event.persisted) {
             if (bulkRestartBtn && bulkRestartOrigHtml) {
                 bulkRestartBtn.innerHTML = bulkRestartOrigHtml;
+                bulkRestartBtn.removeAttribute('aria-disabled');
                 bulkRestartBtn.style.pointerEvents = '';
                 bulkRestartBtn.style.opacity = '';
             }
             if (bulkDeleteBtn && bulkDeleteOrigHtml) {
                 bulkDeleteBtn.innerHTML = bulkDeleteOrigHtml;
+                bulkDeleteBtn.removeAttribute('aria-disabled');
                 bulkDeleteBtn.style.pointerEvents = '';
                 bulkDeleteBtn.style.opacity = '';
             }
