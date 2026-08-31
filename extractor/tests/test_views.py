@@ -47,6 +47,19 @@ class ViewsTestCase(TestCase):
         self.assertIn("documents", response.context)
         self.assertIn("stats", response.context)
 
+    def test_dashboard_view_multiple_status_filtering(self):
+        # Create a pending document in addition to completed self.doc
+        pending_doc = SourceDocument.objects.create(
+            original_filename="pending_doc.pdf",
+            status="PENDING",
+            uploaded_by=self.user,
+        )
+        response = self.client.get(reverse("dashboard") + "?status=COMPLETED&status=PENDING")
+        self.assertEqual(response.status_code, 200)
+        docs = [d["obj"] for d in response.context["documents"]]
+        self.assertIn(self.doc, docs)
+        self.assertIn(pending_doc, docs)
+
     def test_upload_validation_rejects_filename_without_a_title(self):
         from extractor.views import _validate_upload_file
 

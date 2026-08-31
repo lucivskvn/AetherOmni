@@ -116,6 +116,28 @@ def verify_named_urls() -> list[str]:
     return errors
 
 
+OUTPUT_TAG_PATTERN = re.compile(r"<output\b([^>]*)>", re.IGNORECASE)
+FOR_ATTR_PATTERN = re.compile(r'\bfor\s*=\s*["\']([^"\'\s>]+)["\']', re.IGNORECASE)
+
+
+def verify_output_elements() -> list[str]:
+    errors: list[str] = []
+    for root, _, files in os.walk(TEMPLATES_DIR):
+        for file in files:
+            if not file.endswith(".html"):
+                continue
+            path = Path(root) / file
+            rel_path = path.relative_to(ROOT)
+            content = path.read_text(encoding="utf-8")
+            for match in OUTPUT_TAG_PATTERN.finditer(content):
+                attrs = match.group(1)
+                if not FOR_ATTR_PATTERN.search(attrs):
+                    errors.append(
+                        f"{rel_path}: <output> element is missing 'for' attribute referencing input control ID"
+                    )
+    return errors
+
+
 def verify_sri_attributes() -> list[str]:
     errors: list[str] = []
     allowed_unhashed = ("challenges.cloudflare.com/turnstile/v0/api.js",)
@@ -131,15 +153,16 @@ def main() -> int:
     static_errors = verify_static_references()
     url_errors = verify_named_urls()
     sri_errors = verify_sri_attributes()
+    output_errors = verify_output_elements()
 
-    all_errors = static_errors + url_errors + sri_errors
+    all_errors = static_errors + url_errors + sri_errors + output_errors
     if all_errors:
         print(f"FAILED: Found {len(all_errors)} template/asset error(s):", file=sys.stderr)
         for err in all_errors:
             print(f"  - {err}", file=sys.stderr)
         return 1
 
-    print("✓ All static asset references, named routes, and SRI integrity checks passed cleanly.")
+    print("✓ All static asset references, named routes, output tags, and SRI integrity checks passed cleanly.")
     return 0
 
 

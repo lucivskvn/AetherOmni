@@ -64,6 +64,19 @@ class HybridRAGTestCase(TestCase):
         self.assertEqual(len(empty_vec), 768)
         self.assertEqual(sum(empty_vec), 0.0)
 
+    def test_generate_deterministic_embedding_finite_floats(self):
+        import math
+
+        from extractor.rag import generate_deterministic_embedding
+
+        vec = generate_deterministic_embedding("Legal contract clause analysis with vector embeddings.")
+        self.assertEqual(len(vec), 768)
+        for elem in vec:
+            self.assertTrue(isinstance(elem, float))
+            self.assertTrue(math.isfinite(elem))
+            self.assertFalse(math.isnan(elem))
+            self.assertFalse(math.isinf(elem))
+
     @patch("extractor.llm_gateway.execute_embed_content_with_fallback", side_effect=RuntimeError("API Quota Limit"))
     def test_fetch_missing_embeddings_fallback(self, mock_embed):
         from extractor.rag import _fetch_missing_embeddings
