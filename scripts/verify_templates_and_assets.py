@@ -76,7 +76,7 @@ def _get_registered_url_names() -> set[str]:
         try:
             django.setup()
         except RuntimeError:
-            _is_configured = True
+            pass
         except Exception as setup_err:
             print(f"[Django Setup] Note: {setup_err}", file=sys.stderr)
         from django.urls import get_resolver
