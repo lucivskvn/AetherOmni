@@ -6,8 +6,8 @@ from django.db import migrations, models
 
 
 def backfill_null_uuids(apps, schema_editor):
-    SourceDocument = apps.get_model("extractor", "SourceDocument")
-    docs_with_null_uuid = SourceDocument.objects.filter(uuid__isnull=True)
+    source_document_model = apps.get_model("extractor", "SourceDocument")
+    docs_with_null_uuid = source_document_model.objects.filter(uuid__isnull=True)
     for doc in docs_with_null_uuid.iterator(chunk_size=200):
         doc.uuid = uuid.uuid4()
         doc.save(update_fields=["uuid"])

@@ -1531,7 +1531,7 @@ function getStatusBadgeHTML(status, display) {
  * Helper to bind document state modifying actions (retry, cancel).
  */
 function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, defaultErrorMsg }) {
-    document.addEventListener('click', (event) => {
+    document.addEventListener('click', async (event) => {
         const btn = event.target.closest(buttonClass);
         if (!btn) return;
 
@@ -1552,19 +1552,17 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
         const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
         const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
 
-        const fetchPromise = (typeof fetch === 'function')
-            ? fetch(`/document/${docId}/${endpointSuffix}/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
-                }
-            })
-            : Promise.resolve({ ok: true, json: async () => ({ status: 'success' }) });
-
-        fetchPromise
-            .then(async response => {
+        try {
+            const response = (typeof fetch === 'function')
+                ? await fetch(`/document/${docId}/${endpointSuffix}/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                })
+                : { ok: true, json: async () => ({ status: 'success' }) };
 
             let data;
             try {
@@ -1572,13 +1570,12 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
             } catch {
                 data = null;
             }
+
             if (!response.ok) {
                 const errMsg = data?.error || data?.message || defaultErrorMsg;
                 throw new Error(errMsg);
             }
-            return data;
-        })
-        .then(data => {
+
             if (data?.status === 'success') {
                 if (endpointSuffix === 'delete') {
                     // BUG-07: Immediately fade-out and remove the row for instant
@@ -1608,15 +1605,14 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
                 }
                 btn.disabled = false;
             }
-        })
-        .catch(err => {
+        } catch (err) {
             console.error('Error executing document action:', err);
             showClientSideAlert(err.message || defaultErrorMsg);
             if (icon) {
                 icon.classList.remove('spinner');
             }
             btn.disabled = false;
-        });
+        }
     });
 
     globalThis.addEventListener('pageshow', (event) => {
