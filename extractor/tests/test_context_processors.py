@@ -3,7 +3,7 @@ import os
 from django.conf import settings
 from django.test import RequestFactory, TestCase, override_settings
 
-from extractor.context_processors import _resolve_commit_sha, _resolve_release_version, system_settings
+from extractor.context_processors import system_settings
 from extractor.models import SystemSettings
 
 
@@ -14,14 +14,8 @@ class SystemSettingsContextProcessorTestCase(TestCase):
     """
 
     def setUp(self):
-        _resolve_release_version.cache_clear()
-        _resolve_commit_sha.cache_clear()
         self.factory = RequestFactory()
         self.request = self.factory.get("/")
-
-    def tearDown(self):
-        _resolve_release_version.cache_clear()
-        _resolve_commit_sha.cache_clear()
 
     @override_settings(SUPABASE_URL="https://test-supabase-url.co", SUPABASE_PUBLIC_KEY="test-pub-key-123")
     def test_happy_path(self):
@@ -92,16 +86,12 @@ class patch_environ:
         self.original_vals = {}
 
     def __enter__(self):
-        _resolve_release_version.cache_clear()
-        _resolve_commit_sha.cache_clear()
         for k, v in self.update_dict.items():
             self.original_vals[k] = os.environ.get(k)
             os.environ[k] = v
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        _resolve_release_version.cache_clear()
-        _resolve_commit_sha.cache_clear()
         for k, v in self.original_vals.items():
             if v is None:
                 os.environ.pop(k, None)
@@ -117,16 +107,12 @@ class patch_environ_deleted:
         self.original_vals = {}
 
     def __enter__(self):
-        _resolve_release_version.cache_clear()
-        _resolve_commit_sha.cache_clear()
         for k in self.keys:
             self.original_vals[k] = os.environ.get(k)
             os.environ.pop(k, None)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        _resolve_release_version.cache_clear()
-        _resolve_commit_sha.cache_clear()
         for k, v in self.original_vals.items():
             if v is not None:
                 os.environ[k] = v
