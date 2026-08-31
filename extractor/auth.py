@@ -45,6 +45,53 @@ def generate_unique_username(user_email: str) -> str:
     return f"{base_username[:130]}_{uuid.uuid4().hex[:8]}"
 
 
+def _get_or_create_django_user(user_email: str, django_username: str) -> tuple[User, bool]:
+    import uuid
+
+    user = User.objects.filter(email__iexact=user_email).first()
+    if user:
+        return user, False
+
+    try:
+        user = User.objects.create(
+            username=django_username,
+            email=user_email,
+            is_active=True,
+        )
+        return user, True
+    except Exception:
+        existing = User.objects.filter(email__iexact=user_email).first()
+        if existing:
+            return existing, False
+        fallback_username = f"{django_username[:130]}_{uuid.uuid4().hex[:8]}"
+        user = User.objects.create(
+            username=fallback_username,
+            email=user_email,
+            is_active=True,
+        )
+        return user, True
+
+
+def _evaluate_admin_claim(user_email: str, user_info: dict) -> bool:
+    from django.conf import settings
+
+    admin_email = getattr(settings, "ADMIN_EMAIL", "").strip()
+    is_promoted_admin = bool(admin_email) and user_email.lower() == admin_email.lower()
+    app_metadata = user_info.get("app_metadata", {})
+    if app_metadata.get("is_admin") is True:
+        is_promoted_admin = True
+    return is_promoted_admin
+
+
+def _attach_supabase_session(request: HttpRequest | None, user_info: dict) -> None:
+    supabase_user_id = user_info.get("id", "")
+    if request and supabase_user_id:
+        try:
+            request.session["supabase_user_id"] = supabase_user_id
+        except Exception as sess_err:
+            logger.debug("[Auth] Failed to set supabase_user_id on session: %s", sess_err)
+
+
 def _sync_supabase_user(
     request: HttpRequest | None,
     resp_data: dict,
@@ -55,30 +102,16 @@ def _sync_supabase_user(
     Promotes to superuser/staff if the email matches the ADMIN_EMAIL.
     Stores the Supabase user_id in the session.
     """
-    from django.conf import settings
     from django.db import transaction
 
     user_info = resp_data.get("user", {})
     user_email = user_info.get("email", username)
-
     django_username = generate_unique_username(user_email)
 
     with transaction.atomic():
-        # Retrieve or instantiate standard Django User account
-        user, created = User.objects.get_or_create(
-            email=user_email, defaults={"username": django_username, "is_active": True}
-        )
+        user, created = _get_or_create_django_user(user_email, django_username)
+        is_promoted_admin = _evaluate_admin_claim(user_email, user_info)
 
-        admin_email = getattr(settings, "ADMIN_EMAIL", "").strip()
-        is_promoted_admin = bool(admin_email) and user_email.lower() == admin_email.lower()
-
-        # 1. Supabase App Metadata Role Syncing
-        app_metadata = user_info.get("app_metadata", {})
-        if app_metadata.get("is_admin") is True:
-            is_promoted_admin = True
-
-        # Supabase is authoritative for privileges on every successful authentication.
-        # A removed admin claim must demote the corresponding Django account immediately.
         role_changed = user.is_superuser != is_promoted_admin or user.is_staff != is_promoted_admin
         user.is_superuser = is_promoted_admin
         user.is_staff = is_promoted_admin
@@ -90,10 +123,7 @@ def _sync_supabase_user(
         else:
             logger.info("[Auth] Supabase user session established: %s", user_email)
 
-    # Store Supabase user_id on the request session for audit log linkage
-    supabase_user_id = user_info.get("id", "")
-    if request and supabase_user_id:
-        request.session["supabase_user_id"] = supabase_user_id
+        _attach_supabase_session(request, user_info)
 
     return user
 
@@ -163,10 +193,11 @@ class SupabaseAuthBackend(ModelBackend):
             )
         )
         url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
+        app_ver = getattr(settings, "APP_VERSION", "1.5.0")
         headers = {
             "apikey": supabase_key,
             "Content-Type": APPLICATION_JSON,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "User-Agent": f"AetherOmni-AuthClient/{app_ver}",
         }
         body: dict = {"email": target_email, "password": password}
         captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
@@ -188,14 +219,7 @@ class SupabaseAuthBackend(ModelBackend):
                 return _sync_supabase_user(request, resp_data, target_email)
         except urllib.error.HTTPError as e:
             logger.warning("[Auth] Supabase authentication rejected: HTTP %s", e.code)
-            if turnstile_required:
-                return None
+            return None
         except Exception as e:
-            logger.exception(f"[Auth] Supabase API network connectivity exception: {e}")
-            if turnstile_required:
-                return None
-
-        # Do not fall back to a local password after a configured Supabase
-        # authentication attempt. Otherwise Supabase account disablement, password
-        # resets, and MFA policy can be bypassed by stale Django credentials.
-        return None
+            logger.warning("[Auth] Supabase API network connectivity exception: %s", e)
+            return None

@@ -24,6 +24,18 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# ── URL and Route Constants ───────────────────────────────────────────────────
+ROUTE_PW_CHANGE_DONE = "password_change_done"
+
+# ── HTTP Header Constants ───────────────────────────────────────────────────
+HEADER_X_CONTENT_TYPE_OPTIONS = "X-Content-Type-Options"
+HEADER_CACHE_PRIVATE_NO_TRANSFORM = "private, no-transform"
+HEADER_X_REQUESTED_WITH = "x-requested-with"
+VALUE_XML_HTTP_REQUEST = "XMLHttpRequest"
+
+# ── Setting & Configuration Constants ─────────────────────────────────────────
+KEY_CSRF_TRUSTED_ORIGINS = "csrf_trusted_origins"
+
 # ── Knative scaling annotation constants ──────────────────────────────────────
 KNATIVE_MIN_SCALE = "autoscaling.knative.dev/minScale"
 KNATIVE_MAX_SCALE = "autoscaling.knative.dev/maxScale"
@@ -201,14 +213,15 @@ def broadcast_status_change(doc_uuid: str, status: str) -> None:
             }
         ).encode("utf-8")
 
+        app_ver = getattr(settings, "APP_VERSION", "1.5.0")
         req = urllib.request.Request(
             broadcast_url,
             data=payload,
             headers={
                 "apikey": supabase_key,
                 "Authorization": f"Bearer {supabase_key}",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Content-Type": APPLICATION_JSON,
+                "User-Agent": f"AetherOmni-RealtimeClient/{app_ver}",
             },
             method="POST",
         )

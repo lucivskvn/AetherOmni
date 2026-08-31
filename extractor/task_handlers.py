@@ -42,26 +42,30 @@ GOOGLE_TASKS_IP_CIDRS = [
     "35.191.0.0/16",  # NOSONAR python:S1313 -- Google Cloud health check probes and internal CIDR
 ]
 
+import threading
 from collections.abc import Callable
 
 _TASK_REGISTRY: dict[str, Callable] = {}
 TASK_REGISTRY = _TASK_REGISTRY
+_REGISTRY_LOCK = threading.Lock()
 
 
 def _register():
     """Populate the task registry after apps are fully loaded."""
     if not _TASK_REGISTRY:
-        from extractor import tasks
+        with _REGISTRY_LOCK:
+            if not _TASK_REGISTRY:
+                from extractor import tasks
 
-        _TASK_REGISTRY.update(
-            {
-                "process_document": tasks.process_document_task,
-                "reembed_document": tasks.reembed_edited_document_task,
-                "cleanup_expired_documents": tasks.cleanup_expired_documents_task,
-                "reap_stale_tasks": tasks.reap_stale_tasks,
-                "store_user_memory": tasks.store_user_memory_task,
-            }
-        )
+                _TASK_REGISTRY.update(
+                    {
+                        "process_document": tasks.process_document_task,
+                        "reembed_document": tasks.reembed_edited_document_task,
+                        "cleanup_expired_documents": tasks.cleanup_expired_documents_task,
+                        "reap_stale_tasks": tasks.reap_stale_tasks,
+                        "store_user_memory": tasks.store_user_memory_task,
+                    }
+                )
 
 
 def get_task_registry() -> dict[str, Callable]:
@@ -91,6 +95,42 @@ def _validate_oidc_claims(id_info: dict) -> bool:
     return True
 
 
+def _expand_audiences(audience: str | list[str]) -> list[str]:
+    raw_audiences = [audience] if isinstance(audience, str) else list(audience)
+    audiences: list[str] = []
+    for aud in raw_audiences:
+        if not aud:
+            continue
+        stripped = aud.rstrip("/")
+        if stripped not in audiences:
+            audiences.append(stripped)
+        with_slash = f"{stripped}/"
+        if with_slash not in audiences:
+            audiences.append(with_slash)
+    return audiences
+
+
+def _verify_token_candidates(token: str, audiences: list[str]) -> bool:
+    try:
+        import google.auth.transport.requests
+        import google.oauth2.id_token
+
+        request_obj = google.auth.transport.requests.Request()
+        for aud in audiences:
+            try:
+                id_info = google.oauth2.id_token.verify_oauth2_token(token, request_obj, aud)
+                if _validate_oidc_claims(id_info):
+                    return True
+            except Exception as aud_err:
+                logger.debug("[CloudTasksHandler] Candidate audience '%s' rejected: %s", aud, aud_err)
+
+        logger.warning("[CloudTasksHandler] OIDC verification failed for all candidate audiences.")
+        return False
+    except Exception as exc:
+        logger.warning("[CloudTasksHandler] OIDC verification failed: %s", exc)
+        return False
+
+
 def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
     """
     Verify the Google OIDC Bearer token in the Authorization header.
@@ -106,27 +146,8 @@ def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
         return False
 
     token = auth_header.split(" ", 1)[1]
-    audiences = [audience] if isinstance(audience, str) else list(audience)
-
-    try:
-        import google.auth.transport.requests
-        import google.oauth2.id_token
-
-        request_obj = google.auth.transport.requests.Request()
-        for aud in audiences:
-            if not aud:
-                continue
-            try:
-                id_info = google.oauth2.id_token.verify_oauth2_token(token, request_obj, aud)
-                return _validate_oidc_claims(id_info)
-            except Exception as aud_err:
-                logger.debug("[CloudTasksHandler] Candidate audience '%s' rejected: %s", aud, aud_err)
-
-        logger.warning("[CloudTasksHandler] OIDC verification failed for all candidate audiences.")
-        return False
-    except Exception as exc:
-        logger.warning("[CloudTasksHandler] OIDC verification failed: %s", exc)
-        return False
+    audiences = _expand_audiences(audience)
+    return _verify_token_candidates(token, audiences)
 
 
 def _is_ip_in_google_cidrs(ip_str: str) -> bool:
@@ -234,8 +255,11 @@ class CloudTaskHandlerView(View):
             logger.error("[CloudTasksHandler] Unknown task name: '%s'", task_name)
             return JsonResponse({"error": f"Unknown task: {task_name}"}, status=404)
 
+        body = request.body
+        if body and len(body) > 1_048_576:
+            return JsonResponse({"error": "Payload exceeds 1MB limit"}, status=400)
+
         try:
-            body = request.body
             payload = json.loads(body) if body else {}
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON payload"}, status=400)

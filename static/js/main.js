@@ -1527,6 +1527,70 @@ function getStatusBadgeHTML(status, display) {
 }
 
 
+function _setButtonLoading(btn, isLoading) {
+    const icon = btn?.querySelector?.('[data-lucide]') || btn?.querySelector?.('i');
+    if (icon) {
+        if (isLoading) {
+            icon.classList.add('spinner');
+        } else {
+            icon.classList.remove('spinner');
+        }
+    }
+    if (btn) {
+        btn.disabled = isLoading;
+    }
+}
+
+function _removeDeletedRow(btn) {
+    const row = btn.closest('tr');
+    if (!row) {
+        globalThis.location.reload();
+        return;
+    }
+    row.style.transition = 'opacity 0.25s ease';
+    row.style.opacity = '0';
+    setTimeout(() => {
+        if (row.parentNode) row.remove();
+        const remaining = document.querySelectorAll(
+            '.files-panel table tbody tr[data-doc-id]'
+        );
+        if (remaining.length === 0) globalThis.location.reload();
+    }, 250);
+}
+
+async function _postDocumentAction(docId, endpointSuffix) {
+    if (typeof fetch !== 'function') {
+        return { ok: true, json: async () => ({ status: 'success' }) };
+    }
+    const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
+    const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
+    return fetch(`/document/${docId}/${endpointSuffix}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    });
+}
+
+async function _processDocumentActionResponse(btn, response, endpointSuffix, defaultErrorMsg) {
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+        throw new Error(data?.error || data?.message || defaultErrorMsg);
+    }
+    if (data?.status === 'success') {
+        if (endpointSuffix === 'delete') {
+            _removeDeletedRow(btn);
+        } else {
+            globalThis.location.reload();
+        }
+    } else {
+        showClientSideAlert(data?.message || data?.error || defaultErrorMsg);
+        _setButtonLoading(btn, false);
+    }
+}
+
 /**
  * Helper to bind document state modifying actions (retry, cancel).
  */
@@ -1543,84 +1607,22 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
             return;
         }
 
-        const icon = btn.querySelector('[data-lucide]') || btn.querySelector('i');
-        if (icon) {
-            icon.classList.add('spinner');
-        }
-        btn.disabled = true;
-
-        const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
-        const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
+        _setButtonLoading(btn, true);
 
         try {
-            const response = (typeof fetch === 'function')
-                ? await fetch(`/document/${docId}/${endpointSuffix}/`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    }
-                })
-                : { ok: true, json: async () => ({ status: 'success' }) };
-
-            let data;
-            try {
-                data = await response.json();
-            } catch {
-                data = null;
-            }
-
-            if (!response.ok) {
-                const errMsg = data?.error || data?.message || defaultErrorMsg;
-                throw new Error(errMsg);
-            }
-
-            if (data?.status === 'success') {
-                if (endpointSuffix === 'delete') {
-                    // BUG-07: Immediately fade-out and remove the row for instant
-                    // visual feedback instead of a full page reload flash.
-                    const row = btn.closest('tr');
-                    if (row) {
-                        row.style.transition = 'opacity 0.25s ease';
-                        row.style.opacity = '0';
-                        setTimeout(() => {
-                            if (row.parentNode) row.remove();
-                            // If no data rows remain, reload to show empty-state UI
-                            const remaining = document.querySelectorAll(
-                                '.files-panel table tbody tr[data-doc-id]'
-                            );
-                            if (remaining.length === 0) globalThis.location.reload();
-                        }, 250);
-                    } else {
-                        globalThis.location.reload();
-                    }
-                } else {
-                    globalThis.location.reload();
-                }
-            } else {
-                showClientSideAlert(data?.message || data?.error || defaultErrorMsg);
-                if (icon) {
-                    icon.classList.remove('spinner');
-                }
-                btn.disabled = false;
-            }
+            const response = await _postDocumentAction(docId, endpointSuffix);
+            await _processDocumentActionResponse(btn, response, endpointSuffix, defaultErrorMsg);
         } catch (err) {
             console.error('Error executing document action:', err);
             showClientSideAlert(err.message || defaultErrorMsg);
-            if (icon) {
-                icon.classList.remove('spinner');
-            }
-            btn.disabled = false;
+            _setButtonLoading(btn, false);
         }
     });
 
     globalThis.addEventListener('pageshow', (event) => {
         if (event.persisted) {
             document.querySelectorAll(buttonClass).forEach(b => {
-                b.disabled = false;
-                const icon = b.querySelector('[data-lucide]') || b.querySelector('i');
-                if (icon) icon.classList.remove('spinner');
+                _setButtonLoading(b, false);
             });
         }
     });

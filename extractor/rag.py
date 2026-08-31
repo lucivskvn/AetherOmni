@@ -67,7 +67,8 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
     if not text or not text.strip():
         return []
 
-    raw_blocks = re.split(r"\n[ \t]*---[ \t]*\n|\n(?=#{2,3}\s)", text)
+    normalized_text = text.replace("\r\n", "\n").replace("\r", "\n")
+    raw_blocks = re.split(r"\n[ \t]*---[ \t]*\n|\n(?=#{2,3}\s)", normalized_text)
     blocks = [b.strip() for b in raw_blocks if b.strip()]
 
     chunks: list[str] = []
@@ -87,6 +88,16 @@ def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[s
     return chunks
 
 
+def _handle_oversized_sentence(
+    s: str, max_chunk_size: int, sub_chunk: list[str], chunks: list[str]
+) -> tuple[list[str], int]:
+    if sub_chunk:
+        chunks.append(" ".join(sub_chunk))
+    for i in range(0, len(s), max_chunk_size):
+        chunks.append(s[i : i + max_chunk_size])
+    return [], 0
+
+
 def _chunk_long_paragraph(paragraph: str, max_chunk_size: int, chunks: list[str]) -> tuple[list[str], int]:
     """
     Split a long paragraph into sentence- and verse-level sub-chunks without
@@ -98,6 +109,10 @@ def _chunk_long_paragraph(paragraph: str, max_chunk_size: int, chunks: list[str]
     sub_size = 0
     for s in sentences:
         s_len = len(s)
+        if s_len > max_chunk_size:
+            sub_chunk, sub_size = _handle_oversized_sentence(s, max_chunk_size, sub_chunk, chunks)
+            continue
+
         if sub_size + s_len <= max_chunk_size:
             sub_chunk.append(s)
             sub_size += s_len + 1
@@ -149,6 +164,9 @@ def _fetch_missing_embeddings(
 def _lookup_cached_embeddings(
     chunks_list: list[str], surreal_db: Any
 ) -> tuple[list[list[float] | None], list[int], list[str]]:
+    if not chunks_list:
+        return [], [], []
+
     final_embeddings: list[list[float] | None] = [None] * len(chunks_list)
     missing_indices: list[int] = []
     missing_texts: list[str] = []
@@ -206,7 +224,7 @@ def generate_deterministic_embedding(text: str, dimension: int = 768) -> list[fl
     norm = math.sqrt(sum(x * x for x in vec))
     if norm > 0:
         return [x / norm for x in vec]
-    return vec
+    return [0.0] * dimension
 
 
 # Sentinel value stored in place of a failed embedding so HNSW queries can
@@ -595,7 +613,7 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
         context_blocks.append(f"--- BLOCK {idx + 1} [{doc_info}] ---\n{chunk.get('content', '')}")
         sources.append(
             {
-                "id": doc_meta["id"],
+                "id": doc_meta.get("id"),
                 "uuid": doc_uuid_str,
                 "title": str(doc_meta.get("title", "Unknown")),
                 "author": str(doc_meta.get("author", "Unknown")),
@@ -733,10 +751,14 @@ def stream_query_rag(
     """
 
     # 2. Stream answer tokens
-    for token in generate_llm_stream_unified(
-        prompt=rag_prompt, system_instruction=system_instruction, model_name=selected_model
-    ):
-        yield f"data: {json.dumps({'token': token})}\n\n"
+    try:
+        for token in generate_llm_stream_unified(
+            prompt=rag_prompt, system_instruction=system_instruction, model_name=selected_model
+        ):
+            yield f"data: {json.dumps({'token': token})}\n\n"
+    except Exception as stream_err:
+        logger.warning("[Stream RAG] Error during response generation: %s", stream_err)
+        yield f"data: {json.dumps({'error': str(stream_err)})}\n\n"
 
     # 3. Final completion event
     yield f"data: {json.dumps({'done': True})}\n\n"

@@ -233,9 +233,12 @@ def process_json_local(file_path: str) -> str:
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
-    except UnicodeDecodeError:
-        with open(file_path, encoding="latin-1") as f:
-            data = json.load(f)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        try:
+            with open(file_path, encoding="latin-1") as f:
+                data = json.load(f)
+        except Exception:
+            return "*Empty or Malformed JSON Document*"
 
     if isinstance(data, list):
         if not data:
@@ -1021,21 +1024,27 @@ def _serialize_sqlite_conn(conn: Any) -> bytes:
         conn.close()
         return raw_sqlite_bytes
 
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_f:
-        tmp_path = tmp_f.name
-
-    file_conn = sqlite3.connect(tmp_path)
-    conn.backup(file_conn)
-    file_conn.close()
-    conn.close()
-
-    with open(tmp_path, "rb") as f:
-        raw_sqlite_bytes = f.read()
+    tmp_path = None
     try:
-        os.remove(tmp_path)
-    except OSError as e:
-        logger.debug("[FileUtils] Failed to remove temporary SQLite file %s: %s", tmp_path, e)
-    return raw_sqlite_bytes
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_f:
+            tmp_path = tmp_f.name
+
+        file_conn = sqlite3.connect(tmp_path)
+        try:
+            conn.backup(file_conn)
+        finally:
+            file_conn.close()
+            conn.close()
+
+        with open(tmp_path, "rb") as f:
+            raw_sqlite_bytes = f.read()
+        return raw_sqlite_bytes
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError as e:
+                logger.debug("[FileUtils] Failed to remove temporary SQLite file %s: %s", tmp_path, e)
 
 
 def generate_curated_sqlite_bundle(
@@ -1076,7 +1085,7 @@ def generate_curated_sqlite_bundle(
 
 
 def _sanitize_csv_cell(val: Any) -> Any:
-    if isinstance(val, str) and val.lstrip().startswith(("=", "+", "-", "@")):
+    if isinstance(val, str) and val.lstrip().startswith(("=", "+", "-", "@", "\t", "\r", "%", "|")):
         return f"'{val}"
     return val
 
@@ -1161,10 +1170,12 @@ def generate_curated_csv_bundle(
         ]
     )
 
+    import codecs
+
     for doc in docs_list:
         writer.writerow(_build_csv_row_for_doc(doc))
 
-    return output.getvalue().encode("utf-8")
+    return codecs.BOM_UTF8 + output.getvalue().encode("utf-8")
 
 
 def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: int = 86400) -> int:

@@ -103,7 +103,7 @@ class SourceDocument(models.Model):
         if self.expires_at:
             exp = self.expires_at
             if timezone.is_naive(exp):
-                exp = timezone.make_aware(exp, timezone.get_current_timezone())
+                exp = timezone.make_aware(exp, timezone.utc)
             return timezone.now() > exp
         return False
 
@@ -144,6 +144,8 @@ class SystemSettings(models.Model):
 
                 class SurrealSettings:
                     def __init__(self, raw_data):
+                        self.id = 1
+                        self.pk = 1
                         self.monthly_budget_usd = Decimal(str(raw_data.get("monthly_budget_usd", 10.0)))
                         self.selected_model = raw_data.get("selected_model", "auto")
                         self.currency = raw_data.get("currency", "auto")
@@ -153,6 +155,12 @@ class SystemSettings(models.Model):
                     @property
                     def openrouter_api_key_masked(self) -> str:
                         return "••••••••••••••••" if self.openrouter_api_key else ""
+
+                    def save(self, *args, **kwargs):
+                        pass
+
+                    def delete(self, *args, **kwargs):
+                        pass
 
                     def __str__(self):
                         return f"SystemSettings(Budget=${self.monthly_budget_usd}, Model={self.selected_model})"
@@ -207,7 +215,9 @@ class AuditLog(models.Model):
         return self.created_at
 
     def save(self, *args, **kwargs):
-        if self.pk and not kwargs.pop("force_update_allowed", False):
+        update_fields = kwargs.get("update_fields")
+        is_cascade_null = update_fields and set(update_fields).issubset({"user", "document"})
+        if self.pk and not kwargs.pop("force_update_allowed", False) and not is_cascade_null:
             raise PermissionError("AuditLog records are immutable append-only ledgers and cannot be modified.")
         super().save(*args, **kwargs)
 

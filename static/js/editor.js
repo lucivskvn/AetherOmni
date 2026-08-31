@@ -558,6 +558,14 @@ function _processLine(line, state, htmlBuilder) {
  * @returns {string} HTML-entity-encoded string safe for innerHTML insertion.
  */
 function escapeHtml(raw) {
+    if (typeof document === 'undefined') {
+        return String(raw)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
     const tn = document.createTextNode(raw);
     const div = document.createElement('div');
     div.appendChild(tn);
@@ -588,6 +596,14 @@ function compileMarkdown(markdown) {
     for (const line of lines) {
         html += _processLine(line, state, htmlBuilder);
     }
+
+    if (state.inCodeBlock) {
+        html += '</code></pre>\n';
+        state.inCodeBlock = false;
+    }
+    htmlBuilder.html = '';
+    _closeOpenBlocks(state, (str) => { htmlBuilder.html += str + '\n'; });
+    html += htmlBuilder.html;
 
     return _restoreSafeHtml(html);
 }

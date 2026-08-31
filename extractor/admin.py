@@ -47,4 +47,10 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ("created_at", "user", "action", "document", "ip_address")
     list_filter = ("action", "created_at", "user")
     search_fields = ("details", "ip_address", "document__original_filename", "user__username")
-    readonly_fields = ("created_at",)
+    readonly_fields = ("created_at", "user", "action", "document", "ip_address", "details")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

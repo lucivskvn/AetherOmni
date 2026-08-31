@@ -7,7 +7,7 @@ class TurnstileAuthenticationForm(AuthenticationForm):
     """Require the browser challenge before dispatching credentials to Supabase."""
 
     def clean(self):
-        if getattr(settings, "CF_TURNSTILE_SITE_KEY", ""):
+        if getattr(settings, "CF_TURNSTILE_SITE_KEY", "") and self.request and hasattr(self.request, "POST"):
             token = self.request.POST.get("cf-turnstile-response", "").strip()
             if not token:
                 raise forms.ValidationError(

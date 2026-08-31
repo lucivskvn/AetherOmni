@@ -87,6 +87,18 @@ class UnifiedResponse:
     def cost_usd(self) -> Decimal:
         return self.cost_val
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "text": self.text,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "cost_usd": self.cost_usd,
+            "model_used": self.model_used,
+        }
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
 
 class BudgetExceededException(Exception):
     """Raised when cumulative extraction costs for the month exceed the set budget."""
@@ -208,7 +220,11 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
 
     # SEC-05 fix: Fetch live pricing using httpx with explicit SSL verification
     try:
-        response = httpx.get("https://openrouter.ai/api/v1/models", timeout=5.0, verify=True)
+        headers = {
+            "User-Agent": "KORDA-Platform/1.5",
+            "HTTP-Referer": "https://korda.app",
+        }
+        response = httpx.get("https://openrouter.ai/api/v1/models", headers=headers, timeout=5.0, verify=True)
         if response.status_code == 200:
             pricing_map = _parse_openrouter_pricing_response(response.json())
             try:
@@ -266,8 +282,8 @@ def resolve_realtime_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
 
 def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int) -> Decimal:
     model_name = model_name.lower().strip()
-    input_tokens = int(input_tokens)
-    output_tokens = int(output_tokens)
+    input_tokens = max(0, int(input_tokens))
+    output_tokens = max(0, int(output_tokens))
 
     rt_pricing = resolve_realtime_pricing(model_name)
     if rt_pricing:
@@ -297,8 +313,8 @@ def calculate_openrouter_cost(model_name: str, input_tokens: int, output_tokens:
     Uses real-time rates resolved dynamically, falling back to static tiers if offline.
     """
     model_name = model_name.lower().strip()
-    input_tokens = int(input_tokens)
-    output_tokens = int(output_tokens)
+    input_tokens = max(0, int(input_tokens))
+    output_tokens = max(0, int(output_tokens))
 
     if ":free" in model_name or "free" in model_name:
         return Decimal("0.0")
@@ -351,8 +367,10 @@ def _call_openrouter(prompt: str, system_instruction: str | None, model_name: st
         response = httpx.post(url, json=payload, headers=headers, timeout=60.0, verify=True)
         response.raise_for_status()
         result = response.json()
-
-        choice = result["choices"][0]["message"]
+        choice_list = result.get("choices") or []
+        if not choice_list:
+            raise GeminiProcessingError("OpenRouter response contained no choices.")
+        choice = choice_list[0].get("message", {})
         text_content = choice.get("content", "")
 
         # Parse token usage
@@ -800,12 +818,12 @@ def extract_retry_delay(exception: Exception) -> float | None:
     # Check "Please retry in X.XXs" pattern
     match = re.search(r"retry in (\d+(?:\.\d*)?)s", err_str, re.IGNORECASE)
     if match:
-        return float(match.group(1))
+        return min(60.0, max(0.5, float(match.group(1))))
 
     # Check "retryDelay": "XXs" pattern
     match_json = re.search(r"['\"]retryDelay['\"]\s*:\s*['\"](\d+(?:\.\d*)?)s?['\"]", err_str, re.IGNORECASE)
     if match_json:
-        return float(match_json.group(1))
+        return min(60.0, max(0.5, float(match_json.group(1))))
 
     return None
 
@@ -1406,7 +1424,11 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
     json_match = re.search(r"`{3,4}json[ \t]*\n(.*)\n`{3,4}", refined_text, re.DOTALL)
     if json_match:
         try:
-            qa_list = json.loads(json_match.group(1))
+            parsed_json = json.loads(json_match.group(1))
+            if isinstance(parsed_json, list):
+                qa_list = parsed_json
+            else:
+                logger.warning("[Refinement Pass 2] JSON Q&A block did not evaluate to a list: %s", type(parsed_json))
         except Exception:
             logger.exception("[Refinement Pass 2] JSON Parsing error")
 

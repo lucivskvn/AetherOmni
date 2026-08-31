@@ -67,7 +67,7 @@ class AetherJSONEncoder(DjangoJSONEncoder):
 
 def _validate_email_format(email: str) -> bool:
     """Validate email address supporting standard, multi-label, and IDNA domains."""
-    if not email or "@" not in email:
+    if not email or "@" not in email or len(email) > 254:
         return False
     try:
         _email_validator(email)
@@ -276,8 +276,13 @@ def _wrap_surreal_doc(d, users_map=None):
 
 from extractor.utils import (
     APPLICATION_JSON,
+    HEADER_CACHE_PRIVATE_NO_TRANSFORM,
+    HEADER_X_CONTENT_TYPE_OPTIONS,
+    HEADER_X_REQUESTED_WITH,
+    KEY_CSRF_TRUSTED_ORIGINS,
     KNATIVE_MIN_SCALE,
     REEMBED_DOCUMENT_TASK,
+    VALUE_XML_HTTP_REQUEST,
     broadcast_status_change,
     calculate_file_sha256,
     clean_html_content,
@@ -497,7 +502,7 @@ def _get_dashboard_stats(request):
 def _filter_dashboard_docs(docs: list[Any], query: str) -> list[Any]:
     if not query:
         return docs
-    q = query.lower()
+    q = query[:200].lower()
     return [
         d
         for d in docs
@@ -512,6 +517,8 @@ def _filter_dashboard_docs(docs: list[Any], query: str) -> list[Any]:
 
 
 def _sort_dashboard_docs(docs: list[Any], sort_by: str) -> list[Any]:
+    import datetime
+
     allowed_sorts = {
         "name": "title",
         "-name": "-title",
@@ -530,9 +537,9 @@ def _sort_dashboard_docs(docs: list[Any], sort_by: str) -> list[Any]:
         "title": lambda x: (x.title or x.original_filename or "").lower(),
         "cost_usd": lambda x: float(x.cost_usd),
         "status": lambda x: (x.status or "").lower(),
-        "created_at": lambda x: x.created_at,
+        "created_at": lambda x: x.created_at or datetime.datetime.min.replace(tzinfo=datetime.UTC),
     }
-    sort_key = key_map.get(key_name, lambda x: x.created_at)
+    sort_key = key_map.get(key_name, lambda x: x.created_at or datetime.datetime.min.replace(tzinfo=datetime.UTC))
     return sorted(docs, key=sort_key, reverse=reverse)
 
 
@@ -928,6 +935,11 @@ class DocumentDetailView(LoginRequiredMixin, View):
     """
 
     def get(self, request, doc_uuid):
+        if not doc_uuid or len(str(doc_uuid)) > 128:
+            from django.http import Http404
+
+            raise Http404(DOCUMENT_NOT_FOUND_MSG)
+
         raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned=True)
         if not raw_doc:
             from django.http import Http404
@@ -974,6 +986,27 @@ class DocumentDetailView(LoginRequiredMixin, View):
         return render(request, "extractor/document_detail.html", context)
 
 
+def _build_document_save_payload(request, sanitized_markdown: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "refined_markdown": sanitized_markdown,
+        "status": "EMBEDDING",
+    }
+    field_limits = {
+        "title": 255,
+        "author": 255,
+        "language": 50,
+        "publisher": 255,
+        "publication_year": 20,
+        "license_type": 100,
+        "doi": 100,
+    }
+    for field, max_len in field_limits.items():
+        val = request.POST.get(field)
+        if val is not None:
+            payload[field] = val.strip()[:max_len]
+    return payload
+
+
 class DocumentSaveView(LoginRequiredMixin, View):
     """
     Saves edited Markdown text straight from the split pane editor
@@ -981,6 +1014,10 @@ class DocumentSaveView(LoginRequiredMixin, View):
     """
 
     def post(self, request, doc_uuid):
+        if not doc_uuid or len(str(doc_uuid)) > 128:
+            messages.error(request, DOCUMENT_NOT_FOUND_MSG)
+            return redirect("dashboard")
+
         raw_doc, _doc, is_authorized, users_map = _get_authorized_wrapped_doc(request, doc_uuid)
         if not raw_doc:
             messages.error(request, DOCUMENT_NOT_FOUND_MSG)
@@ -991,35 +1028,12 @@ class DocumentSaveView(LoginRequiredMixin, View):
             return redirect("dashboard")
 
         new_markdown = request.POST.get("refined_markdown", "")
-        new_title = request.POST.get("title")
-        new_author = request.POST.get("author")
-        new_language = request.POST.get("language")
-        new_publisher = request.POST.get("publisher")
-        new_publication_year = request.POST.get("publication_year")
-        new_license_type = request.POST.get("license_type")
-        new_doi = request.POST.get("doi")
+        if len(new_markdown) > 5 * 1024 * 1024:
+            messages.error(request, "Edited markdown exceeds maximum 5MB size limit.")
+            return redirect("document_detail", doc_uuid=doc_uuid)
 
-        # Sanitize HTML elements safely
         sanitized_markdown = clean_html_content(new_markdown)
-
-        payload = {
-            "refined_markdown": sanitized_markdown,
-            "status": "EMBEDDING",
-        }
-        if new_title is not None:
-            payload["title"] = new_title.strip()
-        if new_author is not None:
-            payload["author"] = new_author.strip()
-        if new_language is not None:
-            payload["language"] = new_language.strip()
-        if new_publisher is not None:
-            payload["publisher"] = new_publisher.strip()
-        if new_publication_year is not None:
-            payload["publication_year"] = new_publication_year.strip()
-        if new_license_type is not None:
-            payload["license_type"] = new_license_type.strip()
-        if new_doi is not None:
-            payload["doi"] = new_doi.strip()
+        payload = _build_document_save_payload(request, sanitized_markdown)
 
         doc_ref = surreal_db.update_document(doc_uuid, payload)
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
@@ -1108,7 +1122,7 @@ class DocumentDeleteView(LoginRequiredMixin, View):
 
     def post(self, request, doc_uuid):
         is_ajax = (
-            request.headers.get("x-requested-with") == "XMLHttpRequest"
+            request.headers.get(HEADER_X_REQUESTED_WITH) == VALUE_XML_HTTP_REQUEST
             or request.headers.get("accept") == APPLICATION_JSON
         )
         raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid)
@@ -1139,6 +1153,22 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         self._purge_physical_file(raw_doc.get("file", ""), file_hash, shared_references)
         self._abort_active_processing(doc, doc_uuid)
         surreal_db.delete_document(doc_uuid)
+
+        from django.conf import settings
+
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor.models import SourceDocument
+
+            SourceDocument.objects.filter(uuid=doc_uuid).delete()
+        else:
+            try:
+                from extractor.models import SourceDocument
+
+                SourceDocument.objects.filter(uuid=doc_uuid).delete()
+            except Exception as sqlite_cleanup_err:
+                logger.debug("[Delete] SQLite cleanup for doc_uuid=%s skipped: %s", doc_uuid, sqlite_cleanup_err)
+
+        broadcast_status_change(str(doc_uuid), "DELETED")
 
         if is_ajax:
             return JsonResponse({"status": "success", "message": f"Document '{orig_name}' deleted successfully."})
@@ -1305,18 +1335,28 @@ def _reserve_export_rate_limit(request) -> bool:
     user_key = f"export_ratelimit_{get_request_actor_id(request)}"
     ip_key = f"export_ratelimit_{get_client_ip(request)}"
 
-    # cache.add sets key only if it does not exist (atomic in Redis/Memcached/LocMem)
-    user_acquired = cache.add(user_key, True, 60)
-    ip_acquired = cache.add(ip_key, True, 60)
+    try:
+        # cache.add sets key only if it does not exist (atomic in Redis/Memcached/LocMem)
+        user_acquired = cache.add(user_key, True, 60)
+        ip_acquired = cache.add(ip_key, True, 60)
 
-    if not user_acquired or not ip_acquired:
-        # Extend or ensure key existence
-        if user_acquired:
-            cache.set(user_key, True, 60)
-        if ip_acquired:
-            cache.set(ip_key, True, 60)
-        return False
-    return True
+        if not user_acquired or not ip_acquired:
+            # Extend or ensure key existence
+            if user_acquired:
+                cache.set(user_key, True, 60)
+            if ip_acquired:
+                cache.set(ip_key, True, 60)
+            return False
+        return True
+    except Exception as exc:
+        logger.debug("[ExportRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
+        try:
+            from extractor import surreal_db
+
+            return surreal_db.check_rate_limit_atomic(f"export:{user_key}", max_requests=1, window_seconds=60)
+        except Exception as surreal_err:
+            logger.warning("[ExportRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
+            return True
 
 
 class ExportZipView(LoginRequiredMixin, View):
@@ -1331,7 +1371,7 @@ class ExportZipView(LoginRequiredMixin, View):
             messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
-        document_ids = request.POST.getlist("selected_documents")
+        document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:1000]
         if not document_ids:
             messages.error(request, "No documents selected for export.")
             return redirect("dashboard")
@@ -1349,6 +1389,8 @@ class ExportZipView(LoginRequiredMixin, View):
             response["Content-Disposition"] = (
                 f'attachment; filename="curated_literature_archive_{timezone.now().strftime("%Y%m%d%H%M")}.zip"'
             )
+            response[HEADER_X_CONTENT_TYPE_OPTIONS] = "nosniff"
+            response["Cache-Control"] = HEADER_CACHE_PRIVATE_NO_TRANSFORM
             return response
         except Exception as e:
             messages.error(request, f"Export failure: {e!s}")
@@ -1394,7 +1436,7 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
             messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
-        document_ids = request.POST.getlist("selected_documents")
+        document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:1000]
         if not document_ids:
             messages.error(request, "No documents selected for SFT JSONL export.")
             return redirect("dashboard")
@@ -1413,6 +1455,8 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
             response = HttpResponse(jsonl_data, content_type="application/x-jsonlines")
             filename = f"sft_dataset_{timezone.now().strftime('%Y%m%d%H%M')}.jsonl"
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            response[HEADER_X_CONTENT_TYPE_OPTIONS] = "nosniff"
+            response["Cache-Control"] = HEADER_CACHE_PRIVATE_NO_TRANSFORM
             return response
         except Exception as e:
             messages.error(request, f"SFT Export failure: {e!s}")
@@ -1428,7 +1472,7 @@ class ExportSqliteView(LoginRequiredMixin, View):
             messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
-        document_ids = request.POST.getlist("selected_documents")
+        document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:1000]
         if not document_ids:
             messages.error(request, "No documents selected for SQLite database export.")
             return redirect("dashboard")
@@ -1447,6 +1491,8 @@ class ExportSqliteView(LoginRequiredMixin, View):
             response = HttpResponse(sqlite_data, content_type="application/x-sqlite3")
             filename = f"curated_knowledge_{timezone.now().strftime('%Y%m%d%H%M')}.db"
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            response[HEADER_X_CONTENT_TYPE_OPTIONS] = "nosniff"
+            response["Cache-Control"] = HEADER_CACHE_PRIVATE_NO_TRANSFORM
             return response
         except Exception as e:
             messages.error(request, f"SQLite Export failure: {e!s}")
@@ -1462,7 +1508,7 @@ class ExportCsvView(LoginRequiredMixin, View):
             messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
-        document_ids = request.POST.getlist("selected_documents")
+        document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:1000]
         if not document_ids:
             messages.error(request, "No documents selected for CSV export.")
             return redirect("dashboard")
@@ -1481,6 +1527,8 @@ class ExportCsvView(LoginRequiredMixin, View):
             response = HttpResponse(csv_data, content_type="text/csv; charset=utf-8")
             filename = f"curated_metadata_{timezone.now().strftime('%Y%m%d%H%M')}.csv"
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            response[HEADER_X_CONTENT_TYPE_OPTIONS] = "nosniff"
+            response["Cache-Control"] = HEADER_CACHE_PRIVATE_NO_TRANSFORM
             return response
         except Exception as e:
             messages.error(request, f"CSV Export failure: {e!s}")
@@ -1496,9 +1544,10 @@ def _restart_single_document(doc, request, cloud_tasks):
     is_authorized = (
         request.user.is_staff
         or request.user.is_superuser
-        or not uploaded_by_id
-        or uploaded_by_id == actor_id
-        or (hasattr(request.user, "id") and uploaded_by_id == str(request.user.id))
+        or (
+            uploaded_by_id
+            and (uploaded_by_id == actor_id or (hasattr(request.user, "id") and uploaded_by_id == str(request.user.id)))
+        )
     )
     if not is_authorized:
         return False
@@ -1514,6 +1563,7 @@ def _restart_single_document(doc, request, cloud_tasks):
                 "output_tokens": 0,
                 "retry_count": 0,
                 "error_message": "",
+                "updated_at": format_datetime(timezone.now()),
             },
         )
 
@@ -1571,8 +1621,8 @@ def _abort_inflight_processing(doc, doc_uuid, surreal_db) -> None:
 
 
 def _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db):
-    file_hash = doc.file_hash
-    orig_name = doc.original_filename
+    file_hash = getattr(doc, "file_hash", None)
+    orig_name = getattr(doc, "original_filename", "Unknown")
     doc_uuid = _extract_clean_doc_uuid(doc)
 
     total_refs = hash_ref_counts.get(file_hash, 0)
@@ -1583,11 +1633,11 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
     _record_view_audit(
         request,
         AuditAction.DELETE,
-        f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
+        f"Bulk Deleted document '{orig_name}' (Title: {getattr(doc, 'title', orig_name)}). Shared references remaining: {shared_references}.",
         document=doc,
     )
 
-    _cleanup_file_storage(doc.file, shared_references, default_storage)
+    _cleanup_file_storage(getattr(doc, "file", None), shared_references, default_storage)
     _abort_inflight_processing(doc, doc_uuid, surreal_db)
 
     from django.conf import settings
@@ -1608,6 +1658,9 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
         except Exception as sqlite_cleanup_err:
             logger.debug("[Delete] SQLite cleanup for doc_uuid=%s skipped: %s", doc_uuid, sqlite_cleanup_err)
 
+    if doc_uuid:
+        broadcast_status_change(str(doc_uuid), "DELETED")
+
 
 def _get_offline_docs_for_delete(request, document_ids):
     from django.db.models import Q
@@ -1626,7 +1679,7 @@ def _get_offline_docs_for_delete(request, document_ids):
 
     qs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs))
     if not (request.user.is_staff or request.user.is_superuser):
-        qs = qs.filter(Q(uploaded_by=request.user) | Q(uploaded_by__isnull=True))
+        qs = qs.filter(uploaded_by=request.user)
     return list(qs)
 
 
@@ -1643,9 +1696,13 @@ def _get_surreal_docs_for_delete(request, document_ids, users_map=None):
         is_authorized = (
             request.user.is_staff
             or request.user.is_superuser
-            or not uploaded_by_id
-            or uploaded_by_id == actor_id
-            or (hasattr(request.user, "id") and uploaded_by_id == str(request.user.id))
+            or (
+                uploaded_by_id
+                and (
+                    uploaded_by_id == actor_id
+                    or (hasattr(request.user, "id") and uploaded_by_id == str(request.user.id))
+                )
+            )
         )
         if not is_authorized:
             continue
@@ -1680,7 +1737,8 @@ def _get_hash_ref_counts(file_hashes):
     else:
         count_sql = "SELECT file_hash, count() AS n FROM documents WHERE file_hash IN $file_hashes GROUP BY file_hash;"
         res = surreal_db._first_result(surreal_db._run(count_sql, {"file_hashes": list(file_hashes)}))
-        hash_ref_counts = {r["file_hash"]: r.get("n", 0) for r in res if "file_hash" in r}
+        res = res or []
+        hash_ref_counts = {r["file_hash"]: r.get("n", 0) for r in res if isinstance(r, dict) and "file_hash" in r}
 
     for file_hash in file_hashes:
         if file_hash not in hash_ref_counts:
@@ -1713,7 +1771,7 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
 
     def post(self, request):
         action = request.POST.get("action")
-        document_ids = request.POST.getlist("selected_documents")
+        document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:100]
         if not document_ids:
             messages.error(request, "No documents selected.")
             return redirect("dashboard")
@@ -1738,8 +1796,8 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
         monthly_budget_usd = request.POST.get("monthly_budget_usd", "10.00").strip()
         selected_model = request.POST.get("selected_model", "auto").strip()
         currency = request.POST.get("currency", "auto").strip()
-        csrf_trusted_origins = request.POST.get("csrf_trusted_origins", "").strip()
-        openrouter_api_key = request.POST.get("openrouter_api_key", "").strip()
+        csrf_trusted_origins = request.POST.get(KEY_CSRF_TRUSTED_ORIGINS, "").strip()[:8192]
+        openrouter_api_key = request.POST.get("openrouter_api_key", "").strip()[:256]
 
         from extractor.llm_gateway import KNOWN_GEMINI_MODELS
 
@@ -1768,8 +1826,10 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             budget_val = Decimal(monthly_budget_usd)
             if budget_val < 0:
                 raise ValueError("Budget cannot be negative.")
+            if budget_val > 100000.00:
+                raise ValueError("Budget cannot exceed $100,000.00.")
         except (ValueError, ArithmeticError):
-            messages.error(request, "Invalid budget value provided. Must be a valid positive number.")
+            messages.error(request, "Invalid budget value provided. Must be a valid positive number up to $100,000.00.")
             return redirect("dashboard")
 
         # Require HTTPS origins so saved configuration cannot weaken CSRF transport security.
@@ -1792,7 +1852,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             "monthly_budget_usd": float(budget_val),
             "selected_model": selected_model,
             "currency": currency,
-            "csrf_trusted_origins": csrf_trusted_origins,
+            KEY_CSRF_TRUSTED_ORIGINS: csrf_trusted_origins,
         }
 
         # Only overwrite the API key if it's not the masked placeholder
@@ -1800,6 +1860,27 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             payload["openrouter_api_key"] = openrouter_api_key or ""
 
         surreal_db.save_system_settings(payload)
+
+        try:
+            from extractor.models import SystemSettings
+
+            SystemSettings.objects.update_or_create(
+                id=1,
+                defaults={
+                    "monthly_budget_usd": budget_val,
+                    "selected_model": selected_model,
+                    "currency": currency,
+                    KEY_CSRF_TRUSTED_ORIGINS: csrf_trusted_origins,
+                },
+            )
+        except Exception as orm_err:
+            logger.debug("[SaveSettings] SQLite settings sync skipped: %s", orm_err)
+
+        _record_view_audit(
+            request,
+            AuditAction.SYSTEM_CONTROL,
+            f"Updated system settings: Budget=${budget_val:.2f}, Model={selected_model}, Currency={currency}.",
+        )
 
         messages.success(request, "System settings updated successfully!")
         return redirect("dashboard")
@@ -1917,7 +1998,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
     def post(self, request, doc_uuid):
         raw_doc = surreal_db.get_document(doc_uuid)
         is_ajax = (
-            request.headers.get("x-requested-with") == "XMLHttpRequest"
+            request.headers.get(HEADER_X_REQUESTED_WITH) == VALUE_XML_HTTP_REQUEST
             or request.headers.get("accept") == APPLICATION_JSON
         )
 
@@ -1972,7 +2053,7 @@ class DocumentCancelView(LoginRequiredMixin, View):
 
     def post(self, request, doc_uuid):
         is_ajax = (
-            request.headers.get("x-requested-with") == "XMLHttpRequest"
+            request.headers.get(HEADER_X_REQUESTED_WITH) == VALUE_XML_HTTP_REQUEST
             or request.headers.get("accept") == APPLICATION_JSON
         )
         raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid)
@@ -1986,6 +2067,13 @@ class DocumentCancelView(LoginRequiredMixin, View):
             if is_ajax:
                 return JsonResponse({"error": "Permission denied to cancel this document."}, status=403)
             messages.error(request, "Permission denied to cancel this document.")
+            return redirect("dashboard")
+
+        if doc.status in ["COMPLETED", "FAILED"]:
+            msg = f"Cannot cancel document in terminal state '{doc.status}'."
+            if is_ajax:
+                return JsonResponse({"error": msg}, status=400)
+            messages.error(request, msg)
             return redirect("dashboard")
 
         # Mark document as FAILED with cancellation message
@@ -2603,6 +2691,7 @@ def forgot_password_view(request):
 
 
 @require_http_methods(["GET", "HEAD"])
+@never_cache
 def reset_password_confirm_view(request):
     """
     Renders the password update confirmation view.
@@ -2716,16 +2805,17 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
                 continue
             if ":" in i_clean:
                 i_clean = i_clean.split(":", 1)[1]
+            i_clean = i_clean[:64]
             try:
                 ids.append(int(i_clean))
             except ValueError:
                 ids.append(i_clean)
-        return ids
+        return ids[:50]
 
     def get(self, request):
         from extractor.rag import stream_query_rag
 
-        query = request.GET.get("q", "").strip()
+        query = request.GET.get("q", "").strip()[:1000]
         if not query:
             return JsonResponse({"error": "Empty search query."}, status=400)
 
@@ -2735,6 +2825,8 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
             return limit_resp
 
         document_ids = self._parse_doc_ids(request.GET.get("document_ids", "").strip())
+        if document_ids:
+            document_ids = document_ids[:50]
 
         from django.utils.functional import SimpleLazyObject
 
@@ -2753,4 +2845,6 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
         response = StreamingHttpResponse(generator, content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
+        response["Connection"] = "keep-alive"
+        response["Content-Encoding"] = "none"
         return response

@@ -32,3 +32,6 @@ credentials*.json
 bandit-report.json
 hadolint-report.json
 ast-grep-report.json
+infra/pulumi/venv/
+coverage/
+.vitest/

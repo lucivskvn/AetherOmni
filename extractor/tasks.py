@@ -1219,6 +1219,30 @@ def _claim_for_reembedding(doc_uuid: str) -> dict | None:
     return doc
 
 
+def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], existing_pages: int) -> int:
+    if not chunks:
+        return max(0, existing_pages)
+
+    check_budget_and_api_limit()
+    if not surreal_db.get_document(doc_uuid):
+        logger.info("[Worker] Document %s deleted during re-embedding, aborting.", doc_uuid)
+        return -1
+
+    embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
+    chunk_payloads = [
+        {
+            "chunk_index": i,
+            "content": ct,
+            "token_count": len(ct.split()),
+            "language": doc.get("language") or "",
+            "embedding": emb,
+        }
+        for i, (ct, emb) in enumerate(zip(chunks, embeddings))
+    ]
+    surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
+    return existing_pages if existing_pages > 0 else len(chunks)
+
+
 def reembed_edited_document_task(payload: dict) -> None:
     """
     Lightweight task to re-chunk and re-embed a document after manual user edits.
@@ -1241,25 +1265,10 @@ def reembed_edited_document_task(payload: dict) -> None:
         chunks = chunk_document_semantically(text_for_chunks, max_chunk_size=chunk_size)
 
         surreal_db.delete_chunks(doc_uuid)
-
         existing_pages = _get_val(doc, "page_count") or 0
-        if chunks:
-            check_budget_and_api_limit()
-            embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
-            chunk_payloads = [
-                {
-                    "chunk_index": i,
-                    "content": ct,
-                    "token_count": len(ct.split()),
-                    "language": doc.get("language") or "",
-                    "embedding": emb,
-                }
-                for i, (ct, emb) in enumerate(zip(chunks, embeddings))
-            ]
-            surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
-            final_page_count = existing_pages if existing_pages > 0 else len(chunks)
-        else:
-            final_page_count = max(0, existing_pages)
+        final_page_count = _recreate_and_embed_chunks(doc_uuid, doc, chunks, existing_pages)
+        if final_page_count < 0:
+            return
 
         surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
         logger.info("[Worker] Re-embedding successful for Document UUID: %s!", doc_uuid)
@@ -1546,7 +1555,7 @@ def store_user_memory_task(payload: dict) -> None:
     and index it in SurrealDB.
     """
     user_id = payload.get("user_id")
-    raw_text = payload.get("text", "").strip()
+    raw_text = str(payload.get("text") or "").strip()[:1000]
     if not user_id or not raw_text:
         return
 

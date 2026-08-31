@@ -869,6 +869,18 @@ def get_system_settings() -> dict:
     return rows[0] if rows else default_data
 
 
+ALLOWED_SETTINGS_KEYS = frozenset(
+    {
+        "monthly_budget_usd",
+        "selected_model",
+        "currency",
+        "csrf_trusted_origins",
+        "openrouter_api_key",
+        "source_library_uri",
+    }
+)
+
+
 def save_system_settings(data: dict) -> dict:
     """Upsert system settings record in SurrealDB."""
     from django.conf import settings
@@ -878,12 +890,12 @@ def save_system_settings(data: dict) -> dict:
 
         s = SystemSettings.get_settings()
         for k, v in data.items():
-            if hasattr(s, k):
+            if hasattr(s, k) and k in ALLOWED_SETTINGS_KEYS:
                 setattr(s, k, v)
         s.save()
         return _settings_to_dict(s)
 
-    payload = {k: v for k, v in data.items() if v is not None}
+    payload = {k: v for k, v in data.items() if v is not None and k in ALLOWED_SETTINGS_KEYS}
     if "monthly_budget_usd" in payload:
         payload["monthly_budget_usd"] = float(payload["monthly_budget_usd"])
     sql = "UPSERT system_settings:1 CONTENT $data;"
@@ -1141,6 +1153,7 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
 def get_document_chunks(doc_uuid: str, limit: int = 100) -> list[dict[str, Any]]:
     """Retrieve chunks for a document ordered by chunk_index."""
     doc_uuid = str(doc_uuid)
+    limit = min(max(1, int(limit)), 500)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -1494,7 +1507,7 @@ def find_chunk_embeddings_batch(texts: list[str]) -> dict[str, list[float]]:
     """
     if not texts:
         return {}
-    unique_texts = [t for t in set(texts) if t]
+    unique_texts = [t for t in set(texts) if t][:500]
     if not unique_texts:
         return {}
     sql = "SELECT content, embedding FROM chunks WHERE content IN $texts;"
@@ -1569,22 +1582,32 @@ def context_cache_set(
     _run(sql, {"payload": payload})
 
 
-def check_rate_limit_atomic(key: str, max_requests: int) -> bool:
+def check_rate_limit_atomic(key: str, max_requests: int, window_seconds: int = 3600) -> bool:
     """
     Atomic sliding-window rate limit checker in SurrealDB.
     Returns True if request is allowed, False if quota exceeded.
     """
-    sql = "SELECT * FROM rate_limits WHERE key = $key AND expires_at > time::now() LIMIT 1;"
-    res = _first_result(_run(sql, {"key": key}))
-    if not res:
-        insert_sql = "INSERT INTO rate_limits { key: $key, request_count: 1, window_start: time::now(), expires_at: time::now() + 1h };"
-        _run(insert_sql, {"key": key})
+    if getattr(settings, "SURREALDB_OFFLINE", False):
         return True
-    current = res[0]
-    if current.get("request_count", 0) >= max_requests:
-        return False
-    _run("UPDATE rate_limits SET request_count += 1 WHERE key = $key;", {"key": key})
-    return True
+
+    try:
+        sql = "SELECT * FROM rate_limits WHERE key = $key AND expires_at > time::now() LIMIT 1;"
+        res = _first_result(_run(sql, {"key": key}))
+        if not res:
+            insert_sql = (
+                f"INSERT INTO rate_limits {{ key: $key, request_count: 1, window_start: time::now(), "
+                f"expires_at: time::now() + {max(1, int(window_seconds))}s }};"
+            )
+            _run(insert_sql, {"key": key})
+            return True
+        current = res[0]
+        if current.get("request_count", 0) >= max_requests:
+            return False
+        _run("UPDATE rate_limits SET request_count += 1 WHERE key = $key;", {"key": key})
+        return True
+    except Exception as exc:
+        logger.debug("[RateLimit] Error checking rate limit in SurrealDB: %s", exc)
+        return True
 
 
 # ── Knowledge Graph RAG & Graph-Relational Methods ───────────────────────────
