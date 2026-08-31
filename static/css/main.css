@@ -359,6 +359,22 @@ header {
     color: #fef2f2;
 }
 
+/* BUG-08: Light mode alert overrides — dark hardcoded alert backgrounds
+   are invisible in light mode without these counterparts. */
+[data-theme="light"] .alert-success {
+    background-color: #dcfce7;
+    border-color: #16a34a;
+    color: #14532d;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .alert-error {
+    background-color: #fee2e2;
+    border-color: #dc2626;
+    color: #7f1d1d;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
 /* Main Container layout */
 main {
     flex: 1;

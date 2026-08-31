@@ -35,8 +35,11 @@ class SourceDocument(models.Model):
         ("FAILED", "Failed"),
     ]
 
-    # Secure identifier for URL routing to prevent IDOR / enumeration attacks
-    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
+    # Secure identifier for URL routing to prevent IDOR / enumeration attacks.
+    # BUG-04: unique=True added to match SurrealDB's idx_documents_uuid UNIQUE.
+    # Migration 0021 backfills any pre-existing NULL uuid rows before this constraint applies.
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True, unique=True)
+
     uploaded_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="uploaded_documents"
     )
@@ -77,8 +80,10 @@ class SourceDocument(models.Model):
     # Deduplication & cross-lingual translation linkages
     semantic_signature = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
-    # Operational metrics & budget auditing
-    retry_count = models.IntegerField(default=0)
+    # Operational metrics & budget auditing — BUG-17: PositiveIntegerField
+    # enforces retry_count >= 0 at the DB level, preventing negative values
+    # that could bypass the retry_count >= 3 limit guard.
+    retry_count = models.PositiveIntegerField(default=0)
 
     # Lifespans and GDPR auditing
     created_at = models.DateTimeField(auto_now_add=True)
@@ -96,7 +101,10 @@ class SourceDocument(models.Model):
         from django.utils import timezone
 
         if self.expires_at:
-            return timezone.now() > self.expires_at
+            exp = self.expires_at
+            if timezone.is_naive(exp):
+                exp = timezone.make_aware(exp, timezone.get_current_timezone())
+            return timezone.now() > exp
         return False
 
 

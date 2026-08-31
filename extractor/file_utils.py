@@ -660,7 +660,7 @@ def _get_offline_docs(document_ids, user):
 
     docs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs), status="COMPLETED")
     if user and not (user.is_staff or user.is_superuser):
-        docs = docs.filter(Q(uploaded_by=user) | Q(uploaded_by__isnull=True))
+        docs = docs.filter(uploaded_by=user)
     return list(docs)
 
 
@@ -679,7 +679,8 @@ def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
 
         uploaded_by_id = raw_doc.get("uploaded_by_id")
         owner_id = actor_id or str(user.id)
-        if user and not (user.is_staff or user.is_superuser) and uploaded_by_id and uploaded_by_id != owner_id:
+        # Non-staff users can only export documents they own; unowned docs (uploaded_by_id is None) are excluded
+        if user and not (user.is_staff or user.is_superuser) and (not uploaded_by_id or uploaded_by_id != owner_id):
             continue
 
         doc = _wrap_surreal_doc(raw_doc, users_map)

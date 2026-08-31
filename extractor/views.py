@@ -277,6 +277,7 @@ def _wrap_surreal_doc(d, users_map=None):
 from extractor.utils import (
     APPLICATION_JSON,
     KNATIVE_MIN_SCALE,
+    REEMBED_DOCUMENT_TASK,
     broadcast_status_change,
     calculate_file_sha256,
     clean_html_content,
@@ -1037,9 +1038,9 @@ class DocumentSaveView(LoginRequiredMixin, View):
 
         if getattr(settings, "SURREALDB_OFFLINE", False):
             doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
-            cloud_tasks.enqueue("reembed_document", {"document_id": doc_id})
+            cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_id": doc_id})
         else:
-            cloud_tasks.enqueue("reembed_document", {"document_uuid": doc_uuid})
+            cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid})
         broadcast_status_change(str(doc_uuid), "EMBEDDING")
 
         messages.success(request, "Changes saved and re-indexing queued successfully!")
@@ -1547,35 +1548,17 @@ def _handle_bulk_restart(request, document_ids):
     messages.success(request, f"Successfully queued {restarted_count} tasks for reprocessing.")
 
 
-def _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db):
-    file_hash = doc.file_hash
-    orig_name = doc.original_filename
-    file_rel_path = doc.file
-    doc_uuid = _extract_clean_doc_uuid(doc)
-
-    total_refs = hash_ref_counts.get(file_hash, 0)
-    shared_references = max(0, total_refs - 1)
-
-    if file_hash in hash_ref_counts:
-        hash_ref_counts[file_hash] = max(0, total_refs - 1)
-
-    _record_view_audit(
-        request,
-        AuditAction.DELETE,
-        f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
-        document=doc,
-    )
-
+def _cleanup_file_storage(file_rel_path, shared_references: int, default_storage) -> None:
     if shared_references == 0:
         try:
-            # Ensure file_rel_path is a valid non-empty string path
             path_str = str(file_rel_path or "").strip()
             if path_str and default_storage.exists(path_str):
                 default_storage.delete(path_str)
         except Exception as e:
             logger.warning("[Bulk Delete] Failed to physically delete file: %s", e)
 
-    # If document is actively processing, transition to FAILED so in-flight worker immediately aborts
+
+def _abort_inflight_processing(doc, doc_uuid, surreal_db) -> None:
     if getattr(doc, "status", None) in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
         try:
             surreal_db.update_document(
@@ -1586,7 +1569,44 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
         except Exception as abort_err:
             logger.debug("[Bulk Delete] Could not set FAILED state on in-flight doc %s: %s", doc_uuid, abort_err)
 
-    surreal_db.delete_document(doc_uuid)
+
+def _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db):
+    file_hash = doc.file_hash
+    orig_name = doc.original_filename
+    doc_uuid = _extract_clean_doc_uuid(doc)
+
+    total_refs = hash_ref_counts.get(file_hash, 0)
+    shared_references = max(0, total_refs - 1)
+    if file_hash in hash_ref_counts:
+        hash_ref_counts[file_hash] = shared_references
+
+    _record_view_audit(
+        request,
+        AuditAction.DELETE,
+        f"Bulk Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
+        document=doc,
+    )
+
+    _cleanup_file_storage(doc.file, shared_references, default_storage)
+    _abort_inflight_processing(doc, doc_uuid, surreal_db)
+
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        if isinstance(doc, SourceDocument):
+            doc.delete()
+        else:
+            surreal_db.delete_document(doc_uuid)
+    else:
+        surreal_db.delete_document(doc_uuid)
+        try:
+            from extractor.models import SourceDocument
+
+            SourceDocument.objects.filter(uuid=doc_uuid).delete()
+        except Exception as sqlite_cleanup_err:
+            logger.debug("[Delete] SQLite cleanup for doc_uuid=%s skipped: %s", doc_uuid, sqlite_cleanup_err)
 
 
 def _get_offline_docs_for_delete(request, document_ids):
@@ -2381,7 +2401,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
                 request,
                 AuditAction.SYSTEM_CONTROL,
                 f"Admins toggled worker scaling mode to '{mode}' (minScale: {min_scale}, maxScale: {max_scale}).",
-                ip=request.META.get("REMOTE_ADDR"),
+                ip=get_client_ip(request),
             )
 
         except Exception as e:

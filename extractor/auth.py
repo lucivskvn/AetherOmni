@@ -20,6 +20,7 @@ __all__ = [
 
 def generate_unique_username(user_email: str) -> str:
     import hashlib
+    import uuid
 
     base_username = user_email.split("@")[0]
 
@@ -34,13 +35,14 @@ def generate_unique_username(user_email: str) -> str:
     if not conflicting_user or conflicting_user.email == user_email:
         return candidate
 
-    attempt = 1
-    while True:
+    for attempt in range(1, 100):
         candidate = f"{base_username}_{attempt}"[:150]
         conflicting_user = User.objects.filter(username=candidate).first()
         if not conflicting_user or conflicting_user.email == user_email:
             return candidate
-        attempt += 1
+
+    # Fallback to UUID-derived candidate if loop exhausted
+    return f"{base_username[:130]}_{uuid.uuid4().hex[:8]}"
 
 
 def _sync_supabase_user(
@@ -54,37 +56,39 @@ def _sync_supabase_user(
     Stores the Supabase user_id in the session.
     """
     from django.conf import settings
+    from django.db import transaction
 
     user_info = resp_data.get("user", {})
     user_email = user_info.get("email", username)
 
     django_username = generate_unique_username(user_email)
 
-    # Retrieve or instantiate standard Django User account
-    user, created = User.objects.get_or_create(
-        email=user_email, defaults={"username": django_username, "is_active": True}
-    )
+    with transaction.atomic():
+        # Retrieve or instantiate standard Django User account
+        user, created = User.objects.get_or_create(
+            email=user_email, defaults={"username": django_username, "is_active": True}
+        )
 
-    admin_email = getattr(settings, "ADMIN_EMAIL", "").strip()
-    is_promoted_admin = bool(admin_email) and user_email.lower() == admin_email.lower()
+        admin_email = getattr(settings, "ADMIN_EMAIL", "").strip()
+        is_promoted_admin = bool(admin_email) and user_email.lower() == admin_email.lower()
 
-    # 1. Supabase App Metadata Role Syncing
-    app_metadata = user_info.get("app_metadata", {})
-    if app_metadata.get("is_admin") is True:
-        is_promoted_admin = True
+        # 1. Supabase App Metadata Role Syncing
+        app_metadata = user_info.get("app_metadata", {})
+        if app_metadata.get("is_admin") is True:
+            is_promoted_admin = True
 
-    # Supabase is authoritative for privileges on every successful authentication.
-    # A removed admin claim must demote the corresponding Django account immediately.
-    role_changed = user.is_superuser != is_promoted_admin or user.is_staff != is_promoted_admin
-    user.is_superuser = is_promoted_admin
-    user.is_staff = is_promoted_admin
+        # Supabase is authoritative for privileges on every successful authentication.
+        # A removed admin claim must demote the corresponding Django account immediately.
+        role_changed = user.is_superuser != is_promoted_admin or user.is_staff != is_promoted_admin
+        user.is_superuser = is_promoted_admin
+        user.is_staff = is_promoted_admin
 
-    if created or role_changed:
-        user.set_unusable_password()
-        user.save()
-        logger.info("[Auth] Django sync account created/updated from Supabase claims: %s", user_email)
-    else:
-        logger.info("[Auth] Supabase user session established: %s", user_email)
+        if created or role_changed:
+            user.set_unusable_password()
+            user.save()
+            logger.info("[Auth] Django sync account created/updated from Supabase claims: %s", user_email)
+        else:
+            logger.info("[Auth] Supabase user session established: %s", user_email)
 
     # Store Supabase user_id on the request session for audit log linkage
     supabase_user_id = user_info.get("id", "")

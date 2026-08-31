@@ -1704,7 +1704,7 @@ class BulkDocumentActionTestCase(TestCase):
 
         doc_ids = [d.id for d in docs]
 
-        with self.assertNumQueries(47):
+        with self.assertNumQueries(37):
             response = self.client.post(
                 reverse("bulk_action"),
                 {

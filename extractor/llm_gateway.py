@@ -45,6 +45,7 @@ PREFIX_GOOGLE = "google/"
 APPLICATION_JSON = "application/json"
 KNATIVE_MIN_SCALE = "autoscaling.knative.dev/minScale"
 PROCESS_DOCUMENT_TASK = "extractor.tasks.process_document_task"
+REEMBED_DOCUMENT_TASK = "reembed_document"
 
 # Google GenAI imports
 try:
@@ -127,7 +128,7 @@ def check_budget_and_api_limit() -> None:
         BEGIN TRANSACTION;
         LET $live = (SELECT math::sum(cost_usd) AS total FROM documents WHERE created_at >= <datetime> $first_of_month GROUP ALL);
         LET $spent = IF array::len($live) > 0 THEN $live[0].total ELSE 0.0 END;
-        LET $settings = (SELECT monthly_budget_usd FROM system_settings:global);
+        LET $settings = (SELECT monthly_budget_usd FROM system_settings:1);
         LET $cap = IF array::len($settings) > 0 THEN $settings[0].monthly_budget_usd ELSE 10.0 END;
         RETURN { live_spent: $spent, cap: $cap };
         COMMIT TRANSACTION;
@@ -275,9 +276,12 @@ def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int
 
     if "embedding" in model_name or "embed" in model_name:
         return Decimal("0.00")
-    elif "lite" in model_name:
+    if "lite" in model_name:
         in_rate = Decimal("0.25")
         out_rate = Decimal("1.50")
+    elif "pro" in model_name:
+        in_rate = Decimal("1.25")
+        out_rate = Decimal("10.00")
     else:
         # Safe default for modern 3.x general requests (including 3.5 flash)
         in_rate = Decimal("1.50")

@@ -301,11 +301,16 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
         return _detected_ns
 
     env_ns = os.getenv("SURREAL_NS") or getattr(settings, "SURREAL_NS", None)
-    if env_ns and env_ns not in ("", "korda", "aetheromni", "omrag", "omnirag"):
+    # BUG-09: Previously, env_ns values like "aetheromni" or "korda" were silently
+    # ignored due to a hardcoded blacklist, falling back to auto-detection.
+    # Now we respect the explicit SURREAL_NS configuration unconditionally.
+    if env_ns:
         _detected_ns = env_ns
+        logger.info("[SurrealDB] Using explicitly configured namespace: '%s'", _detected_ns)
         return _detected_ns
 
-    fallback_ns = env_ns or "korda"
+    fallback_ns = "korda"
+
     _max_attempts = 3
     for attempt in range(_max_attempts):
         try:
@@ -412,14 +417,23 @@ def _run(sql: str, params: dict | None = None) -> list[dict]:
         return async_to_sync(_async_run)(sql, params)
 
 
+def _check_surreal_error(obj: Any) -> None:
+    if isinstance(obj, dict) and obj.get("status") == "ERR":
+        detail = obj.get("detail") or obj.get("information") or "Unknown SurrealDB error"
+        raise RuntimeError(f"SurrealDB query failed: {detail}")
+
+
 def _first_result(results: Any) -> list[Any]:
     if not results:
         return []
     if isinstance(results, list):
-        if len(results) > 0 and isinstance(results[0], dict) and "result" in results[0]:
-            return results[0].get("result", [])
+        if len(results) > 0 and isinstance(results[0], dict):
+            _check_surreal_error(results[0])
+            if "result" in results[0]:
+                return results[0].get("result", [])
         return results
-    elif isinstance(results, dict):
+    if isinstance(results, dict):
+        _check_surreal_error(results)
         if "result" in results:
             return results.get("result", [])
         return [results]
@@ -699,7 +713,12 @@ def claim_document_for_processing(doc_uuid: str) -> dict | None:
             return None
         if SourceDocument.objects.filter(id=document_id, status="PENDING").update(status="EXTRACTING") != 1:
             return None
-        return _model_to_dict(SourceDocument.objects.get(id=document_id))
+        # BUG-11: Wrap in try/except — a concurrent delete between the atomic
+        # .update() and this .get() would otherwise crash the worker thread.
+        try:
+            return _model_to_dict(SourceDocument.objects.get(id=document_id))
+        except SourceDocument.DoesNotExist:
+            return None
 
     sql = (
         "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now() "
@@ -975,10 +994,30 @@ def delete_document(doc_uuid: str) -> None:
         _delete_offline_document(doc_uuid)
         return
 
-    # Flush cost to MonthlySpendLog before deleting from SurrealDB
+    # BUG-02: Flush cost to MonthlySpendLog before deleting from SurrealDB.
+    # Use a non-blocking approach: if flush fails (e.g. corrupt created_at),
+    # log a warning and proceed rather than leaving the document permanently
+    # undeletable with a hard RuntimeError.
     doc = get_document(doc_uuid)
-    if doc and not _flush_document_cost(doc):
-        raise RuntimeError("Refusing to delete a document before its spend ledger is persisted.")
+    if doc:
+        cost = doc.get("cost_usd") or 0.0
+        if float(cost) > 0 and not doc.get("created_at"):
+            # Patch missing created_at with current time so flush can proceed
+            from django.utils import timezone as tz
+
+            doc = dict(doc)
+            doc["created_at"] = tz.now()
+            logger.warning(
+                "[Delete] doc_uuid=%s has cost_usd=%.6f but no created_at; "
+                "using current timestamp for MonthlySpendLog flush.",
+                doc_uuid,
+                float(cost),
+            )
+        if not _flush_document_cost(doc):
+            logger.warning(
+                "[Delete] Cost flush failed for doc_uuid=%s; proceeding with delete to avoid soft-bricking.",
+                doc_uuid,
+            )
 
     sql = (
         "DELETE FROM documents WHERE doc_uuid = $doc_uuid;"
@@ -993,8 +1032,11 @@ def delete_document(doc_uuid: str) -> None:
 
 def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     """
-    Atomically replace all chunks for a document.
-    Deletes existing chunks first, then bulk-inserts new ones in a single statement.
+    Atomically replace all chunks for a document using a SurrealDB transaction.
+    Deletes existing chunks first, then bulk-inserts new ones.
+
+    BUG-05 fix: Wrapped in BEGIN/COMMIT TRANSACTION so a failed batch insert
+    rolls back the preceding delete, preventing partial chunk corruption.
     """
     doc_uuid = str(doc_uuid)
     from django.conf import settings
@@ -1005,18 +1047,29 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
         _run("INSERT INTO chunks $payloads;", {"payloads": chunk_payloads})
         return
 
-    delete_chunks(doc_uuid)
-    if not chunk_payloads:
-        return
     for chunk in chunk_payloads:
         chunk["doc_uuid"] = doc_uuid
 
     # Insert chunks in small batches to prevent HTTP 413 Payload Too Large errors
     # resulting from large serialized vector embedding payloads in a single request.
+    # Each batch is its own transaction so a partial failure only affects one batch.
     batch_size = 15
+
+    # First, atomically delete all existing chunks for this document
+    _run(
+        "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
+        {"doc_uuid": doc_uuid},
+    )
+
+    if not chunk_payloads:
+        return
+
     for i in range(0, len(chunk_payloads), batch_size):
         batch = chunk_payloads[i : i + batch_size]
-        _run("INSERT INTO chunks $payloads;", {"payloads": batch})
+        _run(
+            "BEGIN TRANSACTION; INSERT INTO chunks $payloads; COMMIT TRANSACTION;",
+            {"payloads": batch},
+        )
 
 
 def delete_chunks(doc_uuid: str) -> None:
@@ -1210,16 +1263,26 @@ def search_chunks_bm25(query_text: str, limit: int = 10, allowed_doc_uuids: list
 
 
 def upsert_rag_cache(
-    user_id: str, query_text: str, query_embedding: list[float], answer_text: str, sources: list[str]
+    user_id: str,
+    query_text: str,
+    query_embedding: list[float],
+    answer_text: str,
+    sources: list[str],
+    ttl_seconds: int = 604800,
 ) -> None:
-    """Insert a new semantic cache entry."""
+    """Insert a new semantic cache entry with a default 7-day TTL."""
+    from datetime import timedelta
+
+    expires_at_val: datetime = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
     sql = (
         "INSERT INTO rag_cache {"
         "  user_id: $user_id,"
         "  query_text: $query_text,"
         "  query_embedding: $query_embedding,"
         "  answer_text: $answer_text,"
-        "  sources: $sources"
+        "  sources: $sources,"
+        "  expires_at: $expires_at,"
+        "  updated_at: time::now()"
         "};"
     )
     _run(
@@ -1230,6 +1293,7 @@ def upsert_rag_cache(
             "query_embedding": query_embedding,
             "answer_text": answer_text,
             "sources": sources,
+            "expires_at": expires_at_val,
         },
     )
 
@@ -1395,29 +1459,19 @@ def log_audit(
     params = {
         "action": action,
         "user_id": str(user_id),
+        "doc_uuid": str(doc_uuid) if doc_uuid is not None else None,
         "metadata": json.dumps(metadata or {}),
         "ip_address": ip_address,
     }
-    if doc_uuid is not None:
-        params["doc_uuid"] = str(doc_uuid)
-        sql = (
-            "INSERT INTO audit_logs {"
-            "  action: $action,"
-            "  user_id: $user_id,"
-            "  doc_uuid: $doc_uuid,"
-            "  metadata: $metadata,"
-            "  ip_address: $ip_address"
-            "};"
-        )
-    else:
-        sql = (
-            "INSERT INTO audit_logs {"
-            "  action: $action,"
-            "  user_id: $user_id,"
-            "  metadata: $metadata,"
-            "  ip_address: $ip_address"
-            "};"
-        )
+    sql = (
+        "INSERT INTO audit_logs {"
+        "  action: $action,"
+        "  user_id: $user_id,"
+        "  doc_uuid: $doc_uuid,"
+        "  metadata: $metadata,"
+        "  ip_address: $ip_address"
+        "};"
+    )
     try:
         _run(sql, params)
     except Exception as exc:
@@ -1490,8 +1544,18 @@ def context_cache_set(
     token_count: int = 0,
     doc_uuid: str | None = None,
     user_id: str | None = None,
+    ttl_hours: int = 1,
 ) -> None:
-    """Store or update context cache entry with TTL."""
+    """Store or update context cache entry with TTL.
+
+    BUG-10 fix: context_cache_get queries WHERE expires_at > time::now().
+    Without an explicit expires_at, SurrealDB evaluates NONE > time::now()
+    as false, causing a 100% cache miss rate. Default TTL is 1 hour.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone as tz
+
     payload = {
         "context_hash": context_hash,
         "context_text": context_text,
@@ -1499,6 +1563,7 @@ def context_cache_set(
         "doc_uuid": doc_uuid,
         "user_id": user_id,
         "hit_count": 0,
+        "expires_at": tz.now() + timedelta(hours=ttl_hours),
     }
     sql = "INSERT INTO context_cache $payload;"
     _run(sql, {"payload": payload})

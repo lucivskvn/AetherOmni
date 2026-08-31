@@ -1009,7 +1009,18 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
             for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
         ]
 
-        # Delete old SurrealDB chunks first, then insert new ones atomically
+        # Delete old SurrealDB chunks first, then insert new ones atomically.
+        # BUG-13: If the document was deleted mid-flight, recreate_chunks would
+        # insert orphaned vector chunks for a non-existent document, polluting
+        # RAG search results. Abort the pipeline if the doc no longer exists.
+        fresh_doc = surreal_db.get_document(doc_uuid)
+        if not fresh_doc:
+            logger.warning(
+                "[Worker] Document %s was deleted mid-pipeline (Stage 3). "
+                "Aborting recreate_chunks to avoid orphaned vector entries.",
+                doc_uuid,
+            )
+            return {}
         surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
 
         expires_at = timezone.now() + timedelta(days=retention_days)
@@ -1184,6 +1195,30 @@ def process_document_task(payload: dict) -> None:
             logger.exception("[Worker] Double-fault! Could not save crash to DB: %s", db_err)
 
 
+def _claim_for_reembedding(doc_uuid: str) -> dict | None:
+    doc = surreal_db.get_document(doc_uuid)
+    if not doc:
+        logger.error("[Worker] Document %s does not exist.", doc_uuid)
+        return None
+
+    current_status = doc.get("status", "")
+    if current_status not in ("COMPLETED", "FAILED"):
+        logger.warning(
+            "[Worker] reembed_edited_document_task: doc %s has status=%s (expected COMPLETED/FAILED). Aborting.",
+            doc_uuid,
+            current_status,
+        )
+        return None
+
+    claimed = surreal_db.update_document(doc_uuid, {"status": "EMBEDDING"})
+    if not claimed:
+        logger.warning("[Worker] reembed_edited_document_task: failed to claim doc %s. Aborting.", doc_uuid)
+        return None
+
+    broadcast_status_change(doc_uuid, "EMBEDDING")
+    return doc
+
+
 def reembed_edited_document_task(payload: dict) -> None:
     """
     Lightweight task to re-chunk and re-embed a document after manual user edits.
@@ -1195,14 +1230,9 @@ def reembed_edited_document_task(payload: dict) -> None:
         return
 
     logger.info("[Worker] Re-embedding Document UUID: %s", doc_uuid)
-
-    doc = surreal_db.get_document(doc_uuid)
+    doc = _claim_for_reembedding(doc_uuid)
     if not doc:
-        logger.error("[Worker] Document %s does not exist.", doc_uuid)
         return
-
-    surreal_db.update_document(doc_uuid, {"status": "EMBEDDING"})
-    broadcast_status_change(doc_uuid, "EMBEDDING")
 
     try:
         text_for_chunks = doc.get("refined_markdown") or doc.get("raw_markdown") or ""
@@ -1210,9 +1240,9 @@ def reembed_edited_document_task(payload: dict) -> None:
         chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
         chunks = chunk_document_semantically(text_for_chunks, max_chunk_size=chunk_size)
 
-        # Always purge old SurrealDB chunks on re-embed
         surreal_db.delete_chunks(doc_uuid)
 
+        existing_pages = _get_val(doc, "page_count") or 0
         if chunks:
             check_budget_and_api_limit()
             embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
@@ -1227,15 +1257,11 @@ def reembed_edited_document_task(payload: dict) -> None:
                 for i, (ct, emb) in enumerate(zip(chunks, embeddings))
             ]
             surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
-
-            existing_page_count = _get_val(doc, "page_count") or 0
-            final_page_count = existing_page_count if existing_page_count > 0 else len(chunks)
-            surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
+            final_page_count = existing_pages if existing_pages > 0 else len(chunks)
         else:
-            existing_page_count = _get_val(doc, "page_count") or 0
-            final_page_count = max(0, existing_page_count)
-            surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
+            final_page_count = max(0, existing_pages)
 
+        surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
         logger.info("[Worker] Re-embedding successful for Document UUID: %s!", doc_uuid)
         broadcast_status_change(doc_uuid, "COMPLETED")
 
@@ -1524,8 +1550,6 @@ def store_user_memory_task(payload: dict) -> None:
     if not user_id or not raw_text:
         return
 
-    from django.contrib.auth import get_user_model
-
     from extractor import surreal_db
     from extractor.llm_gateway import (
         _init_refinement_client,
@@ -1534,12 +1558,11 @@ def store_user_memory_task(payload: dict) -> None:
     )
     from extractor.rag import generate_surreal_embeddings
 
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(id=user_id)
-    except user_model.DoesNotExist:
-        logger.warning("[Memory Task] User with ID %s does not exist. Aborting.", user_id)
-        return
+    user = _resolve_user_by_id(user_id)
+    # Even if Django User object is not present in local SQLite/Postgres auth table (e.g. Supabase Auth user),
+    # proceed if user_id is a valid UUID or string identifier.
+    effective_user_id = str(user.id) if user else str(user_id)
+    user_display = getattr(user, "username", str(user_id))
 
     distill_prompt = (
         "You are an AI memory compiler for a RAG search assistant.\n"
@@ -1576,7 +1599,7 @@ def store_user_memory_task(payload: dict) -> None:
         return
 
     try:
-        surreal_db.add_user_memory(str(user.id), distilled, vector)
-        logger.info("[Memory Task] Memory indexed in SurrealDB for user %s: '%s'", user.username, distilled)
+        surreal_db.add_user_memory(effective_user_id, distilled, vector)
+        logger.info("[Memory Task] Memory indexed in SurrealDB for user %s: '%s'", user_display, distilled)
     except Exception as s_err:
         logger.warning("[Memory Task] Failed to index memory in SurrealDB: %s", s_err)

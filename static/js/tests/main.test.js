@@ -875,20 +875,8 @@ describe('initializeExportActions Flow', () => {
     expect(exportForm.submit).toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
-
-  it('submits single row delete form to /document/:id/delete/ on btn-delete-doc click', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    initializeExportActions();
-
-    const deleteBtn = document.querySelector('.btn-delete-doc');
-    deleteBtn.click();
-
-    expect(confirmSpy).toHaveBeenCalled();
-    expect(deleteForm.action).toContain('/document/doc-999/delete/');
-    expect(deleteForm.submit).toHaveBeenCalled();
-    confirmSpy.mockRestore();
-  });
 });
+
 
 // ---------------------------------------------------------------------------
 // initializeLocalTimezones — Client-Side Datetime Conversion

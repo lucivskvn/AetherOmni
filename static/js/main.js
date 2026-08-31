@@ -835,28 +835,10 @@ function initializeExportActions() {
         });
     }
 
-    // Deletion click handling delegation
-    document.addEventListener('click', (event) => {
-        const btn = event.target.closest('.btn-delete-doc');
-        if (!btn) return;
-        const docId = btn.dataset.docId;
-        if (docId && confirm('Are you sure you want to delete this document from the library?')) {
-            const form = document.getElementById('delete-form');
-            if (form) {
-                form.action = `/document/${docId}/delete/`;
-                form.submit();
-            }
-        }
-    });
-
-    const deleteDocForm = document.getElementById('delete-document-form');
-    if (deleteDocForm) {
-        deleteDocForm.addEventListener('submit', (e) => {
-            if (!confirm('Are you sure you want to delete this document from the library?')) {
-                e.preventDefault();
-            }
-        });
-    }
+    // BUG-01 REMOVED: The legacy document.addEventListener('click') block that
+    // submitted id="delete-form" synchronously (non-AJAX) has been removed.
+    // initializeDeleteActions() below registers the correct AJAX handler for
+    // .btn-delete-doc and is the single authoritative click handler.
 
     const bulkRestartOrigHtml = bulkRestartBtn?.innerHTML;
     const bulkDeleteOrigHtml = bulkDeleteBtn?.innerHTML;
@@ -1414,6 +1396,20 @@ function updateDocumentsTable(documents) {
         }
     });
 
+    // BUG-06: Prune rows for documents no longer returned by the status API.
+    // Previously, deleted documents stayed visible until a hard page reload.
+    const activeIds = new Set(documents.map(d => String(d.id)));
+    const allRows = tbody.querySelectorAll('tr[data-doc-id]');
+    allRows.forEach(row => {
+        if (!activeIds.has(String(row.dataset.docId))) {
+            row.style.transition = 'opacity 0.3s ease';
+            row.style.opacity = '0';
+            setTimeout(() => {
+                if (row.parentNode) row.remove();
+            }, 300);
+        }
+    });
+
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
@@ -1588,7 +1584,27 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
         })
         .then(data => {
             if (data?.status === 'success') {
-                globalThis.location.reload();
+                if (endpointSuffix === 'delete') {
+                    // BUG-07: Immediately fade-out and remove the row for instant
+                    // visual feedback instead of a full page reload flash.
+                    const row = btn.closest('tr');
+                    if (row) {
+                        row.style.transition = 'opacity 0.25s ease';
+                        row.style.opacity = '0';
+                        setTimeout(() => {
+                            if (row.parentNode) row.remove();
+                            // If no data rows remain, reload to show empty-state UI
+                            const remaining = document.querySelectorAll(
+                                '.files-panel table tbody tr[data-doc-id]'
+                            );
+                            if (remaining.length === 0) globalThis.location.reload();
+                        }, 250);
+                    } else {
+                        globalThis.location.reload();
+                    }
+                } else {
+                    globalThis.location.reload();
+                }
             } else {
                 showClientSideAlert(data?.message || data?.error || defaultErrorMsg);
                 if (icon) {
