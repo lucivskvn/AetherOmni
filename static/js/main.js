@@ -1563,10 +1563,6 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
             })
             : Promise.resolve({ ok: true, json: async () => ({ status: 'success' }) });
 
-        if (!fetchPromise || typeof fetchPromise.then !== 'function') {
-            return;
-        }
-
         fetchPromise
             .then(async response => {
 
