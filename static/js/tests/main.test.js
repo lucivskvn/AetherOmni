@@ -42,6 +42,7 @@ import {
   _updateDetailMetaFields,
   _checkNeedsPolling,
   initializeSupabaseRealtime,
+  trapFocus,
 } from '../main.js';
 
 
@@ -1318,5 +1319,46 @@ describe('initializeAlerts & initializeSupabaseRealtime', () => {
 
   it('gracefully handles initializeSupabaseRealtime with missing credentials', () => {
     expect(() => initializeSupabaseRealtime()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// trapFocus
+// ---------------------------------------------------------------------------
+describe('trapFocus', () => {
+  it('cycles focus from last element to first on forward Tab', () => {
+    document.body.innerHTML = `
+      <dialog id="test-dialog">
+        <button id="first-btn">First</button>
+        <button id="last-btn">Last</button>
+      </dialog>
+    `;
+    const dialog = document.getElementById('test-dialog');
+    const first = document.getElementById('first-btn');
+    const last = document.getElementById('last-btn');
+    last.focus();
+
+    const event = new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: false, cancelable: true });
+    trapFocus(dialog, event);
+
+    expect(document.activeElement).toBe(first);
+  });
+
+  it('cycles focus from first element to last on reverse Shift+Tab', () => {
+    document.body.innerHTML = `
+      <dialog id="test-dialog">
+        <button id="first-btn">First</button>
+        <button id="last-btn">Last</button>
+      </dialog>
+    `;
+    const dialog = document.getElementById('test-dialog');
+    const first = document.getElementById('first-btn');
+    const last = document.getElementById('last-btn');
+    first.focus();
+
+    const event = new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true });
+    trapFocus(dialog, event);
+
+    expect(document.activeElement).toBe(last);
   });
 });

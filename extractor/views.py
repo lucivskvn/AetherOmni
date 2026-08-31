@@ -1771,7 +1771,8 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
 
     def post(self, request):
         action = request.POST.get("action")
-        document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:100]
+        raw_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()]
+        document_ids = list(dict.fromkeys(raw_ids))[:100]
         if not document_ids:
             messages.error(request, "No documents selected.")
             return redirect("dashboard")

@@ -589,6 +589,11 @@ function initializeSettingsModal() {
             cancelResetConfirmation();
         });
 
+        // Tab focus trap inside modal
+        settingsModal.addEventListener('keydown', (event) => {
+            trapFocus(settingsModal, event);
+        });
+
         // Backdrop click handling
         settingsModal.addEventListener('click', (event) => {
             const rect = settingsModal.getBoundingClientRect();
@@ -1699,6 +1704,21 @@ function initializeLocalTimezones() {
     });
 }
 
+function trapFocus(dialog, event) {
+    if (event.key !== 'Tab' || !dialog) return;
+    const focusables = dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         formatCompact,
@@ -1713,6 +1733,7 @@ if (typeof module !== 'undefined' && module.exports) {
         applyLibraryFilter,
         initializeLibraryFilter,
         initializeSettingsModal,
+        trapFocus,
         cancelResetConfirmation,
         initializeRetryActions,
         initializeCancelActions,

@@ -1,3 +1,4 @@
+import functools
 import os
 
 from django.conf import settings
@@ -13,6 +14,7 @@ def _read_file_version(file_path: str) -> str | None:
         return None
 
 
+@functools.lru_cache(maxsize=1)
 def _resolve_release_version() -> str:
     if env_ver := os.environ.get("RELEASE_VERSION"):
         return env_ver.lstrip("v")
@@ -74,6 +76,7 @@ def _read_git_head_sha(git_dir: str) -> str | None:
     return _resolve_ref_from_loose_file(git_dir, clean_target) or _resolve_ref_from_packed_refs(git_dir, clean_target)
 
 
+@functools.lru_cache(maxsize=1)
 def _resolve_commit_sha() -> str:
     if env_sha := os.environ.get("COMMIT_SHA") or os.environ.get("SHORT_SHA") or os.environ.get("BUILD_SHA"):
         return env_sha[:7]
