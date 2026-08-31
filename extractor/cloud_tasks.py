@@ -78,10 +78,11 @@ def enqueue(task_name: str, payload: dict[str, Any], countdown: int = 0) -> None
                 "Payload must include a non-null document identifier."
             )
 
+    safe_countdown = max(0, min(int(countdown or 0), 86400 * 30))
     if settings.DEBUG:
         _enqueue_local(task_name, payload)
     else:
-        _enqueue_cloud(task_name, payload, countdown)
+        _enqueue_cloud(task_name, payload, safe_countdown)
 
 
 _LOCAL_TASK_REGISTRY: dict[str, Any] = {}
