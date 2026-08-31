@@ -56,9 +56,8 @@ class SurrealNamespaceMigrator:
         ws_pfx = "ws:" + "//"
         wss_pfx = "wss:" + "//"
         if url.startswith(ws_pfx):
-            url = (
-                "http://" + url[len(ws_pfx) :]
-            )  # NOSONAR python:S5332 -- Local development WebSocket to HTTP URL scheme normalization
+            scheme = "http://"  # NOSONAR python:S5332 -- Local development WebSocket to HTTP URL scheme normalization
+            url = scheme + url[len(ws_pfx) :]
         elif url.startswith(wss_pfx):
             url = "https://" + url[len(wss_pfx) :]
         url = url.removesuffix("/rpc").rstrip("/")
