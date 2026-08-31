@@ -44,15 +44,16 @@ class ExtractorConfig(AppConfig):
 
     # ──────────────────────────────────────────────────────────────────────────
 
+    _shutdown_event = threading.Event()
+
     def _start_periodic_reaper(self) -> None:
         """Runs reap_stale_tasks every 5 minutes in a daemon thread."""
 
         def _loop() -> None:
-            import time
-
             # Initial delay so DB is fully ready before first run
-            time.sleep(60)
-            while True:
+            if self._shutdown_event.wait(60):
+                return
+            while not self._shutdown_event.is_set():
                 try:
                     from extractor.tasks import reap_stale_tasks
 
@@ -61,7 +62,8 @@ class ExtractorConfig(AppConfig):
                         logger.info("[AppReady] Reaped %s stuck document task(s).", reaped)
                 except Exception as loop_err:
                     logger.exception("[AppReady] reap_stale_tasks encountered error: %s", loop_err)
-                time.sleep(300)  # every 5 minutes
+                if self._shutdown_event.wait(300):
+                    break
 
         t = threading.Thread(target=_loop, daemon=True, name="stale-task-reaper")
         t.start()
@@ -71,17 +73,17 @@ class ExtractorConfig(AppConfig):
         """Runs cleanup_expired_documents_task every 60 minutes in a daemon thread."""
 
         def _loop() -> None:
-            import time
-
-            time.sleep(120)  # initial delay
-            while True:
+            if self._shutdown_event.wait(120):  # initial delay
+                return
+            while not self._shutdown_event.is_set():
                 try:
                     from extractor.tasks import cleanup_expired_documents_task
 
                     cleanup_expired_documents_task()
                 except Exception as cleanup_err:
                     logger.exception("[AppReady] cleanup_expired_documents_task encountered error: %s", cleanup_err)
-                time.sleep(3600)  # every hour
+                if self._shutdown_event.wait(3600):
+                    break
 
         t = threading.Thread(target=_loop, daemon=True, name="doc-cleanup")
         t.start()

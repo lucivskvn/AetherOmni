@@ -43,3 +43,37 @@ class BackfillMetadataTestCase(TestCase):
         output = out.getvalue()
         self.assertIn("No documents require backfilling!", output)
         mock_enqueue.assert_not_called()
+
+
+class InitSurrealAndMigratorTestCase(TestCase):
+    def test_create_local_superuser_stub_unusable_password(self):
+        import scripts.init_surreal as init_surreal
+
+        admin_email = "bootstrap-admin@example.com"
+        user = init_surreal._create_local_superuser_stub(admin_email)
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertFalse(user.has_usable_password())
+
+    def test_namespace_migrator_url_scheme_conversion(self):
+        from scripts.migrate_surreal_namespace import SurrealNamespaceMigrator
+
+        migrator_ws = SurrealNamespaceMigrator(
+            surreal_url="ws://127.0.0.1:8000/rpc",
+            user="root",
+            password="rootpassword",
+        )
+        self.assertEqual(migrator_ws.surreal_url, "http://127.0.0.1:8000")
+
+        migrator_wss = SurrealNamespaceMigrator(
+            surreal_url="wss://surreal.example.com/rpc/",
+            user="root",
+            password="rootpassword",
+        )
+        self.assertEqual(migrator_wss.surreal_url, "https://surreal.example.com")
+
+    def test_extractor_config_shutdown_event(self):
+        from extractor.apps import ExtractorConfig
+
+        # Verify ExtractorConfig has a valid shutdown Event
+        self.assertFalse(ExtractorConfig._shutdown_event.is_set())
