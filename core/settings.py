@@ -245,7 +245,7 @@ os.makedirs(os.path.join(BASE_DIR, "static"), exist_ok=True)
 
 # ── File Storage (GCS) ────────────────────────────────────────────────────────
 
-GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME")
+GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME", "").strip() or None
 
 import sys
 

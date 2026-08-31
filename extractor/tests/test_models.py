@@ -142,3 +142,19 @@ class GdrpReferenceCountingTestCase(TestCase):
         self.assertFalse(
             os.path.exists(physical_path), "Physical file was not cleaned up after reference count dropped to 0!"
         )
+
+
+class MonthlySpendLogAdminTestCase(TestCase):
+    def test_monthly_spend_log_admin_registered(self):
+        from django.contrib import admin
+
+        from extractor.admin import MonthlySpendLogAdmin
+        from extractor.models import MonthlySpendLog
+
+        self.assertIn(MonthlySpendLog, admin.site._registry)
+        admin_instance = admin.site._registry[MonthlySpendLog]
+        self.assertIsInstance(admin_instance, MonthlySpendLogAdmin)
+        self.assertEqual(
+            admin_instance.list_display,
+            ("year", "month", "accumulated_cost_usd", "accumulated_input_tokens", "accumulated_output_tokens"),
+        )

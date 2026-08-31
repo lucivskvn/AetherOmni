@@ -5,6 +5,7 @@
   "description": "JavaScript unit tests and coverage for KORDA static assets",
   "type": "module",
   "scripts": {
+    "lint": "eslint static/js/",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

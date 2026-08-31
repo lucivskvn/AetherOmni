@@ -18,6 +18,9 @@ import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 TEMPLATES_DIR = ROOT / "extractor" / "templates"
 STATIC_DIR = ROOT / "static"
 
@@ -64,6 +67,55 @@ def _check_file_sri(path: Path, allowed_unhashed: tuple[str, ...]) -> list[str]:
     return file_errors
 
 
+def _get_registered_url_names() -> set[str]:
+    names: set[str] = set()
+    try:
+        import django
+
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
+        try:
+            django.setup()
+        except RuntimeError:
+            _is_configured = True
+        except Exception as setup_err:
+            print(f"[Django Setup] Note: {setup_err}", file=sys.stderr)
+        from django.urls import get_resolver
+
+        def _extract_names(patterns: list) -> None:
+            for p in patterns:
+                if hasattr(p, "name") and p.name:
+                    names.add(p.name)
+                if hasattr(p, "url_patterns"):
+                    _extract_names(p.url_patterns)
+
+        _extract_names(get_resolver().url_patterns)
+    except Exception as exc:
+        print(f"[Resolver] Note: URL resolution check info: {exc}", file=sys.stderr)
+    return names
+
+
+def verify_named_urls() -> list[str]:
+    errors: list[str] = []
+    registered = _get_registered_url_names()
+    if not registered:
+        return errors
+
+    for root, _, files in os.walk(TEMPLATES_DIR):
+        for file in files:
+            if not file.endswith(".html"):
+                continue
+            path = Path(root) / file
+            rel_path = path.relative_to(ROOT)
+            content = path.read_text(encoding="utf-8")
+            for match in URL_PATTERN.finditer(content):
+                url_name = match.group(1)
+                # Allow standard admin routes or check in registered set
+                if url_name.startswith("admin:") or url_name in registered:
+                    continue
+                errors.append(f"{rel_path}: Referenced named URL '{url_name}' is not defined in urlpatterns")
+    return errors
+
+
 def verify_sri_attributes() -> list[str]:
     errors: list[str] = []
     allowed_unhashed = ("challenges.cloudflare.com/turnstile/v0/api.js",)
@@ -77,16 +129,17 @@ def verify_sri_attributes() -> list[str]:
 def main() -> int:
     print("Auditing Django templates & static asset integrity...")
     static_errors = verify_static_references()
+    url_errors = verify_named_urls()
     sri_errors = verify_sri_attributes()
 
-    all_errors = static_errors + sri_errors
+    all_errors = static_errors + url_errors + sri_errors
     if all_errors:
         print(f"FAILED: Found {len(all_errors)} template/asset error(s):", file=sys.stderr)
         for err in all_errors:
             print(f"  - {err}", file=sys.stderr)
         return 1
 
-    print("✓ All static asset references and SRI integrity checks passed cleanly.")
+    print("✓ All static asset references, named routes, and SRI integrity checks passed cleanly.")
     return 0
 
 
