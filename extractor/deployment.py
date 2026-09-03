@@ -448,14 +448,10 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
             # the bottom of the terminal panel is the most recent entry.
             return list(reversed(logs_parsed))
     except Exception as e:
-        logger.exception("Failed to fetch logs via Logging REST API.")
-        return [
-            {
-                "timestamp": "",
-                "message": f"Could not fetch logs via REST API: {e!s}. Check service account permissions.",
-                "severity": "ERROR",
-            }
-        ]
+        logger.warning(
+            "[Deployment] Failed to fetch logs via Logging REST API: %s. Falling back to local gcloud log retrieval.", e
+        )
+        return _get_service_logs_local(service_name, project_id, "asia-southeast1", limit)
 
 
 def _get_service_logs_local(service_name, project_id, region, limit):

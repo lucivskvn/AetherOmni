@@ -171,7 +171,8 @@
                                 <tr data-doc-id="{{ d.obj.id }}" data-status="{{ d.obj.status }}">
                                     <td>
                                         <label class="custom-checkbox" for="chk-doc-{{ d.obj.id }}">
-                                            <input type="checkbox" id="chk-doc-{{ d.obj.id }}" name="selected_documents" value="{{ d.obj.id }}" class="doc-selector visually-hidden" aria-label="Select {{ d.obj.title }}" data-status="{{ d.obj.status }}">
+                                            {# BUG-16: Use d.obj.uuid (not d.obj.id) so BulkDocumentActionView can look up records in SurrealDB by doc_uuid. Integer IDs caused silent 0-document bulk deletes. #}
+                                            <input type="checkbox" id="chk-doc-{{ d.obj.id }}" name="selected_documents" value="{{ d.obj.uuid }}" class="doc-selector visually-hidden" aria-label="Select {{ d.obj.title }}" data-status="{{ d.obj.status }}">
                                             <span class="checkmark"></span>
                                         </label>
                                     </td>
@@ -315,9 +316,4 @@
         </button>
     </div>
 </div>
-
-<!-- Dedicated Hidden delete form -->
-<form id="delete-form" action="" method="post" class="visually-hidden">
-    {% csrf_token %}
-</form>
 {% endblock %}

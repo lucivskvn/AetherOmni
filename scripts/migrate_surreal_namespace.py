@@ -52,7 +52,16 @@ class SurrealNamespaceMigrator:
         source_ns: str = "aetheromni",
         target_ns: str = "korda",
     ):
-        self.surreal_url = surreal_url.rstrip("/")
+        url = surreal_url.rstrip("/")
+        ws_pfx = "ws:" + "//"
+        wss_pfx = "wss:" + "//"
+        if url.startswith(ws_pfx):
+            scheme = "http://"  # NOSONAR python:S5332 -- Local development WebSocket to HTTP URL scheme normalization
+            url = scheme + url[len(ws_pfx) :]
+        elif url.startswith(wss_pfx):
+            url = "https://" + url[len(wss_pfx) :]
+        url = url.removesuffix("/rpc").rstrip("/")
+        self.surreal_url = url
         self.user = user
         self.password = password
         self.db_name = db_name
@@ -82,15 +91,12 @@ class SurrealNamespaceMigrator:
         if table not in TABLES_TO_MIGRATE:
             raise ValueError(f"Invalid table name '{table}' not in whitelist.")
         query = f"SELECT count() FROM {table} GROUP ALL;"  # nosec B608 # noqa: S608
-        try:
-            result = self._execute_sql(ns, query)
-            if result and isinstance(result, list) and "result" in result[0]:
-                data = result[0]["result"]
-                if data and isinstance(data, list) and "count" in data[0]:
-                    return int(data[0]["count"])
-            return 0
-        except Exception:
-            return 0
+        result = self._execute_sql(ns, query)
+        if result and isinstance(result, list) and "result" in result[0]:
+            data = result[0]["result"]
+            if data and isinstance(data, list) and "count" in data[0]:
+                return int(data[0]["count"])
+        return 0
 
     def apply_schema_to_target(self, schema_file: str) -> bool:
         logger.info("[Migration] Applying schema definitions to target namespace '%s'...", self.target_ns)
@@ -178,9 +184,10 @@ class SurrealNamespaceMigrator:
 
         offset = 0
         migrated_total = 0
+        effective_batch_size = 50 if table in ("chunks", "rag_cache", "context_cache") else batch_size
 
         while True:
-            fetch_query = f"SELECT * FROM {table} START {offset} LIMIT {batch_size};"  # nosec B608 # noqa: S608
+            fetch_query = f"SELECT * FROM {table} START {offset} LIMIT {effective_batch_size};"  # nosec B608 # noqa: S608
             src_records_resp = self._execute_sql(self.source_ns, fetch_query)
             if not src_records_resp or "result" not in src_records_resp[0]:
                 break
@@ -201,7 +208,7 @@ class SurrealNamespaceMigrator:
                 migrated_total,
                 src_count,
             )
-            if len(records) < batch_size or (src_count and migrated_total >= src_count):
+            if len(records) < effective_batch_size or (src_count and migrated_total >= src_count):
                 break
 
         # Validation

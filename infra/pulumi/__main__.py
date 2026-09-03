@@ -77,6 +77,7 @@ service_account = gcp.serviceaccount.Account(
     "korda-service-account",
     account_id="korda-runtime",
     display_name="KORDA Cloud Run Runtime Service Account",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # Least-privilege IAM bindings
@@ -94,6 +95,7 @@ for idx, role in enumerate(iam_roles):
         project=project,
         role=role,
         member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+        opts=pulumi.ResourceOptions(provider=gcp_provider),
     )
     iam_members.append(member)
 
@@ -103,6 +105,7 @@ gcp.storage.BucketIAMMember(
     bucket=media_bucket.name,
     role="roles/storage.objectAdmin",
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # 4. Artifact Registry Repository (for container images)

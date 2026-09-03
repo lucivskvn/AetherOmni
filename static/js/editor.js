@@ -242,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const jsonScript = document.getElementById('qa-dataset-json');
                 if (jsonScript) {
                     const jsonData = JSON.parse(jsonScript.textContent);
-                    await navigator.clipboard.writeText(JSON.stringify(jsonData, null, 2));
+                    await copyTextToClipboard(JSON.stringify(jsonData, null, 2));
                     globalThis.showClientSideAlert?.('Copied JSON Dataset to clipboard!', 'success');
                 } else {
                     throw new Error("JSON script not found");
@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnCopyMarkdown && editor) {
         btnCopyMarkdown.addEventListener('click', async () => {
             try {
-                await navigator.clipboard.writeText(editor.value);
+                await copyTextToClipboard(editor.value);
                 globalThis.showClientSideAlert?.('Copied Markdown to clipboard!', 'success');
             } catch (err) {
                 console.error("Failed to copy Markdown", err);
@@ -267,6 +267,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+async function copyTextToClipboard(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        return await navigator.clipboard.writeText(text);
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    textarea.setAttribute('readonly', '');
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+        const successful = document.execCommand('copy');
+        if (!successful) {
+            throw new Error('execCommand copy returned false');
+        }
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
 
 
 /**
@@ -558,6 +581,14 @@ function _processLine(line, state, htmlBuilder) {
  * @returns {string} HTML-entity-encoded string safe for innerHTML insertion.
  */
 function escapeHtml(raw) {
+    if (typeof document === 'undefined') {
+        return String(raw)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
     const tn = document.createTextNode(raw);
     const div = document.createElement('div');
     div.appendChild(tn);
@@ -589,6 +620,14 @@ function compileMarkdown(markdown) {
         html += _processLine(line, state, htmlBuilder);
     }
 
+    if (state.inCodeBlock) {
+        html += '</code></pre>\n';
+        state.inCodeBlock = false;
+    }
+    htmlBuilder.html = '';
+    _closeOpenBlocks(state, (str) => { htmlBuilder.html += str + '\n'; });
+    html += htmlBuilder.html;
+
     return _restoreSafeHtml(html);
 }
 
@@ -607,6 +646,7 @@ if (typeof module !== 'undefined' && module.exports) {
         insertFormatting,
         applyPostRenderFeatures,
         initDeepLinkScroll,
-        setupScrollSync
+        setupScrollSync,
+        copyTextToClipboard
     };
 }

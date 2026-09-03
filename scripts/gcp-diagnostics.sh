@@ -62,7 +62,7 @@ for service_name in "${SERVICES[@]}"; do
 
     echo "Recent errors:"
     gcloud logging read \
-        "resource.type=cloud_run_revision AND resource.labels.service_name=$service_name AND severity>=ERROR" \
+        "resource.type=cloud_run_revision AND resource.labels.service_name=\"$service_name\" AND severity>=ERROR" \
         --project="$PROJECT_ID" --freshness="$SINCE" --limit=20 \
         --format='table(timestamp,severity,textPayload,jsonPayload.message)' || true
 done

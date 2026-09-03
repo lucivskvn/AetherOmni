@@ -310,6 +310,8 @@ class TemplateFiltersTestCase(TestCase):
         self.assertEqual(format_compact_tokens(1500000), "1.5M")
         self.assertEqual(format_compact_tokens(45200), "45.2K")
         self.assertEqual(format_compact_tokens(350), "350")
+        self.assertEqual(format_compact_tokens(-5000), "-5.0K")
+        self.assertEqual(format_compact_tokens(-1500000), "-1.5M")
         self.assertEqual(format_compact_tokens(None), "0")
         self.assertEqual(format_compact_tokens("invalid"), "0")
 
@@ -344,6 +346,10 @@ class TemplateFiltersTestCase(TestCase):
             # Test path with existing query param
             res_with_q = extractor_filters.cache_bust("/static/css/main.css?theme=dark")
             self.assertEqual(res_with_q, "/static/css/main.css?theme=dark&v=123456789")
+
+            # Test path with existing v= query param to verify replacement without duplicate &v=
+            res_with_v = extractor_filters.cache_bust("/static/css/main.css?v=1.0.0")
+            self.assertEqual(res_with_v, "/static/css/main.css?v=123456789")
 
         # Clean up
         extractor_filters._CACHE_BUST_VAL = None

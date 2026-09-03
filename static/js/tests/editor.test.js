@@ -19,7 +19,8 @@ import {
   insertFormatting,
   applyPostRenderFeatures,
   initDeepLinkScroll,
-  setupScrollSync
+  setupScrollSync,
+  copyTextToClipboard
 } from '../editor.js';
 
 
@@ -401,5 +402,36 @@ describe('setupScrollSync', () => {
     editor.dispatchEvent(new Event('scroll'));
 
     expect(preview.scrollTop).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// copyTextToClipboard
+// ---------------------------------------------------------------------------
+describe('copyTextToClipboard', () => {
+  it('uses navigator.clipboard.writeText when available', async () => {
+    let written = '';
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: async (t) => { written = t; }
+      }
+    });
+    await copyTextToClipboard('test copy content');
+    expect(written).toBe('test copy content');
+  });
+
+  it('falls back to document.execCommand when clipboard API is absent', async () => {
+    Object.assign(navigator, { clipboard: undefined });
+    let execCommandCalled = false;
+    document.execCommand = (cmd) => {
+      if (cmd === 'copy') {
+        execCommandCalled = true;
+        return true;
+      }
+      return false;
+    };
+
+    await copyTextToClipboard('fallback copy');
+    expect(execCommandCalled).toBe(true);
   });
 });

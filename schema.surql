@@ -114,6 +114,7 @@ DEFINE FIELD IF NOT EXISTS ip_address      ON audit_logs TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS timestamp       ON audit_logs TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX IF NOT EXISTS idx_audit_user  ON audit_logs FIELDS user_id;
+DEFINE INDEX IF NOT EXISTS idx_audit_doc   ON audit_logs FIELDS doc_uuid;
 DEFINE INDEX IF NOT EXISTS idx_audit_time  ON audit_logs FIELDS timestamp;
 
 

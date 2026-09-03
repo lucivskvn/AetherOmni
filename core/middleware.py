@@ -103,8 +103,13 @@ def _extract_host_from_origin(origin: str) -> str | None:
         url = origin if "://" in origin else f"https://{origin}"
         parsed = urllib.parse.urlparse(url)
         host = parsed.netloc or parsed.path
-        if host and ":" in host:
+        if host and "[" in host and "]" in host:
+            host = host.split("]", 1)[0].lstrip("[")
+        elif host and ":" in host:
             host = host.split(":", 1)[0]
+        if host and host.startswith("*."):
+            # Django ALLOWED_HOSTS uses leading dot (.example.com) for wildcard subdomains
+            host = host[1:]
         return host or None
     except Exception as parse_err:
         logger.debug("[Middleware] Could not parse host from origin '%s': %s", origin, parse_err)
@@ -220,7 +225,9 @@ class ForcePasswordChangeMiddleware:
         self.get_response = get_response
 
     def _is_allowed_path(self, path):
-        allowed_names = ["password_change", "password_change_done", "logout"]
+        from extractor.utils import ROUTE_PW_CHANGE_DONE
+
+        allowed_names = ["password_change", ROUTE_PW_CHANGE_DONE, "logout", "release_metadata"]
         allowed_paths = []
         from django.urls import NoReverseMatch, reverse
 
@@ -230,11 +237,14 @@ class ForcePasswordChangeMiddleware:
             except NoReverseMatch as rev_err:
                 logger.debug("[Middleware] Could not resolve URL name '%s': %s", name, rev_err)
         return (
-            any(path == p for p in allowed_paths) or path.startswith(("/static/", "/media/")) or "favicon.ico" in path
+            any(path == p for p in allowed_paths)
+            or path.startswith(("/static/", "/media/", "/internal/tasks/"))
+            or path in ("/healthz", "/release/")
+            or "favicon.ico" in path
         )
 
     def __call__(self, request):
-        if not request.user.is_authenticated:
+        if not getattr(request, "session", None) or not request.user.is_authenticated:
             return self.get_response(request)
 
         path = request.path
@@ -243,6 +253,16 @@ class ForcePasswordChangeMiddleware:
                 request.session["is_default_password"] = request.user.check_password("admin")
 
             if request.session.get("is_default_password"):
+                from extractor.utils import HEADER_X_REQUESTED_WITH, VALUE_XML_HTTP_REQUEST
+
+                if (
+                    request.headers.get(HEADER_X_REQUESTED_WITH) == VALUE_XML_HTTP_REQUEST
+                    or request.headers.get("accept", "").startswith("application/json")
+                    or path.startswith("/api/")
+                ):
+                    from django.http import JsonResponse
+
+                    return JsonResponse({"error": "Default password change required."}, status=403)
                 from django.shortcuts import redirect
 
                 return redirect("password_change")
@@ -250,7 +270,9 @@ class ForcePasswordChangeMiddleware:
         try:
             from django.urls import NoReverseMatch, reverse
 
-            if path == reverse("password_change_done"):
+            from extractor.utils import ROUTE_PW_CHANGE_DONE
+
+            if path == reverse(ROUTE_PW_CHANGE_DONE):
                 # Re-verify the password to prevent bypassing the change
                 # by resetting back to the default 'admin' password.
                 still_default = request.user.check_password("admin")

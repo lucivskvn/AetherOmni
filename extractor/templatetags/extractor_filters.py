@@ -18,13 +18,15 @@ def dict_pct(value, total):
 
 @register.filter
 def format_compact_tokens(value):
-    """Formats large token counts into human-readable compact numbers (e.g. 1.2M, 45K)."""
+    """Formats large token counts into human-readable compact numbers (e.g. 1.2M, 45K, -5.0K)."""
     try:
         val = int(value or 0)
-        if val >= 1000000:
-            return f"{val / 1000000:.1f}M"
-        if val >= 1000:
-            return f"{val / 1000:.1f}K"
+        sign = "-" if val < 0 else ""
+        abs_val = abs(val)
+        if abs_val >= 1000000:
+            return f"{sign}{abs_val / 1000000:.1f}M"
+        if abs_val >= 1000:
+            return f"{sign}{abs_val / 1000:.1f}K"
         return str(val)
     except (ValueError, TypeError):
         return "0"
@@ -279,6 +281,7 @@ def normalize_language(value: str) -> str:
     return _LANG_MAP.get(key, str(value).strip().title())
 
 
+import re
 import time
 
 _CACHE_BUST_VAL: str | None = None
@@ -305,5 +308,8 @@ def cache_bust(static_url: str) -> str:
         return ""
 
     bust_val = get_cache_bust_version()
-    separator = "&" if "?" in static_url else "?"
-    return f"{static_url}{separator}v={bust_val}"
+    # Strip any existing v= parameter if present to avoid duplication
+    cleaned_url = re.sub(r"([?&])v=[^&#]*", r"\1", static_url)
+    cleaned_url = cleaned_url.replace("??", "?").replace("?&", "?").rstrip("?&")
+    separator = "&" if "?" in cleaned_url else "?"
+    return f"{cleaned_url}{separator}v={bust_val}"

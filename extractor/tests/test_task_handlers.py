@@ -261,3 +261,28 @@ class TaskHandlersTestCase(TestCase):
                 self.assertEqual(data.get("status"), "error")
         finally:
             task_handlers.TASK_REGISTRY.pop("failing_task", None)
+
+    def test_expand_audiences(self):
+        audiences = task_handlers._expand_audiences(
+            ["https://example.com/tasks/test", "https://example.com/tasks/test/"]
+        )
+        self.assertIn("https://example.com/tasks/test", audiences)
+        self.assertIn("https://example.com/tasks/test/", audiences)
+
+    def test_post_dispatch_oversized_payload_returns_400(self):
+        task_handlers.TASK_REGISTRY["large_test"] = lambda p: None
+        try:
+            oversized_data = "x" * (1_048_576 + 10)
+            request = self.factory.post(
+                "/internal/tasks/large_test/", data=oversized_data, content_type="application/json"
+            )
+            with (
+                patch("extractor.task_handlers._verify_oidc_token", return_value=True),
+                patch("extractor.task_handlers._verify_source_ip", return_value=True),
+            ):
+                response = CloudTaskHandlerView().post(request, "large_test")
+                self.assertEqual(response.status_code, 400)
+                data = json.loads(response.content)
+                self.assertIn("Payload exceeds", data.get("error", ""))
+        finally:
+            task_handlers.TASK_REGISTRY.pop("large_test", None)

@@ -99,7 +99,7 @@ class Command(BaseCommand):
 
     def _find_files(self, sources_dir):
         """Scan for supported document files."""
-        supported_extensions = [".pdf", ".jpg", ".jpeg", ".png", ".csv", ".txt"]
+        supported_extensions = [".pdf", ".jpg", ".jpeg", ".png", ".csv", ".txt", ".json", ".xlsx", ".docx"]
         files_to_ingest = []
         for root, _, files in os.walk(sources_dir):
             for file in files:
