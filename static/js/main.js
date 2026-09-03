@@ -453,9 +453,12 @@ function setFormSubmitLoadingState(form) {
     }
 
     btn.dataset.originalHtml = btn.innerHTML;
+    btn.dataset.originalDisabled = btn.disabled ? 'true' : 'false';
     const spinnerSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spinner" style="margin-right: 8px;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
 
     btn.innerHTML = `${spinnerSvg} ${text}`;
+    btn.setAttribute('aria-disabled', 'true');
+    btn.disabled = true;
     btn.style.pointerEvents = 'none';
     btn.style.opacity = '0.85';
 }
@@ -482,6 +485,9 @@ function initializeFormSubmitSpinners() {
                 const btn = form.querySelector('button[type="submit"]');
                 if (btn?.dataset?.originalHtml) {
                     btn.innerHTML = btn.dataset.originalHtml;
+                    btn.removeAttribute('aria-disabled');
+                    btn.disabled = btn.dataset.originalDisabled === 'true';
+                    delete btn.dataset.originalDisabled;
                     btn.style.pointerEvents = '';
                     btn.style.opacity = '';
                 }
@@ -693,6 +699,7 @@ function initializeDragAndDrop() {
             <div class="upload-title">Ingesting ${validFiles.length} File${validFiles.length > 1 ? 's' : ''}...</div>
             <div class="upload-subtitle" style="animation: pulse 1.5s infinite ease-in-out;">Uploading to security scan and curation workspace. Please wait.</div>
         `;
+        dropZone.setAttribute('aria-disabled', 'true');
         dropZone.style.pointerEvents = 'none';
         dropZone.style.borderColor = 'var(--primary)';
         dropZone.style.background = 'rgba(99, 102, 241, 0.04)';
@@ -720,6 +727,7 @@ function initializeDragAndDrop() {
     globalThis.addEventListener('pageshow', (event) => {
         if (event.persisted && dropZone) {
             dropZone.innerHTML = originalDropZoneHtml;
+            dropZone.removeAttribute('aria-disabled');
             dropZone.style.pointerEvents = '';
             dropZone.style.borderColor = '';
             dropZone.style.background = '';
@@ -1113,17 +1121,20 @@ function initializeRAGSearch() {
         ragLoader.style.display = 'block';
         ragResults.style.display = 'none';
         ragBtn.disabled = true;
+        ragBtn.setAttribute('title', 'Searching...');
 
         try {
             const data = await executeRagFetch(buildRagUrl(query));
             ragLoader.style.display = 'none';
             ragBtn.disabled = false;
+            ragBtn.removeAttribute('title');
             ragResults.style.display = 'block';
             ragAnswer.innerHTML = data.answer_html;
             renderRagSources(data.sources);
         } catch (err) {
             ragLoader.style.display = 'none';
             ragBtn.disabled = false;
+            ragBtn.removeAttribute('title');
             showClientSideAlert(err.message || 'An error occurred during vector search.');
             console.error(err);
         }
@@ -1133,7 +1144,10 @@ function initializeRAGSearch() {
     globalThis.addEventListener('pageshow', (event) => {
         if (event.persisted) {
             if (ragLoader) ragLoader.style.display = 'none';
-            if (ragBtn) ragBtn.disabled = false;
+            if (ragBtn) {
+                ragBtn.disabled = false;
+                ragBtn.removeAttribute('title');
+            }
         }
     });
 }

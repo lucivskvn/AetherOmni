@@ -16,9 +16,9 @@ dependencies = [
     "markdown>=3.10.3",
     "protobuf>=7.35.1",
     "psycopg[binary]>=3.3.4",
-    "python-dotenv>=1.2.2",
+    "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
-    "ruff>=0.16.2",
+    "ruff>=0.16.4",
     "sqlparse>=0.5.5",
     "surrealdb>=2.0.0",
     "whitenoise>=6.12.0",
@@ -45,7 +45,7 @@ exclude = [
 ]
 
 line-length = 120
-target-version = "py313"  # Preserves cross-version exception parenthesization (PEP 758 / py313+ compatibility)
+target-version = "py314"
 
 
 [tool.ruff.lint]
