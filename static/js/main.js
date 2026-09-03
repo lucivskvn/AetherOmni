@@ -1113,17 +1113,20 @@ function initializeRAGSearch() {
         ragLoader.style.display = 'block';
         ragResults.style.display = 'none';
         ragBtn.disabled = true;
+        ragBtn.setAttribute('title', 'Searching...');
 
         try {
             const data = await executeRagFetch(buildRagUrl(query));
             ragLoader.style.display = 'none';
             ragBtn.disabled = false;
+            ragBtn.removeAttribute('title');
             ragResults.style.display = 'block';
             ragAnswer.innerHTML = data.answer_html;
             renderRagSources(data.sources);
         } catch (err) {
             ragLoader.style.display = 'none';
             ragBtn.disabled = false;
+            ragBtn.removeAttribute('title');
             showClientSideAlert(err.message || 'An error occurred during vector search.');
             console.error(err);
         }
@@ -1133,7 +1136,10 @@ function initializeRAGSearch() {
     globalThis.addEventListener('pageshow', (event) => {
         if (event.persisted) {
             if (ragLoader) ragLoader.style.display = 'none';
-            if (ragBtn) ragBtn.disabled = false;
+            if (ragBtn) {
+                ragBtn.disabled = false;
+                ragBtn.removeAttribute('title');
+            }
         }
     });
 }
