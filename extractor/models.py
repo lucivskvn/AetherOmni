@@ -35,8 +35,11 @@ class SourceDocument(models.Model):
         ("FAILED", "Failed"),
     ]
 
-    # Secure identifier for URL routing to prevent IDOR / enumeration attacks
-    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
+    # Secure identifier for URL routing to prevent IDOR / enumeration attacks.
+    # BUG-04: unique=True added to match SurrealDB's idx_documents_uuid UNIQUE.
+    # Migration 0021 backfills any pre-existing NULL uuid rows before this constraint applies.
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True, unique=True)
+
     uploaded_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="uploaded_documents"
     )
@@ -77,8 +80,10 @@ class SourceDocument(models.Model):
     # Deduplication & cross-lingual translation linkages
     semantic_signature = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
-    # Operational metrics & budget auditing
-    retry_count = models.IntegerField(default=0)
+    # Operational metrics & budget auditing — BUG-17: PositiveIntegerField
+    # enforces retry_count >= 0 at the DB level, preventing negative values
+    # that could bypass the retry_count >= 3 limit guard.
+    retry_count = models.PositiveIntegerField(default=0)
 
     # Lifespans and GDPR auditing
     created_at = models.DateTimeField(auto_now_add=True)
@@ -96,7 +101,10 @@ class SourceDocument(models.Model):
         from django.utils import timezone
 
         if self.expires_at:
-            return timezone.now() > self.expires_at
+            exp = self.expires_at
+            if timezone.is_naive(exp):
+                exp = timezone.make_aware(exp, timezone.utc)
+            return timezone.now() > exp
         return False
 
 
@@ -136,6 +144,8 @@ class SystemSettings(models.Model):
 
                 class SurrealSettings:
                     def __init__(self, raw_data):
+                        self.id = 1
+                        self.pk = 1
                         self.monthly_budget_usd = Decimal(str(raw_data.get("monthly_budget_usd", 10.0)))
                         self.selected_model = raw_data.get("selected_model", "auto")
                         self.currency = raw_data.get("currency", "auto")
@@ -145,6 +155,12 @@ class SystemSettings(models.Model):
                     @property
                     def openrouter_api_key_masked(self) -> str:
                         return "••••••••••••••••" if self.openrouter_api_key else ""
+
+                    def save(self, *args, **kwargs):
+                        pass
+
+                    def delete(self, *args, **kwargs):
+                        pass
 
                     def __str__(self):
                         return f"SystemSettings(Budget=${self.monthly_budget_usd}, Model={self.selected_model})"
@@ -199,7 +215,9 @@ class AuditLog(models.Model):
         return self.created_at
 
     def save(self, *args, **kwargs):
-        if self.pk and not kwargs.pop("force_update_allowed", False):
+        update_fields = kwargs.get("update_fields")
+        is_cascade_null = update_fields and set(update_fields).issubset({"user", "document"})
+        if self.pk and not kwargs.pop("force_update_allowed", False) and not is_cascade_null:
             raise PermissionError("AuditLog records are immutable append-only ledgers and cannot be modified.")
         super().save(*args, **kwargs)
 

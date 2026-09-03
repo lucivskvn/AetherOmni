@@ -37,8 +37,8 @@ class Command(BaseCommand):
         docs.update(status="PENDING", error_message="")
 
         for doc in doc_list:
-            # Send to background worker queue
-            enqueue("extractor.tasks.process_document_task", payload={"doc_uuid": str(doc.uuid)})
+            # Send to background worker queue with canonical task name and payload
+            enqueue("process_document", payload={"document_uuid": str(doc.uuid)})
             self.stdout.write(f"Re-queued document: {doc.uuid} ({doc.title})")
 
         self.stdout.write(self.style.SUCCESS(f"Successfully re-queued {count} documents for metadata backfill."))

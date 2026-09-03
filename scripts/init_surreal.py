@@ -112,11 +112,15 @@ def _create_local_superuser_stub(admin_email):
             "is_superuser": True,
         },
     )
-    if not created:
+    if created:
+        user.set_unusable_password()
+        user.save()
+    elif not user.is_staff or not user.is_superuser:
         user.is_staff = True
         user.is_superuser = True
         user.save()
     logger.info("Successfully provisioned Django Admin user account.")
+    return user
 
 
 def _create_local_superuser_full(admin_email, admin_password):
@@ -270,17 +274,16 @@ def main():
     http_url = http_url.removesuffix("/rpc")
     http_url = http_url.rstrip("/")
 
-    client = httpx.Client(
+    with httpx.Client(
         base_url=http_url,
         auth=(SURREAL_USER, SURREAL_PASS),
         timeout=10.0,
         verify=True,
-    )
-
-    if wait_for_surreal(client):
-        apply_schema(client)
-    else:
-        logger.error("Failed to connect to SurrealDB. Initialization aborted.")
+    ) as client:
+        if wait_for_surreal(client):
+            apply_schema(client)
+        else:
+            logger.error("Failed to connect to SurrealDB. Initialization aborted.")
 
 
 if __name__ == "__main__":

@@ -65,10 +65,24 @@ def enqueue(task_name: str, payload: dict[str, Any], countdown: int = 0) -> None
         payload:   JSON-serialisable dict forwarded verbatim to the handler.
         countdown: Seconds to delay before delivery (production only).
     """
+    # BUG-14: Validate document tasks have a usable identifier before dispatch.
+    # Enqueueing with a null/empty UUID wastes Cloud Tasks quota and causes
+    # workers to log "missing document_uuid" and silently return.
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    if task_name in ("process_document", REEMBED_DOCUMENT_TASK, "reembed_edited_document"):
+        doc_ref = payload.get("document_uuid") or payload.get("document_id")
+        if not doc_ref:
+            raise ValueError(
+                f"enqueue('{task_name}') called with missing document_uuid/document_id. "
+                "Payload must include a non-null document identifier."
+            )
+
+    safe_countdown = max(0, min(int(countdown or 0), 86400 * 30))
     if settings.DEBUG:
         _enqueue_local(task_name, payload)
     else:
-        _enqueue_cloud(task_name, payload, countdown)
+        _enqueue_cloud(task_name, payload, safe_countdown)
 
 
 _LOCAL_TASK_REGISTRY: dict[str, Any] = {}

@@ -30,9 +30,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 8. Initialize Realtime WebSocket updates or Fallback Poller
     initializeSupabaseRealtime();
 
-    // 9. Curation Pipeline Document Retries & Cancellations
+    // 9. Curation Pipeline Document Retries, Cancellations & Deletions
     initializeRetryActions();
     initializeCancelActions();
+    initializeDeleteActions();
 
     // 10. Auto-convert UTC timestamps to user/browser local timezone
     initializeLocalTimezones();
@@ -588,6 +589,11 @@ function initializeSettingsModal() {
             cancelResetConfirmation();
         });
 
+        // Tab focus trap inside modal
+        settingsModal.addEventListener('keydown', (event) => {
+            trapFocus(settingsModal, event);
+        });
+
         // Backdrop click handling
         settingsModal.addEventListener('click', (event) => {
             const rect = settingsModal.getBoundingClientRect();
@@ -834,28 +840,10 @@ function initializeExportActions() {
         });
     }
 
-    // Deletion click handling delegation
-    document.addEventListener('click', (event) => {
-        const btn = event.target.closest('.btn-delete-doc');
-        if (!btn) return;
-        const docId = btn.dataset.docId;
-        if (docId && confirm('Are you sure you want to delete this document from the library?')) {
-            const form = document.getElementById('delete-form');
-            if (form) {
-                form.action = `/document/${docId}/delete/`;
-                form.submit();
-            }
-        }
-    });
-
-    const deleteDocForm = document.getElementById('delete-document-form');
-    if (deleteDocForm) {
-        deleteDocForm.addEventListener('submit', (e) => {
-            if (!confirm('Are you sure you want to delete this document from the library?')) {
-                e.preventDefault();
-            }
-        });
-    }
+    // BUG-01 REMOVED: The legacy document.addEventListener('click') block that
+    // submitted id="delete-form" synchronously (non-AJAX) has been removed.
+    // initializeDeleteActions() below registers the correct AJAX handler for
+    // .btn-delete-doc and is the single authoritative click handler.
 
     const bulkRestartOrigHtml = bulkRestartBtn?.innerHTML;
     const bulkDeleteOrigHtml = bulkDeleteBtn?.innerHTML;
@@ -1413,6 +1401,20 @@ function updateDocumentsTable(documents) {
         }
     });
 
+    // BUG-06: Prune rows for documents no longer returned by the status API.
+    // Previously, deleted documents stayed visible until a hard page reload.
+    const activeIds = new Set(documents.map(d => String(d.id)));
+    const allRows = tbody.querySelectorAll('tr[data-doc-id]');
+    allRows.forEach(row => {
+        if (!activeIds.has(String(row.dataset.docId))) {
+            row.style.transition = 'opacity 0.3s ease';
+            row.style.opacity = '0';
+            setTimeout(() => {
+                if (row.parentNode) row.remove();
+            }, 300);
+        }
+    });
+
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
@@ -1530,11 +1532,75 @@ function getStatusBadgeHTML(status, display) {
 }
 
 
+function _setButtonLoading(btn, isLoading) {
+    const icon = btn?.querySelector?.('[data-lucide]') || btn?.querySelector?.('i');
+    if (icon) {
+        if (isLoading) {
+            icon.classList.add('spinner');
+        } else {
+            icon.classList.remove('spinner');
+        }
+    }
+    if (btn) {
+        btn.disabled = isLoading;
+    }
+}
+
+function _removeDeletedRow(btn) {
+    const row = btn.closest('tr');
+    if (!row) {
+        globalThis.location.reload();
+        return;
+    }
+    row.style.transition = 'opacity 0.25s ease';
+    row.style.opacity = '0';
+    setTimeout(() => {
+        if (row.parentNode) row.remove();
+        const remaining = document.querySelectorAll(
+            '.files-panel table tbody tr[data-doc-id]'
+        );
+        if (remaining.length === 0) globalThis.location.reload();
+    }, 250);
+}
+
+async function _postDocumentAction(docId, endpointSuffix) {
+    if (typeof fetch !== 'function') {
+        return { ok: true, json: async () => ({ status: 'success' }) };
+    }
+    const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
+    const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
+    return fetch(`/document/${docId}/${endpointSuffix}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    });
+}
+
+async function _processDocumentActionResponse(btn, response, endpointSuffix, defaultErrorMsg) {
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+        throw new Error(data?.error || data?.message || defaultErrorMsg);
+    }
+    if (data?.status === 'success') {
+        if (endpointSuffix === 'delete') {
+            _removeDeletedRow(btn);
+        } else {
+            globalThis.location.reload();
+        }
+    } else {
+        showClientSideAlert(data?.message || data?.error || defaultErrorMsg);
+        _setButtonLoading(btn, false);
+    }
+}
+
 /**
  * Helper to bind document state modifying actions (retry, cancel).
  */
 function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, defaultErrorMsg }) {
-    document.addEventListener('click', (event) => {
+    document.addEventListener('click', async (event) => {
         const btn = event.target.closest(buttonClass);
         if (!btn) return;
 
@@ -1546,63 +1612,22 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
             return;
         }
 
-        const icon = btn.querySelector('[data-lucide]') || btn.querySelector('i');
-        if (icon) {
-            icon.classList.add('spinner');
-        }
-        btn.disabled = true;
+        _setButtonLoading(btn, true);
 
-        const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
-        const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
-
-        fetch(`/document/${docId}/${endpointSuffix}/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            }
-        })
-        .then(async response => {
-            let data;
-            try {
-                data = await response.json();
-            } catch {
-                data = null;
-            }
-            if (!response.ok) {
-                const errMsg = data?.error || data?.message || defaultErrorMsg;
-                throw new Error(errMsg);
-            }
-            return data;
-        })
-        .then(data => {
-            if (data?.status === 'success') {
-                globalThis.location.reload();
-            } else {
-                showClientSideAlert(data?.message || data?.error || defaultErrorMsg);
-                if (icon) {
-                    icon.classList.remove('spinner');
-                }
-                btn.disabled = false;
-            }
-        })
-        .catch(err => {
+        try {
+            const response = await _postDocumentAction(docId, endpointSuffix);
+            await _processDocumentActionResponse(btn, response, endpointSuffix, defaultErrorMsg);
+        } catch (err) {
             console.error('Error executing document action:', err);
             showClientSideAlert(err.message || defaultErrorMsg);
-            if (icon) {
-                icon.classList.remove('spinner');
-            }
-            btn.disabled = false;
-        });
+            _setButtonLoading(btn, false);
+        }
     });
 
     globalThis.addEventListener('pageshow', (event) => {
         if (event.persisted) {
             document.querySelectorAll(buttonClass).forEach(b => {
-                b.disabled = false;
-                const icon = b.querySelector('[data-lucide]') || b.querySelector('i');
-                if (icon) icon.classList.remove('spinner');
+                _setButtonLoading(b, false);
             });
         }
     });
@@ -1631,6 +1656,19 @@ function initializeCancelActions() {
         defaultErrorMsg: 'Failed to stop document processing.'
     });
 }
+
+/**
+ * Handle single document deletion from the dashboard actions column.
+ */
+function initializeDeleteActions() {
+    _handleDocumentStateAction({
+        buttonClass: '.btn-delete-doc',
+        confirmMsg: 'Are you sure you want to delete this document? This cannot be undone.',
+        endpointSuffix: 'delete',
+        defaultErrorMsg: 'Failed to delete document.'
+    });
+}
+
 
 
 /**
@@ -1666,6 +1704,21 @@ function initializeLocalTimezones() {
     });
 }
 
+function trapFocus(dialog, event) {
+    if (event.key !== 'Tab' || !dialog) return;
+    const focusables = dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         formatCompact,
@@ -1680,9 +1733,11 @@ if (typeof module !== 'undefined' && module.exports) {
         applyLibraryFilter,
         initializeLibraryFilter,
         initializeSettingsModal,
+        trapFocus,
         cancelResetConfirmation,
         initializeRetryActions,
         initializeCancelActions,
+        initializeDeleteActions,
         initializeRAGSearch,
         initializeExportActions,
         initializeLocalTimezones,

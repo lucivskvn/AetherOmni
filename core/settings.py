@@ -245,7 +245,7 @@ os.makedirs(os.path.join(BASE_DIR, "static"), exist_ok=True)
 
 # ── File Storage (GCS) ────────────────────────────────────────────────────────
 
-GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME")
+GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME", "").strip() or None
 
 import sys
 
@@ -426,6 +426,9 @@ USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 
 # In production, enforce SSL and secure cookies (fully configurable via environment variables)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+
 if not DEBUG:
     SECURE_SSL_REDIRECT = False if TESTING else os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
     SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "True").lower() == "true"
@@ -463,7 +466,7 @@ else:
 
 # ── Operational Settings ───────────────────────────────────────────────────────
 
-DATA_RETENTION_DAYS = int(os.getenv("DATA_RETENTION_DAYS", "30"))
+DATA_RETENTION_DAYS = max(1, int(os.getenv("DATA_RETENTION_DAYS", "30")))
 MONTHLY_BUDGET_USD = float(os.getenv("MONTHLY_BUDGET_USD", "10.00"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
@@ -511,8 +514,8 @@ if SENTRY_DSN:
             release_ver = "0.0.0"
 
         send_pii = os.getenv("SENTRY_SEND_DEFAULT_PII", "false").lower() in ("true", "1", "t")
-        traces_rate = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0" if DEBUG else "0.1"))
-        profile_session_rate = float(os.getenv("SENTRY_PROFILE_SESSION_SAMPLE_RATE", "0.0"))
+        traces_rate = min(1.0, max(0.0, float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0" if DEBUG else "0.1"))))
+        profile_session_rate = min(1.0, max(0.0, float(os.getenv("SENTRY_PROFILE_SESSION_SAMPLE_RATE", "0.0"))))
 
         logging_integration = LoggingIntegration(
             level=logging.INFO,

@@ -141,7 +141,12 @@ class LLMGatewayTestCase(TestCase):
 
         pricing = fetch_realtime_model_pricing()
 
-        mock_httpx_get.assert_called_once_with("https://openrouter.ai/api/v1/models", timeout=5.0, verify=True)
+        mock_httpx_get.assert_called_once_with(
+            "https://openrouter.ai/api/v1/models",
+            headers={"User-Agent": "KORDA-Platform/1.5", "HTTP-Referer": "https://korda.app"},
+            timeout=5.0,
+            verify=True,
+        )
         self.assertIsNotNone(pricing)
         self.assertIn("google/gemini-2.5-flash", pricing)
         self.assertEqual(pricing["google/gemini-2.5-flash"]["prompt"], Decimal("0.00000015"))
@@ -164,7 +169,12 @@ class LLMGatewayTestCase(TestCase):
     def test_fetch_realtime_model_pricing_http_error(self, mock_httpx_get, mock_get_cached):
         pricing = fetch_realtime_model_pricing()
 
-        mock_httpx_get.assert_called_once_with("https://openrouter.ai/api/v1/models", timeout=5.0, verify=True)
+        mock_httpx_get.assert_called_once_with(
+            "https://openrouter.ai/api/v1/models",
+            headers={"User-Agent": "KORDA-Platform/1.5", "HTTP-Referer": "https://korda.app"},
+            timeout=5.0,
+            verify=True,
+        )
         self.assertIsNone(pricing)
 
     @patch("extractor.llm_gateway.httpx.post")

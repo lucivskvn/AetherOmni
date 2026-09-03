@@ -47,6 +47,19 @@ class ViewsTestCase(TestCase):
         self.assertIn("documents", response.context)
         self.assertIn("stats", response.context)
 
+    def test_dashboard_view_multiple_status_filtering(self):
+        # Create a pending document in addition to completed self.doc
+        pending_doc = SourceDocument.objects.create(
+            original_filename="pending_doc.pdf",
+            status="PENDING",
+            uploaded_by=self.user,
+        )
+        response = self.client.get(reverse("dashboard") + "?status=COMPLETED&status=PENDING")
+        self.assertEqual(response.status_code, 200)
+        docs = [d["obj"] for d in response.context["documents"]]
+        self.assertIn(self.doc, docs)
+        self.assertIn(pending_doc, docs)
+
     def test_upload_validation_rejects_filename_without_a_title(self):
         from extractor.views import _validate_upload_file
 
@@ -1704,7 +1717,7 @@ class BulkDocumentActionTestCase(TestCase):
 
         doc_ids = [d.id for d in docs]
 
-        with self.assertNumQueries(47):
+        with self.assertNumQueries(37):
             response = self.client.post(
                 reverse("bulk_action"),
                 {
@@ -2175,3 +2188,71 @@ class ViewsExceptionPathsTestCase(TestCase):
         pending_doc.refresh_from_db()
         self.assertEqual(pending_doc.retry_count, 0)
         mock_enqueue.assert_called_once()
+
+    def test_document_delete_ajax_json_response(self):
+        """Verify DocumentDeleteView returns JSON response for AJAX requests."""
+        user = User.objects.create_user(username="delete_ajax_tester", password="Password123!")
+        self.client.force_login(user)
+        doc = SourceDocument.objects.create(
+            original_filename="delete_me.pdf",
+            file_hash="delete-hash-456",
+            title="Delete Me",
+            status="FAILED",
+            uploaded_by=user,
+        )
+        response = self.client.post(
+            reverse("delete_document", kwargs={"doc_uuid": doc.uuid}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("status"), "success")
+        self.assertIn("deleted successfully", data.get("message", ""))
+        self.assertFalse(SourceDocument.objects.filter(uuid=doc.uuid).exists())
+
+    def test_document_cancel_terminal_state_rejected(self):
+        """Verify DocumentCancelView rejects cancelling a completed document."""
+        user = User.objects.create_user(username="cancel_term_tester", password="Password123!")
+        self.client.force_login(user)
+        doc = SourceDocument.objects.create(
+            original_filename="completed.pdf",
+            file_hash="term-hash-123",
+            title="Completed Doc",
+            status="COMPLETED",
+            uploaded_by=user,
+        )
+        response = self.client.post(
+            reverse("cancel_document", kwargs={"doc_uuid": doc.uuid}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("Cannot cancel document in terminal state", data.get("error", ""))
+
+    @patch("extractor.views.broadcast_status_change")
+    def test_document_cancel_inflight_success(self, mock_broadcast):
+        """Verify DocumentCancelView cancels an in-flight extracting document."""
+        user = User.objects.create_user(username="cancel_inflight_tester", password="Password123!")
+        self.client.force_login(user)
+        doc = SourceDocument.objects.create(
+            original_filename="inflight.pdf",
+            file_hash="inflight-hash-123",
+            title="Inflight Doc",
+            status="EXTRACTING",
+            uploaded_by=user,
+        )
+        response = self.client.post(
+            reverse("cancel_document", kwargs={"doc_uuid": doc.uuid}),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("status"), "success")
+        mock_broadcast.assert_called_once_with(str(doc.uuid), "FAILED")
+
+    def test_reset_password_confirm_cache_headers(self):
+        """Verify reset_password_confirm view has no-cache headers."""
+        response = self.client.get(reverse("reset_password_confirm"))
+        self.assertEqual(response.status_code, 200)
+        cache_control = response.get("Cache-Control", "")
+        self.assertIn("no-cache", cache_control)

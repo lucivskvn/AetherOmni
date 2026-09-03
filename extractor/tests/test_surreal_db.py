@@ -94,10 +94,11 @@ class SurrealDBClientTestCase(TestCase):
     @patch("extractor.surreal_db._run")
     @patch("extractor.surreal_db._flush_document_cost", return_value=False)
     @patch("extractor.surreal_db.get_document", return_value={"cost_usd": 1.25, "created_at": "not-a-date"})
-    def test_delete_document_preserves_paid_document_when_spend_cannot_flush(self, _mock_doc, _mock_flush, mock_run):
-        with self.assertRaisesRegex(RuntimeError, "spend ledger"):
-            surreal_db.delete_document("paid-document")
-        mock_run.assert_not_called()
+    def test_delete_document_proceeds_when_spend_cannot_flush_without_bricking(self, _mock_doc, _mock_flush, mock_run):
+        # BUG-02: Deletion should not raise a hard RuntimeError that soft-bricks
+        # documents permanently. It should log a warning and proceed.
+        surreal_db.delete_document("paid-document")
+        mock_run.assert_called_once()
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
@@ -110,7 +111,8 @@ class SurrealDBClientTestCase(TestCase):
         surreal_db.recreate_chunks(doc_uuid, chunks)
         self.assertEqual(mock_db.query.call_count, 2)
         mock_db.query.assert_any_call(
-            "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;", {"doc_uuid": "00000000-0000-0000-0000-000000000000"}
+            "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
+            {"doc_uuid": "00000000-0000-0000-0000-000000000000"},
         )
 
     @override_settings(DEBUG=True)

@@ -11,3 +11,4 @@
 # vulnerabilities.
 exclude_dirs:
   - 'extractor/tests'
+  - 'core/tests'

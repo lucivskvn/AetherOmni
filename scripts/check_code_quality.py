@@ -136,6 +136,18 @@ def _check_constant_literal(node: ast.AST, file_literals: dict[str, list[int]]) 
             file_literals[val].append(node.lineno)
 
 
+def _check_redundant_ternary(node: ast.AST, rel_path: str) -> str | None:
+    if (
+        isinstance(node, ast.IfExp)
+        and isinstance(node.body, ast.Constant)
+        and node.body.value is True
+        and isinstance(node.orelse, ast.Constant)
+        and node.orelse.value is False
+    ):
+        return f"{rel_path}:{node.lineno}: Redundant conditional ternary expression 'True if cond else False'. Use 'bool(cond)' instead."
+    return None
+
+
 def _check_ast_nodes_for_quality(tree: ast.AST, rel_path: str) -> tuple[list[str], dict[str, list[int]]]:
     complexity_errors: list[str] = []
     file_literals: dict[str, list[int]] = defaultdict(list)
@@ -144,6 +156,9 @@ def _check_ast_nodes_for_quality(tree: ast.AST, rel_path: str) -> tuple[list[str
         err = _check_func_complexity(node, rel_path)
         if err:
             complexity_errors.append(err)
+        ternary_err = _check_redundant_ternary(node, rel_path)
+        if ternary_err:
+            complexity_errors.append(ternary_err)
         _check_constant_literal(node, file_literals)
 
     return complexity_errors, file_literals

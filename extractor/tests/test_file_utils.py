@@ -357,3 +357,9 @@ class FileUtilsTestCase(TestCase):
         self.assertEqual(fts_chunks[0][2], doc.author)
 
         conn.close()
+
+    def test_render_markdown_safe_footnote_rendering(self):
+        md_text = "Here is a statement with a footnote reference[^1].\n\n[^1]: Note description text."
+        html = file_utils.render_markdown_to_html(md_text)
+        self.assertIn("footnote", html)
+        self.assertIn("Note description text", html)

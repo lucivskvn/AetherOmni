@@ -16,7 +16,7 @@ spec:
       timeoutSeconds: 900
       containers:
       - image: "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/cloud-run-source-deploy/korda-web:latest"
-        name: web
+        name: worker
         securityContext:
           runAsNonRoot: true
           allowPrivilegeEscalation: false
