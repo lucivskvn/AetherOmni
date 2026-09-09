@@ -92,6 +92,8 @@ def main() -> int:
     if "sessionStorage" in login or "sessionStorage" in recovery:
         errors.append("Recovery credentials must not be persisted in web storage.")
     dedup_lookup = views.partition("def _find_existing_doc_by_hash")[2].partition("def _get_dedup_field")[0]
+    if not dedup_lookup:
+        errors.append("Tenant deduplication source anchors are missing.")
     if (
         "status = 'COMPLETED' LIMIT 1" in dedup_lookup
         or "SourceDocument.objects.filter(file_hash=file_hash" in dedup_lookup

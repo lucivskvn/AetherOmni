@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.messages import get_messages
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from extractor.models import AuditAction, AuditLog, SourceDocument, SystemSettings
@@ -153,6 +153,7 @@ class ViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(SourceDocument.objects.filter(id=doc_to_delete.pk).count(), 0)
 
+    @override_settings(SURREALDB_OFFLINE=True)
     def test_document_purge_all_view_post(self):
         from extractor.models import MonthlySpendLog, UserMemory
 
@@ -1803,6 +1804,8 @@ class CoreDesignHardeningTests(TestCase):
         self.client.force_login(self.user)
 
     def test_system_settings_has_no_persisted_provider_credential(self):
+        field_names = {field.name for field in SystemSettings._meta.get_fields()}
+        self.assertNotIn("openrouter_api_key", field_names)
         settings_obj = SystemSettings.get_settings()
         self.assertFalse(hasattr(settings_obj, "openrouter_api_key"))
         self.assertFalse(hasattr(settings_obj, "openrouter_api_key_masked"))

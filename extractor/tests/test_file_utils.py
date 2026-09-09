@@ -2,7 +2,7 @@ import io
 import zipfile
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from extractor import file_utils
 from extractor.models import SourceDocument
@@ -421,6 +421,7 @@ class FileUtilsTestCase(TestCase):
         self.assertEqual(parsed.get("author"), "Dr. O'Connor")
         self.assertEqual(parsed.get("path"), "C:\\data\\documents")
 
+    @override_settings(SURREALDB_OFFLINE=True)
     @patch("extractor.file_utils._get_offline_docs")
     def test_export_max_documents_limit_enforced(self, mock_get_docs):
         dummy_docs = [MagicMock(cost_usd=0.0, page_count=1) for _ in range(1001)]

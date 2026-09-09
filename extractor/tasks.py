@@ -237,6 +237,21 @@ def _handle_stage_failure(doc_uuid: str, stage_name: str, exception: Exception) 
     )
 
 
+def _budget_gate(doc_uuid: str, stage: str) -> bool:
+    """Fail the document if the monthly budget is breached before a pipeline stage."""
+    try:
+        check_budget_and_api_limit()
+    except Exception as budget_err:
+        logger.warning("[Worker] Mid-pipeline budget limit breached before %s: %s", stage, budget_err)
+        _fail_document(
+            doc_uuid,
+            error_message=f"Mid-Pipeline Budget Capped Halt: {budget_err!s}",
+            details=f"{stage} budget breach: {budget_err!s}",
+        )
+        return False
+    return True
+
+
 def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     """
     Lock document row and transition status to EXTRACTING.
@@ -1155,15 +1170,7 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
         return False
 
     # Mid-pipeline budget circuit breaker
-    try:
-        check_budget_and_api_limit()
-    except Exception as budget_err:
-        logger.warning("[Worker] Mid-pipeline budget limit breached: %s", budget_err)
-        _fail_document(
-            doc_uuid,
-            error_message=f"Mid-Pipeline Budget Capped Halt: {budget_err!s}",
-            details=f"Mid-pipeline budget breach: {budget_err!s}",
-        )
+    if not _budget_gate(doc_uuid, "Stage 2"):
         return False
 
     # Check cancellation before Stage 2
@@ -1184,15 +1191,7 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
         return False
 
     # Mid-pipeline budget circuit breaker before Stage 3 embedding
-    try:
-        check_budget_and_api_limit()
-    except Exception as budget_err:
-        logger.warning("[Worker] Mid-pipeline budget limit breached before Stage 3: %s", budget_err)
-        _fail_document(
-            doc_uuid,
-            error_message=f"Mid-Pipeline Budget Capped Halt: {budget_err!s}",
-            details=f"Stage 3 budget breach: {budget_err!s}",
-        )
+    if not _budget_gate(doc_uuid, "Stage 3"):
         return False
 
     # Stage 3

@@ -97,6 +97,9 @@ def main() -> int:
             f"retired-field purge required: {needs_key_purge}. Dry run only."
         )
         return 0
+    if os.environ.get("SYSTEM_SETTINGS_NORMALIZATION_APPROVED") != "1":
+        print("ERROR: --apply requires reviewed deployment approval.", file=sys.stderr)
+        return 2
 
     statements = ["BEGIN TRANSACTION"]
     if needs_csrf_normalization:

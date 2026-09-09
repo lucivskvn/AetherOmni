@@ -718,8 +718,8 @@ def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: st
         "yaml_metadata": _get_dedup_field(existing_doc, "yaml_metadata"),
         "qa_dataset": _get_dedup_field(existing_doc, "qa_dataset"),
         "cost_usd": 0.0,
-        "input_tokens": _get_dedup_field(existing_doc, "input_tokens", 0),
-        "output_tokens": _get_dedup_field(existing_doc, "output_tokens", 0),
+        "input_tokens": 0,
+        "output_tokens": 0,
         "semantic_signature": _get_dedup_field(existing_doc, "semantic_signature"),
         "retry_count": 0,
         "created_at": format_datetime(timezone.now()),
@@ -1283,7 +1283,7 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
                 if getattr(settings, "SURREALDB_OFFLINE", False):
                     MonthlySpendLog.objects.all().delete()
             except Exception as sqlite_err:
-                logger.debug("[Purge All] SQLite cleanup skipped: %s", sqlite_err)
+                raise RuntimeError("Local record cleanup failed; purge requires retry.") from sqlite_err
         except Exception as exc:
             logger.exception("[Purge All] Reset could not be completed: %s", exc)
             messages.error(
@@ -1291,6 +1291,13 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
                 "Reset incomplete. Some files may already be removed; retry after resolving the storage or database error.",
             )
             return redirect("dashboard")
+
+        _record_view_audit(
+            request,
+            AuditAction.PURGE_ALL,
+            f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
+            ip=ip,
+        )
 
         try:
             from django.core.files.storage import default_storage
@@ -1307,12 +1314,6 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             )
             return redirect("dashboard")
 
-        _record_view_audit(
-            request,
-            AuditAction.PURGE_ALL,
-            f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
-            ip=ip,
-        )
         messages.success(request, "Reset Memory Complete: Purged all documents and vector embeddings.")
         return redirect("dashboard")
 
