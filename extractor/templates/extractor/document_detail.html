@@ -409,13 +409,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!resp.ok) {
                     throw new Error(data?.error || data?.message || `Server returned HTTP ${resp.status}`);
                 }
-                if (data.status === 'success' && data.pairs && data.pairs.length > 0) {
+                    const escapeHtml = (str) => String(str ?? '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+
                     let html = '';
                     data.pairs.forEach((p, idx) => {
-                        const q = p.prompt || (p.messages && p.messages[1] ? p.messages[1].content : 'Question');
-                        const a = p.completion || (p.messages && p.messages[2] ? p.messages[2].content : 'Answer');
-                        const page = p.metadata?.page_number || 1;
-                        const anchor = p.metadata?.anchor_id || `page-${page}`;
+                        const rawQ = p.prompt || (p.messages && p.messages[1] ? p.messages[1].content : 'Question');
+                        const rawA = p.completion || (p.messages && p.messages[2] ? p.messages[2].content : 'Answer');
+                        const page = Number(p.metadata?.page_number) || 1;
+                        const anchor = escapeHtml(p.metadata?.anchor_id || `page-${page}`);
+                        const q = escapeHtml(rawQ);
+                        const a = escapeHtml(rawA);
                         html += `
                         <div style="background:var(--surface-subtle); border:1px solid var(--border-glass); border-radius:8px; padding:12px; margin-bottom:8px;">
                             <div style="font-size:11px; color:var(--accent); font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">
@@ -431,7 +439,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     modalBody.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted);">No dataset pairs generated yet for this document.</div>';
                 }
             } catch (err) {
-                modalBody.innerHTML = `<div style="text-align:center; padding:24px; color:#ef4444;">Failed to load preview: ${err.message}</div>`;
+                modalBody.textContent = `Failed to load preview: ${String(err?.message || 'Unexpected error')}`;
+                modalBody.style.cssText = 'text-align:center; padding:24px; color:#ef4444;';
             }
         });
     }

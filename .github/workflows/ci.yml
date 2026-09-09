@@ -189,17 +189,19 @@ jobs:
       - name: Code Quality & Cognitive Complexity Gate
         run: python scripts/check_code_quality.py
 
+      - name: Reliability Contract Gate
+        run: python scripts/check_reliability_contracts.py
+
       - name: Bandit Python Security Audit
         run: python -m bandit -c bandit.yaml -r extractor/ core/ scripts/ -ll
 
       - name: Mypy Static Type Check
         run: python -m mypy --ignore-missing-imports core/ extractor/
-        continue-on-error: true  # Non-blocking until stubs are complete; findings visible in annotations
 
       - name: Django Schema Migration Drift Gate
         run: python manage.py makemigrations --check --dry-run
         env:
-          DJANGO_SECRET_KEY: "django-insecure-ci-test-key-50-chars-long-for-local-testing"
+          DJANGO_SECRET_KEY: "ci-test-key-50-chars-long-for-local-testing-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df"
           SURREALDB_OFFLINE: "True"
           DATABASE_URL: "sqlite:///:memory:"
 
@@ -213,7 +215,7 @@ jobs:
 
       - name: Python Tests → coverage.xml
         run: |
-          export DJANGO_SECRET_KEY="django-insecure-ci-test-key-50-chars-long-for-local-testing"
+          export DJANGO_SECRET_KEY="ci-test-key-50-chars-long-for-local-testing-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df"
           python scripts/verify_templates_and_assets.py
           python manage.py collectstatic --noinput
           rm -f .coverage .coverage.* coverage.xml

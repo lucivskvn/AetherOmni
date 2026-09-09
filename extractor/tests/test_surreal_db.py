@@ -27,7 +27,7 @@ class SurrealDBClientTestCase(TestCase):
         mock_db.query = AsyncMock(return_value=return_value or [])
         return mock_db
 
-    @override_settings(DEBUG=True)
+    @override_settings(DEBUG=True, SURREALDB_OFFLINE=False)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_check_health_online(self, mock_surreal):
         mock_db = self._create_mock_db()
@@ -57,6 +57,11 @@ class SurrealDBClientTestCase(TestCase):
         self.assertFalse(surreal_db.check_health())
         mock_surreal.assert_called_once()
 
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run", side_effect=RuntimeError("database unavailable"))
+    def test_rate_limit_denies_when_surrealdb_is_unavailable(self, _run):
+        self.assertFalse(surreal_db.check_rate_limit_atomic("user:123", max_requests=5))
+
     @override_settings(SURREALDB_OFFLINE=True)
     @patch("extractor.models.MonthlySpendLog.add_cost", return_value=True)
     def test_flush_document_cost_accepts_surreal_datetime(self, mock_add_cost):
@@ -84,6 +89,23 @@ class SurrealDBClientTestCase(TestCase):
     def test_flush_document_cost_reports_ledger_persistence_failure(self, mock_add_cost):
         self.assertFalse(surreal_db._flush_document_cost({"created_at": "2026-08-12T00:00:00Z", "cost_usd": 1.25}))
         mock_add_cost.assert_called_once()
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run")
+    def test_online_cost_reconciliation_is_document_idempotent(self, mock_run):
+        document = {
+            "doc_uuid": "paid-document",
+            "created_at": "2026-08-12T00:00:00Z",
+            "cost_usd": 1.25,
+            "input_tokens": 10,
+            "output_tokens": 20,
+        }
+
+        self.assertTrue(surreal_db._flush_document_cost(document))
+        sql, params = mock_run.call_args.args
+        self.assertIn("BEGIN TRANSACTION", sql)
+        self.assertIn("document_spend_reconciliations", sql)
+        self.assertEqual(params["doc_uuid"], "paid-document")
 
     @override_settings(SURREALDB_OFFLINE=True)
     @patch("extractor.models.MonthlySpendLog.add_cost")
@@ -208,14 +230,26 @@ class SurrealDBClientTestCase(TestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res.get("context_hash"), "abc")
 
-    @override_settings(DEBUG=True)
-    @patch("extractor.surreal_db.AsyncSurreal")
-    def test_rate_limiting_flow(self, mock_surreal):
-        mock_db = self._create_mock_db([[]])
-        mock_surreal.return_value = mock_db
+    @override_settings(DEBUG=True, SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run", return_value=[{"result": [True]}])
+    def test_rate_limiting_flow(self, _run):
 
         # First request allowed (initial entry created)
         allowed = surreal_db.check_rate_limit_atomic("user:123", max_requests=5)
+        self.assertTrue(allowed)
+
+    @override_settings(DEBUG=True, SURREALDB_OFFLINE=False)
+    @patch(
+        "extractor.surreal_db._run",
+        return_value=[
+            {"status": "OK", "result": None},
+            {"status": "OK", "result": None},
+            {"status": "OK", "result": True},
+            {"status": "OK", "result": None},
+        ],
+    )
+    def test_rate_limiting_multi_statement_transaction(self, _run):
+        allowed = surreal_db.check_rate_limit_atomic("user:456", max_requests=10)
         self.assertTrue(allowed)
 
     def test_update_document_offline_nonexistent(self):
@@ -328,3 +362,20 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(mock_surreal.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
         mock_sleep.assert_has_calls([call(1), call(2)])
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db.recreate_chunks")
+    @patch("extractor.surreal_db.get_document_chunks")
+    def test_clone_chunks_pages_beyond_chunk_limit(self, get_chunks, recreate):
+        first_page = [{"chunk_index": index, "content": str(index)} for index in range(500)]
+        get_chunks.side_effect = [first_page, [{"chunk_index": 500, "content": "500"}], []]
+
+        surreal_db.clone_chunks("source", "target")
+
+        self.assertEqual(
+            get_chunks.call_args_list, [call("source", limit=500, start=0), call("source", limit=500, start=500)]
+        )
+        target_uuid, cloned_chunks = recreate.call_args.args
+        self.assertEqual(target_uuid, "target")
+        self.assertEqual(len(cloned_chunks), 501)
+        self.assertEqual(cloned_chunks[-1]["chunk_index"], 500)

@@ -287,9 +287,8 @@ steps:
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
         SECRETS="$${SECRETS},SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
-        if gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null 2>&1; then
-          SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
-        fi
+        gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null
+        SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
         if gcloud secrets describe SENTRY_DSN --project="${PROJECT_ID}" >/dev/null 2>&1; then
           SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
         fi
@@ -297,9 +296,10 @@ steps:
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
           --region=${_REGION} \
           --platform=managed \
-          --allow-unauthenticated \
+          --no-allow-unauthenticated \
           --min-instances=0 \
           --max-instances=5 \
+          --memory=2Gi \
           --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
@@ -347,9 +347,8 @@ steps:
         SECRETS="$${SECRETS},SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_PUBLIC_KEY=SUPABASE_PUBLIC_KEY:latest"
         SECRETS="$${SECRETS},SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
-        if gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null 2>&1; then
-          SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
-        fi
+        gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null
+        SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
         if gcloud secrets describe SENTRY_DSN --project="${PROJECT_ID}" >/dev/null 2>&1; then
           SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
         fi
@@ -358,6 +357,7 @@ steps:
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
+          --memory=1Gi \
           --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"

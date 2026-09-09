@@ -12,7 +12,7 @@ def dict_pct(value, total):
         if tot <= 0:
             return 100
         return int((val / tot) * 100)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return 0
 
 
@@ -28,7 +28,7 @@ def format_compact_tokens(value):
         if abs_val >= 1000:
             return f"{sign}{abs_val / 1000:.1f}K"
         return str(val)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return "0"
 
 

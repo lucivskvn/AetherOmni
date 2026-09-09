@@ -9,13 +9,25 @@ This guide describes how to provision, configure, build, and deploy the **KORDA*
 The production system consists of:
 
 1. **Cloud Run Service (`korda-web`)**: Handles user HTTP traffic and serves dashboard/login pages. Production users, sessions, audit logs, spend history, and settings persist in Supabase PostgreSQL; document ownership and retrieval use stable Supabase Auth subject UUIDs in SurrealDB.
-2. **Cloud Run Service (`korda-worker`)**: Dedicated worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion.
+2. **Cloud Run Service (`korda-worker`)**: Private worker instance that processes heavy background OCR, visual diagram processing, and RAG ingestion; only Cloud Tasks OIDC delivery is authorized.
 3. **Google Cloud Tasks Queue (`extractor-tasks-v2`)**: Orchestrates background document processing. Tasks are dispatched from `web` to Cloud Tasks, which trigger HTTP POST callbacks targeting the `/internal/tasks/<task_name>/` endpoint on the `worker` service.
 4. **Remote SurrealDB (rpc via WebSockets)**: Deployed as a secure, standalone service (configured via `SURREAL_URL` WebSocket RPC). It serves as the primary database store for all document metadata (`SourceDocument`), compliance audit logs (`AuditLog`), system settings (`SystemSettings`), vector chunk databases (`chunks`), and semantic search caches (`rag_cache`).
 5. **Vertex AI & Gemini Multi-Modal Gateway**: Direct Application Default Credentials (ADC) access (`roles/aiplatform.user`) for stable Vertex v1 Gemini 2.5 Flash / Flash-Lite and Vertex AI Vision.
 6. **Cloud Storage (GCS)**: Stores raw, uploaded PDF assets securely in GCP bucket (`GS_BUCKET_NAME`).
 7. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely (configured via `SUPABASE_URL`).
 8. **GCP Secret Manager (Source of Truth for Credentials)**: Sourced and mounted at container runtime into environment variables (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CF_TURNSTILE_SITE_KEY`, `SENTRY_DSN`, `ADMIN_EMAIL`).
+
+`SURREAL_EXECUTOR_WORKERS` is a non-secret positive integer configuration value. Set it with Cloud Run runtime configuration to bound synchronous SurrealDB RPC dispatch for the available instance CPU and concurrency.
+
+The release gate also runs `scripts/check_reliability_contracts.py`. Keep it blocking: it verifies durable Cloud Task ownership/cancellation, limits password-recovery credential lifetime to the page closure, protects YAML exports from line-break injection, prevents hidden dashboard tabs from polling continuously, keeps production deletion-spend accounting exclusively in SurrealDB rather than the mirrored Django row, and prevents a dashboard streaming client from treating SSE tokens as HTML.
+
+XLSX ingestion has dedicated archive, worksheet, row, cell, and rendered-output limits. Keep these parser budgets aligned with the worker memory allocation; the generic upload size ceiling is not a parser-memory guarantee.
+
+Before a deployment that changes the `system_settings` contract, run `python scripts/normalize_system_settings.py` against a non-production copy. Review only its boolean status output; use `--apply` only in an approved change after confirming valid CSRF origins will be preserved. The command never displays persisted settings values and fails if its postcondition readback is not normalized. For the retired `openrouter_api_key` field, run the approved purge before applying the Surreal schema and Django migration that remove the field.
+
+Use `bash run_checks.sh` for local delivery verification. The retained
+`scripts/verify-pipeline.sh` command only delegates to that gate for backward
+compatibility; it performs no Git synchronization, remote scan, or deployment.
 
 ---
 
@@ -25,9 +37,15 @@ Infrastructure provisioning and teardown are managed declaratively using **Pulum
 
 Key operational policies:
 
+- **Task cancellation rollout**: Apply the additive `cloud_task_name` and `cancel_requested` fields in `schema.surql` and the Django document-task migration before rolling out this application. Preview and apply the Pulumi queue-scoped `roles/cloudtasks.taskDeleter` binding for the runtime account. The dispatcher saves task identity before enqueueing and refuses dispatch if persistence fails. Existing unnamed tasks rely on cooperative cancellation; queued deletion is available for newly named tasks.
+- **Delivery acknowledgement**: Unexpected handler errors and failure-recording errors return a retryable response. The Pulumi queue bounds retry attempts; operators must investigate exhausted deliveries. A completed or failed document is a durable outcome, while unfinished duplicate delivery remains retryable. Do not enable unlimited retries.
+- **Operational controls**: `WORKER_SERVICE_NAME` and `WEB_SERVICE_NAME` select service identities. Only superusers may change worker scaling; worker lookup failure never redirects the action to the web service. The idle scaling mode still permits requests to start an instance and incur costs.
+- **Deployment-controller IAM**: the runtime service account has `roles/run.viewer` only to inspect the configured worker before a superuser scaling action. It must not receive broad project editor or owner roles.
+- **Deletion recovery**: A storage deletion error retains the document and returns an explicit failure for retry. Investigate retained documents and storage permissions before retrying; do not report physical erasure until storage deletion succeeds.
+
 - **Zero Committed Secrets & Dynamic Project Resolution**: Cloud Run service manifests and Pulumi configurations resolve project IDs and Secret Manager references dynamically at runtime (`GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`).
 - **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks-v2`, and GCS bucket `<PROJECT_ID>-media-korda`) are colocated in **`asia-southeast1` (Singapore)** to eliminate cross-region egress and intra-region data transfer fees.
-- **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching and SonarCloud Quality Gate verification.
+- **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching and SonarCloud Quality Gate verification. The deployment fails before either service is updated if `SUPABASE_DATABASE_URL` is unavailable; production must not silently use SQLite.
 
 ---
 
@@ -53,6 +71,8 @@ pulumi up --stack prod --yes
 ---
 
 ## 4. Manual Provisioning Reference (Fallback)
+
+Before any Cloud Build deployment, the local and GitHub Actions reliability-contract gate must pass. It protects the production boundary by requiring tenant-scoped document reuse, fail-closed rate-limit behavior, deployment-managed credentials, Supabase CAPTCHA and email-confirmation enforcement, and synchronized Cloud Run memory limits across Pulumi, service manifests, and deploy commands. This gate contains no secret values and does not replace the Cloud Build release-identity verification.
 
 Run these commands using the Google Cloud CLI (`gcloud`) or Cloud Shell if bootstrapping without Pulumi:
 
@@ -281,7 +301,7 @@ declarative infrastructure contract.
 
 Supabase CAPTCHA-protected password, signup, and recovery calls forward the
 Turnstile response inside GoTrue `gotrue_meta_security`. Admin authority comes
-from the configured `ADMIN_EMAIL` or server-controlled Supabase app metadata;
+from the configured `ADMIN_EMAIL`, never from Supabase app metadata;
 the application never promotes the first authenticated user automatically.
 
 Cloud Run deploys the worker in bounded on-demand mode by default. Cloud Tasks
@@ -430,7 +450,6 @@ DEFINE TABLE IF NOT EXISTS system_settings SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS monthly_budget_usd ON system_settings TYPE float DEFAULT 10.00;
 DEFINE FIELD IF NOT EXISTS selected_model     ON system_settings TYPE string DEFAULT "auto";
 DEFINE FIELD IF NOT EXISTS currency           ON system_settings TYPE string DEFAULT "auto";
-DEFINE FIELD IF NOT EXISTS openrouter_api_key ON system_settings TYPE string DEFAULT "";
 
 -- ── 8. context_cache ─────────────────────────────────────────
 DEFINE TABLE IF NOT EXISTS context_cache SCHEMAFULL;

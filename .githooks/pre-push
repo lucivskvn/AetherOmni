@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+command -v sonar >/dev/null 2>&1 || { echo "sonarqube-cli is required for the secrets gate" >&2; exit 1; }
+sonar hook git-pre-push "$@"
+bash run_checks.sh

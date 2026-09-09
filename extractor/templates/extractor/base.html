@@ -196,9 +196,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="openrouter_api_key">OpenRouter API Key (Optional)</label>
-                    <input type="password" id="openrouter_api_key" name="openrouter_api_key" value="{{ system_settings.openrouter_api_key_masked }}" placeholder="sk-or-v1-..." style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;" aria-describedby="or-desc">
-                    <small id="or-desc">Required only if using OpenRouter LLMs. Saved dynamically in SystemSettings.</small>
+                    <output class="settings-note" for="selected_model">OpenRouter credentials are deployment-managed through GCP Secret Manager and are never entered or stored in this console.</output>
                 </div>
                 
                 <div class="form-group">
@@ -227,6 +225,7 @@
         </form>
         
         <!-- Danger Zone / Reset Memory -->
+        {% if user.is_superuser %}
         <div class="danger-zone">
             <h4>
                 <i data-lucide="alert-octagon"></i> Danger Zone
@@ -262,6 +261,7 @@
                 </button>
             </div>
         </div>
+        {% endif %}
     </dialog>
     {% endif %}
     {% block extra_js %}{% endblock %}

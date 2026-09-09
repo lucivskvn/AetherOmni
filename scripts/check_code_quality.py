@@ -193,7 +193,7 @@ def _get_all_tracked_python_files() -> dict[str, Path]:
                     canon_rel = os.path.relpath(canon_abs, str(ROOT))
                     file_map[canon_abs] = path
                     file_map[canon_rel] = path
-                except (OSError, ValueError):
+                except OSError, ValueError:
                     continue
     return file_map
 
@@ -206,7 +206,7 @@ def _match_target_file(f_str: str, allowed_map: dict[str, Path]) -> Path | None:
         resolved = os.path.realpath(clean_str if os.path.isabs(clean_str) else os.path.join(str(ROOT), clean_str))
         if resolved in allowed_map:
             return allowed_map[resolved]
-    except (OSError, ValueError):
+    except OSError, ValueError:
         pass
     return None
 

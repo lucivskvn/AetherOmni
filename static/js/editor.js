@@ -20,8 +20,13 @@ function parseInline(text) {
         t = t.replace(/_([^_\n]+)_/g, '<em>$1</em>');
 
         // Image: ![alt](src)
-        t = t.replace(/!\[([^\]]*)\]\(([^()]+)\)/g,
-            '<img src="$2" alt="$1" style="max-width:100%;border-radius:6px;margin:8px 0;">');
+        t = t.replace(/!\[([^\]]*)\]\(([^()]+)\)/g, (match, alt, src) => {
+            const cleanSrc = src ? src.trim() : '';
+            if (!cleanSrc || !isSafePreviewUrl(cleanSrc)) {
+                return '';
+            }
+            return `<img src="${escapeHtml(cleanSrc)}" alt="${escapeHtml(alt)}" style="max-width:100%;border-radius:6px;margin:8px 0;">`;
+        });
 
         // Link: [text](href)
         t = replaceMarkdownLinks(t);
@@ -282,12 +287,13 @@ async function copyTextToClipboard(text) {
     textarea.focus();
     textarea.select();
     try {
+        // NOSONAR -- Clipboard API is unavailable on legacy/insecure contexts; this is the bounded fallback.
         const successful = document.execCommand('copy');
         if (!successful) {
             throw new Error('execCommand copy returned false');
         }
     } finally {
-        document.body.removeChild(textarea);
+        textarea.remove();
     }
 }
 
@@ -496,11 +502,7 @@ function _parseYamlFrontmatter(escaped) {
                 const colonIdx = line.indexOf(':');
                 if (colonIdx !== -1) {
                     const key = line.substring(0, colonIdx).trim();
-                    const val = line.substring(colonIdx + 1).trim()
-                        .replaceAll('&quot;', '')
-                        .replaceAll('&#x27;', '')
-                        .replaceAll('&lt;', '')
-                        .replaceAll('&gt;', '');
+                    const val = line.substring(colonIdx + 1).trim();
                     if (key && val) {
                         rowsHtml += `
                             <div style="display: flex; gap: 8px; font-size: 12px; margin-bottom: 4px; font-family: sans-serif;">
@@ -529,7 +531,7 @@ const SAFE_HTML_TAGS = new Set([
     'tr', 'th', 'td', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'span',
     'div', 'p'
 ]);
-const SAFE_HTML_ATTRIBUTES = new Set(['colspan', 'rowspan', 'class', 'style', 'dir']);
+const SAFE_HTML_ATTRIBUTES = new Set(['colspan', 'rowspan', 'class', 'dir']);
 
 function _restoreSafeHtml(html) {
     return html
@@ -583,11 +585,11 @@ function _processLine(line, state, htmlBuilder) {
 function escapeHtml(raw) {
     if (typeof document === 'undefined') {
         return String(raw)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+            .replace(/&/g, '&amp;') // NOSONAR -- regexes are retained because the blocking Semgrep rule rejects replaceAll-based escaping.
+            .replace(/</g, '&lt;') // NOSONAR -- see the compatibility rationale above.
+            .replace(/>/g, '&gt;') // NOSONAR -- see the compatibility rationale above.
+            .replace(/"/g, '&quot;') // NOSONAR -- see the compatibility rationale above.
+            .replace(/'/g, '&#039;'); // NOSONAR -- see the compatibility rationale above.
     }
     const tn = document.createTextNode(raw);
     const div = document.createElement('div');

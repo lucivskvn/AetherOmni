@@ -2,23 +2,26 @@ import logging
 import logging.config
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
-# Configure specific temporary directories for libraries that need to write to the filesystem
-# in serverless environments (like Cloud Run) where only /tmp is writable.
-os.environ["HF_HOME"] = "/tmp/huggingface"  # nosec B108 # NOSONAR
-os.environ["XDG_CACHE_HOME"] = "/tmp/xdg_cache"  # nosec B108 # NOSONAR
-os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"  # nosec B108 # NOSONAR
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load .env file
+# Load .env before selecting private cache-directory fallbacks.
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
+# Configure private per-process cache directories. Cloud Run exposes /tmp, but
+# fixed paths there are shared by concurrent processes and are not safe defaults.
+for cache_variable, cache_prefix in (
+    ("HF_HOME", "aetheromni-hf-"),
+    ("XDG_CACHE_HOME", "aetheromni-xdg-"),
+    ("MPLCONFIGDIR", "aetheromni-mpl-"),
+):
+    os.environ.setdefault(cache_variable, tempfile.mkdtemp(prefix=cache_prefix))
 
 TESTING = "test" in sys.argv
 SURREALDB_OFFLINE = TESTING or os.getenv("SURREALDB_OFFLINE", "False").lower() in ("true", "1", "t")
@@ -309,6 +312,7 @@ SURREAL_NS = os.getenv("SURREAL_NS", "korda")
 SURREAL_DB = os.getenv("SURREAL_DB", "extractor")
 SURREAL_USER = os.getenv("SURREAL_USER", "")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "")
+SURREAL_EXECUTOR_WORKERS = max(1, int(os.getenv("SURREAL_EXECUTOR_WORKERS", "16")))
 
 if (
     not DEBUG
@@ -332,6 +336,8 @@ CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME"
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")
 # WORKER_URL is the fully-qualified URL of the korda-worker service
 WORKER_URL = os.getenv("WORKER_URL", "")
+WORKER_SERVICE_NAME = os.getenv("WORKER_SERVICE_NAME", "korda-worker")
+WEB_SERVICE_NAME = os.getenv("WEB_SERVICE_NAME", "korda-web")
 CLOUD_TASKS_SERVICE_ACCOUNT = os.getenv("CLOUD_TASKS_SERVICE_ACCOUNT", "")
 
 
@@ -433,6 +439,10 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = False if TESTING else os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
     SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "True").lower() == "true"
     CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", "True").lower() == "true"
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+    CSRF_COOKIE_SAMESITE = os.getenv("CSRF_COOKIE_SAMESITE", "Lax")
+    SECURE_REFERRER_POLICY = os.getenv("SECURE_REFERRER_POLICY", "same-origin")
     SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000")) if not TESTING else 0
     SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "True").lower() == "true"
     SECURE_HSTS_PRELOAD = os.getenv("SECURE_HSTS_PRELOAD", "True").lower() == "true"

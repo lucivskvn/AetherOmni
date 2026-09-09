@@ -2,7 +2,7 @@ import io
 import zipfile
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from extractor import file_utils
 from extractor.models import SourceDocument
@@ -46,6 +46,9 @@ class FileUtilsTestCase(TestCase):
         html = file_utils.render_markdown_to_html(markdown_text)
         self.assertIn("<h1>Header</h1>", html)
         self.assertIn("<strong>bold</strong>", html)
+
+    def test_yaml_frontmatter_escapes_line_breaks(self):
+        self.assertEqual(file_utils._escape_yaml_val("A\r\nB"), r"A\r\nB")
 
     @patch("extractor.file_utils.slugify")
     def test_process_zip_doc(self, mock_slugify):
@@ -160,6 +163,26 @@ class FileUtilsTestCase(TestCase):
         with zipfile.ZipFile(zip_buffer, "r") as zf:
             # Normal zip should pass
             file_utils.validate_zip(zf)
+
+    def test_xlsx_parser_budget_rejects_large_archive_and_rows(self):
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            zf.writestr("xl/worksheets/sheet1.xml", b"x" * (file_utils._XLSX_MAX_UNCOMPRESSED_BYTES + 1))
+        zip_buffer.seek(0)
+        with zipfile.ZipFile(zip_buffer, "r") as zf, self.assertRaises(ValueError):
+            file_utils._validate_xlsx_archive(zf)
+
+        parsed_rows = [file_utils._XLSX_MAX_ROWS]
+        with self.assertRaises(ValueError):
+            file_utils._bounded_excel_row(["value"], parsed_rows)
+
+    def test_xlsx_parser_budget_rejects_oversized_cells_and_output(self):
+        with self.assertRaises(ValueError):
+            file_utils._bounded_excel_row(["x" * (file_utils._XLSX_MAX_CELL_CHARS + 1)], [0])
+        with self.assertRaises(ValueError):
+            file_utils._format_markdown_table_sheet(
+                "sheet", [["header"], ["value"]], [file_utils._XLSX_MAX_MARKDOWN_BYTES]
+            )
 
     def test_safe_extract_zip_slip_prevention(self):
         import tempfile
@@ -358,8 +381,64 @@ class FileUtilsTestCase(TestCase):
 
         conn.close()
 
+    @patch("extractor.file_utils._get_doc_chunks")
+    def test_insert_sqlite_chunks_flushes_bounded_batches(self, get_doc_chunks):
+        import sqlite3
+
+        class DummyDoc:
+            doc_uuid = "bounded-batch-doc"
+            title = "Bounded batches"
+            author = "Test author"
+
+        get_doc_chunks.return_value = [{"chunk_index": index, "content": f"chunk {index}"} for index in range(501)]
+        conn = sqlite3.connect(":memory:")
+        cursor = conn.cursor()
+        file_utils._init_sqlite_export_schema(cursor)
+
+        file_utils._insert_sqlite_chunks(cursor, DummyDoc(), "bounded-batch-doc")
+        conn.commit()
+
+        self.assertEqual(cursor.execute("SELECT COUNT(*) FROM chunks").fetchone()[0], 501)
+        self.assertEqual(cursor.execute("SELECT COUNT(*) FROM chunks_fts").fetchone()[0], 501)
+        conn.close()
+
     def test_render_markdown_safe_footnote_rendering(self):
         md_text = "Here is a statement with a footnote reference[^1].\n\n[^1]: Note description text."
         html = file_utils.render_markdown_to_html(md_text)
         self.assertIn("footnote", html)
         self.assertIn("Note description text", html)
+
+    def test_sanitise_yaml_block_escapes_backslashes(self):
+        import yaml
+
+        from extractor.tasks import _sanitise_yaml_block
+
+        raw_yaml = "title: Introduction to \\theta calculus\nauthor: Dr. O'Connor\npath: C:\\data\\documents\n"
+        sanitized = _sanitise_yaml_block(raw_yaml)
+        parsed = yaml.safe_load(sanitized)
+        self.assertIsInstance(parsed, dict)
+        self.assertEqual(parsed.get("title"), "Introduction to \\theta calculus")
+        self.assertEqual(parsed.get("author"), "Dr. O'Connor")
+        self.assertEqual(parsed.get("path"), "C:\\data\\documents")
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    @patch("extractor.file_utils._get_offline_docs")
+    def test_export_max_documents_limit_enforced(self, mock_get_docs):
+        dummy_docs = [MagicMock(cost_usd=0.0, page_count=1) for _ in range(1001)]
+        mock_get_docs.return_value = dummy_docs
+
+        with self.assertRaises(ValueError) as ctx:
+            file_utils.generate_curated_zip_bundle(["doc"] * 1001)
+        self.assertIn("Export batch exceeds maximum document limit of 1000 items.", str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx:
+            file_utils.generate_curated_csv_bundle(["doc"] * 1001)
+        self.assertIn("Export batch exceeds maximum document limit of 1000 items.", str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx:
+            file_utils.generate_curated_sqlite_bundle(["doc"] * 1001)
+        self.assertIn("Export batch exceeds maximum document limit of 1000 items.", str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx:
+            file_utils.generate_sft_dataset_pairs(["doc"] * 1001)
+        self.assertIn("Export batch exceeds maximum document limit of 1000 items.", str(ctx.exception))

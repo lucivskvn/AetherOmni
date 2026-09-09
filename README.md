@@ -18,6 +18,16 @@
 
 Runtime release identity is intentionally not duplicated in this static README. The configured public app exposes `GET /release/`; Cloud Build verifies that endpoint reports the computed release version and commit SHA after each deployment.
 
+For local verification, use `bash run_checks.sh` as the canonical gate. The
+legacy `scripts/verify-pipeline.sh` path is a local-only compatibility wrapper.
+Before deploying a `system_settings` schema change, run the boolean-only
+`scripts/normalize_system_settings.py` dry run; its approved `--apply` path
+purges retired persisted provider credentials and verifies its postconditions before the schema release.
+
+Dashboard updates combine periodic status snapshots with Realtime notifications. The status response is complete and user-scoped so row removal cannot confuse pagination with deletion. RAG search streams text-safe SSE tokens when supported and falls back to the established sanitized response otherwise. Cancellation persists a stop marker and removes queued work; a running provider call may finish before the worker checks cancellation. Storage deletion failures retain the document for retry. Deployment scaling and global settings changes are restricted to superusers; the configured worker is private and accepts Cloud Tasks OIDC delivery only. Production deployments require the Supabase database secret rather than falling back to SQLite. The runtime account has only the Cloud Run read permission required for the superuser deployment controller to inspect the worker before changing its scale.
+
+Spreadsheet ingestion applies separate XLSX archive, worksheet, row, cell, and rendered-Markdown budgets before parsing. It rejects oversized workbooks rather than allowing a document to consume a worker's memory allocation.
+
 [![Desloppify Codebase Health](docs/scorecard.png)](docs/scorecard.png)
 
 ---
@@ -71,6 +81,7 @@ flowchart TD
   - **Cloud SAST & Quality Gate**: Automated CI pipeline integrating static application security testing with remote SonarQube MQR Quality Gate enforcement.
   - **Immutable CI Dependencies**: GitHub Actions are pinned to reviewed commit SHAs, preventing tag-repointing supply-chain changes.
   - **Reproducible CI Tooling**: Security scanners run in an isolated environment when their dependencies differ from the application runtime, without weakening blocking checks.
+  - **Reliability Contract Gate**: Local and GitHub Actions verification rejects private cross-tenant deduplication, permissive production rate-limit failures, web-entered deployment credentials, duplicate online deletion-spend accounting, weakened Supabase Auth checks, and reduced Cloud Run memory safeguards in Pulumi, manifests, and deploy commands before remote quality analysis or deployment.
 
 ---
 
@@ -198,7 +209,7 @@ KORDA serves three core application tiers: Business Enterprise, Academic & Schol
 | **Arabic & Multilingual RTL** | Automatic Arabic typography detection (`dir="rtl" class="arabic-text"`), Markdown rendering, HTML sanitization. | `parse_arabic_layout` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L48) |
 | **Multi-Model LLM Gateway** | Dynamic provider fallbacks across Gemini 2.5 Flash / 2.5 Flash-Lite / 2.5 Pro, Vertex AI (multi-region), and OpenRouter (Llama 3, Gemma 2, Qwen 2 free tiers). | `generate_llm_content_unified` in [`llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) |
 | **SurrealDB HNSW Vector RAG** | High-dimensional HNSW similarity search, document UUID scope filtering, Reciprocal Rank Fusion (RRF), and TTL semantic cache. | `search_rag_cache_hnsw` in [`surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py#L880) |
-| **Persisted Budget Accounting** | Hard monthly USD budget caps; document deletion spend is persisted to `MonthlySpendLog`. | `MonthlySpendLog.add_cost()` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L865) |
+| **Persisted Budget Accounting** | Hard monthly USD budget caps; online deletion accounting is held in SurrealDB, while `MonthlySpendLog` supports explicit offline mode. | `MonthlySpendLog.add_cost()` in [`models.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/models.py#L313) |
 | **Curated ZIP & Single-Copy Exports** | Single-copy standardized document exports (`documents/001_title.md`) with optional multi-taxonomy views (`Language/`, `Author/`) and `manifest.json`. | `generate_curated_zip_bundle` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L322) |
 | **Automated Artifact Cleanup** | Automated DevSecOps file retention policy (`cleanup_stale_temp_artifacts`) purging temporary processing scratch files older than 24h. | `cleanup_stale_temp_artifacts` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L420) |
 | **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
@@ -404,7 +415,7 @@ extraction, and push retries.
 
 ### 1. Prerequisites
 
-- **Python**: Target version declared in `pyproject.toml` (Python 3.14 recommended)
+- **Python**: Target version declared in `pyproject.toml` (Python 3.14+ required)
 - **Node.js**: Node.js v20+ & npm (for Vitest & ESLint 10)
 - **uv**: Astral `uv` Python package manager (recommended for sub-second installs)
 - **Docker**: Docker & Docker Compose (optional for local SurrealDB)
@@ -422,12 +433,16 @@ DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
 
 # LLM Gateway & APIs
 GEMINI_API_KEY="your-gemini-api-key"
+# Only this server-configured identity is eligible for Django administrator access.
 ADMIN_EMAIL="admin@example.com"
 
 # SurrealDB Vector & High-Throughput Engine (Local or Remote)
 SURREAL_URL="ws://localhost:8001/rpc"
 SURREAL_USER="root"
 SURREAL_PASS="root"
+# Bound the shared SurrealDB RPC executor; tune only with production load evidence.
+SURREAL_EXECUTOR_WORKERS="16"
+
 SURREALDB_OFFLINE=False
 
 # Supabase Auth & PostgreSQL (Optional for local offline SQLite fallback)
@@ -441,6 +456,8 @@ CF_TURNSTILE_SITE_KEY="your-turnstile-site-key"
 # Sentry Observability (Optional in local development)
 SENTRY_DSN=""
 ```
+
+`bash run_checks.sh` and CI enforce reliability contracts for worker task fencing, recovery-token lifetime, YAML export escaping, and dashboard polling. These checks are derived from production-relevant SonarQube and review findings and are intentionally blocking.
 
 > [!NOTE]
 > For production and remote SurrealDB deployments, `SURREAL_URL` must use a secure WebSocket RPC endpoint (`wss://<surrealdb-host>/rpc`). For purely offline testing without a live SurrealDB server, set `SURREALDB_OFFLINE=True`.
@@ -472,7 +489,7 @@ Access the application in your browser at `http://localhost:8000`.
 ### 5. Execute Full Quality & Test Verification
 
 ```bash
-# Run fast differential pre-commit check (<0.3s):
+# Run the differential pre-commit check:
 bash run_checks.sh --fast
 
 # Run the complete 5-layer DevSecOps test & security suite:

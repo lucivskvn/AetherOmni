@@ -3,21 +3,24 @@
 
 import os
 import sys
-
-# Configure specific temporary directories for libraries that need to write to the filesystem
-# in serverless environments (like Cloud Run) where only /tmp is writable.
-os.environ["HF_HOME"] = "/tmp/huggingface"  # nosec B108 # NOSONAR
-os.environ["XDG_CACHE_HOME"] = "/tmp/xdg_cache"  # nosec B108 # NOSONAR
-os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"  # nosec B108 # NOSONAR
+import tempfile
 
 from dotenv import load_dotenv
+
+load_dotenv()
+
+# Use private per-process cache directories when a deployment has not supplied
+# an explicit cache location. Fixed paths below /tmp are shared and unsafe.
+for cache_variable, cache_prefix in (
+    ("HF_HOME", "aetheromni-hf-"),
+    ("XDG_CACHE_HOME", "aetheromni-xdg-"),
+    ("MPLCONFIGDIR", "aetheromni-mpl-"),
+):
+    os.environ.setdefault(cache_variable, tempfile.mkdtemp(prefix=cache_prefix))
 
 
 def main():
     """Run administrative tasks."""
-    # Load .env file at startup
-    load_dotenv()
-
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
     try:
         from django.core.management import execute_from_command_line

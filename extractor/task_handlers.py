@@ -20,9 +20,13 @@ import logging
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+
+from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +76,47 @@ def get_task_registry() -> dict[str, Callable]:
     """Returns the populated task registry, loading task handlers if not yet registered."""
     _register()
     return _TASK_REGISTRY
+
+
+def _document_task_identity(task_name: str, payload: dict) -> str:
+    """Return a write-fence identity only for a task that owns one document."""
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    if task_name in {"process_document", REEMBED_DOCUMENT_TASK}:
+        return payload.get(CLOUD_TASK_NAME, "")
+    return ""
+
+
+def _has_active_document_claim(doc: dict) -> bool:
+    """Return whether a non-terminal document claim has been refreshed recently."""
+    updated_at = doc.get("updated_at")
+    if isinstance(updated_at, str):
+        updated_at = parse_datetime(updated_at)
+    if updated_at is None:
+        return True
+    if timezone.is_naive(updated_at):
+        updated_at = timezone.make_aware(updated_at, timezone.UTC)
+    return updated_at > timezone.now() - timezone.timedelta(minutes=5)
+
+
+def _confirm_document_outcome(task_name: str, payload: dict) -> None:
+    """Do not acknowledge an unfinished delivery after a worker/storage failure."""
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    if task_name not in {"process_document", REEMBED_DOCUMENT_TASK}:
+        return
+    from extractor import surreal_db
+
+    doc_uuid = payload.get("document_uuid") or payload.get("document_id")
+    doc = surreal_db.get_document(doc_uuid) if doc_uuid else None
+    if not doc or doc.get("status") in {"COMPLETED", "FAILED"} or doc.get(CANCEL_REQUESTED):
+        return
+    expected = payload.get(CLOUD_TASK_NAME)
+    if expected and doc.get(CLOUD_TASK_NAME) != expected:
+        return  # Superseded delivery; a different task owns the document now.
+    if expected and _has_active_document_claim(doc):
+        return  # A duplicate delivery found the currently active worker's claim.
+    raise RuntimeError("Document has no durable terminal outcome; delivery remains retryable.")
 
 
 # ── OIDC Bearer token verification ───────────────────────────────────────────
@@ -252,8 +297,13 @@ class CloudTaskHandlerView(View):
         # ── Dispatch ──────────────────────────────────────────────────────
         handler = TASK_REGISTRY.get(task_name)
         if handler is None:
-            logger.error("[CloudTasksHandler] Unknown task name: '%s'", task_name)
-            return JsonResponse({"error": f"Unknown task: {task_name}"}, status=404)
+            # SEC-LOG: Sanitize task_name before logging to prevent log injection
+            # via crafted newline or control characters in the URL path segment.
+            import re as _re
+
+            safe_task_name = _re.sub(r"\W", "_", task_name)[:64]
+            logger.error("[CloudTasksHandler] Unknown task name: '%s'", safe_task_name)
+            return JsonResponse({"error": "Unknown task."}, status=404)
 
         body = request.body
         if body and len(body) > 1_048_576:
@@ -264,18 +314,26 @@ class CloudTaskHandlerView(View):
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON payload"}, status=400)
 
+        if not isinstance(payload, dict):
+            return JsonResponse({"error": "Task payload must be a JSON object"}, status=400)
+
         logger.info("[CloudTasksHandler] Dispatching task '%s' with payload keys: %s", task_name, list(payload.keys()))
 
+        from extractor import surreal_db
+
+        token = surreal_db.document_task_name.set(_document_task_identity(task_name, payload))
         try:
             handler(payload)
+            _confirm_document_outcome(task_name, payload)
         except Exception:
             logger.exception("[CloudTasksHandler] Task '%s' raised an unhandled exception", task_name)
-            # Return 200 OK even on internal pipeline failures — the pipeline
-            # already marks the document as FAILED via _fail_document().
-            # Returning 500 causes Cloud Tasks to retry infinitely, creating
-            # duplicate executions and a retry storm.
+            # A normal pipeline failure is persisted by the handler and returns normally.
+            # An escaping exception means durable completion was not confirmed.
             return JsonResponse(
-                {"status": "error", "task": task_name, "detail": "Task execution failed; see Cloud Run logs."}
+                {"status": "error", "task": task_name, "detail": "Task execution failed; see Cloud Run logs."},
+                status=503,
             )
+        finally:
+            surreal_db.document_task_name.reset(token)
 
         return JsonResponse({"status": "ok", "task": task_name})

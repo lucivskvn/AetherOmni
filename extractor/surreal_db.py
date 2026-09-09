@@ -16,12 +16,15 @@ Capabilities:
 from __future__ import annotations
 
 import asyncio
+import atexit
 import concurrent.futures
 import json
 import logging
 import os
 import re
 import sys
+import threading
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
@@ -30,7 +33,10 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from surrealdb import AsyncSurreal
 
+from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME
+
 logger = logging.getLogger(__name__)
+document_task_name: ContextVar[str] = ContextVar("document_task_name", default="")
 
 VALID_DOCUMENT_FIELDS = {
     "title",
@@ -91,6 +97,9 @@ def _model_to_dict(doc) -> dict:
         "original_filename": doc.original_filename,
         "file_hash": doc.file_hash,
         "status": doc.status,
+        "error_message": doc.error_message,
+        CLOUD_TASK_NAME: doc.cloud_task_name,
+        CANCEL_REQUESTED: doc.cancel_requested,
         "uploaded_by_id": str(doc.uploaded_by.id) if doc.uploaded_by else None,
         "language": doc.language,
         "author": doc.author,
@@ -119,7 +128,6 @@ def _settings_to_dict(settings_obj) -> dict:
         "monthly_budget_usd": float(settings_obj.monthly_budget_usd),
         "selected_model": settings_obj.selected_model,
         "currency": settings_obj.currency,
-        "openrouter_api_key": settings_obj.openrouter_api_key,
     }
 
 
@@ -391,11 +399,57 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
     raise RuntimeError(f"SurrealDB error after {_max_attempts} attempts: {last_exc}")
 
 
+def _surreal_executor_workers() -> int:
+    """Return a bounded RPC executor size suitable for the current deployment."""
+    from django.conf import settings
+
+    return max(1, getattr(settings, "SURREAL_EXECUTOR_WORKERS", 16))
+
+
+_SHARED_EXECUTOR: concurrent.futures.ThreadPoolExecutor | None = None
+_EXECUTOR_ADMISSION: threading.BoundedSemaphore | None = None
+_EXECUTOR_LOCK = threading.Lock()
+
+
+def _get_shared_executor() -> tuple[concurrent.futures.ThreadPoolExecutor, threading.BoundedSemaphore]:
+    """Lazily create a bounded executor after Django settings are available."""
+    global _SHARED_EXECUTOR, _EXECUTOR_ADMISSION
+    if _SHARED_EXECUTOR is None:
+        with _EXECUTOR_LOCK:
+            if _SHARED_EXECUTOR is None:
+                workers = _surreal_executor_workers()
+                _SHARED_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=workers, thread_name_prefix="surreal-rpc"
+                )
+                _EXECUTOR_ADMISSION = threading.BoundedSemaphore(workers * 2)
+    if _SHARED_EXECUTOR is None or _EXECUTOR_ADMISSION is None:
+        raise RuntimeError("SurrealDB RPC executor could not be initialized.")
+    return _SHARED_EXECUTOR, _EXECUTOR_ADMISSION
+
+
+def _shutdown_shared_executor() -> None:
+    """Cancel queued RPC work during process shutdown without blocking termination."""
+    if _SHARED_EXECUTOR is not None:
+        _SHARED_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+
+
+atexit.register(_shutdown_shared_executor)
+
+
 def _run_in_thread(coro):
     """Run an async coroutine synchronously in a separate thread to prevent event loop blocking/corruption."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(asyncio.run, coro)
-        return future.result()
+    executor, admission = _get_shared_executor()
+    if not admission.acquire(blocking=False):
+        coro.close()
+        raise RuntimeError("SurrealDB RPC executor is saturated; retry later.")
+    future = executor.submit(asyncio.run, coro)
+    future.add_done_callback(lambda _: admission.release())
+    timeout = max(1, getattr(settings, "SURREAL_RPC_TIMEOUT_SECONDS", 60))
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError as exc:
+        future.cancel()
+        raise RuntimeError("SurrealDB RPC timed out; retry later.") from exc
 
 
 def _run(sql: str, params: dict | None = None) -> list[dict]:
@@ -612,7 +666,7 @@ def _update_document_offline(doc_uuid, data):
             doc = SourceDocument.objects.get(uuid=doc_uuid)
         except ValueError:
             doc = SourceDocument.objects.get(id=int(doc_uuid))
-    except (SourceDocument.DoesNotExist, ValueError):
+    except SourceDocument.DoesNotExist, ValueError:
         return {}
 
     _apply_offline_doc_update(doc, data, user_model)
@@ -627,6 +681,9 @@ def _update_document_surreal(doc_uuid, data):
         "original_filename",
         "file_hash",
         "status",
+        "error_message",
+        CLOUD_TASK_NAME,
+        CANCEL_REQUESTED,
         "uploaded_by_id",
         "language",
         "author",
@@ -669,7 +726,11 @@ def _update_document_surreal(doc_uuid, data):
     if "updated_at" not in payload:
         set_parts.append("updated_at = time::now()")
 
-    sql = f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid;"  # nosec B608 # noqa: S608
+    condition = ""
+    if task_name := document_task_name.get():
+        condition = " AND cloud_task_name = $expected_task AND cancel_requested != true"
+        params["expected_task"] = task_name
+    sql = f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid{condition};"  # nosec B608 # noqa: S608
     rows = _first_result(_run(sql, params))
     return rows[0] if rows else {}
 
@@ -707,11 +768,14 @@ def claim_document_for_processing(doc_uuid: str) -> dict | None:
                     .values_list("id", flat=True)
                     .first()
                 )
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         if document_id is None:
             return None
-        if SourceDocument.objects.filter(id=document_id, status="PENDING").update(status="EXTRACTING") != 1:
+        claim = SourceDocument.objects.filter(id=document_id, status="PENDING", cancel_requested=False)
+        if task_name := document_task_name.get():
+            claim = claim.filter(cloud_task_name=task_name)
+        if claim.update(status="EXTRACTING") != 1:
             return None
         # BUG-11: Wrap in try/except — a concurrent delete between the atomic
         # .update() and this .get() would otherwise crash the worker thread.
@@ -720,11 +784,55 @@ def claim_document_for_processing(doc_uuid: str) -> dict | None:
         except SourceDocument.DoesNotExist:
             return None
 
+    params = {"doc_uuid": doc_uuid}
     sql = (
         "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now() "
         "WHERE doc_uuid = $doc_uuid AND status = 'PENDING' RETURN AFTER;"
     )
-    rows = _first_result(_run(sql, {"doc_uuid": doc_uuid}))
+    if task_name := document_task_name.get():
+        params["expected_task"] = task_name
+        sql = (
+            "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now() "
+            "WHERE doc_uuid = $doc_uuid AND status = 'PENDING' "
+            "AND cloud_task_name = $expected_task AND cancel_requested != true RETURN AFTER;"
+        )
+    rows = _first_result(_run(sql, params))
+    return rows[0] if rows else None
+
+
+def claim_document_for_reembedding(doc_uuid: str) -> dict | None:
+    """Claim edited content before changing status or deleting its existing chunks."""
+    from django.conf import settings
+
+    doc_uuid = str(doc_uuid)
+    task_name = document_task_name.get()
+    statuses = ["PENDING", "COMPLETED", "FAILED"]
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        document = get_document(doc_uuid)
+        if not document:
+            return None
+        claim = SourceDocument.objects.filter(uuid=document["doc_uuid"], status__in=statuses, cancel_requested=False)
+        if task_name:
+            claim = claim.filter(cloud_task_name=task_name)
+        if claim.update(status="EMBEDDING") != 1:
+            return None
+        return get_document(doc_uuid)
+    if task_name:
+        sql = (
+            "UPDATE documents SET status = 'EMBEDDING', updated_at = time::now() "
+            "WHERE doc_uuid = $doc_uuid AND status IN $statuses "
+            "AND cancel_requested != true AND cloud_task_name = $expected_task RETURN AFTER;"
+        )
+        params: dict[str, Any] = {"doc_uuid": doc_uuid, "statuses": statuses, "expected_task": task_name}
+    else:
+        sql = (
+            "UPDATE documents SET status = 'EMBEDDING', updated_at = time::now() "
+            "WHERE doc_uuid = $doc_uuid AND status IN $statuses AND cancel_requested != true RETURN AFTER;"
+        )
+        params = {"doc_uuid": doc_uuid, "statuses": statuses}
+    rows = _first_result(_run(sql, params))
     return rows[0] if rows else None
 
 
@@ -745,7 +853,7 @@ def get_document(doc_uuid: str) -> dict | None:
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(doc_uuid))
             return _model_to_dict(doc)
-        except (SourceDocument.DoesNotExist, ValueError):
+        except SourceDocument.DoesNotExist, ValueError:
             return None
 
     sql = "SELECT * FROM documents WHERE doc_uuid = $doc_uuid;"
@@ -784,7 +892,7 @@ def get_documents(doc_uuids: list[str]) -> list[dict]:
             for item in clean_uuids:
                 try:
                     int_ids.append(int(item))
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     uuid_strs.append(str(item))
 
             docs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs))
@@ -798,7 +906,7 @@ def get_documents(doc_uuids: list[str]) -> list[dict]:
     return _first_result(results)
 
 
-def list_documents(user_id: str | None = None) -> list[dict]:
+def list_documents(user_id: str | None = None, limit: int | None = None) -> list[dict]:
     """Retrieve documents from SurrealDB (user-specific + public)."""
     from django.conf import settings
 
@@ -811,16 +919,31 @@ def list_documents(user_id: str | None = None) -> list[dict]:
             qs = SourceDocument.objects.filter(Q(uploaded_by_id=user_id) | Q(uploaded_by__isnull=True))
         else:
             qs = SourceDocument.objects.all()
+        if limit is not None:
+            qs = qs[: max(1, int(limit))]
         return [_model_to_dict(doc) for doc in qs]
 
     if user_id:
-        sql = (
-            "SELECT * FROM documents WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE ORDER BY created_at DESC;"
+        if limit is not None:
+            return _first_result(
+                _run(
+                    "SELECT * FROM documents WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE "
+                    "ORDER BY created_at DESC LIMIT $limit;",
+                    {"user_id": str(user_id), "limit": max(1, int(limit))},
+                )
+            )
+        return _first_result(
+            _run(
+                "SELECT * FROM documents WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE "
+                "ORDER BY created_at DESC;",
+                {"user_id": str(user_id)},
+            )
         )
-        return _first_result(_run(sql, {"user_id": str(user_id)}))
-    else:
-        sql = "SELECT * FROM documents ORDER BY created_at DESC;"
-        return _first_result(_run(sql))
+    if limit is not None:
+        return _first_result(
+            _run("SELECT * FROM documents ORDER BY created_at DESC LIMIT $limit;", {"limit": max(1, int(limit))})
+        )
+    return _first_result(_run("SELECT * FROM documents ORDER BY created_at DESC;"))
 
 
 def get_document_by_hash(file_hash: str, user_id: str | None = None) -> dict | None:
@@ -863,19 +986,20 @@ def get_system_settings() -> dict:
     if rows:
         return rows[0]
 
-    # Create default settings if empty
-    default_data = {"monthly_budget_usd": 10.0, "selected_model": "auto", "currency": "auto", "openrouter_api_key": ""}
+    # Create default settings if empty. Provider credentials are deployment-managed.
+    default_data = {"monthly_budget_usd": 10.0, "selected_model": "auto", "currency": "auto"}
     rows = _first_result(_run("UPSERT system_settings:1 CONTENT $data;", {"data": default_data}))
     return rows[0] if rows else default_data
 
 
+# Provider credentials are intentionally excluded from ALLOWED_SETTINGS_KEYS.
+# They must only be resolved from GCP Secret Manager or environment variables.
 ALLOWED_SETTINGS_KEYS = frozenset(
     {
         "monthly_budget_usd",
         "selected_model",
         "currency",
         "csrf_trusted_origins",
-        "openrouter_api_key",
         "source_library_uri",
     }
 )
@@ -934,6 +1058,36 @@ def count_audit_logs() -> int:
     return rows[0].get("n", 0) if rows else 0
 
 
+def _record_document_spend(doc_uuid: str, created_at: datetime, cost: float, in_tok: int, out_tok: int) -> bool:
+    """Atomically record one deleted document's spend, tolerating retry attempts."""
+    sql = (
+        "BEGIN TRANSACTION; "
+        "LET $existing = (SELECT id FROM document_spend_reconciliations "
+        "WHERE doc_uuid = $doc_uuid LIMIT 1); "
+        "IF array::len($existing) = 0 { "
+        "CREATE document_spend_reconciliations CONTENT { "
+        "doc_uuid: $doc_uuid, year: $year, month: $month, cost_usd: $cost_usd, "
+        "input_tokens: $input_tokens, output_tokens: $output_tokens "
+        "}; }; COMMIT TRANSACTION;"
+    )
+    try:
+        _run(
+            sql,
+            {
+                "doc_uuid": doc_uuid,
+                "year": created_at.year,
+                "month": created_at.month,
+                "cost_usd": cost,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+            },
+        )
+    except Exception as exc:
+        logger.warning("[Delete] Failed to reconcile document spend: %s", exc)
+        return False
+    return True
+
+
 def _flush_document_cost(doc) -> bool:
     """Persist a document's spend before deletion, returning whether deletion is safe."""
     cost = doc.get("cost_usd") or 0.0
@@ -959,21 +1113,31 @@ def _flush_document_cost(doc) -> bool:
         logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=string")
         return False
 
+    from django.conf import settings
+
+    input_tokens = doc.get("input_tokens") or 0
+    output_tokens = doc.get("output_tokens") or 0
+    if not getattr(settings, "SURREALDB_OFFLINE", False):
+        doc_uuid = str(doc.get("doc_uuid") or "")
+        if not doc_uuid:
+            logger.warning("[SurrealDB] event=surrealdb_missing_document_uuid")
+            return False
+        return _record_document_spend(doc_uuid, created_at, float(cost), input_tokens, output_tokens)
+
     from decimal import Decimal
 
     from extractor.models import MonthlySpendLog
 
     try:
-        persisted = MonthlySpendLog.add_cost(
+        return MonthlySpendLog.add_cost(
             date=created_at,
             cost=Decimal(str(cost)),
-            in_tok=doc.get("input_tokens") or 0,
-            out_tok=doc.get("output_tokens") or 0,
+            in_tok=input_tokens,
+            out_tok=output_tokens,
         )
     except Exception as exc:
         logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
         return False
-    return persisted
 
 
 def _delete_offline_document(doc_uuid: str) -> None:
@@ -993,7 +1157,7 @@ def _delete_offline_document(doc_uuid: str) -> None:
         if doc and hasattr(doc, "id"):
             _test_chunks.pop(str(doc.id), None)
         doc.delete()
-    except (SourceDocument.DoesNotExist, ValueError):
+    except SourceDocument.DoesNotExist, ValueError:
         pass
 
 
@@ -1042,6 +1206,26 @@ def delete_document(doc_uuid: str) -> None:
 # ── Chunk helpers ─────────────────────────────────────────────────────────────
 
 
+def _write_worker_chunks(doc_uuid: str, payloads: list[dict] | None = None) -> None:
+    """Fence each chunk mutation against cancellation, deletion, and replacement tasks."""
+    params = {"doc_uuid": doc_uuid, "expected_task": document_task_name.get(), "payloads": payloads}
+    if payloads is None:
+        sql = (
+            "BEGIN TRANSACTION; "
+            "IF array::len((SELECT id FROM documents WHERE doc_uuid = $doc_uuid "
+            "AND cloud_task_name = $expected_task AND cancel_requested != true)) > 0 { "
+            "DELETE FROM chunks WHERE doc_uuid = $doc_uuid; }; COMMIT TRANSACTION;"
+        )
+    else:
+        sql = (
+            "BEGIN TRANSACTION; "
+            "IF array::len((SELECT id FROM documents WHERE doc_uuid = $doc_uuid "
+            "AND cloud_task_name = $expected_task AND cancel_requested != true)) > 0 { "
+            "INSERT INTO chunks $payloads; }; COMMIT TRANSACTION;"
+        )
+    _run(sql, params)
+
+
 def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     """
     Atomically replace all chunks for a document using a SurrealDB transaction.
@@ -1068,20 +1252,26 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     batch_size = 15
 
     # First, atomically delete all existing chunks for this document
-    _run(
-        "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
-        {"doc_uuid": doc_uuid},
-    )
+    if document_task_name.get():
+        _write_worker_chunks(doc_uuid)
+    else:
+        _run(
+            "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
+            {"doc_uuid": doc_uuid},
+        )
 
     if not chunk_payloads:
         return
 
     for i in range(0, len(chunk_payloads), batch_size):
         batch = chunk_payloads[i : i + batch_size]
-        _run(
-            "BEGIN TRANSACTION; INSERT INTO chunks $payloads; COMMIT TRANSACTION;",
-            {"payloads": batch},
-        )
+        if document_task_name.get():
+            _write_worker_chunks(doc_uuid, batch)
+        else:
+            _run(
+                "BEGIN TRANSACTION; INSERT INTO chunks $payloads; COMMIT TRANSACTION;",
+                {"payloads": batch},
+            )
 
 
 def delete_chunks(doc_uuid: str) -> None:
@@ -1095,7 +1285,10 @@ def delete_chunks(doc_uuid: str) -> None:
         return
 
     sql = "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;"
-    _run(sql, {"doc_uuid": doc_uuid})
+    if document_task_name.get():
+        _write_worker_chunks(doc_uuid)
+    else:
+        _run(sql, {"doc_uuid": doc_uuid})
 
 
 def count_document_chunks(doc_uuid: str) -> int:
@@ -1150,22 +1343,23 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
     return dict.fromkeys(doc_uuids, 0)
 
 
-def get_document_chunks(doc_uuid: str, limit: int = 100) -> list[dict[str, Any]]:
+def get_document_chunks(doc_uuid: str, limit: int = 100, start: int = 0) -> list[dict[str, Any]]:
     """Retrieve chunks for a document ordered by chunk_index."""
     doc_uuid = str(doc_uuid)
     limit = min(max(1, int(limit)), 500)
+    start = max(0, int(start))
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit;"
-        result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit}))
+        sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit START $start;"
+        result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit, "start": start}))
         if isinstance(result, list) and result:
             return result
         chunks = _test_chunks.get(doc_uuid, [])
-        return sorted(chunks, key=lambda x: int(x.get("chunk_index", 0)))[:limit]
+        return sorted(chunks, key=lambda x: int(x.get("chunk_index", 0)))[start : start + limit]
 
-    sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit;"
-    result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit}))
+    sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit START $start;"
+    result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit, "start": start}))
     if isinstance(result, list):
         return result
     return []
@@ -1183,30 +1377,34 @@ def clone_chunks(source_uuid: str, target_uuid: str) -> None:
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        _test_chunks[target_uuid] = list(_test_chunks.get(source_uuid, []))
-        _run(
-            "INSERT INTO chunks SELECT * FROM chunks WHERE doc_uuid = $source_uuid;",
-            {"source_uuid": source_uuid, "target_uuid": target_uuid},
-        )
+        source_chunks = _test_chunks.get(source_uuid, [])
+        _test_chunks[target_uuid] = [{**c, "doc_uuid": target_uuid} for c in source_chunks]
         return
 
-    sql = (
-        "LET $rows = (SELECT * FROM chunks WHERE doc_uuid = $source_uuid);"
-        "FOR $row IN $rows {"
-        "  INSERT INTO chunks {"
-        "    doc_uuid: $target_uuid,"
-        "    chunk_index: $row.chunk_index,"
-        "    content: $row.content,"
-        "    token_count: $row.token_count,"
-        "    language: $row.language,"
-        "    page_number: $row.page_number,"
-        "    chapter_title: $row.chapter_title,"
-        "    anchor_id: $row.anchor_id,"
-        "    embedding: $row.embedding"
-        "  };"
-        "};"
-    )
-    _run(sql, {"source_uuid": source_uuid, "target_uuid": target_uuid})
+    source_chunks = []
+    while page := get_document_chunks(source_uuid, limit=500, start=len(source_chunks)):
+        source_chunks.extend(page)
+        if len(page) < 500:
+            break
+    if not source_chunks:
+        return
+
+    new_payloads = []
+    for c in source_chunks:
+        payload = {
+            "doc_uuid": target_uuid,
+            "chunk_index": c.get("chunk_index", 0),
+            "content": c.get("content", ""),
+            "token_count": c.get("token_count", 0),
+            "language": c.get("language", ""),
+            "page_number": c.get("page_number", 1),
+            "chapter_title": c.get("chapter_title", ""),
+            "anchor_id": c.get("anchor_id", ""),
+            "embedding": c.get("embedding"),
+        }
+        new_payloads.append(payload)
+
+    recreate_chunks(target_uuid, new_payloads)
 
 
 def search_chunks_hnsw(
@@ -1361,6 +1559,9 @@ def purge_all() -> None:
         _test_chunks.clear()
         return
 
+    documents = list_documents()
+    if not all(_flush_document_cost(document) for document in documents):
+        raise RuntimeError("Document costs could not be recorded; purge aborted.")
     _run("DELETE FROM documents; DELETE FROM chunks; DELETE FROM rag_cache; DELETE FROM user_memories;")
 
 
@@ -1591,23 +1792,63 @@ def check_rate_limit_atomic(key: str, max_requests: int, window_seconds: int = 3
         return True
 
     try:
-        sql = "SELECT * FROM rate_limits WHERE key = $key AND expires_at > time::now() LIMIT 1;"
-        res = _first_result(_run(sql, {"key": key}))
-        if not res:
-            insert_sql = (
-                f"INSERT INTO rate_limits {{ key: $key, request_count: 1, window_start: time::now(), "
-                f"expires_at: time::now() + {max(1, int(window_seconds))}s }};"
-            )
-            _run(insert_sql, {"key": key})
-            return True
-        current = res[0]
-        if current.get("request_count", 0) >= max_requests:
-            return False
-        _run("UPDATE rate_limits SET request_count += 1 WHERE key = $key;", {"key": key})
-        return True
+        from datetime import timedelta
+
+        from django.utils import timezone as tz
+
+        window_sec = max(1, int(window_seconds))
+        expires_at = tz.now() + timedelta(seconds=window_sec)
+        sql = (
+            "BEGIN TRANSACTION;"
+            "LET $existing = (SELECT * FROM rate_limits WHERE key = $key AND expires_at > time::now() LIMIT 1);"
+            "IF array::len($existing) = 0 {"
+            "  INSERT INTO rate_limits { key: $key, request_count: 1, window_start: time::now(), expires_at: $expires_at };"
+            "  RETURN true;"
+            "} ELSE IF $existing[0].request_count >= $max_requests {"
+            "  RETURN false;"
+            "} ELSE {"
+            "  UPDATE rate_limits SET request_count += 1 WHERE key = $key;"
+            "  RETURN true;"
+            "};"
+            "COMMIT TRANSACTION;"
+        )
+        res = _run(sql, {"key": key, "max_requests": max_requests, "expires_at": expires_at})
+        decision = _parse_rate_limit_transaction_result(res, max_requests)
+        if decision is not None:
+            return decision
+        logger.warning("[RateLimit] Unexpected SurrealDB transaction result; denying request.")
+        return False
     except Exception as exc:
-        logger.debug("[RateLimit] Error checking rate limit in SurrealDB: %s", exc)
-        return True
+        logger.warning("[RateLimit] Error checking rate limit in SurrealDB; denying request: %s", exc)
+        return False
+
+
+def _extract_stmt_decision(val: Any, max_requests: int) -> bool | None:
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, list) and val:
+        first = val[0]
+        if isinstance(first, bool):
+            return first
+        if isinstance(first, dict) and "request_count" in first:
+            return bool(first.get("request_count", 0) <= max_requests)
+    return None
+
+
+def _parse_rate_limit_transaction_result(res: Any, max_requests: int) -> bool | None:
+    """Extract boolean decision from SurrealDB rate limit transaction statement results."""
+    if isinstance(res, bool):
+        return res
+    candidates = res if isinstance(res, list) else [res]
+    for stmt in candidates:
+        if isinstance(stmt, bool):
+            return stmt
+        if isinstance(stmt, dict):
+            _check_surreal_error(stmt)
+            decision = _extract_stmt_decision(stmt.get("result"), max_requests)
+            if decision is not None:
+                return decision
+    return None
 
 
 # ── Knowledge Graph RAG & Graph-Relational Methods ───────────────────────────

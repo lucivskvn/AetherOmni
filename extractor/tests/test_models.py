@@ -1,9 +1,10 @@
 import os
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from extractor.models import AuditLog, MonthlySpendLog, SafeVectorField, SourceDocument
@@ -25,6 +26,37 @@ class MonthlySpendLogTestCase(TestCase):
 
         with self.settings(SURREALDB_OFFLINE=False):
             self.assertEqual(str(MonthlySpendLog.total_for_month(2026, 7)), "12.345678")
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch.object(MonthlySpendLog, "add_cost")
+    def test_online_mirror_deletion_does_not_double_count_spend(self, add_cost):
+        document = SourceDocument.objects.create(
+            original_filename="online-ledger.pdf",
+            file_hash="a" * 64,
+            cost_usd=Decimal("1.250000"),
+        )
+
+        with (
+            patch("extractor.surreal_db.delete_document"),
+            patch("extractor.models.purge_rag_cache"),
+        ):
+            document.delete()
+
+        add_cost.assert_not_called()
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    @patch.object(MonthlySpendLog, "add_cost")
+    def test_offline_deletion_flushes_spend_to_django_ledger(self, add_cost):
+        document = SourceDocument.objects.create(
+            original_filename="offline-ledger.pdf",
+            file_hash="b" * 64,
+            cost_usd=Decimal("1.250000"),
+        )
+
+        with patch("extractor.models.purge_rag_cache"):
+            document.delete()
+
+        add_cost.assert_called_once()
 
 
 class AuditLogSignalsTestCase(TestCase):

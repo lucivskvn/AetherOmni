@@ -39,6 +39,8 @@ worker_max_instances = config.get_int("worker_max_instances") or 5
 
 # Explicit GCP Provider passing resolved project and region dynamically
 gcp_provider = gcp.Provider("gcp-provider", project=project, region=region)
+project_info = gcp.organizations.get_project(project_id=project, opts=pulumi.InvokeOptions(provider=gcp_provider))
+cloud_tasks_oidc_member = f"serviceAccount:{project_info.number}-compute@developer.gserviceaccount.com"
 
 # 1. Cloud Storage Media Bucket
 media_bucket = gcp.storage.Bucket(
@@ -81,11 +83,13 @@ service_account = gcp.serviceaccount.Account(
 )
 
 # Least-privilege IAM bindings
+RUN_INVOKER_ROLE = "roles/run.invoker"
 iam_roles = [
     "roles/aiplatform.user",  # Vertex AI / Gemini 2.5
     "roles/secretmanager.secretAccessor",  # Secret Manager Access
     "roles/cloudtasks.enqueuer",  # Enqueue to Cloud Tasks
-    "roles/run.invoker",  # Invoke Cloud Run internal endpoints
+    RUN_INVOKER_ROLE,  # Invoke Cloud Run internal endpoints
+    "roles/run.viewer",  # Read worker configuration for the superuser deployment controller
 ]
 
 iam_members = []
@@ -98,6 +102,18 @@ for idx, role in enumerate(iam_roles):
         opts=pulumi.ResourceOptions(provider=gcp_provider),
     )
     iam_members.append(member)
+
+# Cancellation can delete tasks only in this application's queue.
+task_deleter = gcp.cloudtasks.QueueIamMember(
+    "korda-task-deleter",
+    project=project,
+    location=region,
+    name=tasks_queue.name,
+    role="roles/cloudtasks.taskDeleter",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+iam_members.append(task_deleter)
 
 # Grant service account access to the media bucket
 gcp.storage.BucketIAMMember(
@@ -214,6 +230,17 @@ worker_service = gcp.cloudrunv2.Service(
     opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
 )
 
+# Cloud Tasks signs worker callbacks with this project-scoped OIDC identity.
+gcp.cloudrunv2.ServiceIamMember(
+    "korda-worker-cloud-tasks-invoker",
+    name=worker_service.name,
+    location=region,
+    project=project,
+    role=RUN_INVOKER_ROLE,
+    member=cloud_tasks_oidc_member,
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
 # 6. Cloud Run Web Service (korda-web)
 web_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="2"),
@@ -256,7 +283,7 @@ gcp.cloudrunv2.ServiceIamMember(
     name=web_service.name,
     location=region,
     project=project,
-    role="roles/run.invoker",
+    role=RUN_INVOKER_ROLE,
     member="allUsers",
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )

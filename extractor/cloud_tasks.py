@@ -17,9 +17,12 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import uuid
 from typing import Any
 
 from django.conf import settings
+
+from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +73,7 @@ def enqueue(task_name: str, payload: dict[str, Any], countdown: int = 0) -> None
     # workers to log "missing document_uuid" and silently return.
     from extractor.utils import REEMBED_DOCUMENT_TASK
 
-    if task_name in ("process_document", REEMBED_DOCUMENT_TASK, "reembed_edited_document"):
+    if task_name in ("process_document", REEMBED_DOCUMENT_TASK):
         doc_ref = payload.get("document_uuid") or payload.get("document_id")
         if not doc_ref:
             raise ValueError(
@@ -92,11 +95,26 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
     """Execute task in a daemon thread (local development fallback)."""
     logger.info("[CloudTasks/local] Spawning thread for task '%s'", task_name)
 
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    if task_name in {"process_document", REEMBED_DOCUMENT_TASK}:
+        payload = dict(payload)
+        payload.setdefault(CLOUD_TASK_NAME, f"local-{uuid.uuid4().hex}")
+        _persist_document_task(task_name, payload)
+
     from extractor.task_handlers import get_task_registry
 
     task_registry = _LOCAL_TASK_REGISTRY if _LOCAL_TASK_REGISTRY else get_task_registry()
 
     def _run() -> None:
+        from extractor import surreal_db
+        from extractor.task_state import CLOUD_TASK_NAME
+        from extractor.utils import REEMBED_DOCUMENT_TASK
+
+        task_identity = ""
+        if task_name in {"process_document", REEMBED_DOCUMENT_TASK}:
+            task_identity = payload.get(CLOUD_TASK_NAME, "")
+        token = surreal_db.document_task_name.set(task_identity)
         try:
             handler = task_registry.get(task_name)
             if handler is None:
@@ -105,6 +123,8 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
             handler(payload)
         except Exception as task_err:
             logger.exception("[CloudTasks/local] Task '%s' raised an exception: %s", task_name, task_err)
+        finally:
+            surreal_db.document_task_name.reset(token)
 
     thread = threading.Thread(target=_run, daemon=True, name=f"ct-{task_name}")
     thread.start()
@@ -116,14 +136,14 @@ def get_gcp_service_account() -> str | None:
 
     from extractor.utils import validate_url_scheme
 
-    url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"  # nosemgrep
+    url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"  # nosemgrep: python.lang.security.audit.insecure-transport.urllib.insecure-request-object.insecure-request-object -- GCP metadata service is link-local and requires HTTP.
     try:
         validate_url_scheme(url)
-        req = urllib.request.Request(  # nosemgrep
+        req = urllib.request.Request(  # nosemgrep: python.lang.security.audit.insecure-transport.urllib.insecure-request-object.insecure-request-object -- GCP metadata service is link-local and requires HTTP.
             url,
             headers={"Metadata-Flavor": "Google"},
         )
-        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- Fixed metadata host and timeout.
             return response.read().decode("utf-8").strip()
     except Exception:
         return None
@@ -140,7 +160,7 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
     project = details.get("project_id")
     region = details.get("region") or getattr(settings, "GCP_REGION", "asia-southeast1")
     queue_name = getattr(settings, "CLOUD_TASKS_QUEUE", "extractor-tasks")
-    service_url = getattr(settings, "WORKER_URL", "") or getattr(settings, "APP_URL", "")
+    service_url = getattr(settings, "WORKER_URL", "")
 
     if not project or not service_url:
         message = f"Cloud Tasks worker URL is not configured; task '{task_name}' was not dispatched."
@@ -158,15 +178,21 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
             except TypeError:
                 return str(obj)
 
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    task_resource_name = f"{queue_path}/tasks/{uuid.uuid4().hex}"
+    if task_name in {"process_document", REEMBED_DOCUMENT_TASK}:
+        payload = {**payload, CLOUD_TASK_NAME: task_resource_name}
     body = json.dumps(payload, cls=_CloudTasksEncoder).encode()
 
     # Prefer the project-number-based compute SA (Cloud Run default SA format).
     # Fall back to the appspot SA if project_number is unavailable.
     project_number = details.get("project_number") or project
     default_sa = f"{project_number}-compute@developer.gserviceaccount.com"
-    service_account = get_gcp_service_account() or default_sa
+    service_account = settings.CLOUD_TASKS_SERVICE_ACCOUNT or get_gcp_service_account() or default_sa
 
     task: dict[str, Any] = {
+        "name": task_resource_name,
         "http_request": {
             "http_method": "POST",
             "url": handler_url,
@@ -176,7 +202,7 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
                 "service_account_email": service_account,
                 "audience": handler_url,
             },
-        }
+        },
     }
     if countdown > 0:
         import datetime
@@ -189,9 +215,50 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
         task["schedule_time"] = ts
 
     try:
+        _persist_document_task(task_name, payload)
         client = _get_tasks_client()
         response = client.create_task(parent=queue_path, task=task)
         logger.info("[CloudTasks] Task '%s' enqueued: %s", task_name, response.name)
     except Exception as exc:
         logger.exception("[CloudTasks] Failed to enqueue task '%s'", task_name)
         raise RuntimeError(f"Cloud Tasks could not enqueue '{task_name}'.") from exc
+
+
+def _persist_document_task(task_name: str, payload: dict) -> None:
+    """Persist the name before dispatch, so a fast worker or cancellation sees it."""
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    if task_name not in {"process_document", REEMBED_DOCUMENT_TASK}:
+        return
+    from extractor import surreal_db
+
+    doc_uuid = payload.get("document_uuid") or payload.get("document_id")
+    updated = surreal_db.update_document(str(doc_uuid), {CLOUD_TASK_NAME: payload[CLOUD_TASK_NAME]})
+    if updated.get(CLOUD_TASK_NAME) != payload[CLOUD_TASK_NAME]:
+        raise RuntimeError("Could not persist the task identity; dispatch was not attempted.")
+
+
+def cancel_document_task(doc_uuid: str, document: dict) -> None:
+    """Persist cancellation before deleting queued work; retain identity on failure."""
+    from google.api_core.exceptions import NotFound
+
+    from extractor import surreal_db
+
+    updated = surreal_db.update_document(
+        doc_uuid,
+        {"status": "FAILED", CANCEL_REQUESTED: True, "error_message": "Processing stopped by user."},
+    )
+    if not updated:
+        raise RuntimeError("Cancellation could not be saved. Please retry.")
+    task_name = updated.get(CLOUD_TASK_NAME) or document.get(CLOUD_TASK_NAME)
+    if not task_name or settings.DEBUG:
+        return
+    try:
+        _get_tasks_client().delete_task(name=task_name)
+    except NotFound:
+        # Already dispatched or deleted; cooperative worker checks remain necessary.
+        return
+    except Exception as exc:
+        raise RuntimeError(
+            "Processing is marked stopped, but queue cleanup failed. Please retry cancellation."
+        ) from exc

@@ -49,6 +49,9 @@ echo -e "${YELLOW}[Bytecode] Validating Python syntax & compilation across codeb
 $PYTHON_BIN -m compileall -q core extractor scripts manage.py
 echo -e "${GREEN}✓ Python bytecode compiled cleanly with 0 syntax errors.${NC}"
 
+echo -e "${YELLOW}[Reliability Contracts] Verifying task, recovery, export, and polling controls...${NC}"
+$PYTHON_BIN scripts/check_reliability_contracts.py
+
 APP_VERSION=$($PYTHON_BIN scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
 
 echo -e "${CYAN}======================================================================${NC}"
@@ -79,7 +82,7 @@ if [[ "$DOCS_ONLY" = true ]]; then
         echo -e "${GREEN}✓ No changed files detected in working tree. Skipping differential scan.${NC}"
         exit 0
     fi
-    
+
     # Filter changed markdown files
     CHANGED_MD=$(echo "$CHANGED_FILES" | grep -E '\.(md|markdown)$' || true)
     if [[ -n "$CHANGED_MD" ]] && command -v markdownlint &> /dev/null; then
@@ -96,7 +99,7 @@ if [[ "$DOCS_ONLY" = true ]]; then
     if [[ -n "$CHANGED_YAML" ]] && command -v yamllint &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed YAML files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_YAML holds space-separated filenames
-        yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" $CHANGED_YAML 2>/dev/null || true
+        yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" $CHANGED_YAML
         echo -e "${GREEN}✓ Changed YAML structures verified cleanly.${NC}"
     fi
 

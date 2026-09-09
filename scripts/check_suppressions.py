@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 import shutil
 import subprocess  # nosec B404
@@ -81,9 +82,34 @@ def changed_lines() -> list[tuple[str, int, str]]:
     return _parse_diff_added_lines(diff) + _read_untracked_files()
 
 
-def main() -> int:
+def tracked_lines() -> list[tuple[str, int, str]]:
+    """Return every tracked text source line for a scheduled debt audit."""
+    if GIT is None:
+        raise RuntimeError("Git is required to validate suppressions.")
+    paths = subprocess.run(  # nosec B603
+        [GIT, "ls-files"], cwd=ROOT, capture_output=True, check=True, text=True, timeout=30
+    ).stdout.splitlines()
+    result: list[tuple[str, int, str]] = []
+    for path in paths:
+        file_path = ROOT / path
+        if not file_path.is_file():
+            continue
+        try:
+            result.extend(
+                (path, index, line) for index, line in enumerate(file_path.read_text(encoding="utf-8").splitlines(), 1)
+            )
+        except UnicodeDecodeError:
+            continue
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--all", action="store_true", help="Audit tracked source as well as new changes.")
+    args = parser.parse_args([] if argv is None else argv)
     violations: list[str] = []
-    for path, line_number, line in changed_lines():
+    lines = tracked_lines() if args.all else changed_lines()
+    for path, line_number, line in lines:
         for marker, valid, example in RULES:
             if marker.search(line) and not valid.search(line):
                 violations.append(f"{path}:{line_number}: suppression must use `{example}`")
@@ -99,4 +125,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

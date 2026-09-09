@@ -12,7 +12,7 @@ LOG_LEVEL = logging.INFO if DJANGO_DEBUG else logging.WARNING
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("init_surreal")
 
-SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
+SURREAL_URL = os.getenv("SURREAL_URL", "")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "")
 SURREAL_NS = os.getenv("SURREAL_NS", "korda")
@@ -98,6 +98,16 @@ def apply_schema(client: httpx.Client) -> None:
         logger.error("Schema applied with %d errors.", errors)
 
 
+def _rest_endpoint(surreal_url: str) -> str:
+    """Convert a secure SurrealDB RPC URL to its secure REST endpoint."""
+    normalized = surreal_url.strip().rstrip("/").removesuffix("/rpc").rstrip("/")
+    if normalized.startswith("wss://"):
+        return "https://" + normalized.removeprefix("wss://")
+    if normalized.startswith("https://"):
+        return normalized
+    raise ValueError("SURREAL_URL must use wss:// or https:// when initialization is enabled.")
+
+
 def _create_local_superuser_stub(admin_email):
     from django.contrib.auth.models import User
 
@@ -146,7 +156,7 @@ def _create_local_superuser_full(admin_email, admin_password):
             validate_password(admin_password, user=user)
         except Exception:
             logger.warning("Credential validation warning during initial admin setup.")
-        user.set_password(admin_password)  # NOSONAR # nosemgrep
+        user.set_password(admin_password)
         user.save()
         logger.info("Local Django superuser created successfully.")
         if admin_password == "admin":  # nosec B105
@@ -155,9 +165,7 @@ def _create_local_superuser_full(admin_email, admin_password):
             try:
                 import bcrypt
 
-                logger.info(
-                    "Enforcing credential update flag for initial administrator account."
-                )  # NOSONAR # nosemgrep
+                logger.info("Enforcing credential update flag for initial administrator account.")
                 ForcePasswordChangeMiddleware.set_force_reset_flag(
                     user.id, bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
                 )
@@ -267,12 +275,11 @@ def main():
         logger.info("SURREALDB_OFFLINE is True. Skipping initialization.")
         return
 
-    # Convert WebSocket URL scheme to HTTP scheme for REST requests
-    ws_prefix = "ws:" + "//"
-    wss_prefix = "wss:" + "//"
-    http_url = SURREAL_URL.replace(ws_prefix, "http://").replace(wss_prefix, "https://")  # NOSONAR # nosemgrep
-    http_url = http_url.removesuffix("/rpc")
-    http_url = http_url.rstrip("/")
+    try:
+        http_url = _rest_endpoint(SURREAL_URL)
+    except ValueError:
+        logger.exception("SurrealDB initialization aborted")
+        return
 
     with httpx.Client(
         base_url=http_url,

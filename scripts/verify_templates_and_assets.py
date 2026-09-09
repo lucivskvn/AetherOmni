@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
 
 TEMPLATES_DIR = ROOT / "extractor" / "templates"
 STATIC_DIR = ROOT / "static"
+HTML_SUFFIX = ".html"
 
 STATIC_PATTERN = re.compile(r"{%\s*static\s+['\"]([^'\"\s]+)['\"](?:\s+as\s+\w+)?\s*%}")
 URL_PATTERN = re.compile(r"{%\s*url\s+['\"]([^'\"\s]+)['\"]")
@@ -35,7 +36,7 @@ def verify_static_references() -> list[str]:
     errors: list[str] = []
     for root, _, files in os.walk(TEMPLATES_DIR):
         for file in files:
-            if not file.endswith(".html"):
+            if not file.endswith(HTML_SUFFIX):
                 continue
             path = Path(root) / file
             rel_path = path.relative_to(ROOT)
@@ -102,7 +103,7 @@ def verify_named_urls() -> list[str]:
 
     for root, _, files in os.walk(TEMPLATES_DIR):
         for file in files:
-            if not file.endswith(".html"):
+            if not file.endswith(HTML_SUFFIX):
                 continue
             path = Path(root) / file
             rel_path = path.relative_to(ROOT)
@@ -124,7 +125,7 @@ def verify_output_elements() -> list[str]:
     errors: list[str] = []
     for root, _, files in os.walk(TEMPLATES_DIR):
         for file in files:
-            if not file.endswith(".html"):
+            if not file.endswith(HTML_SUFFIX):
                 continue
             path = Path(root) / file
             rel_path = path.relative_to(ROOT)
@@ -143,7 +144,7 @@ def verify_sri_attributes() -> list[str]:
     allowed_unhashed = ("challenges.cloudflare.com/turnstile/v0/api.js",)
     for root, _, files in os.walk(TEMPLATES_DIR):
         for file in files:
-            if file.endswith(".html"):
+            if file.endswith(HTML_SUFFIX):
                 errors.extend(_check_file_sri(Path(root) / file, allowed_unhashed))
     return errors
 

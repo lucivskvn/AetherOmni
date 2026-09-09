@@ -45,6 +45,113 @@ import {
   trapFocus,
 } from '../main.js';
 
+describe('Dashboard refresh recovery', () => {
+  let poller;
+  let subscriptionStatus;
+  let broadcast;
+  const response = () => ({
+    ok: true,
+    json: async () => ({ documents: [], documents_complete: true, stats: {} }),
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    delete globalThis._reloadTriggered;
+    document.body.innerHTML = '<div class="files-panel"><table><tbody></tbody></table></div>';
+    document.body.dataset.supabaseUrl = 'https://example.test';
+    document.body.dataset.supabaseKey = 'public-placeholder';
+    const channel = {
+      on: vi.fn((_type, _filter, callback) => { broadcast = callback; return channel; }),
+      subscribe: vi.fn(callback => { subscriptionStatus = callback; return channel; }),
+    };
+    vi.stubGlobal('supabase', {
+      createClient: () => ({ channel: () => channel, removeChannel: vi.fn() }),
+    });
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => response()));
+  });
+
+  afterEach(() => {
+    poller?.stop();
+    globalThis.dispatchEvent(new Event('pagehide'));
+    delete document.body.dataset.supabaseUrl;
+    delete document.body.dataset.supabaseKey;
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('continues refreshing after a Realtime connection error', async () => {
+    poller = initializeSupabaseRealtime();
+    await vi.advanceTimersByTimeAsync(0);
+    subscriptionStatus('CHANNEL_ERROR');
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes an idle dashboard even without Realtime credentials', async () => {
+    delete document.body.dataset.supabaseKey;
+    poller = initializeSupabaseRealtime();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('coalesces broadcasts during a request into a follow-up fetch', async () => {
+    let resolveInitial;
+    fetch.mockImplementationOnce(() => new Promise(resolve => { resolveInitial = resolve; }));
+    poller = initializeSupabaseRealtime();
+    broadcast();
+    broadcast();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    resolveInitial(response());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('recovers after a status request times out', async () => {
+    fetch.mockImplementationOnce((_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('Request aborted')));
+    }));
+    poller = initializeSupabaseRealtime();
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(fetch.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('does not prune documents from an incomplete snapshot', () => {
+    const tbody = document.querySelector('tbody');
+    tbody.innerHTML = Array.from({ length: 101 }, (_, i) => `<tr data-doc-id="${i}"></tr>`).join('');
+    updateDocumentsTable(Array.from({ length: 100 }, (_, id) => ({ id })), false);
+    vi.advanceTimersByTime(500);
+    expect(tbody.children).toHaveLength(101);
+  });
+
+  it('reloads only for new documents belonging to the visible dashboard page', () => {
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload, search: '' });
+    updateDocumentsTable([{ id: 'off-page' }], true, []);
+    expect(reload).not.toHaveBeenCalled();
+    updateDocumentsTable([{ id: 'new-visible' }], true, ['new-visible']);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('pauses polling while hidden and refreshes when the page becomes visible', async () => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    poller = initializeSupabaseRealtime();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('removes deleted rows only from a complete snapshot', () => {
+    const tbody = document.querySelector('tbody');
+    tbody.innerHTML = '<tr data-doc-id="deleted"></tr>';
+    updateDocumentsTable([], true);
+    vi.advanceTimersByTime(500);
+    expect(tbody.children).toHaveLength(0);
+  });
+});
+
 
 
 
@@ -629,6 +736,8 @@ describe('Drag and Drop File Input Validation', () => {
 });
 
 describe('Document State Actions (Retry and Cancel)', () => {
+  let originalLocation;
+
   beforeEach(() => {
     document.body.innerHTML = `
       <input type="hidden" name="csrfmiddlewaretoken" value="dummy-csrf-token">
@@ -641,6 +750,16 @@ describe('Document State Actions (Retry and Cancel)', () => {
       <div class="alerts-container"></div>
     `;
     globalThis.fetch = vi.fn();
+    delete document._initializedDocActions;
+    originalLocation = globalThis.location;
+    delete globalThis.location;
+    globalThis.location = { reload: vi.fn(), pathname: '/' };
+  });
+
+  afterEach(() => {
+    delete globalThis.location;
+    globalThis.location = originalLocation;
+    vi.restoreAllMocks();
   });
 
 
@@ -769,9 +888,11 @@ describe('initializeRAGSearch Flow', () => {
     const queryInput = document.getElementById('rag-query');
     queryInput.value = 'What is ancient epigraphy?';
 
-    globalThis.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: true, body: null })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
         answer_html: '<p>Epigraphy is the study of inscriptions.</p>',
         sources: [
           {
@@ -786,18 +907,22 @@ describe('initializeRAGSearch Flow', () => {
             chunk_index: 1,
           },
         ],
-      }),
-    });
+        }),
+      });
 
     const form = document.getElementById('rag-search-form');
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
+    // Wait for promise chain and microtask resolution
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/stream-query/?q=What%20is%20ancient%20epigraphy%3F&document_ids=doc-1'),
+      { headers: { Accept: 'text/event-stream' } }
+    );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining('/rag-search/?q=What%20is%20ancient%20epigraphy%3F&document_ids=doc-1')
     );
-
-    // Wait for promise chain and microtask resolution
-    await new Promise(resolve => setTimeout(resolve, 0));
 
 
 
@@ -810,6 +935,29 @@ describe('initializeRAGSearch Flow', () => {
     expect(sourcesList.children.length).toBe(2);
     expect(sourcesList.innerHTML).toContain('Epigraphy Handbook');
     expect(sourcesList.innerHTML).toContain('Anonymous Manuscript');
+  });
+
+  it('renders SSE tokens as text and retains the grounded sources', async () => {
+    initializeRAGSearch();
+    document.getElementById('rag-query').value = 'Stream the answer';
+    const encoder = new TextEncoder();
+    const stream = new globalThis.ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"sources":[{"title":"Streaming Source","chunk_index":0}]}\n\n'));
+        controller.enqueue(encoder.encode('data: {"token":"Safe <answer>"}\n\n'));
+        controller.enqueue(encoder.encode('data: {"done":true}\n\n'));
+        controller.close();
+      },
+    });
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, body: stream });
+
+    document.getElementById('rag-search-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('rag-answer').textContent).toBe('Safe <answer>');
+    expect(document.getElementById('rag-answer').innerHTML).toBe('Safe &lt;answer&gt;');
+    expect(document.getElementById('rag-sources-list').textContent).toContain('Streaming Source');
   });
 });
 
@@ -874,6 +1022,19 @@ describe('initializeExportActions Flow', () => {
     expect(actionInput).not.toBeNull();
     expect(actionInput.value).toBe('delete');
     expect(exportForm.submit).toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('rejects external or protocol-relative action URLs in dataset', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    bulkDeleteBtn.dataset.actionUrl = 'https://malicious.test/api';
+    initializeExportActions();
+
+    bulkDeleteBtn.click();
+
+    expect(confirmSpy).toHaveBeenCalled();
+    // exportForm.action should not be changed to https://malicious.test/api
+    expect(exportForm.action).not.toContain('malicious.test');
     confirmSpy.mockRestore();
   });
 });
@@ -1360,5 +1521,35 @@ describe('trapFocus', () => {
     trapFocus(dialog, event);
 
     expect(document.activeElement).toBe(last);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// _updateTokenMetricCard
+// ---------------------------------------------------------------------------
+describe('_updateTokenMetricCard', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div class="metrics-row">
+        <div class="metric-card"></div>
+        <div class="metric-card"></div>
+        <div class="metric-card"></div>
+        <div class="metric-card">
+          <div class="token-value-text">0</div>
+          <div class="token-sub-text"></div>
+        </div>
+      </div>
+    `;
+  });
+
+  it('safely handles non-numeric stats without throwing', () => {
+    expect(() => _updateTokenMetricCard({
+      total_tokens: 100,
+      prompt_tokens: null,
+      candidates_tokens: undefined,
+    })).not.toThrow();
+
+    const tokenValue = document.querySelector('.token-value-text');
+    expect(tokenValue.textContent).toBe('100');
   });
 });

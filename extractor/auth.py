@@ -76,11 +76,17 @@ def _evaluate_admin_claim(user_email: str, user_info: dict) -> bool:
     from django.conf import settings
 
     admin_email = getattr(settings, "ADMIN_EMAIL", "").strip()
-    is_promoted_admin = bool(admin_email) and user_email.lower() == admin_email.lower()
+    # SEC-04: Only ADMIN_EMAIL server-side env var grants Django superuser.
+    # app_metadata.is_admin is NOT trusted — any Supabase service-role holder
+    # can set it on any user, granting immediate Django superuser on next login.
+    # Log any attempted escalation via app_metadata for security monitoring.
     app_metadata = user_info.get("app_metadata", {})
     if app_metadata.get("is_admin") is True:
-        is_promoted_admin = True
-    return is_promoted_admin
+        logger.warning(
+            "[Auth] app_metadata.is_admin=True claim detected for %s — ignored per SEC-04 policy.",
+            user_email,
+        )
+    return bool(admin_email) and user_email.lower() == admin_email.lower()
 
 
 def _attach_supabase_session(request: HttpRequest | None, user_info: dict) -> None:

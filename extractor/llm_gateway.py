@@ -140,22 +140,31 @@ def check_budget_and_api_limit() -> None:
         BEGIN TRANSACTION;
         LET $live = (SELECT math::sum(cost_usd) AS total FROM documents WHERE created_at >= <datetime> $first_of_month GROUP ALL);
         LET $spent = IF array::len($live) > 0 THEN $live[0].total ELSE 0.0 END;
+        LET $deleted = (SELECT math::sum(cost_usd) AS total FROM document_spend_reconciliations WHERE year = $year AND month = $month GROUP ALL);
+        LET $deleted_spent = IF array::len($deleted) > 0 THEN $deleted[0].total ELSE 0.0 END;
         LET $settings = (SELECT monthly_budget_usd FROM system_settings:1);
         LET $cap = IF array::len($settings) > 0 THEN $settings[0].monthly_budget_usd ELSE 10.0 END;
-        RETURN { live_spent: $spent, cap: $cap };
+        RETURN { live_spent: $spent, deleted_spent: $deleted_spent, cap: $cap };
         COMMIT TRANSACTION;
         """
         res = surreal_db._first_result(
-            surreal_db._run(transaction_sql, {"first_of_month": format_datetime(first_of_month)})
+            surreal_db._run(
+                transaction_sql,
+                {"first_of_month": format_datetime(first_of_month), "year": now.year, "month": now.month},
+            )
         )
         if res and isinstance(res, dict):
             live_spent = Decimal(str(res.get("live_spent", 0.0)))
+            deleted_spent = Decimal(str(res.get("deleted_spent", 0.0)))
             monthly_cap = Decimal(str(res.get("cap", 10.0)))
         else:
             live_spent = Decimal("0.0")
+            deleted_spent = Decimal("0.0")
             monthly_cap = Decimal("10.0")
 
-    total_spent = live_spent + logged_spent
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        deleted_spent = Decimal("0.0")
+    total_spent = live_spent + logged_spent + deleted_spent
 
     if total_spent >= monthly_cap:
         raise BudgetExceededException(
@@ -1405,6 +1414,78 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
     return yaml_block, refined_text
 
 
+def _extract_balanced_qa_objects(raw: str) -> list[Any]:
+    """Extract complete JSON objects without regex backtracking on malformed LLM output."""
+    items: list[Any] = []
+    start = 0
+    while start < len(raw):
+        candidate, start = _next_balanced_json_object(raw, start)
+        if candidate is None:
+            continue
+        try:
+            item = json.loads(candidate)
+            if isinstance(item, dict) and "question" in item and "answer" in item:
+                items.append(item)
+        except json.JSONDecodeError:
+            continue
+    return items
+
+
+def _next_balanced_json_object(raw: str, start: int) -> tuple[str | None, int]:
+    """Return the next quote-aware, brace-balanced JSON object and scan position."""
+    start = raw.find("{", start)
+    if start < 0:
+        return None, len(raw)
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(raw)):
+        char = raw[index]
+        if in_string:
+            in_string, escaped = _advance_json_string_state(char, escaped)
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth:
+                continue
+            return raw[start : index + 1], index + 1
+    return None, len(raw)
+
+
+def _advance_json_string_state(char: str, escaped: bool) -> tuple[bool, bool]:
+    """Return quote scanner state after a character within a JSON string."""
+    if escaped:
+        return True, False
+    if char == "\\":
+        return True, True
+    return char != '"', False
+
+
+def _repair_and_parse_qa_json(raw_json_str: str) -> list[Any]:
+    raw = raw_json_str.strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, list) else []
+    except json.JSONDecodeError:
+        logger.debug("[Refinement Pass 2] Direct Q&A JSON parse failed; attempting repair.")
+
+    if raw.startswith("[") and not raw.endswith("]"):
+        try:
+            parsed = json.loads(raw + "]")
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            logger.debug("[Refinement Pass 2] Repaired Q&A JSON parse failed; extracting complete objects.")
+
+    return _extract_balanced_qa_objects(raw)
+
+
 def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[Any]]:
     """Parse Stage 2 LLM output into (refined_text, yaml_block, qa_list).
 
@@ -1423,15 +1504,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
     # Find JSON Q&A block
     json_match = re.search(r"`{3,4}json[ \t]*\n(.*)\n`{3,4}", refined_text, re.DOTALL)
     if json_match:
-        try:
-            parsed_json = json.loads(json_match.group(1))
-            if isinstance(parsed_json, list):
-                qa_list = parsed_json
-            else:
-                logger.warning("[Refinement Pass 2] JSON Q&A block did not evaluate to a list: %s", type(parsed_json))
-        except Exception:
-            logger.exception("[Refinement Pass 2] JSON Parsing error")
-
+        qa_list = _repair_and_parse_qa_json(json_match.group(1))
         pre_json = refined_text[: json_match.start()].rstrip()
         pre_json = re.sub(r"\r?\n#[^\r\n]*", "", pre_json).rstrip()
         refined_text = pre_json
