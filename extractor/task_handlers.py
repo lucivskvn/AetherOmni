@@ -20,6 +20,8 @@ import logging
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -85,6 +87,18 @@ def _document_task_identity(task_name: str, payload: dict) -> str:
     return ""
 
 
+def _has_active_document_claim(doc: dict) -> bool:
+    """Return whether a non-terminal document claim has been refreshed recently."""
+    updated_at = doc.get("updated_at")
+    if isinstance(updated_at, str):
+        updated_at = parse_datetime(updated_at)
+    if updated_at is None:
+        return True
+    if timezone.is_naive(updated_at):
+        updated_at = timezone.make_aware(updated_at, timezone.UTC)
+    return updated_at > timezone.now() - timezone.timedelta(minutes=5)
+
+
 def _confirm_document_outcome(task_name: str, payload: dict) -> None:
     """Do not acknowledge an unfinished delivery after a worker/storage failure."""
     from extractor.utils import REEMBED_DOCUMENT_TASK
@@ -100,6 +114,8 @@ def _confirm_document_outcome(task_name: str, payload: dict) -> None:
     expected = payload.get(CLOUD_TASK_NAME)
     if expected and doc.get(CLOUD_TASK_NAME) != expected:
         return  # Superseded delivery; a different task owns the document now.
+    if expected and _has_active_document_claim(doc):
+        return  # A duplicate delivery found the currently active worker's claim.
     raise RuntimeError("Document has no durable terminal outcome; delivery remains retryable.")
 
 

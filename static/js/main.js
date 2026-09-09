@@ -1343,6 +1343,12 @@ function initializeStatusPoller() {
             const data = await res.json();
             updateDashboardStats(data.stats);
             if (stopped) return;
+            if (data.snapshot_capped && !new URLSearchParams(globalThis.location.search).has('snapshot_capped')) {
+                const url = new URL(globalThis.location.href);
+                url.searchParams.set('snapshot_capped', '1');
+                globalThis.location.assign(url);
+                return;
+            }
             updateDocumentsTable(data.documents, data.documents_complete === true, data.dashboard_document_ids);
             updateDocumentDetailScreen(data);
         } catch (err) {

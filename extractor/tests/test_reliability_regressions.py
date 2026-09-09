@@ -1,11 +1,13 @@
 """Regression coverage for cancellation, durable delivery, and complete UI snapshots."""
 
 import json
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from google.api_core.exceptions import NotFound
 
 from extractor import cloud_tasks, surreal_db, task_handlers
@@ -197,12 +199,28 @@ class DurableDeliveryTests(SimpleTestCase):
         with self.assertRaisesRegex(RuntimeError, "worker URL"):
             cloud_tasks.enqueue("process_document", {"document_uuid": "doc-1"})
 
-    @patch("extractor.surreal_db.get_document", return_value={"status": "EXTRACTING", "cloud_task_name": "task-1"})
-    def test_unfinished_duplicate_delivery_is_not_acknowledged(self, _get):
+    @patch("extractor.surreal_db.get_document")
+    def test_stale_duplicate_delivery_is_not_acknowledged(self, get_document):
+        get_document.return_value = {
+            "status": "EXTRACTING",
+            "cloud_task_name": "task-1",
+            "updated_at": (timezone.now() - timedelta(minutes=6)).isoformat(),
+        }
         with self.assertRaisesRegex(RuntimeError, "terminal outcome"):
             task_handlers._confirm_document_outcome(
                 "process_document", {"document_uuid": "doc-1", "cloud_task_name": "task-1"}
             )
+
+    @patch("extractor.surreal_db.get_document")
+    def test_active_duplicate_delivery_can_be_acknowledged(self, get_document):
+        get_document.return_value = {
+            "status": "EXTRACTING",
+            "cloud_task_name": "task-1",
+            "updated_at": (timezone.now() - timedelta(minutes=1)).isoformat(),
+        }
+        task_handlers._confirm_document_outcome(
+            "process_document", {"document_uuid": "doc-1", "cloud_task_name": "task-1"}
+        )
 
     @patch("extractor.surreal_db.get_document", return_value={"status": "PENDING", "cloud_task_name": "task-2"})
     def test_superseded_delivery_can_be_acknowledged(self, _get):

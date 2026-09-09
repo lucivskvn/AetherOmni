@@ -16,12 +16,14 @@ Capabilities:
 from __future__ import annotations
 
 import asyncio
+import atexit
 import concurrent.futures
 import json
 import logging
 import os
 import re
 import sys
+import threading
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
@@ -404,15 +406,50 @@ def _surreal_executor_workers() -> int:
     return max(1, getattr(settings, "SURREAL_EXECUTOR_WORKERS", 16))
 
 
-_SHARED_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=_surreal_executor_workers(), thread_name_prefix="surreal-rpc"
-)
+_SHARED_EXECUTOR: concurrent.futures.ThreadPoolExecutor | None = None
+_EXECUTOR_ADMISSION: threading.BoundedSemaphore | None = None
+_EXECUTOR_LOCK = threading.Lock()
+
+
+def _get_shared_executor() -> tuple[concurrent.futures.ThreadPoolExecutor, threading.BoundedSemaphore]:
+    """Lazily create a bounded executor after Django settings are available."""
+    global _SHARED_EXECUTOR, _EXECUTOR_ADMISSION
+    if _SHARED_EXECUTOR is None:
+        with _EXECUTOR_LOCK:
+            if _SHARED_EXECUTOR is None:
+                workers = _surreal_executor_workers()
+                _SHARED_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=workers, thread_name_prefix="surreal-rpc"
+                )
+                _EXECUTOR_ADMISSION = threading.BoundedSemaphore(workers * 2)
+    if _SHARED_EXECUTOR is None or _EXECUTOR_ADMISSION is None:
+        raise RuntimeError("SurrealDB RPC executor could not be initialized.")
+    return _SHARED_EXECUTOR, _EXECUTOR_ADMISSION
+
+
+def _shutdown_shared_executor() -> None:
+    """Cancel queued RPC work during process shutdown without blocking termination."""
+    if _SHARED_EXECUTOR is not None:
+        _SHARED_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+
+
+atexit.register(_shutdown_shared_executor)
 
 
 def _run_in_thread(coro):
     """Run an async coroutine synchronously in a separate thread to prevent event loop blocking/corruption."""
-    future = _SHARED_EXECUTOR.submit(asyncio.run, coro)
-    return future.result()
+    executor, admission = _get_shared_executor()
+    if not admission.acquire(blocking=False):
+        coro.close()
+        raise RuntimeError("SurrealDB RPC executor is saturated; retry later.")
+    future = executor.submit(asyncio.run, coro)
+    future.add_done_callback(lambda _: admission.release())
+    timeout = max(1, getattr(settings, "SURREAL_RPC_TIMEOUT_SECONDS", 60))
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError as exc:
+        future.cancel()
+        raise RuntimeError("SurrealDB RPC timed out; retry later.") from exc
 
 
 def _run(sql: str, params: dict | None = None) -> list[dict]:
@@ -869,7 +906,7 @@ def get_documents(doc_uuids: list[str]) -> list[dict]:
     return _first_result(results)
 
 
-def list_documents(user_id: str | None = None) -> list[dict]:
+def list_documents(user_id: str | None = None, limit: int | None = None) -> list[dict]:
     """Retrieve documents from SurrealDB (user-specific + public)."""
     from django.conf import settings
 
@@ -882,16 +919,31 @@ def list_documents(user_id: str | None = None) -> list[dict]:
             qs = SourceDocument.objects.filter(Q(uploaded_by_id=user_id) | Q(uploaded_by__isnull=True))
         else:
             qs = SourceDocument.objects.all()
+        if limit is not None:
+            qs = qs[: max(1, int(limit))]
         return [_model_to_dict(doc) for doc in qs]
 
     if user_id:
-        sql = (
-            "SELECT * FROM documents WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE ORDER BY created_at DESC;"
+        if limit is not None:
+            return _first_result(
+                _run(
+                    "SELECT * FROM documents WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE "
+                    "ORDER BY created_at DESC LIMIT $limit;",
+                    {"user_id": str(user_id), "limit": max(1, int(limit))},
+                )
+            )
+        return _first_result(
+            _run(
+                "SELECT * FROM documents WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE "
+                "ORDER BY created_at DESC;",
+                {"user_id": str(user_id)},
+            )
         )
-        return _first_result(_run(sql, {"user_id": str(user_id)}))
-    else:
-        sql = "SELECT * FROM documents ORDER BY created_at DESC;"
-        return _first_result(_run(sql))
+    if limit is not None:
+        return _first_result(
+            _run("SELECT * FROM documents ORDER BY created_at DESC LIMIT $limit;", {"limit": max(1, int(limit))})
+        )
+    return _first_result(_run("SELECT * FROM documents ORDER BY created_at DESC;"))
 
 
 def get_document_by_hash(file_hash: str, user_id: str | None = None) -> dict | None:

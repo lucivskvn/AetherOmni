@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 TEMPLATE_REGISTER = "extractor/register.html"
 TEMPLATE_FORGOT_PASSWORD = "extractor/forgot_password.html"  # nosec B105
+SNAPSHOT_CAPPED = "snapshot_capped"
 
 
 def _turnstile_token_error(request) -> str | None:
@@ -455,7 +456,7 @@ def _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned: bool = False):
     return raw_doc, doc, is_authorized, users_map
 
 
-def _get_dashboard_stats(request):
+def _get_dashboard_stats(request, document_limit: int | None = None):
     """
     Helper to calculate and format dashboard statistics, avoiding duplicate logic
     between DashboardView and DocumentStatusAPIView.
@@ -466,9 +467,12 @@ def _get_dashboard_stats(request):
 
     user = request.user
     if user.is_staff or user.is_superuser:
-        raw_docs = surreal_db.list_documents()
+        raw_docs = surreal_db.list_documents(limit=document_limit)
     else:
-        raw_docs = surreal_db.list_documents(get_request_actor_id(request))
+        raw_docs = surreal_db.list_documents(get_request_actor_id(request), limit=document_limit)
+    snapshot_capped = bool(document_limit and len(raw_docs) == document_limit)
+    if snapshot_capped:
+        raw_docs = raw_docs[:-1]
 
     # Parse and wrap documents with scoped users_map
     user_ids = {d.get("uploaded_by_id") for d in raw_docs if d and d.get("uploaded_by_id")}
@@ -536,6 +540,7 @@ def _get_dashboard_stats(request):
         "formatted_budget_cap": formatted_cap,
         "currency_details": currency_details,
         "docs": docs,
+        SNAPSHOT_CAPPED: snapshot_capped,
     }
 
 
@@ -592,7 +597,8 @@ class DashboardView(LoginRequiredMixin, View):
     """
 
     def get(self, request):
-        stats = _get_dashboard_stats(request)
+        snapshot_limit = 501
+        stats = _get_dashboard_stats(request, document_limit=snapshot_limit)
         sort_by = request.GET.get("sort_by", "-date")
         docs = _filter_dashboard_docs(stats["docs"], request.GET.get("q", "").strip())
         sorted_docs = _sort_dashboard_docs(docs, sort_by)
@@ -2107,7 +2113,8 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
 
         data = {
             "documents": docs_list,
-            "documents_complete": True,
+            "documents_complete": not stats[SNAPSHOT_CAPPED],
+            SNAPSHOT_CAPPED: stats[SNAPSHOT_CAPPED],
             "dashboard_document_ids": [
                 str(d.id)
                 for d in _sort_dashboard_docs(
