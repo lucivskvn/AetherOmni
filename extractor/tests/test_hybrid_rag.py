@@ -27,6 +27,12 @@ class HybridRAGTestCase(TestCase):
         results = search_chunks_bm25("test", limit=5)
         self.assertIsInstance(results, list)
 
+    @patch("extractor.models.SystemSettings.get_settings", side_effect=RuntimeError("database unavailable"))
+    def test_selected_rag_model_falls_back_when_settings_lookup_fails(self, _get_settings):
+        from extractor.rag import _get_selected_rag_model
+
+        self.assertEqual(_get_selected_rag_model(), "auto")
+
     @patch("extractor.rag.generate_llm_content_unified")
     def test_generate_rag_answer(self, mock_generate):
         from extractor.rag import _generate_rag_answer

@@ -555,7 +555,8 @@ def _get_selected_rag_model() -> str:
     try:
         settings_obj = SystemSettings.get_settings()
         return settings_obj.selected_model
-    except SystemSettings.DoesNotExist, AttributeError, RuntimeError:
+    except Exception:
+        logger.exception("[RAG Query] Unable to load selected RAG model; using automatic selection.")
         return "auto"
 
 
@@ -743,8 +744,6 @@ def stream_query_rag(
     import json
 
     from extractor import surreal_db
-    from extractor.llm_gateway import execute_embed_content_with_fallback
-    from extractor.models import SystemSettings
 
     query_cleaned = query.strip()
     query_hash = hashlib.sha256(query_cleaned.lower().encode("utf-8")).hexdigest()
@@ -759,12 +758,7 @@ def stream_query_rag(
         yield f"data: {json.dumps({'done': True})}\n\n"
         return
 
-    try:
-        query_emb_resp = execute_embed_content_with_fallback(model_name="text-embedding-004", contents=[query_cleaned])
-        query_embedding = query_emb_resp.embeddings[0].values
-    except Exception as e:
-        logger.warning("[Stream RAG] Embedding API fallback: %s", e)
-        query_embedding = generate_deterministic_embedding(query_cleaned)
+    query_embedding = _get_query_embedding(query_cleaned)
 
     # 2. Semantic cache lookup
     cached_semantic = _lookup_semantic_cache(
@@ -780,13 +774,7 @@ def stream_query_rag(
     allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
     _ensure_chunks_loaded(allowed_uuids)
 
-    try:
-        dense_chunks = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
-        sparse_chunks = surreal_db.search_chunks_bm25(query_cleaned, limit=top_k, allowed_doc_uuids=allowed_uuids)
-        matching_chunks = reciprocal_rank_fusion(dense_chunks, sparse_chunks, k=60, top_k=top_k)
-    except OSError, RuntimeError:
-        logger.exception("[Stream RAG] SurrealDB search failed.")
-        matching_chunks = []
+    matching_chunks = _retrieve_matching_chunks(surreal_db, query_embedding, query_cleaned, allowed_uuids, top_k)
 
     if not matching_chunks:
         yield f"data: {json.dumps({'error': 'No relevant source context found in the knowledge database.'})}\n\n"
@@ -797,11 +785,7 @@ def stream_query_rag(
     # Send initial event with grounded sources
     yield f"data: {json.dumps({'sources': sources})}\n\n"
 
-    try:
-        settings_obj = SystemSettings.get_settings()
-        selected_model = settings_obj.selected_model
-    except Exception:
-        selected_model = "auto"
+    selected_model = _get_selected_rag_model()
 
     system_instruction = f"""
     You are a Digital Preservation Librarian and Archival Scholar.
