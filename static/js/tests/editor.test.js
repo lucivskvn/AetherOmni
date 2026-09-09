@@ -162,6 +162,17 @@ describe('parseInline', () => {
   it('handles empty string', () => {
     expect(parseInline('')).toBe('');
   });
+
+  it('renders safe https images and strips unsafe protocols', () => {
+    const safeResult = parseInline('![Diagram](https://example.com/chart.png)');
+    expect(safeResult).toContain('<img src="https://example.com/chart.png" alt="Diagram"');
+
+    const jsResult = parseInline('![XSS](javascript:alert(1))');
+    expect(jsResult).not.toContain('<img');
+
+    const dataResult = parseInline('![DataURI](data:text/html,<script>alert(1)</script>)');
+    expect(dataResult).not.toContain('<img');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -240,6 +251,12 @@ describe('compileMarkdown', () => {
     const html = compileMarkdown('<iframe src="https://evil.com"></iframe>');
     expect(html).not.toContain('<iframe');
     expect(html).toContain('&lt;iframe');
+  });
+
+  it('XSS: style attributes on safe HTML tags are stripped', () => {
+    const html = compileMarkdown('<span style="position: fixed; z-index: 99999;">overlay</span>');
+    expect(html).not.toContain('style=');
+    expect(html).toContain('<span>overlay</span>');
   });
 });
 

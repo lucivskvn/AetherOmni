@@ -244,7 +244,7 @@ class TaskHandlersTestCase(TestCase):
         finally:
             task_handlers.TASK_REGISTRY.pop("ip_test", None)
 
-    def test_post_dispatch_handler_exception_returns_200_with_error_status(self):
+    def test_post_dispatch_handler_exception_preserves_retry(self):
         def failing_handler(payload):
             raise RuntimeError("Task execution failed")
 
@@ -256,7 +256,7 @@ class TaskHandlersTestCase(TestCase):
                 patch("extractor.task_handlers._verify_source_ip", return_value=True),
             ):
                 response = CloudTaskHandlerView().post(request, "failing_task")
-                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.status_code, 503)
                 data = json.loads(response.content)
                 self.assertEqual(data.get("status"), "error")
         finally:

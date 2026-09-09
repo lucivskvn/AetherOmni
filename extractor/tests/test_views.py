@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.contrib.messages import get_messages
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
@@ -153,9 +154,15 @@ class ViewsTestCase(TestCase):
         self.assertEqual(SourceDocument.objects.filter(id=doc_to_delete.pk).count(), 0)
 
     def test_document_purge_all_view_post(self):
+        from extractor.models import MonthlySpendLog, UserMemory
+
+        UserMemory.objects.create(user=self.user, memory_text="test memory", embedding=[0.1] * 768)
+        MonthlySpendLog.objects.create(year=2026, month=9, accumulated_cost_usd=Decimal("5.00"))
         response = self.client.post(reverse("purge_all_documents"))
         self.assertEqual(response.status_code, 302)
         self.assertEqual(SourceDocument.objects.count(), 0)
+        self.assertEqual(UserMemory.objects.count(), 0)
+        self.assertEqual(MonthlySpendLog.objects.count(), 0)
 
     @patch("extractor.views.query_semantic_knowledge_rag")
     def test_document_rag_search_view_success(self, mock_rag):
@@ -220,6 +227,24 @@ class ViewsTestCase(TestCase):
         data = response.json()
         self.assertEqual(data["status"], "error")
 
+    def test_sft_dataset_preview_permission_denied(self):
+        other_user = User.objects.create_user(username="other_sft_user", password="Password123!")
+        self.client.force_login(other_user)
+        response = self.client.get(reverse("sft_dataset_preview", args=[self.doc.uuid]))
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertEqual(data["status"], "error")
+        self.assertEqual(data["message"], "Permission denied.")
+
+    def test_sft_dataset_preview_not_found(self):
+        import uuid
+
+        random_uuid = uuid.uuid4()
+        response = self.client.get(reverse("sft_dataset_preview", args=[random_uuid]))
+        self.assertEqual(response.status_code, 404)
+        data = response.json()
+        self.assertEqual(data["status"], "error")
+
     def test_upload_view_post_empty(self):
         response = self.client.post(reverse("upload_document"))
         self.assertEqual(response.status_code, 302)
@@ -241,7 +266,8 @@ class ViewsTestCase(TestCase):
 
     @patch("extractor.views.calculate_file_sha256")
     @patch("extractor.surreal_db.clone_chunks")
-    def test_upload_view_post_duplicate_cache(self, mock_clone_chunks, mock_sha256):
+    @patch("extractor.cloud_tasks.enqueue")
+    def test_upload_view_post_does_not_clone_an_unowned_duplicate(self, mock_enqueue, mock_clone_chunks, mock_sha256):
         existing_doc = SourceDocument.objects.create(
             original_filename="existing.txt",
             file_hash="mock-hash-duplicate-cache",
@@ -264,11 +290,12 @@ class ViewsTestCase(TestCase):
         copies = SourceDocument.objects.filter(file_hash="mock-hash-duplicate-cache").exclude(id=existing_doc.id)
         self.assertEqual(copies.count(), 1)
         copy_doc = copies.first()
-        self.assertEqual(copy_doc.status, "COMPLETED")
-        self.assertEqual(copy_doc.title, "Existing Doc")
+        self.assertEqual(copy_doc.status, "PENDING")
+        self.assertNotEqual(copy_doc.title, "Existing Doc")
 
-        # Verify chunks cloned
-        mock_clone_chunks.assert_called_once_with(str(existing_doc.uuid), str(copy_doc.uuid))
+        # A private completed corpus must never be reused by a different tenant.
+        mock_clone_chunks.assert_not_called()
+        mock_enqueue.assert_called_once_with("process_document", {"document_id": copy_doc.id})
 
 
 class SecurityGatewayAndAuthTestCase(TestCase):
@@ -1492,11 +1519,14 @@ class SecurityAuthTestCase(TestCase):
 
     @patch("urllib.request.urlopen")
     def test_supabase_app_metadata_admin_promotion(self, mock_urlopen):
+        """SEC-04: app_metadata.is_admin must NOT grant Django superuser.
+        Only ADMIN_EMAIL environment variable grants admin privileges.
+        Verifies the privilege escalation vector is closed."""
         import json
 
         from extractor.auth import SupabaseAuthBackend
 
-        # User has app_metadata.is_admin = True
+        # User has app_metadata.is_admin = True — this must be IGNORED
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps(
@@ -1509,13 +1539,15 @@ class SecurityAuthTestCase(TestCase):
             SUPABASE_URL="https://project.supabase.co",
             SUPABASE_PUBLIC_KEY="mock-public-key",
             CF_TURNSTILE_SITE_KEY="",
+            ADMIN_EMAIL="",  # No ADMIN_EMAIL configured — nobody should be promoted
             DEBUG=False,
         ):
             user = backend.authenticate(None, username="promoted_user@example.com", password="password123")
 
             self.assertIsNotNone(user)
-            self.assertTrue(user.is_superuser)
-            self.assertTrue(user.is_staff)
+            # SEC-04: app_metadata.is_admin must NOT grant superuser
+            self.assertFalse(user.is_superuser, "app_metadata.is_admin must not grant Django superuser (SEC-04)")
+            self.assertFalse(user.is_staff, "app_metadata.is_admin must not grant Django staff (SEC-04)")
 
     @patch("urllib.request.urlopen")
     def test_first_user_is_not_automatically_promoted(self, mock_urlopen):
@@ -1648,6 +1680,19 @@ class BulkDocumentActionTestCase(TestCase):
             uploaded_by=self.user,
         )
 
+    def test_bulk_action_invalid_action(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("bulk_action"),
+            {
+                "action": "unknown_action",
+                "selected_documents": [str(self.doc1.uuid)],
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        messages_list = list(get_messages(response.wsgi_request))
+        self.assertTrue(any("Invalid bulk action requested." in str(m) for m in messages_list))
+
     @patch("extractor.cloud_tasks.enqueue")
     def test_bulk_restart(self, mock_enqueue):
         self.client.force_login(self.user)
@@ -1694,6 +1739,24 @@ class BulkDocumentActionTestCase(TestCase):
         # Verify they are deleted from DB
         self.assertEqual(SourceDocument.objects.filter(id__in=[self.doc1.id, self.doc2.id]).count(), 0)
 
+    @patch("extractor.views._delete_single_document", side_effect=[RuntimeError("storage unavailable"), None])
+    def test_bulk_delete_continues_after_individual_failure(self, mock_delete):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("bulk_action"),
+            {
+                "action": "delete",
+                "selected_documents": [self.doc1.id, self.doc2.id],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(mock_delete.call_count, 2)
+        self.assertIn(
+            "1 could not be removed", " ".join(str(message) for message in get_messages(response.wsgi_request))
+        )
+
     @patch("django.core.files.storage.default_storage.exists", return_value=False)
     @patch("django.core.files.storage.default_storage.delete")
     @patch("extractor.surreal_db.delete_chunks")
@@ -1739,62 +1802,28 @@ class CoreDesignHardeningTests(TestCase):
         self.user = User.objects.create_user(username=self.username, email=self.email, password=self.password)
         self.client.force_login(self.user)
 
-    def test_openrouter_api_key_masked_property(self):
+    def test_system_settings_has_no_persisted_provider_credential(self):
         settings_obj = SystemSettings.get_settings()
-        settings_obj.openrouter_api_key = ""
-        self.assertEqual(settings_obj.openrouter_api_key_masked, "")
+        self.assertFalse(hasattr(settings_obj, "openrouter_api_key"))
+        self.assertFalse(hasattr(settings_obj, "openrouter_api_key_masked"))
 
-        settings_obj.openrouter_api_key = "sk-or-v1-supersecretkey"
-        settings_obj.save()
-        self.assertEqual(settings_obj.openrouter_api_key_masked, "••••••••••••••••")
-
-    def test_save_settings_view_post_api_key_masked(self):
-        settings_obj = SystemSettings.get_settings()
-        settings_obj.openrouter_api_key = "sk-or-v1-originalkey"
-        settings_obj.save()
-
-        # Admin user required to edit settings
+    def test_save_settings_view_ignores_retired_provider_credential_field(self):
+        """The settings endpoint accepts no persisted provider credentials."""
+        # Global settings are restricted to superusers, not merely Django staff.
         self.user.is_staff = True
+        self.user.is_superuser = True
         self.user.save()
 
-        # Post with the masked value should not overwrite original key
         response = self.client.post(
             reverse("save_settings"),
             {
                 "monthly_budget_usd": "100.00",
                 "selected_model": "auto",
-                "openrouter_api_key": "••••••••••••••••",
+                "openrouter_api_key": "a-retired-value",
             },
         )
         self.assertEqual(response.status_code, 302)
-        settings_obj.refresh_from_db()
-        self.assertEqual(settings_obj.openrouter_api_key, "sk-or-v1-originalkey")
-
-        # Post with empty value should clear the key
-        response = self.client.post(
-            reverse("save_settings"),
-            {
-                "monthly_budget_usd": "100.00",
-                "selected_model": "auto",
-                "openrouter_api_key": "",
-            },
-        )
-        self.assertEqual(response.status_code, 302)
-        settings_obj.refresh_from_db()
-        self.assertEqual(settings_obj.openrouter_api_key, "")
-
-        # Post with new value should update the key
-        response = self.client.post(
-            reverse("save_settings"),
-            {
-                "monthly_budget_usd": "100.00",
-                "selected_model": "auto",
-                "openrouter_api_key": "sk-or-v1-newkey",
-            },
-        )
-        self.assertEqual(response.status_code, 302)
-        settings_obj.refresh_from_db()
-        self.assertEqual(settings_obj.openrouter_api_key, "sk-or-v1-newkey")
+        self.assertFalse(hasattr(SystemSettings.get_settings(), "openrouter_api_key"))
 
     @patch("extractor.views.query_semantic_knowledge_rag")
     def test_document_rag_search_view_with_document_ids(self, mock_rag):
@@ -1890,6 +1919,33 @@ class SupabaseSessionExchangeTestCase(TestCase):
             self.assertEqual(data["user"], "oauth.user")
             self.assertEqual(self.client.session.get("supabase_user_id"), "oauth-uuid-123")
 
+    @patch("urllib.request.urlopen")
+    def test_supabase_session_exchange_unconfirmed_email(self, mock_urlopen):
+        """Verify SupabaseSessionExchangeView rejects unconfirmed email when SUPABASE_CONFIRM_EMAIL_REQUIRED is set."""
+        import json
+
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps(
+            {"id": "unconfirmed-uuid-123", "email": "unconfirmed@example.com", "email_confirmed_at": None}
+        ).encode("utf-8")
+        mock_urlopen.return_value = mock_resp
+
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            SUPABASE_CONFIRM_EMAIL_REQUIRED=True,
+            ADMIN_EMAIL="",
+        ):
+            response = self.client.post(
+                reverse("supabase_session_exchange"),
+                data=json.dumps({"access_token": "unconfirmed-jwt"}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 403)
+            data = response.json()
+            self.assertEqual(data.get("error"), "Email address not verified.")
+
     def test_supabase_session_exchange_malformed_json_guard(self):
         """Verify SupabaseSessionExchangeView returns 400 on malformed JSON payload."""
         response = self.client.post(
@@ -1953,7 +2009,7 @@ class ViewsExceptionPathsTestCase(TestCase):
             self.assertFalse(success)
             self.assertIn("User already registered", msg)
 
-        # Test HTTPError with non-JSON body
+        # Test HTTPError with non-JSON body (Finding 107: non-JSON responses safely mapped)
         non_json_err = urllib.error.HTTPError(
             "http://supabase", 500, "Server Error", {}, io.BytesIO(b"Internal failure")
         )
@@ -1962,15 +2018,15 @@ class ViewsExceptionPathsTestCase(TestCase):
                 "https://sub.supabase.co", "key", "test@example.com", "pass", "http://app", ""
             )
             self.assertFalse(success)
-            self.assertIn("Internal failure", msg)
+            self.assertIn("Authentication provider returned an invalid response.", msg)
 
-        # Test generic Exception
+        # Test generic Exception (Finding 11: network error sanitized to prevent leaking internals)
         with patch("urllib.request.urlopen", side_effect=ConnectionResetError("Connection lost")):
             success, msg = _register_supabase_user(
                 "https://sub.supabase.co", "key", "test@example.com", "pass", "http://app", ""
             )
             self.assertFalse(success)
-            self.assertIn("Connection lost", msg)
+            self.assertIn("A network error occurred", msg)
 
     def test_supabase_recovery_error_handling(self):
         import io
@@ -1990,13 +2046,13 @@ class ViewsExceptionPathsTestCase(TestCase):
             self.assertFalse(success)
             self.assertIn("Rate limit exceeded", msg)
 
-        # Test generic Exception
+        # Test generic Exception (Finding 11: network error sanitized to prevent leaking internals)
         with patch("urllib.request.urlopen", side_effect=TimeoutError("Request timed out")):
             success, msg = _send_supabase_recovery(
                 "test@example.com", "https://sub.supabase.co", "key", "http://app", ""
             )
             self.assertFalse(success)
-            self.assertIn("timed out", msg)
+            self.assertIn("A network error occurred", msg)
 
     def test_multilabel_and_idna_email_validation(self):
         from extractor.views import _validate_registration_inputs
@@ -2069,6 +2125,28 @@ class ViewsExceptionPathsTestCase(TestCase):
             settings_obj.csrf_trusted_origins,
             "https://example.com, https://localhost:3000\nhttps://sub.domain.org",
         )
+
+    def test_save_settings_rejects_malformed_https_origins(self):
+        user = User.objects.create_superuser(username="strict-settings-admin", password="Password123!")
+        self.client.force_login(user)
+        for origin in ("https:///missing-host", "https://example.com/path", "https://user@example.com"):
+            response = self.client.post(
+                reverse("save_settings"),
+                {
+                    "csrf_trusted_origins": origin,
+                    "monthly_budget_usd": "20.00",
+                    "currency": "USD",
+                    "selected_model": "auto",
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+            self.assertNotEqual(SystemSettings.get_settings().csrf_trusted_origins, origin)
+
+    def test_staff_user_cannot_change_global_settings(self):
+        user = User.objects.create_user(username="settings-staff", password="Password123!", is_staff=True)
+        self.client.force_login(user)
+        response = self.client.post(reverse("save_settings"), {"monthly_budget_usd": "99.00"})
+        self.assertEqual(response.status_code, 403)
 
     def test_document_retry_conflict_on_in_flight_document(self):
         """Verify DocumentRetryView rejects in-flight documents with 409 Conflict."""
@@ -2256,3 +2334,103 @@ class ViewsExceptionPathsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         cache_control = response.get("Cache-Control", "")
         self.assertIn("no-cache", cache_control)
+
+    def test_document_purge_all_rejects_staff_non_superuser(self):
+        """Verify DocumentPurgeAllView rejects staff users who are not superusers with 403."""
+        staff_user = User.objects.create_user(
+            username="staff_non_super",
+            password="Password123!",
+            is_staff=True,
+            is_superuser=False,
+        )
+        self.client.force_login(staff_user)
+        response = self.client.post(reverse("purge_all_documents"))
+        self.assertEqual(response.status_code, 403)
+
+    @patch("extractor.views.surreal_db.purge_all")
+    @patch("extractor.views.surreal_db.list_documents", return_value=[])
+    def test_document_purge_all_allows_superuser(self, mock_list, mock_purge):
+        """Verify DocumentPurgeAllView allows superusers to purge."""
+        superuser = User.objects.create_superuser(
+            username="real_super",
+            password="Password123!",
+            email="admin@example.com",
+        )
+        self.client.force_login(superuser)
+        response = self.client.post(reverse("purge_all_documents"))
+        self.assertEqual(response.status_code, 302)
+        mock_purge.assert_called_once()
+
+    def test_wrap_surreal_doc_provides_get_status_display(self):
+        """Verify _wrap_surreal_doc attaches get_status_display matching Django choices."""
+        from django.test import override_settings
+
+        from extractor.views import _wrap_surreal_doc
+
+        doc_dict = {
+            "doc_uuid": "mock-uuid-status-123",
+            "status": "PENDING",
+            "title": "Test Title",
+        }
+        with override_settings(SURREALDB_OFFLINE=False):
+            wrapped = _wrap_surreal_doc(doc_dict)
+            self.assertIsNotNone(wrapped)
+            self.assertTrue(callable(getattr(wrapped, "get_status_display", None)))
+            self.assertEqual(wrapped.get_status_display(), "Queued")
+
+            # Test fallback for arbitrary status
+            doc_dict["status"] = "CUSTOM_STAGE"
+            wrapped_custom = _wrap_surreal_doc(doc_dict)
+            self.assertEqual(wrapped_custom.get_status_display(), "Custom_Stage")
+
+    def test_document_status_api_status_display(self):
+        """Verify DocumentStatusAPIView returns mapped status_display for queued and extracting states."""
+        user = User.objects.create_user(username="status_api_tester", password="Password123!")
+        self.client.force_login(user)
+        SourceDocument.objects.create(
+            original_filename="status_test.pdf",
+            file_hash="status-hash-123",
+            title="Status Test Doc",
+            status="EXTRACTING",
+            uploaded_by=user,
+        )
+        response = self.client.get(reverse("document_status_api"))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        doc_entry = next((d for d in data.get("documents", []) if d.get("title") == "Status Test Doc"), None)
+        self.assertIsNotNone(doc_entry)
+        self.assertEqual(doc_entry.get("status_display"), "OCR & Layout Analysis")
+
+    @patch("django.core.files.storage.default_storage.exists", return_value=True)
+    @patch("django.core.files.storage.default_storage.delete", side_effect=OSError("Storage connection dropped"))
+    def test_bulk_document_action_delete_retains_on_storage_failure(self, _mock_del, _mock_exists):
+        """Verify bulk delete retains document record in database when storage cleanup fails."""
+        user = User.objects.create_user(username="bulk_del_fail_tester", password="Password123!")
+        self.client.force_login(user)
+        doc = SourceDocument.objects.create(
+            file="documents/test_fail.pdf",
+            original_filename="fail_bulk_delete.pdf",
+            file_hash="fail-bulk-hash-789",
+            title="Fail Bulk Delete Doc",
+            status="COMPLETED",
+            uploaded_by=user,
+        )
+        response = self.client.post(
+            reverse("bulk_action"),
+            {"action": "delete", "selected_documents": [doc.id]},
+        )
+        self.assertEqual(response.status_code, 302)
+        # Document record must be retained because physical storage deletion failed
+        self.assertTrue(SourceDocument.objects.filter(id=doc.id).exists())
+
+    def test_surreal_audit_fallback_document_status_display(self):
+        """Verify _get_surreal_audit_document returns fallback SimpleNamespace with get_status_display."""
+        from extractor.views import _get_surreal_audit_document
+
+        raw_log = {"doc_uuid": "deleted-uuid-12345678"}
+        with patch("extractor.surreal_db.get_document", return_value=None):
+            fallback_doc = _get_surreal_audit_document(raw_log, {})
+            self.assertIsNotNone(fallback_doc)
+            self.assertEqual(fallback_doc.status, "DELETED")
+            self.assertTrue(callable(getattr(fallback_doc, "get_status_display", None)))
+            self.assertEqual(fallback_doc.get_status_display(), "Deleted")

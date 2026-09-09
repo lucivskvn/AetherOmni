@@ -24,7 +24,7 @@ import logging
 import threading
 import urllib.request
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
@@ -57,6 +57,8 @@ logger = logging.getLogger(__name__)
 
 APPLICATION_JSON = "application/json"
 NO_COMPLETED_DOCS_MSG = "No completed documents selected for export bundle."
+EXPORT_MAX_DOCUMENTS_LIMIT = 1000
+EXPORT_MAX_LIMIT_MSG = f"Export batch exceeds maximum document limit of {EXPORT_MAX_DOCUMENTS_LIMIT} items."
 
 
 # ── Fallback exchange rates (used if the external API is offline) ─────────────
@@ -75,6 +77,17 @@ _FALLBACK_RATES: dict[str, float] = {
 _ZIP_MAX_UNCOMPRESSED_BYTES: int = 500 * 1024 * 1024  # 500 MB
 # Maximum number of members (files) permitted inside a single ZIP archive.
 _ZIP_MAX_MEMBER_COUNT: int = 500
+
+# XLSX parsing expands ZIP members into XML trees, Python rows, and Markdown.
+# These limits are deliberately smaller than the generic archive-export limits
+# and keep a single document well below the worker's 2 GiB memory allocation.
+_XLSX_MAX_UNCOMPRESSED_BYTES: int = 64 * 1024 * 1024
+_XLSX_MAX_MEMBER_COUNT: int = 100
+_XLSX_MAX_SHEETS: int = 20
+_XLSX_MAX_ROWS: int = 5_000
+_XLSX_MAX_COLUMNS: int = 50
+_XLSX_MAX_CELL_CHARS: int = 1_024
+_XLSX_MAX_MARKDOWN_BYTES: int = 16 * 1024 * 1024
 
 
 def validate_zip(zf: zipfile.ZipFile) -> None:
@@ -98,6 +111,34 @@ def validate_zip(zf: zipfile.ZipFile) -> None:
         raise ValueError(
             f"ZIP uncompressed size {total_uncompressed} bytes exceeds the {_ZIP_MAX_UNCOMPRESSED_BYTES}-byte limit."
         )
+
+
+def _validate_xlsx_archive(zf: zipfile.ZipFile) -> None:
+    """Apply tighter limits before any XLSX XML is loaded into memory."""
+    members = zf.infolist()
+    if len(members) > _XLSX_MAX_MEMBER_COUNT:
+        raise ValueError("XLSX archive contains too many members.")
+    if sum(member.file_size for member in members) > _XLSX_MAX_UNCOMPRESSED_BYTES:
+        raise ValueError("XLSX archive expands beyond the parser budget.")
+    sheet_count = sum(
+        member.filename.startswith("xl/worksheets/sheet") and member.filename.endswith(".xml") for member in members
+    )
+    if sheet_count > _XLSX_MAX_SHEETS:
+        raise ValueError("XLSX workbook contains too many worksheets.")
+
+
+def _bounded_excel_row(row: tuple[Any, ...] | list[Any], parsed_rows: list[int]) -> list[str]:
+    """Validate a non-empty spreadsheet row against the workbook work budget."""
+    if len(row) > _XLSX_MAX_COLUMNS:
+        raise ValueError("XLSX worksheet exceeds the column limit.")
+    normalized = [str(cell).strip() if cell is not None else "" for cell in row]
+    if any(len(cell) > _XLSX_MAX_CELL_CHARS for cell in normalized):
+        raise ValueError("XLSX worksheet contains an oversized cell.")
+    if any(normalized):
+        parsed_rows[0] += 1
+        if parsed_rows[0] > _XLSX_MAX_ROWS:
+            raise ValueError("XLSX workbook exceeds the row limit.")
+    return normalized
 
 
 def safe_extract(zf: zipfile.ZipFile, target_dir: str) -> None:
@@ -233,7 +274,7 @@ def process_json_local(file_path: str) -> str:
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+    except ValueError:
         try:
             with open(file_path, encoding="latin-1") as f:
                 data = json.load(f)
@@ -254,7 +295,9 @@ def process_json_local(file_path: str) -> str:
     return str(data)
 
 
-def _format_markdown_table_sheet(sheet_title: str, rows: list[list[str]]) -> str:
+def _format_markdown_table_sheet(
+    sheet_title: str, rows: list[list[str]], rendered_bytes: list[int] | None = None
+) -> str:
     """Formats a matrix of cells into a GitHub Flavored Markdown table."""
     if not rows:
         return ""
@@ -268,7 +311,12 @@ def _format_markdown_table_sheet(sheet_title: str, rows: list[list[str]]) -> str
         elif len(r) > len(headers):
             r = r[: len(headers)]
         sheet_md.append("| " + " | ".join([c.replace("|", "\\|").replace("\n", "<br>") for c in r]) + " |")
-    return "\n".join(sheet_md)
+    formatted = "\n".join(sheet_md)
+    if rendered_bytes is not None:
+        rendered_bytes[0] += len(formatted.encode("utf-8"))
+        if rendered_bytes[0] > _XLSX_MAX_MARKDOWN_BYTES:
+            raise ValueError("XLSX workbook exceeds the rendered output limit.")
+    return formatted
 
 
 def _parse_excel_openpyxl(file_path: str) -> str | None:
@@ -276,16 +324,20 @@ def _parse_excel_openpyxl(file_path: str) -> str | None:
     try:
         import openpyxl  # type: ignore[import-untyped]
 
+        with zipfile.ZipFile(file_path, "r") as zf:
+            _validate_xlsx_archive(zf)
         wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
         sheets_md: list[str] = []
+        parsed_rows = [0]
+        rendered_bytes = [0]
         for sheet_name in wb.sheetnames:
             ws = wb[sheet_name]
             rows: list[list[str]] = []
             for row in ws.iter_rows(values_only=True):
-                str_row = [str(cell).strip() if cell is not None else "" for cell in row]
+                str_row = _bounded_excel_row(row, parsed_rows)
                 if any(str_row):
                     rows.append(str_row)
-            formatted = _format_markdown_table_sheet(sheet_name, rows)
+            formatted = _format_markdown_table_sheet(sheet_name, rows, rendered_bytes)
             if formatted:
                 sheets_md.append(formatted)
         wb.close()
@@ -306,11 +358,13 @@ def _extract_zipxml_cell_value(c_el: Any, shared_strings: list[str]) -> str:
     return v_el.text
 
 
-def _extract_sheet_rows_from_xml(sheet_tree, shared_strings: list[str]) -> list[list[str]]:
+def _extract_sheet_rows_from_xml(sheet_tree, shared_strings: list[str], parsed_rows: list[int]) -> list[list[str]]:
     """Helper to extract non-empty rows from an Excel worksheet XML tree."""
     rows: list[list[str]] = []
     for row_el in sheet_tree.findall(".//{*}row"):
-        row_cells = [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")]
+        row_cells = _bounded_excel_row(
+            [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")], parsed_rows
+        )
         if any(row_cells):
             rows.append(row_cells)
     return rows
@@ -333,10 +387,12 @@ def _parse_zipxml_sheets(zf: Any, shared_strings: list[str]) -> list[str]:
 
     sheet_files = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
     sheets_md: list[str] = []
+    parsed_rows = [0]
+    rendered_bytes = [0]
     for s_idx, s_file in enumerate(sheet_files, 1):
         sheet_tree = ET.fromstring(zf.read(s_file))  # nosec B314 # noqa: S314
-        rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings)
-        formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows)
+        rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings, parsed_rows)
+        formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows, rendered_bytes)
         if formatted:
             sheets_md.append(formatted)
     return sheets_md
@@ -346,7 +402,7 @@ def _parse_excel_zipxml(file_path: str) -> str | None:
     """Pure standard-library ZIP+XML fallback for .xlsx parsing."""
     try:
         with zipfile.ZipFile(file_path, "r") as zf:
-            validate_zip(zf)
+            _validate_xlsx_archive(zf)
             shared_strings = _load_zipxml_shared_strings(zf)
             sheets_md = _parse_zipxml_sheets(zf, shared_strings)
             return "\n\n".join(sheets_md) if sheets_md else None
@@ -455,7 +511,13 @@ def clean_html_content(raw_html: str) -> str:
         "a": ["href", "title", "target"],
         "*": ["id", "class", "dir"],
     }
-    return bleach.clean(raw_html, tags=allowed_tags, attributes=allowed_attrs, strip=True)
+    return bleach.clean(
+        raw_html,
+        tags=allowed_tags,
+        attributes=allowed_attrs,
+        protocols=["http", "https", "mailto"],
+        strip=True,
+    )
 
 
 def _detect_first_strong(text_content, latin_chars, arabic_chars):
@@ -524,23 +586,33 @@ def render_markdown_to_html(markdown_text: str) -> str:
     return parse_arabic_layout(sanitized)
 
 
+def _escape_yaml_val(val: Any) -> str:
+    s = str(val or "")
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n")
+
+
 def _build_yaml_frontmatter(doc: Any) -> str:
     """Build a YAML frontmatter header for export markdown files."""
-    publisher = _get_doc_field_str(doc, "publisher")
-    publication_year = _get_doc_field_str(doc, "publication_year")
-    doi = _get_doc_field_str(doc, "doi")
-    license_type = _get_doc_field_str(doc, "license_type")
+    publisher = _escape_yaml_val(_get_doc_field_str(doc, "publisher"))
+    publication_year = _escape_yaml_val(_get_doc_field_str(doc, "publication_year"))
+    doi = _escape_yaml_val(_get_doc_field_str(doc, "doi"))
+    license_type = _escape_yaml_val(_get_doc_field_str(doc, "license_type"))
+    title = _escape_yaml_val(getattr(doc, "title", "") or "")
+    author = _escape_yaml_val(getattr(doc, "author", "") or "")
+    language = _escape_yaml_val(getattr(doc, "language", "") or "")
+    doc_type = _escape_yaml_val(getattr(doc, "document_type", "") or "")
+    source_hash = _escape_yaml_val(getattr(doc, "file_hash", "") or "")
     return (
         "---\n"
-        f'title: "{doc.title}"\n'
-        f'author: "{doc.author}"\n'
-        f'language: "{doc.language}"\n'
-        f'document_type: "{doc.document_type}"\n'
+        f'title: "{title}"\n'
+        f'author: "{author}"\n'
+        f'language: "{language}"\n'
+        f'document_type: "{doc_type}"\n'
         f'publisher: "{publisher}"\n'
         f'publication_year: "{publication_year}"\n'
         f'doi: "{doi}"\n'
         f'license_type: "{license_type}"\n'
-        f'source_hash: "{doc.file_hash}"\n'
+        f'source_hash: "{source_hash}"\n'
         f'exported_at: "{datetime.now(UTC).isoformat()}"\n'
         "---\n\n"
     )
@@ -553,6 +625,7 @@ class ZipExportContext:
     manifest: dict[str, Any]
     master_content: list[str]
     zip_file: zipfile.ZipFile
+    seen_doc_paths: set[str] = field(default_factory=set)
     include_taxonomic_views: bool = True
 
 
@@ -584,8 +657,16 @@ def _write_taxonomic_views(
 
 def _append_master_source_block(idx: int, doc: Any, doc_type: str, doc_markdown: str, ctx: ZipExportContext):
     """Helper to append structured markdown source section to master document."""
+    from html import escape
+
+    clean_comment_title = escape(str(doc.title or "")).replace("--", "__")
+    clean_comment_author = escape(str(doc.author or "")).replace("--", "__")
+    clean_comment_lang = escape(str(doc.language or "")).replace("--", "__")
+    clean_comment_type = escape(str(doc_type or "")).replace("--", "__")
+    clean_comment_hash = escape(str(doc.file_hash or "")).replace("--", "__")
+
     ctx.master_content.append(
-        f"<!-- SOURCE_START_{idx + 1}: {doc.title} by {doc.author} ({doc.language}) [Type: {doc_type}, Hash: {doc.file_hash}] -->"
+        f"<!-- SOURCE_START_{idx + 1}: {clean_comment_title} by {clean_comment_author} ({clean_comment_lang}) [Type: {clean_comment_type}, Hash: {clean_comment_hash}] -->"
     )
     ctx.master_content.append(f"\n# SOURCE: {doc.title}\n")
     ctx.master_content.append(f"**Author:** {doc.author}  ")
@@ -619,8 +700,13 @@ def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
     frontmatter = _build_yaml_frontmatter(doc)
     full_content = frontmatter + doc_markdown
 
-    # Primary single-copy standardized document output
+    # Primary single-copy standardized document output with collision deduplication
     doc_path = f"documents/{base_slug}.md"
+    counter = 1
+    while doc_path in ctx.seen_doc_paths:
+        counter += 1
+        doc_path = f"documents/{base_slug}_{counter}.md"
+    ctx.seen_doc_paths.add(doc_path)
     ctx.zip_file.writestr(doc_path, full_content)
 
     if ctx.include_taxonomic_views:
@@ -649,6 +735,8 @@ def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
 
 
 def _get_offline_docs(document_ids, user):
+    import uuid
+
     from django.db.models import Q
 
     from extractor.models import SourceDocument
@@ -658,8 +746,11 @@ def _get_offline_docs(document_ids, user):
     for item in document_ids:
         try:
             int_ids.append(int(item))
-        except (ValueError, TypeError):
-            uuid_strs.append(str(item))
+        except ValueError, TypeError:
+            try:
+                uuid_strs.append(str(uuid.UUID(str(item))))
+            except ValueError, TypeError, AttributeError:
+                continue
 
     docs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs), status="COMPLETED")
     if user and not (user.is_staff or user.is_superuser):
@@ -687,7 +778,8 @@ def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
             continue
 
         doc = _wrap_surreal_doc(raw_doc, users_map)
-        docs_list.append(doc)
+        if doc is not None:
+            docs_list.append(doc)
     return docs_list
 
 
@@ -713,6 +805,9 @@ def generate_curated_zip_bundle(
     if not docs_list:
         raise ValueError(NO_COMPLETED_DOCS_MSG)
 
+    if len(docs_list) > EXPORT_MAX_DOCUMENTS_LIMIT:
+        raise ValueError(EXPORT_MAX_LIMIT_MSG)
+
     zip_buffer = BytesIO()
 
     manifest = {
@@ -731,11 +826,13 @@ def generate_curated_zip_bundle(
 
     seen_lang_paths: set[str] = set()
     seen_author_paths: set[str] = set()
+    seen_doc_paths: set[str] = set()
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         ctx = ZipExportContext(
             seen_lang_paths=seen_lang_paths,
             seen_author_paths=seen_author_paths,
+            seen_doc_paths=seen_doc_paths,
             manifest=manifest,
             master_content=master_content,
             zip_file=zip_file,
@@ -812,16 +909,14 @@ def _get_doc_chunks(doc: Any, doc_uuid: str, limit: int) -> list[dict[str, Any]]
             or ""
         )
         raw_chunks = chunk_document_semantically(content)
-        return [
-            {
-                "content": raw_text,
-                "chunk_index": idx,
-                "page_number": 1,
-                "chapter_title": "",
-                "anchor_id": f"chunk-{idx}",
-            }
-            for idx, raw_text in enumerate(raw_chunks[:limit])
-        ]
+        from extractor.tasks import _build_chunk_payload
+
+        lang = str(getattr(doc, "language", None) or "en")
+        chunks_payload = []
+        for idx, raw_text in enumerate(raw_chunks[:limit]):
+            payload, _, _ = _build_chunk_payload(idx, raw_text, None, lang)
+            chunks_payload.append(payload)
+        return chunks_payload
 
     try:
         return surreal_db.get_document_chunks(doc_uuid, limit=limit)
@@ -873,6 +968,9 @@ def generate_sft_dataset_pairs(
 
     if not docs_list:
         raise ValueError(NO_COMPLETED_DOCS_MSG)
+
+    if len(docs_list) > EXPORT_MAX_DOCUMENTS_LIMIT:
+        raise ValueError(EXPORT_MAX_LIMIT_MSG)
 
     pairs: list[dict[str, Any]] = []
     for doc in docs_list:
@@ -980,9 +1078,29 @@ def _insert_sqlite_document(cursor: Any, doc: Any) -> str:
 def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str) -> None:
     title = str(getattr(doc, "title", None) or "Untitled")
     author = str(getattr(doc, "author", None) or "Unknown")
-    chunks = _get_doc_chunks(doc, doc_uuid, limit=10000)
-    chunk_rows = []
-    fts_rows = []
+    chunks = _get_doc_chunks(doc, doc_uuid, limit=500)
+    chunk_rows: list[tuple[str, int, int, str, str, str]] = []
+    fts_rows: list[tuple[str, str, str, str, str, str]] = []
+    batch_size = 500
+    insert_chunks_sql = """
+        INSERT INTO chunks (
+            doc_uuid, chunk_index, page_number, chapter_title, anchor_id, content
+        ) VALUES (?, ?, ?, ?, ?, ?);
+    """
+    insert_fts_sql = """
+        INSERT INTO chunks_fts (
+            content, title, author, doc_uuid, page_number, anchor_id
+        ) VALUES (?, ?, ?, ?, ?, ?);
+    """
+
+    def flush_batch() -> None:
+        if not chunk_rows:
+            return
+        cursor.executemany(insert_chunks_sql, chunk_rows)
+        cursor.executemany(insert_fts_sql, fts_rows)
+        chunk_rows.clear()
+        fts_rows.clear()
+
     for chunk in chunks:
         content_str = str(chunk.get("content") or "").strip()
         if not content_str:
@@ -994,24 +1112,9 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str) -> None:
 
         chunk_rows.append((doc_uuid, c_idx, p_num, chap, anch, content_str))
         fts_rows.append((content_str, title, author, doc_uuid, str(p_num), anch))
-
-    if chunk_rows:
-        cursor.executemany(
-            """
-            INSERT INTO chunks (
-                doc_uuid, chunk_index, page_number, chapter_title, anchor_id, content
-            ) VALUES (?, ?, ?, ?, ?, ?);
-            """,
-            chunk_rows,
-        )
-        cursor.executemany(
-            """
-            INSERT INTO chunks_fts (
-                content, title, author, doc_uuid, page_number, anchor_id
-            ) VALUES (?, ?, ?, ?, ?, ?);
-            """,
-            fts_rows,
-        )
+        if len(chunk_rows) == batch_size:
+            flush_batch()
+    flush_batch()
 
 
 def _serialize_sqlite_conn(conn: Any) -> bytes:
@@ -1069,8 +1172,8 @@ def generate_curated_sqlite_bundle(
     if not docs_list:
         raise ValueError(NO_COMPLETED_DOCS_MSG)
 
-    if len(docs_list) > 1000:
-        raise ValueError("Export batch exceeds maximum document limit of 1000 items.")
+    if len(docs_list) > EXPORT_MAX_DOCUMENTS_LIMIT:
+        raise ValueError(EXPORT_MAX_LIMIT_MSG)
 
     conn = sqlite3.connect(":memory:")
     cursor = conn.cursor()
@@ -1146,6 +1249,9 @@ def generate_curated_csv_bundle(
     if not docs_list:
         raise ValueError(NO_COMPLETED_DOCS_MSG)
 
+    if len(docs_list) > EXPORT_MAX_DOCUMENTS_LIMIT:
+        raise ValueError(EXPORT_MAX_LIMIT_MSG)
+
     output = io.StringIO()
     writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
 
@@ -1189,7 +1295,9 @@ def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: i
     import time
 
     # VULN-01 / S5443 fix: resolve absolute realpath to prevent symlink traversal in temp dir
-    raw_dir = temp_dir if temp_dir is not None else tempfile.gettempdir()  # NOSONAR python:S5443
+    raw_dir = (
+        temp_dir if temp_dir is not None else tempfile.gettempdir()
+    )  # NOSONAR python:S5443 -- Resolved with realpath validation before use.
     target_dir = os.path.realpath(raw_dir)
     if not os.path.exists(target_dir):
         return 0
@@ -1295,7 +1403,7 @@ def get_locale_currency_details(request: Any) -> dict[str, Any]:
     try:
         settings_obj = SystemSettings.get_settings()
         selected_currency = settings_obj.currency
-    except (SystemSettings.DoesNotExist, AttributeError, RuntimeError):
+    except SystemSettings.DoesNotExist, AttributeError, RuntimeError:
         selected_currency = "auto"
 
     if selected_currency and selected_currency != "auto":

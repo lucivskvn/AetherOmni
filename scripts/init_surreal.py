@@ -146,7 +146,7 @@ def _create_local_superuser_full(admin_email, admin_password):
             validate_password(admin_password, user=user)
         except Exception:
             logger.warning("Credential validation warning during initial admin setup.")
-        user.set_password(admin_password)  # NOSONAR # nosemgrep
+        user.set_password(admin_password)
         user.save()
         logger.info("Local Django superuser created successfully.")
         if admin_password == "admin":  # nosec B105
@@ -155,9 +155,7 @@ def _create_local_superuser_full(admin_email, admin_password):
             try:
                 import bcrypt
 
-                logger.info(
-                    "Enforcing credential update flag for initial administrator account."
-                )  # NOSONAR # nosemgrep
+                logger.info("Enforcing credential update flag for initial administrator account.")
                 ForcePasswordChangeMiddleware.set_force_reset_flag(
                     user.id, bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
                 )
@@ -270,7 +268,7 @@ def main():
     # Convert WebSocket URL scheme to HTTP scheme for REST requests
     ws_prefix = "ws:" + "//"
     wss_prefix = "wss:" + "//"
-    http_url = SURREAL_URL.replace(ws_prefix, "http://").replace(wss_prefix, "https://")  # NOSONAR # nosemgrep
+    http_url = SURREAL_URL.replace(ws_prefix, "http://").replace(wss_prefix, "https://")
     http_url = http_url.removesuffix("/rpc")
     http_url = http_url.rstrip("/")
 

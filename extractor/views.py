@@ -1,6 +1,11 @@
 ISO_8601_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DOCUMENT_NOT_FOUND_MSG = "Document not found."
 EXPORT_RATE_LIMIT_MSG = "Export rate limit exceeded. Please wait 60 seconds before trying again."
+EXPORT_FAILURE_MSG = "Export generation failed. Please try again later."
+RAG_RATE_LIMIT_MSG = "Search rate limit reached. Please wait a moment before sending another query."
+SFT_PREVIEW_RATE_LIMIT_MSG = "Preview rate limit reached. Please wait a moment before trying again."
+CANCEL_PERM_DENIED_MSG = "Permission denied to cancel this document."
+ROUTE_DOCUMENT_DETAIL = "document_detail"
 
 import json
 import logging
@@ -20,9 +25,11 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.safestring import mark_safe
 from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
 from extractor.context_processors import _resolve_commit_sha, _resolve_release_version
+from extractor.task_state import CANCEL_REQUESTED
 
 if TYPE_CHECKING:  # nosonar
     # Statically import ingest_sources to satisfy desloppify importer analyzer
@@ -134,7 +141,7 @@ def parse_datetime(val):
         return val
     try:
         return datetime.strptime(val, ISO_8601_FORMAT).replace(tzinfo=timezone.UTC)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         try:
             from django.utils.dateparse import parse_datetime as django_parse
 
@@ -143,7 +150,7 @@ def parse_datetime(val):
                 if parsed.tzinfo is None:
                     parsed = parsed.replace(tzinfo=timezone.UTC)
                 return parsed
-        except (ValueError, TypeError, AttributeError):
+        except ValueError, TypeError, AttributeError:
             pass
     return timezone.now()
 
@@ -225,25 +232,24 @@ def _build_users_map(user_ids=None, fallback_user=None) -> dict:
     return users_map
 
 
-def _wrap_surreal_doc(d, users_map=None):
-    if not d:
+def _get_offline_surreal_doc(doc_uuid: str | None):
+    from extractor.models import SourceDocument
+
+    try:
+        return SourceDocument.objects.get(uuid=doc_uuid)
+    except SourceDocument.DoesNotExist, ValueError, TypeError, ValidationError:
+        logger.warning("[SurrealDB Wrapper] SourceDocument with doc_uuid=%s not found in database.", doc_uuid)
         return None
-    from django.conf import settings
 
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        from extractor.models import SourceDocument
 
-        try:
-            return SourceDocument.objects.get(uuid=d.get("doc_uuid"))
-        except (SourceDocument.DoesNotExist, ValueError, TypeError):
-            logger.warning(
-                "[SurrealDB Wrapper] SourceDocument with doc_uuid=%s not found in database.", d.get("doc_uuid")
-            )
+def _build_synthetic_surreal_doc(d: dict, users_map: dict | None = None) -> SimpleNamespace:
+    from extractor.models import SourceDocument
 
     doc_obj = SimpleNamespace()
-    doc_obj.id = d.get("doc_uuid")
-    doc_obj.uuid = d.get("doc_uuid")
-    doc_obj.doc_uuid = d.get("doc_uuid")
+    doc_uuid = d.get("doc_uuid") or d.get("id")
+    doc_obj.id = doc_uuid
+    doc_obj.uuid = doc_uuid
+    doc_obj.doc_uuid = doc_uuid
     doc_obj.file = d.get("file")
     doc_obj.file_hash = d.get("file_hash")
     doc_obj.original_filename = d.get("original_filename")
@@ -261,6 +267,10 @@ def _wrap_surreal_doc(d, users_map=None):
     doc_obj.yaml_metadata = d.get("yaml_metadata")
     doc_obj.qa_dataset = d.get("qa_dataset")
     doc_obj.semantic_signature = d.get("semantic_signature")
+    doc_obj.publisher = d.get("publisher") or ""
+    doc_obj.publication_year = str(d.get("publication_year") or "")
+    doc_obj.license_type = d.get("license_type") or ""
+    doc_obj.doi = d.get("doi") or ""
     doc_obj.error_message = d.get("error_message")
     doc_obj.retry_count = d.get("retry_count", 0)
 
@@ -271,7 +281,23 @@ def _wrap_surreal_doc(d, users_map=None):
     uid = d.get("uploaded_by_id")
     doc_obj.uploaded_by_id = uid
     doc_obj.uploaded_by = users_map.get(uid) if (users_map and uid in users_map) else None
+
+    status_display_map = dict(SourceDocument.STATUS_CHOICES)
+    doc_obj.get_status_display = lambda: status_display_map.get(doc_obj.status, str(doc_obj.status or "").title())
     return doc_obj
+
+
+def _wrap_surreal_doc(d, users_map=None):
+    if not d:
+        return None
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        offline_doc = _get_offline_surreal_doc(d.get("doc_uuid") or d.get("id"))
+        if offline_doc is not None:
+            return offline_doc
+
+    return _build_synthetic_surreal_doc(d, users_map)
 
 
 from extractor.utils import (
@@ -285,7 +311,6 @@ from extractor.utils import (
     VALUE_XML_HTTP_REQUEST,
     broadcast_status_change,
     calculate_file_sha256,
-    clean_html_content,
     format_localized_cost,
     generate_curated_csv_bundle,
     generate_curated_sqlite_bundle,
@@ -350,8 +375,12 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
             logger.debug("[Budget Check] SurrealDB query bypassed, relying on MonthlySpendLog: %s", err)
 
         return (monthly_live + monthly_logged) >= budget_cap
-    except Exception:
-        return False  # Fail-open: never block if budget check itself fails
+    except Exception as exc:
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            logger.warning("[Budget Check] Offline budget evaluation failed; allowing local-only request: %s", exc)
+            return False
+        logger.error("[Budget Check] Budget evaluation failed; denying production request: %s", exc)
+        return True
 
 
 def _parse_dt(value):
@@ -364,6 +393,15 @@ def _parse_dt(value):
         return parse_datetime(str(value))
     except Exception:
         return None
+
+
+def _safe_metadata_source_link(value: object) -> str:
+    """Return only absolute HTTP(S) metadata links safe for a document anchor."""
+    source_link = str(value or "").strip()
+    parsed_url = urlparse(source_link)
+    if parsed_url.scheme in {"http", "https"} and parsed_url.netloc:
+        return source_link
+    return ""
 
 
 def get_request_actor_id(request) -> str:
@@ -635,15 +673,10 @@ def _validate_upload_file(orig_name: str, size: int) -> dict[str, str] | None:
 
 
 def _find_existing_doc_by_hash(file_hash: str, user_id: str | None = None) -> dict[str, Any] | None:
-    existing_doc = surreal_db.get_document_by_hash(file_hash, str(user_id) if user_id else None)
-    if not existing_doc:
-        sql = "SELECT * FROM documents WHERE file_hash = $file_hash AND status = 'COMPLETED' LIMIT 1;"
-        rows = surreal_db._first_result(surreal_db._run(sql, {"file_hash": file_hash}))
-        if rows:
-            existing_doc = rows[0]
-        else:
-            existing_doc = surreal_db.get_document_by_hash(file_hash)
-    return existing_doc
+    """Return only a same-tenant duplicate; private documents are never globally shared."""
+    if not user_id:
+        return None
+    return surreal_db.get_document_by_hash(file_hash, str(user_id))
 
 
 def _get_dedup_field(existing_doc: Any, field_name: str, default: Any = None) -> Any:
@@ -683,6 +716,8 @@ def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: st
         "yaml_metadata": _get_dedup_field(existing_doc, "yaml_metadata"),
         "qa_dataset": _get_dedup_field(existing_doc, "qa_dataset"),
         "cost_usd": 0.0,
+        "input_tokens": _get_dedup_field(existing_doc, "input_tokens", 0),
+        "output_tokens": _get_dedup_field(existing_doc, "output_tokens", 0),
         "semantic_signature": _get_dedup_field(existing_doc, "semantic_signature"),
         "retry_count": 0,
         "created_at": format_datetime(timezone.now()),
@@ -816,7 +851,6 @@ def _handle_existing_doc_match(
             )
             return {"status": "cached", "name": orig_name}
 
-        logger.info("[Deduplication] Match found for file hash %s. Skipping physical rewrite.", file_hash)
         return _clone_deduplicated_doc(request, existing_doc, orig_name, file_hash)
     elif status in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
         return {
@@ -972,6 +1006,7 @@ class DocumentDetailView(LoginRequiredMixin, View):
                     meta_raw = yaml.safe_load(_sanitise_yaml_block(doc.yaml_metadata))
                 if isinstance(meta_raw, dict):
                     parsed_yaml = {str(k).strip().lower(): v for k, v in meta_raw.items()}
+                    parsed_yaml["source_link"] = _safe_metadata_source_link(parsed_yaml.get("source_link"))
             except Exception as e:
                 logger.debug("[Detail View] Failed to parse document YAML metadata: %s", e)
 
@@ -989,7 +1024,8 @@ class DocumentDetailView(LoginRequiredMixin, View):
 def _build_document_save_payload(request, sanitized_markdown: str) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "refined_markdown": sanitized_markdown,
-        "status": "EMBEDDING",
+        "status": "PENDING",
+        CANCEL_REQUESTED: False,
     }
     field_limits = {
         "title": 255,
@@ -1027,13 +1063,22 @@ class DocumentSaveView(LoginRequiredMixin, View):
             messages.error(request, "Permission denied to modify this document.")
             return redirect("dashboard")
 
+        doc_status = raw_doc.get("status") if isinstance(raw_doc, dict) else getattr(raw_doc, "status", "")
+        if doc_status in ("PENDING", "EXTRACTING", "REFINING", "EMBEDDING"):
+            messages.error(
+                request,
+                "Document is currently being processed. Stop processing or wait for completion before editing.",
+            )
+            return redirect(ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
+
         new_markdown = request.POST.get("refined_markdown", "")
         if len(new_markdown) > 5 * 1024 * 1024:
             messages.error(request, "Edited markdown exceeds maximum 5MB size limit.")
-            return redirect("document_detail", doc_uuid=doc_uuid)
+            return redirect(ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
 
-        sanitized_markdown = clean_html_content(new_markdown)
-        payload = _build_document_save_payload(request, sanitized_markdown)
+        # Strip control null bytes and normalize unicode without destroying raw Markdown link/comparison syntax
+        cleaned_markdown = new_markdown.replace("\x00", "").strip()
+        payload = _build_document_save_payload(request, cleaned_markdown)
 
         doc_ref = surreal_db.update_document(doc_uuid, payload)
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
@@ -1055,10 +1100,10 @@ class DocumentSaveView(LoginRequiredMixin, View):
             cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_id": doc_id})
         else:
             cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid})
-        broadcast_status_change(str(doc_uuid), "EMBEDDING")
+        broadcast_status_change(str(doc_uuid), "PENDING")
 
         messages.success(request, "Changes saved and re-indexing queued successfully!")
-        return redirect("document_detail", doc_uuid=doc_uuid)
+        return redirect(ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
 
 
 class DocumentDeleteView(LoginRequiredMixin, View):
@@ -1082,7 +1127,7 @@ class DocumentDeleteView(LoginRequiredMixin, View):
                     .exclude(Q(id=int_id) | Q(uuid=str(doc_uuid)))
                     .count()
                 )
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 return SourceDocument.objects.filter(file_hash=file_hash).exclude(uuid=str(doc_uuid)).count()
 
         sql = "SELECT doc_uuid FROM documents WHERE file_hash = $file_hash;"
@@ -1106,19 +1151,16 @@ class DocumentDeleteView(LoginRequiredMixin, View):
             logger.info("[De-duplication Delete] Purged file hash %s physically.", file_hash)
         except Exception as e:
             logger.warning("[De-duplication Delete] Failed to physically delete file for hash %s: %s", file_hash, e)
+            raise RuntimeError("Stored file could not be deleted. The document was retained; retry deletion.") from e
 
     @staticmethod
     def _abort_active_processing(doc, doc_uuid) -> None:
         if getattr(doc, "status", None) not in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
             return
-        try:
-            surreal_db.update_document(
-                doc_uuid,
-                {"status": "FAILED", "error_message": "Document deleted while processing was in-flight."},
-            )
-            broadcast_status_change(str(doc_uuid), "FAILED")
-        except Exception as abort_err:
-            logger.debug("[Document Delete] Could not set FAILED state on in-flight doc %s: %s", doc_uuid, abort_err)
+        from extractor.cloud_tasks import cancel_document_task
+
+        cancel_document_task(doc_uuid, surreal_db.get_document(doc_uuid) or {})
+        broadcast_status_change(str(doc_uuid), "FAILED")
 
     def post(self, request, doc_uuid):
         is_ajax = (
@@ -1142,17 +1184,22 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         orig_name = doc.original_filename
         shared_references = self._count_shared_references(doc_uuid, file_hash)
 
+        try:
+            self._abort_active_processing(doc, doc_uuid)
+            self._purge_physical_file(raw_doc.get("file", ""), file_hash, shared_references)
+        except RuntimeError as exc:
+            if is_ajax:
+                return JsonResponse({"error": str(exc)}, status=503)
+            messages.error(request, str(exc))
+            return redirect("dashboard")
+        surreal_db.delete_document(doc_uuid)
+
         _record_view_audit(
             request,
             AuditAction.DELETE,
             f"Deleted document '{orig_name}' (Title: {doc.title}). Shared references remaining: {shared_references}.",
-            document=doc,
             ip=get_client_ip(request),
         )
-
-        self._purge_physical_file(raw_doc.get("file", ""), file_hash, shared_references)
-        self._abort_active_processing(doc, doc_uuid)
-        surreal_db.delete_document(doc_uuid)
 
         from django.conf import settings
 
@@ -1184,7 +1231,8 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
     """
 
     def test_func(self):
-        return self.request.user.is_superuser or self.request.user.is_staff
+        user = getattr(self.request, "user", None)
+        return bool(user and getattr(user, "is_superuser", False))
 
     @staticmethod
     def _delete_physical_files(raw_docs):
@@ -1199,6 +1247,7 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
                         default_storage.delete(file_path)
                 except Exception as e:
                     logger.warning("[Purge All] Failed to delete file for %s: %s", doc.get("title"), e)
+                    raise RuntimeError("Storage cleanup failed. Document records were retained for retry.") from e
 
     @staticmethod
     def _abort_inflight_docs(raw_docs):
@@ -1210,30 +1259,35 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             doc_uuid = doc.get("doc_uuid") or doc.get("id")
             if not doc_uuid:
                 continue
-            try:
-                surreal_db.update_document(doc_uuid, {"status": "FAILED", "error_message": "Purged by administrator."})
-                broadcast_status_change(str(doc_uuid), "FAILED")
-            except Exception as abort_err:
-                logger.debug("[Purge All] Could not abort in-flight doc %s: %s", doc_uuid, abort_err)
+            from extractor.cloud_tasks import cancel_document_task
+
+            cancel_document_task(doc_uuid, doc)
+            broadcast_status_change(str(doc_uuid), "FAILED")
 
     def post(self, request):
         raw_docs = surreal_db.list_documents()
         ip = get_client_ip(request)
 
-        _record_view_audit(
-            request,
-            AuditAction.PURGE_ALL,
-            f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
-            ip=ip,
-        )
-
-        self._delete_physical_files(raw_docs)
-        self._abort_inflight_docs(raw_docs)
-
         try:
+            self._abort_inflight_docs(raw_docs)
+            self._delete_physical_files(raw_docs)
             surreal_db.purge_all()
+            try:
+                from extractor.models import MonthlySpendLog, SourceDocument, UserMemory
+
+                SourceDocument.objects.all().delete()
+                UserMemory.objects.all().delete()
+                if getattr(settings, "SURREALDB_OFFLINE", False):
+                    MonthlySpendLog.objects.all().delete()
+            except Exception as sqlite_err:
+                logger.debug("[Purge All] SQLite cleanup skipped: %s", sqlite_err)
         except Exception as exc:
-            logger.warning("[Purge All] Failed to flush SurrealDB database: %s", exc)
+            logger.exception("[Purge All] Reset could not be completed: %s", exc)
+            messages.error(
+                request,
+                "Reset incomplete. Some files may already be removed; retry after resolving the storage or database error.",
+            )
+            return redirect("dashboard")
 
         try:
             from django.core.files.storage import default_storage
@@ -1244,7 +1298,18 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             logger.info("[Purge All] Cleaned all chunk JSON files from storage.")
         except Exception as storage_err:
             logger.warning("[Purge All] Failed to clean chunks folder: %s", storage_err)
+            messages.warning(
+                request,
+                "Document reset completed, but backup chunk cleanup failed. Retry cleanup before claiming full erasure.",
+            )
+            return redirect("dashboard")
 
+        _record_view_audit(
+            request,
+            AuditAction.PURGE_ALL,
+            f"Purged all documents and associated semantic memory vector embeddings. Count: {len(raw_docs)}.",
+            ip=ip,
+        )
         messages.success(request, "Reset Memory Complete: Purged all documents and vector embeddings.")
         return redirect("dashboard")
 
@@ -1259,13 +1324,38 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
         from django.core.cache import cache
 
         rl_key = f"rag_ratelimit_{get_request_actor_id(request)}"
-        rl_count = cache.get(rl_key, 0)
-        if rl_count >= 10:
+        try:
+            if cache.add(rl_key, 1, 60):
+                rl_count = 1
+            else:
+                try:
+                    rl_count = cache.incr(rl_key)
+                except ValueError:
+                    cache.set(rl_key, 1, 60)
+                    rl_count = 1
+        except Exception as exc:
+            logger.debug("[RAGRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
+            try:
+                from extractor import surreal_db
+
+                if not surreal_db.check_rate_limit_atomic(f"rag:{rl_key}", max_requests=10, window_seconds=60):
+                    return JsonResponse(
+                        {"error": RAG_RATE_LIMIT_MSG},
+                        status=429,
+                    )
+                rl_count = 1
+            except Exception as surreal_err:
+                logger.warning("[RAGRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
+                return JsonResponse(
+                    {"error": RAG_RATE_LIMIT_MSG},
+                    status=429,
+                )
+
+        if rl_count > 10:
             return JsonResponse(
-                {"error": "Search rate limit reached. Please wait a moment before sending another query."},
+                {"error": RAG_RATE_LIMIT_MSG},
                 status=429,
             )
-        cache.set(rl_key, rl_count + 1, 60)  # Rolling 60-second window
 
         if _is_budget_exceeded(request.user, get_request_actor_id(request)):
             return JsonResponse(
@@ -1341,11 +1431,12 @@ def _reserve_export_rate_limit(request) -> bool:
         ip_acquired = cache.add(ip_key, True, 60)
 
         if not user_acquired or not ip_acquired:
-            # Extend or ensure key existence
+            # If one key was newly acquired but the other was already locked,
+            # clean up the newly set key so reservation fails cleanly without TTL reset
             if user_acquired:
-                cache.set(user_key, True, 60)
+                cache.delete(user_key)
             if ip_acquired:
-                cache.set(ip_key, True, 60)
+                cache.delete(ip_key)
             return False
         return True
     except Exception as exc:
@@ -1356,7 +1447,7 @@ def _reserve_export_rate_limit(request) -> bool:
             return surreal_db.check_rate_limit_atomic(f"export:{user_key}", max_requests=1, window_seconds=60)
         except Exception as surreal_err:
             logger.warning("[ExportRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
-            return True
+            return False
 
 
 class ExportZipView(LoginRequiredMixin, View):
@@ -1392,17 +1483,63 @@ class ExportZipView(LoginRequiredMixin, View):
             response[HEADER_X_CONTENT_TYPE_OPTIONS] = "nosniff"
             response["Cache-Control"] = HEADER_CACHE_PRIVATE_NO_TRANSFORM
             return response
-        except Exception as e:
-            messages.error(request, f"Export failure: {e!s}")
+        except Exception:
+            logger.exception("[Export] ZIP bundle generation failed")
+            messages.error(request, EXPORT_FAILURE_MSG)
             return redirect("dashboard")
+
+
+def _check_sft_preview_rate_limit(actor_id: str) -> JsonResponse | None:
+    """Check cache and SurrealDB atomic sliding window for SFT preview endpoint."""
+    from django.core.cache import cache
+
+    rl_key = f"sft_preview_ratelimit_{actor_id}"
+    try:
+        if cache.add(rl_key, 1, 60):
+            rl_count = 1
+        else:
+            try:
+                rl_count = cache.incr(rl_key)
+            except ValueError:
+                cache.set(rl_key, 1, 60)
+                rl_count = 1
+    except Exception as exc:
+        logger.debug("[SFTPreviewRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
+        try:
+            from extractor import surreal_db
+
+            if not surreal_db.check_rate_limit_atomic(f"sft:{rl_key}", max_requests=10, window_seconds=60):
+                return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
+            rl_count = 1
+        except Exception as surreal_err:
+            logger.warning("[SFTPreviewRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
+            return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
+
+    if rl_count > 10:
+        return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
+    return None
 
 
 class SFTDatasetPreviewView(LoginRequiredMixin, View):
     """Returns a JSON payload with SFT prompt-completion dataset preview pairs for a document."""
 
     def get(self, request, doc_uuid):
+        doc_uuid_str = str(doc_uuid) if doc_uuid else ""
+        if not doc_uuid_str or len(doc_uuid_str) > 64:
+            return JsonResponse({"status": "error", "message": "Invalid document identifier."}, status=400)
+
+        actor_id = get_request_actor_id(request)
+        rl_res = _check_sft_preview_rate_limit(actor_id)
+        if rl_res:
+            return rl_res
+
+        raw_doc, _doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid_str)
+        if not raw_doc:
+            return JsonResponse({"status": "error", "message": DOCUMENT_NOT_FOUND_MSG}, status=404)
+        if not is_authorized:
+            return JsonResponse({"status": "error", "message": "Permission denied."}, status=403)
+
         try:
-            actor_id = get_request_actor_id(request)
             pairs = generate_sft_dataset_pairs(
                 [doc_uuid],
                 user=request.user,
@@ -1458,8 +1595,9 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
             response[HEADER_X_CONTENT_TYPE_OPTIONS] = "nosniff"
             response["Cache-Control"] = HEADER_CACHE_PRIVATE_NO_TRANSFORM
             return response
-        except Exception as e:
-            messages.error(request, f"SFT Export failure: {e!s}")
+        except Exception:
+            logger.exception("[Export] SFT JSONL generation failed")
+            messages.error(request, EXPORT_FAILURE_MSG)
             return redirect("dashboard")
 
 
@@ -1494,8 +1632,9 @@ class ExportSqliteView(LoginRequiredMixin, View):
             response[HEADER_X_CONTENT_TYPE_OPTIONS] = "nosniff"
             response["Cache-Control"] = HEADER_CACHE_PRIVATE_NO_TRANSFORM
             return response
-        except Exception as e:
-            messages.error(request, f"SQLite Export failure: {e!s}")
+        except Exception:
+            logger.exception("[Export] SQLite generation failed")
+            messages.error(request, EXPORT_FAILURE_MSG)
             return redirect("dashboard")
 
 
@@ -1530,68 +1669,83 @@ class ExportCsvView(LoginRequiredMixin, View):
             response[HEADER_X_CONTENT_TYPE_OPTIONS] = "nosniff"
             response["Cache-Control"] = HEADER_CACHE_PRIVATE_NO_TRANSFORM
             return response
-        except Exception as e:
-            messages.error(request, f"CSV Export failure: {e!s}")
+        except Exception:
+            logger.exception("[Export] CSV generation failed")
+            messages.error(request, EXPORT_FAILURE_MSG)
             return redirect("dashboard")
+
+
+def _is_doc_owner_or_staff(doc: dict, request: Any) -> bool:
+    if request.user.is_staff or request.user.is_superuser:
+        return True
+    uploaded_by_id = str(doc.get("uploaded_by_id") or "")
+    if not uploaded_by_id:
+        return False
+    actor_id = get_request_actor_id(request)
+    return uploaded_by_id in (actor_id, str(getattr(request.user, "id", "")))
+
+
+def _enqueue_restarted_document(doc: dict, doc_uuid: str, cloud_tasks: Any) -> None:
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
+        cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+    else:
+        cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+    broadcast_status_change(doc_uuid, "PENDING")
 
 
 def _restart_single_document(doc, request, cloud_tasks):
     doc_uuid = _extract_clean_doc_uuid(doc)
-    if not doc_uuid:
-        return False
-    uploaded_by_id = str(doc.get("uploaded_by_id") or "")
-    actor_id = get_request_actor_id(request)
-    is_authorized = (
-        request.user.is_staff
-        or request.user.is_superuser
-        or (
-            uploaded_by_id
-            and (uploaded_by_id == actor_id or (hasattr(request.user, "id") and uploaded_by_id == str(request.user.id)))
-        )
-    )
-    if not is_authorized:
+    if not doc_uuid or not _is_doc_owner_or_staff(doc, request):
         return False
 
     status = doc.get("status")
-    if status in ["PENDING", "FAILED", "COMPLETED"]:
-        surreal_db.update_document(
-            doc_uuid,
-            {
-                "status": "PENDING",
-                "cost_usd": 0.0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "retry_count": 0,
-                "error_message": "",
-                "updated_at": format_datetime(timezone.now()),
-            },
-        )
+    retry_cnt = int(doc.get("retry_count") or 0)
+    if status == "FAILED" and retry_cnt >= 3:
+        return False
+    if status not in ["PENDING", "FAILED", "COMPLETED"]:
+        return False
 
-        from django.conf import settings
+    surreal_db.update_document(
+        doc_uuid,
+        {
+            "status": "PENDING",
+            "cost_usd": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "retry_count": 0,
+            "error_message": "",
+            CANCEL_REQUESTED: False,
+            "updated_at": format_datetime(timezone.now()),
+        },
+    )
 
-        if getattr(settings, "SURREALDB_OFFLINE", False):
-            doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
-            cloud_tasks.enqueue("process_document", {"document_id": doc_id})
-        else:
-            cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
-        broadcast_status_change(doc_uuid, "PENDING")
-
-        doc_title = doc.get("title") or doc.get("original_filename") or doc_uuid
-        _record_view_audit(
-            request,
-            AuditAction.DOCUMENT_REQUEUED,
-            f"User re-enqueued pipeline processing for document '{doc_title}'.",
-        )
-        return True
-    return False
+    _enqueue_restarted_document(doc, doc_uuid, cloud_tasks)
+    doc_title = doc.get("title") or doc.get("original_filename") or doc_uuid
+    _record_view_audit(
+        request,
+        AuditAction.DOCUMENT_REQUEUED,
+        f"User re-enqueued pipeline processing for document '{doc_title}'.",
+    )
+    return True
 
 
 def _handle_bulk_restart(request, document_ids):
+    from django.conf import settings
+
     from extractor import cloud_tasks
 
     restarted_count = 0
-    clean_ids = [_extract_clean_doc_uuid(i) for i in document_ids if i]
-    docs = surreal_db.get_documents(clean_ids)
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.surreal_db import _model_to_dict
+
+        docs = [_model_to_dict(d) for d in _get_offline_docs_for_delete(request, document_ids)]
+    else:
+        clean_ids = [_extract_clean_doc_uuid(i) for i in document_ids if i]
+        docs = surreal_db.get_documents(clean_ids)
+
     for doc in docs:
         if _restart_single_document(doc, request, cloud_tasks):
             restarted_count += 1
@@ -1606,40 +1760,22 @@ def _cleanup_file_storage(file_rel_path, shared_references: int, default_storage
                 default_storage.delete(path_str)
         except Exception as e:
             logger.warning("[Bulk Delete] Failed to physically delete file: %s", e)
+            raise RuntimeError("Stored file could not be deleted. The document was retained; retry deletion.") from e
 
 
 def _abort_inflight_processing(doc, doc_uuid, surreal_db) -> None:
     if getattr(doc, "status", None) in ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]:
         try:
-            surreal_db.update_document(
-                doc_uuid,
-                {"status": "FAILED", "error_message": "Document deleted while processing was in-flight."},
-            )
+            from extractor.cloud_tasks import cancel_document_task
+
+            raw_surreal_doc = surreal_db.get_document(doc_uuid) if hasattr(surreal_db, "get_document") else {}
+            cancel_document_task(doc_uuid, raw_surreal_doc or {})
             broadcast_status_change(str(doc_uuid), "FAILED")
         except Exception as abort_err:
-            logger.debug("[Bulk Delete] Could not set FAILED state on in-flight doc %s: %s", doc_uuid, abort_err)
+            logger.debug("[Bulk Delete] Could not cancel in-flight doc %s: %s", doc_uuid, abort_err)
 
 
-def _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db):
-    file_hash = getattr(doc, "file_hash", None)
-    orig_name = getattr(doc, "original_filename", "Unknown")
-    doc_uuid = _extract_clean_doc_uuid(doc)
-
-    total_refs = hash_ref_counts.get(file_hash, 0)
-    shared_references = max(0, total_refs - 1)
-    if file_hash in hash_ref_counts:
-        hash_ref_counts[file_hash] = shared_references
-
-    _record_view_audit(
-        request,
-        AuditAction.DELETE,
-        f"Bulk Deleted document '{orig_name}' (Title: {getattr(doc, 'title', orig_name)}). Shared references remaining: {shared_references}.",
-        document=doc,
-    )
-
-    _cleanup_file_storage(getattr(doc, "file", None), shared_references, default_storage)
-    _abort_inflight_processing(doc, doc_uuid, surreal_db)
-
+def _delete_db_record(doc, doc_uuid, surreal_db) -> None:
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -1658,6 +1794,29 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
         except Exception as sqlite_cleanup_err:
             logger.debug("[Delete] SQLite cleanup for doc_uuid=%s skipped: %s", doc_uuid, sqlite_cleanup_err)
 
+
+def _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db):
+    file_hash = getattr(doc, "file_hash", None)
+    orig_name = getattr(doc, "original_filename", "Unknown")
+    doc_uuid = _extract_clean_doc_uuid(doc)
+
+    total_refs = hash_ref_counts.get(file_hash, 0)
+    shared_references = max(0, total_refs - 1)
+
+    _abort_inflight_processing(doc, doc_uuid, surreal_db)
+    _cleanup_file_storage(getattr(doc, "file", None), shared_references, default_storage)
+
+    if file_hash in hash_ref_counts:
+        hash_ref_counts[file_hash] = shared_references
+
+    _delete_db_record(doc, doc_uuid, surreal_db)
+
+    _record_view_audit(
+        request,
+        AuditAction.DELETE,
+        f"Bulk Deleted document '{orig_name}' (Title: {getattr(doc, 'title', orig_name)}). Shared references remaining: {shared_references}.",
+    )
+
     if doc_uuid:
         broadcast_status_change(str(doc_uuid), "DELETED")
 
@@ -1672,7 +1831,7 @@ def _get_offline_docs_for_delete(request, document_ids):
     for item in document_ids:
         try:
             int_ids.append(int(item))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             clean_str = _extract_clean_doc_uuid(item)
             if clean_str:
                 uuid_strs.append(clean_str)
@@ -1755,10 +1914,21 @@ def _handle_bulk_delete(request, document_ids):
     hash_ref_counts = _get_hash_ref_counts(file_hashes)
 
     deleted_count = 0
+    failed_count = 0
     for doc in docs:
-        _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db)
-        deleted_count += 1
-    messages.success(request, f"Successfully deleted {deleted_count} documents from the repository.")
+        try:
+            _delete_single_document(doc, hash_ref_counts, request, default_storage, surreal_db)
+            deleted_count += 1
+        except Exception as exc:
+            failed_count += 1
+            logger.exception("[Bulk Delete] Failed to delete document %s: %s", _extract_clean_doc_uuid(doc), exc)
+
+    if failed_count:
+        messages.warning(request, f"Deleted {deleted_count} documents; {failed_count} could not be removed.")
+    elif deleted_count:
+        messages.success(request, f"Successfully deleted {deleted_count} documents from the repository.")
+    else:
+        messages.warning(request, "No selected documents could be deleted.")
 
 
 class BulkDocumentActionView(LoginRequiredMixin, View):
@@ -1781,7 +1951,7 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
         elif action == "delete":
             _handle_bulk_delete(request, document_ids)
         else:
-            messages.error(request, f"Invalid bulk action: {action}")
+            messages.error(request, "Invalid bulk action requested.")
         return redirect("dashboard")
 
 
@@ -1791,14 +1961,13 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
     """
 
     def test_func(self):
-        return self.request.user.is_superuser or self.request.user.is_staff
+        return self.request.user.is_superuser
 
     def post(self, request):
         monthly_budget_usd = request.POST.get("monthly_budget_usd", "10.00").strip()
         selected_model = request.POST.get("selected_model", "auto").strip()
         currency = request.POST.get("currency", "auto").strip()
         csrf_trusted_origins = request.POST.get(KEY_CSRF_TRUSTED_ORIGINS, "").strip()[:8192]
-        openrouter_api_key = request.POST.get("openrouter_api_key", "").strip()[:256]
 
         from extractor.llm_gateway import KNOWN_GEMINI_MODELS
 
@@ -1829,7 +1998,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
                 raise ValueError("Budget cannot be negative.")
             if budget_val > 100000.00:
                 raise ValueError("Budget cannot exceed $100,000.00.")
-        except (ValueError, ArithmeticError):
+        except ValueError, ArithmeticError:
             messages.error(request, "Invalid budget value provided. Must be a valid positive number up to $100,000.00.")
             return redirect("dashboard")
 
@@ -1841,7 +2010,19 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
                 for entry in line.split(",")
                 if entry.strip()
             ]
-            bad_origins = [origin for origin in raw_entries if urlparse(origin).scheme != "https"]
+            bad_origins = []
+            for origin in raw_entries:
+                parsed = urlparse(origin)
+                if (
+                    parsed.scheme != "https"
+                    or not parsed.netloc
+                    or parsed.username
+                    or parsed.password
+                    or parsed.query
+                    or parsed.fragment
+                    or parsed.path not in ("", "/")
+                ):
+                    bad_origins.append(origin)
             if bad_origins:
                 messages.error(
                     request,
@@ -1855,10 +2036,6 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             "currency": currency,
             KEY_CSRF_TRUSTED_ORIGINS: csrf_trusted_origins,
         }
-
-        # Only overwrite the API key if it's not the masked placeholder
-        if openrouter_api_key != "••••••••••••••••":
-            payload["openrouter_api_key"] = openrouter_api_key or ""
 
         surreal_db.save_system_settings(payload)
 
@@ -1899,15 +2076,19 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
         stats = _get_dashboard_stats(request)
         docs = stats["docs"]
 
-        # Build status map for all documents (limited to recent 100)
+        # This is a complete, user-scoped snapshot. Clients use absence as deletion.
         docs_list = []
-        for d in docs[:100]:
+        for d in docs:
             docs_list.append(
                 {
                     "id": d.id,
                     "uuid": d.uuid,
                     "status": d.status,
-                    "status_display": d.status.title() if d.status else "Unknown",
+                    "status_display": (
+                        d.get_status_display()
+                        if callable(getattr(d, "get_status_display", None))
+                        else (d.status.title() if d.status else "Unknown")
+                    ),
                     "title": d.title,
                     "cost_usd": float(round(d.cost_usd, 6)),
                     "formatted_cost": format_localized_cost(d.cost_usd, stats["currency_details"]),
@@ -1922,6 +2103,14 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
 
         data = {
             "documents": docs_list,
+            "documents_complete": True,
+            "dashboard_document_ids": [
+                str(d.id)
+                for d in _sort_dashboard_docs(
+                    _filter_dashboard_docs(docs, request.GET.get("q", "").strip()),
+                    request.GET.get("sort_by", "-date"),
+                )[:50]
+            ],
             "stats": {
                 "COMPLETED": stats["stats_dict"].get("COMPLETED", 0),
                 "PENDING": stats["stats_dict"].get("PENDING", 0),
@@ -2032,6 +2221,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
                 "output_tokens": 0,
                 "error_message": "",
                 "retry_count": 0 if is_restart else retry_cnt + 1,
+                CANCEL_REQUESTED: False,
             },
         )
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
@@ -2046,6 +2236,30 @@ class DocumentRetryView(LoginRequiredMixin, View):
         return redirect("dashboard")
 
 
+def _cancel_guard_response(request, raw_doc, doc, is_ajax, *, is_authorized: bool):
+    """Return an early HttpResponse if the cancel preconditions are not met, else None."""
+    if not raw_doc:
+        if is_ajax:
+            return JsonResponse({"error": DOCUMENT_NOT_FOUND_MSG}, status=404)
+        messages.error(request, DOCUMENT_NOT_FOUND_MSG)
+        return redirect("dashboard")
+
+    if not is_authorized:
+        if is_ajax:
+            return JsonResponse({"error": CANCEL_PERM_DENIED_MSG}, status=403)
+        messages.error(request, CANCEL_PERM_DENIED_MSG)
+        return redirect("dashboard")
+
+    if doc.status == "COMPLETED" or (doc.status == "FAILED" and not raw_doc.get(CANCEL_REQUESTED)):
+        msg = f"Cannot cancel document in terminal state '{doc.status}'."
+        if is_ajax:
+            return JsonResponse({"error": msg}, status=400)
+        messages.error(request, msg)
+        return redirect("dashboard")
+
+    return None
+
+
 class DocumentCancelView(LoginRequiredMixin, View):
     """
     Cancels an in-flight or pending document processing task,
@@ -2058,34 +2272,19 @@ class DocumentCancelView(LoginRequiredMixin, View):
             or request.headers.get("accept") == APPLICATION_JSON
         )
         raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid)
-        if not raw_doc:
-            if is_ajax:
-                return JsonResponse({"error": DOCUMENT_NOT_FOUND_MSG}, status=404)
-            messages.error(request, DOCUMENT_NOT_FOUND_MSG)
-            return redirect("dashboard")
+        guard = _cancel_guard_response(request, raw_doc, doc, is_ajax, is_authorized=is_authorized)
+        if guard is not None:
+            return guard
 
-        if not is_authorized:
-            if is_ajax:
-                return JsonResponse({"error": "Permission denied to cancel this document."}, status=403)
-            messages.error(request, "Permission denied to cancel this document.")
-            return redirect("dashboard")
+        from extractor.cloud_tasks import cancel_document_task
 
-        if doc.status in ["COMPLETED", "FAILED"]:
-            msg = f"Cannot cancel document in terminal state '{doc.status}'."
+        try:
+            cancel_document_task(doc_uuid, raw_doc)
+        except RuntimeError as exc:
             if is_ajax:
-                return JsonResponse({"error": msg}, status=400)
-            messages.error(request, msg)
+                return JsonResponse({"error": str(exc)}, status=503)
+            messages.error(request, str(exc))
             return redirect("dashboard")
-
-        # Mark document as FAILED with cancellation message
-        surreal_db.update_document(
-            doc_uuid,
-            {
-                "status": "FAILED",
-                "error_message": "Processing stopped by user.",
-                "updated_at": format_datetime(timezone.now()),
-            },
-        )
         broadcast_status_change(str(doc_uuid), "FAILED")
 
         _record_view_audit(
@@ -2165,6 +2364,8 @@ def _get_surreal_audit_document(raw_log, users_map, docs_map=None):
     # If the document was deleted or purged, provide a fallback object so Target File displays gracefully
     fallback = SimpleNamespace()
     fallback.uuid = document_id
+    fallback.status = "DELETED"
+    fallback.get_status_display = lambda: "Deleted"
     fallback.original_filename = f"Deleted Document ({document_id[:8]})"
     return fallback
 
@@ -2321,27 +2522,21 @@ class AuditLogListView(LoginRequiredMixin, View):
 
 def _resolve_worker_config(worker_config_default):
     """Try to load live GCP service configs; fall back to local defaults."""
+    from django.conf import settings
+
     from extractor.deployment import get_service_config
 
     worker_config = worker_config_default
     gcp_active = False
-    worker_service_name = "korda-worker"
+    worker_service_name = settings.WORKER_SERVICE_NAME
 
     try:
-        worker_real = get_service_config("korda-worker")
+        worker_real = get_service_config(worker_service_name)
         if worker_real:
             worker_config = worker_real
             gcp_active = True
     except Exception as e:
         logger.warning(f"Could not load worker config from GCP (local fallback): {e}")
-        try:
-            web_real = get_service_config("korda-web")
-            if web_real:
-                worker_service_name = "korda-web"
-                worker_config = web_real
-                gcp_active = True
-        except Exception as e_web:
-            logger.warning(f"Could not load web config either: {e_web}")
 
     return worker_config, gcp_active, worker_service_name
 
@@ -2351,7 +2546,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
     """
     Centralized Deployment and Cost Console allowing admins/staff to:
     - View active Cloud Run configurations and scaling limits.
-    - Change worker service mode on-demand ("Hibernating" min_instances=0, max_instances=0,
+    - Superusers may change worker service mode ("Hibernating" min_instances=0, max_instances=1,
       "On-Demand" min_instances=0, max_instances=5, "Always-On" min_instances=1, max_instances=5).
     - Trigger QA system diagnostics.
     - View live aggregated container logs.
@@ -2361,6 +2556,8 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         return self.request.user.is_superuser or self.request.user.is_staff
 
     def get(self, request):
+        from django.conf import settings
+
         from extractor.deployment import (
             extract_knative_scaling,
             get_gcp_project_details,
@@ -2399,20 +2596,20 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         }
         worker_logs = []
         web_logs = []
-        worker_service_name = "korda-worker"
+        worker_service_name = settings.WORKER_SERVICE_NAME
         gcp_active = False
 
         worker_config, gcp_active, worker_service_name = _resolve_worker_config(worker_config)
 
         try:
-            web_real = get_service_config("korda-web")
+            web_real = get_service_config(settings.WEB_SERVICE_NAME)
             if web_real:
                 web_config = web_real
         except Exception as e:
             logger.warning(f"Could not load web config from GCP (local fallback): {e}")
 
-        # Extract scaling values
-        worker_min, worker_max = extract_knative_scaling(worker_config, 0, 0)
+        # Extract scaling values (default worker fallback: min=0, max=5 for on-demand)
+        worker_min, worker_max = extract_knative_scaling(worker_config, 0, 5)
         web_min, web_max = extract_knative_scaling(web_config, 1, 5)
 
         # Determine current mode
@@ -2430,14 +2627,14 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             worker_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
 
         try:
-            web_logs = get_service_logs("korda-web", limit=50)
+            web_logs = get_service_logs(settings.WEB_SERVICE_NAME, limit=50)
         except Exception as e:
             web_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
 
-        # Check SurrealDB health status
-        from extractor.surreal_db import check_health
+        # Check SurrealDB & downstream dependencies health status
+        from extractor.deployment import check_service_dependencies_health
 
-        surreal_ok = check_health()
+        health_probes = check_service_dependencies_health()
 
         context = {
             "project_id": project_id,
@@ -2450,18 +2647,28 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             "current_mode": current_mode,
             "worker_logs": worker_logs,
             "web_logs": web_logs,
-            "surreal_health": "ONLINE" if surreal_ok else "OFFLINE",
+            "surreal_health": "ONLINE" if health_probes.get("surrealdb") else "OFFLINE",
+            "supabase_health": "ONLINE" if health_probes.get("supabase") else "OFFLINE",
         }
         return render(request, "extractor/deployment_controller.html", context)
 
     def post(self, request):
-        from extractor.deployment import get_service_config, update_service_scale
+        from django.conf import settings
+
+        from extractor.deployment import (
+            check_service_dependencies_health,
+            get_service_config,
+            update_service_scale,
+        )
+
+        if not request.user.is_superuser:
+            return JsonResponse({"error": "Only administrators may change deployment scaling."}, status=403)
 
         mode = request.POST.get("mode", "").strip().lower()
 
         if mode == "hibernate":
             min_scale, max_scale = 0, 1
-            mode_display = "Hibernating ($0.00 Running Cost)"
+            mode_display = "Scale to zero when idle (requests can still start an instance)"
         elif mode == "on-demand":
             min_scale, max_scale = 0, 5
             mode_display = "On-Demand Serverless Scaling"
@@ -2472,29 +2679,29 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             messages.error(request, "Invalid deployment scaling mode selected.")
             return redirect("deployment_controller")
 
+        # Preflight health check
+        health_status = check_service_dependencies_health()
+        if not health_status.get("surrealdb") and not getattr(settings, "SURREALDB_OFFLINE", False):
+            messages.warning(request, "Preflight alert: SurrealDB is currently offline or unreachable.")
+
         # Resolve which service to scale on GCP
-        target_service = "korda-worker"
-        try:
-            get_service_config("korda-worker")
-        except (OSError, ValueError, RuntimeError):
-            try:
-                get_service_config("korda-web")
-                target_service = "korda-web"
-            except Exception as exc:
-                logger.debug("Failed to check fallback service korda-web: %s", exc)
+        target_service = settings.WORKER_SERVICE_NAME
 
         try:
+            if not get_service_config(target_service):
+                raise RuntimeError("Worker configuration is unavailable; scaling was not changed.")
             update_service_scale(target_service, min_scale, max_scale)
             messages.success(request, f"Successfully toggled scaling mode of {target_service} to {mode_display}!")
             _record_view_audit(
                 request,
                 AuditAction.SYSTEM_CONTROL,
-                f"Admins toggled worker scaling mode to '{mode}' (minScale: {min_scale}, maxScale: {max_scale}).",
+                f"Admins changed {target_service} to '{mode}' (minScale: {min_scale}, maxScale: {max_scale}).",
                 ip=get_client_ip(request),
             )
 
-        except Exception as e:
-            messages.error(request, f"Failed to update Cloud Run scaling settings on GCP: {e!s}")
+        except Exception:
+            logger.exception("[Deployment] Cloud Run scaling update failed")
+            messages.error(request, "Cloud Run scaling update failed. Please try again later.")
 
         return redirect("deployment_controller")
 
@@ -2517,6 +2724,9 @@ def _validate_registration_inputs(email, password, confirm_password, supabase_ur
     email_lower = email.lower()
     if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
         return "Registration of administrative or system email addresses is not permitted."
+
+    if len(password) < 8:
+        return "Password must be at least 8 characters long."
 
     if not _validate_email_format(email):
         return "Invalid email format."
@@ -2548,7 +2758,7 @@ def _call_supabase_auth_endpoint(
         headers = {
             "apikey": supabase_key,
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": f"AetherOmni-AuthClient/{getattr(settings, 'APP_VERSION', 'unknown')}",
         }
         if captcha_token:
             request_body["gotrue_meta_security"] = {"captcha_token": captcha_token}
@@ -2557,7 +2767,7 @@ def _call_supabase_auth_endpoint(
         with urllib.request.urlopen(req, timeout=5):  # nosec B310 nosemgrep
             return True, None
     except urllib.error.HTTPError as e:
-        body_bytes = e.read().decode("utf-8")
+        body_bytes = e.read().decode("utf-8", errors="replace")
         try:
             err_data = json.loads(body_bytes)
             err_msg = (
@@ -2567,11 +2777,14 @@ def _call_supabase_auth_endpoint(
                 or err_data.get("error")
                 or body_bytes
             )
-        except (json.JSONDecodeError, KeyError, AttributeError):
-            err_msg = body_bytes
-        return False, f"{failure_prefix}: {err_msg}"
+        except json.JSONDecodeError, KeyError, AttributeError:
+            err_msg = "Authentication provider returned an invalid response."
+        return False, f"{failure_prefix}: {str(err_msg)[:255]}"
+    except ValueError as e:
+        return False, str(e)
     except Exception as e:
-        return False, f"Network error during {endpoint}: {e!s}"
+        logger.warning("[Supabase Auth] %s network error: %s", endpoint, e)
+        return False, "A network error occurred. Please try again later."
 
 
 def _register_supabase_user(
@@ -2708,12 +2921,32 @@ def reset_password_confirm_view(request):
     return render(request, "extractor/reset_password_confirm.html", context)
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class SupabaseSessionExchangeView(View):
     """
     Exchanges a client-side Supabase access_token for an authenticated Django session.
     Validates the token against Supabase /auth/v1/user, synchronizes the user via _sync_supabase_user,
     and establishes the Django session with request.session["supabase_user_id"].
     """
+
+    def _rate_limited(self, request) -> bool:
+        """Throttle anonymous token exchanges by source IP, failing closed in production."""
+        from django.core.cache import cache
+
+        key = f"supabase_session_exchange:{get_client_ip(request)}"
+        try:
+            if cache.add(key, 1, 60):
+                return False
+            return cache.incr(key) > 10
+        except Exception as exc:
+            logger.debug("[AuthRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
+            try:
+                from extractor import surreal_db
+
+                return not surreal_db.check_rate_limit_atomic(key, max_requests=10, window_seconds=60)
+            except Exception as surreal_exc:
+                logger.warning("[AuthRateLimit] Distributed fallback failed: %s", surreal_exc)
+                return not getattr(settings, "SURREALDB_OFFLINE", False)
 
     def post(self, request):
         import json
@@ -2724,9 +2957,12 @@ class SupabaseSessionExchangeView(View):
         from extractor.auth import _sync_supabase_user
         from extractor.utils import APPLICATION_JSON, validate_url_scheme
 
+        if self._rate_limited(request):
+            return JsonResponse({"error": "Too many authentication attempts. Please wait and try again."}, status=429)
+
         try:
             body = json.loads(request.body.decode("utf-8")) if request.body else {}
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except json.JSONDecodeError, UnicodeDecodeError:
             return JsonResponse({"error": "Malformed JSON payload."}, status=400)
 
         try:
@@ -2749,6 +2985,11 @@ class SupabaseSessionExchangeView(View):
             req = urllib.request.Request(url, headers=headers, method="GET")
             with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
                 user_info = json.loads(response.read().decode("utf-8"))
+
+            if getattr(settings, "SUPABASE_CONFIRM_EMAIL_REQUIRED", False):
+                email_confirmed = bool(user_info.get("email_confirmed_at") or user_info.get("confirmed_at"))
+                if not email_confirmed:
+                    return JsonResponse({"error": "Email address not verified."}, status=403)
 
             user = _sync_supabase_user(request, {"user": user_info}, user_info.get("email"))
             user.backend = "extractor.auth.SupabaseAuthBackend"
@@ -2781,13 +3022,38 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
         from django.core.cache import cache
 
         rl_key = f"rag_ratelimit_{actor_id}"
-        rl_count = cache.get(rl_key, 0)
-        if rl_count >= 10:
+        try:
+            if cache.add(rl_key, 1, 60):
+                rl_count = 1
+            else:
+                try:
+                    rl_count = cache.incr(rl_key)
+                except ValueError:
+                    cache.set(rl_key, 1, 60)
+                    rl_count = 1
+        except Exception as exc:
+            logger.debug("[RAGStreamRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
+            try:
+                from extractor import surreal_db
+
+                if not surreal_db.check_rate_limit_atomic(f"stream:{rl_key}", max_requests=10, window_seconds=60):
+                    return JsonResponse(
+                        {"error": RAG_RATE_LIMIT_MSG},
+                        status=429,
+                    )
+                rl_count = 1
+            except Exception as surreal_err:
+                logger.warning("[RAGStreamRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
+                return JsonResponse(
+                    {"error": RAG_RATE_LIMIT_MSG},
+                    status=429,
+                )
+
+        if rl_count > 10:
             return JsonResponse(
-                {"error": "Search rate limit reached. Please wait a moment before sending another query."},
+                {"error": RAG_RATE_LIMIT_MSG},
                 status=429,
             )
-        cache.set(rl_key, rl_count + 1, 60)
 
         if _is_budget_exceeded(request.user, actor_id):
             return JsonResponse(

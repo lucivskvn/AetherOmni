@@ -6,9 +6,9 @@ import sys
 
 # Configure specific temporary directories for libraries that need to write to the filesystem
 # in serverless environments (like Cloud Run) where only /tmp is writable.
-os.environ["HF_HOME"] = "/tmp/huggingface"  # nosec B108 # NOSONAR
-os.environ["XDG_CACHE_HOME"] = "/tmp/xdg_cache"  # nosec B108 # NOSONAR
-os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"  # nosec B108 # NOSONAR
+os.environ["HF_HOME"] = "/tmp/huggingface"  # nosec B108
+os.environ["XDG_CACHE_HOME"] = "/tmp/xdg_cache"  # nosec B108
+os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"  # nosec B108
 
 from dotenv import load_dotenv
 

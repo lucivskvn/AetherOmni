@@ -52,6 +52,8 @@ class SourceDocument(models.Model):
     # Metadata extracted or analyzed
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
     error_message = models.TextField(blank=True, default="")
+    cloud_task_name = models.CharField(max_length=512, blank=True, default="")
+    cancel_requested = models.BooleanField(default=False)
 
     # Curated taxonomy fields for Digital Preservation exports
     language = models.CharField(max_length=50, blank=True, default="Unknown")
@@ -123,12 +125,6 @@ class SystemSettings(models.Model):
         default="",
         help_text="Comma-separated list of custom domains/origins to trust for CSRF (e.g. https://my-custom-domain.com).",
     )
-    openrouter_api_key = models.CharField(max_length=255, blank=True, default="")
-
-    @property
-    def openrouter_api_key_masked(self) -> str:
-        """Returns a masked placeholder if the key is configured, preventing plain-text leaks to clients."""
-        return "••••••••••••••••" if self.openrouter_api_key else ""
 
     @classmethod
     def get_settings(cls):
@@ -150,16 +146,13 @@ class SystemSettings(models.Model):
                         self.selected_model = raw_data.get("selected_model", "auto")
                         self.currency = raw_data.get("currency", "auto")
                         self.csrf_trusted_origins = raw_data.get("csrf_trusted_origins", "")
-                        self.openrouter_api_key = raw_data.get("openrouter_api_key", "")
-
-                    @property
-                    def openrouter_api_key_masked(self) -> str:
-                        return "••••••••••••••••" if self.openrouter_api_key else ""
 
                     def save(self, *args, **kwargs):
+                        # Read-only proxy for the remote settings record in offline mode.
                         pass
 
                     def delete(self, *args, **kwargs):
+                        # Read-only proxy: deletion is unsupported for remote settings.
                         pass
 
                     def __str__(self):
@@ -246,8 +239,9 @@ class UserMemory(models.Model):
 class MonthlySpendLog(models.Model):
     """
     Persistent accumulator for AI compute spend, keyed by calendar month.
-    Survives SourceDocument deletions – cost_usd is flushed here via pre_delete
-    signal *before* each document row is removed from the database.
+    Stores offline-mode spend when a Django SourceDocument is deleted. In the
+    production SurrealDB mode, the document deletion path is the sole spend
+    accounting authority.
     """
 
     year = models.SmallIntegerField(db_index=True)
@@ -427,10 +421,16 @@ def purge_rag_cache():
 @receiver(pre_delete, sender=SourceDocument)
 def flush_cost_to_monthly_log(sender, instance, **kwargs):
     """
-    Before a SourceDocument row is removed, persist its cost_usd into the
-    MonthlySpendLog for the month in which the document was *created*.
-    This ensures the Monthly AI Compute Spend metric is never reset by deletions.
+    Persist offline-mode document spend before its Django row is removed.
+
+    Online deletion already records the SurrealDB document cost before removing
+    the mirrored Django row. Keeping this signal offline-only prevents one
+    production deletion from incrementing the monthly ledger twice.
     """
+    from django.conf import settings
+
+    if not getattr(settings, "SURREALDB_OFFLINE", False):
+        return
     if instance.cost_usd and instance.cost_usd > 0:
         ts = instance.created_at
         try:

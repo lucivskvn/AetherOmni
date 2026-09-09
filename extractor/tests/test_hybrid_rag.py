@@ -1,9 +1,9 @@
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.test import override_settings
 
-from extractor.rag import reciprocal_rank_fusion
+from extractor.rag import generate_surreal_embeddings, reciprocal_rank_fusion
 from extractor.surreal_db import search_chunks_bm25
 
 
@@ -72,7 +72,7 @@ class HybridRAGTestCase(TestCase):
         vec = generate_deterministic_embedding("Legal contract clause analysis with vector embeddings.")
         self.assertEqual(len(vec), 768)
         for elem in vec:
-            self.assertTrue(isinstance(elem, float))
+            self.assertIsInstance(elem, float)
             self.assertTrue(math.isfinite(elem))
             self.assertFalse(math.isnan(elem))
             self.assertFalse(math.isinf(elem))
@@ -106,8 +106,36 @@ class HybridRAGTestCase(TestCase):
     @patch("extractor.rag._fetch_missing_embeddings", return_value={})
     @patch("extractor.llm_gateway.execute_embed_content_with_fallback", side_effect=RuntimeError("API Error"))
     def test_generate_surreal_embeddings_failed_sentinel(self, mock_embed, mock_fetch, mock_lookup):
-        from extractor.rag import _EMBEDDING_FAILED_SENTINEL, generate_surreal_embeddings
+        from extractor.rag import _EMBEDDING_FAILED_SENTINEL
 
         embeddings = generate_surreal_embeddings(["Test chunk"])
         self.assertEqual(len(embeddings), 1)
         self.assertEqual(embeddings[0], _EMBEDDING_FAILED_SENTINEL)
+
+    @patch("extractor.rag._get_allowed_doc_uuids")
+    def test_rag_cache_lookups_forward_actor_id(self, mock_allowed_uuids):
+        from extractor.rag import _lookup_kv_cache, _lookup_semantic_cache
+
+        mock_allowed_uuids.return_value = ["allowed-uuid-1"]
+        mock_db = MagicMock()
+        mock_db.kv_cache_get.return_value = {"sources": [{"uuid": "allowed-uuid-1"}]}
+        mock_db.search_rag_cache_hnsw.return_value = [{"sources": ["allowed-uuid-1"], "answer_text": "Answer"}]
+
+        # 1. Test _lookup_kv_cache forwards actor_id
+        res_kv = _lookup_kv_cache("cache_key", None, ["doc-1"], mock_db, actor_id="actor-123")
+        self.assertIsNotNone(res_kv)
+        mock_allowed_uuids.assert_called_with(None, ["doc-1"], actor_id="actor-123")
+
+        mock_allowed_uuids.reset_mock()
+
+        # 2. Test _lookup_semantic_cache forwards actor_id
+        with (
+            patch("extractor.surreal_db.search_rag_cache_hnsw", mock_db.search_rag_cache_hnsw),
+            patch("extractor.surreal_db.kv_cache_set"),
+            patch("extractor.rag._hydrate_source_from_uuid", return_value={}),
+        ):
+            res_sem = _lookup_semantic_cache(
+                "user_part", "cache_key", [0.1] * 768, None, ["doc-1"], actor_id="actor-123"
+            )
+            self.assertIsNotNone(res_sem)
+            mock_allowed_uuids.assert_called_with(None, ["doc-1"], actor_id="actor-123")

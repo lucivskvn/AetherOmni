@@ -18,7 +18,7 @@
         font-size: 24px;
         font-weight: 700;
         margin: 0 0 6px 0;
-        color: #fff;
+        color: var(--text-heading);
         letter-spacing: -0.02em;
     }
     
@@ -220,26 +220,40 @@
                         </td>
                     </tr>
                     <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">Supabase Auth Status</td>
+                        <td style="padding: 10px 0; text-align: right;">
+                            {% if supabase_health == 'ONLINE' %}
+                            <span class="status-badge status-online">
+                                <i data-lucide="check-circle-2"></i> {{ supabase_health }}
+                            </span>
+                            {% else %}
+                            <span class="status-badge status-offline">
+                                <i data-lucide="alert-octagon"></i> {{ supabase_health }}
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                         <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">GCP Project ID</td>
-                        <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 13px; color: #fff;">
+                        <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 13px; color: var(--text-main);">
                             {{ project_id|default:"Local Emulator (No Project)" }}
                         </td>
                     </tr>
                     <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                         <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">GCP Region</td>
-                        <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 13px; color: #fff;">
+                        <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 13px; color: var(--text-main);">
                             {{ region }}
                         </td>
                     </tr>
                     <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                         <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">Knative Scale (Worker)</td>
-                        <td style="padding: 10px 0; text-align: right; font-size: 13px; color: #fff;">
+                        <td style="padding: 10px 0; text-align: right; font-size: 13px; color: var(--text-main);">
                             Min: <strong>{{ worker_min }}</strong> / Max: <strong>{{ worker_max }}</strong>
                         </td>
                     </tr>
                     <tr>
                         <td style="padding: 10px 0; color: var(--text-muted); font-size: 13px;">Knative Scale (Web)</td>
-                        <td style="padding: 10px 0; text-align: right; font-size: 13px; color: #fff;">
+                        <td style="padding: 10px 0; text-align: right; font-size: 13px; color: var(--text-main);">
                             Min: <strong>{{ web_min }}</strong> / Max: <strong>{{ web_max }}</strong>
                         </td>
                     </tr>
@@ -253,6 +267,7 @@
                 <i data-lucide="sliders"></i> Worker Scaling Mode
             </h3>
             
+            {% if user.is_superuser %}
             <form action="{% url 'deployment_controller' %}" method="post">
                 {% csrf_token %}
                 
@@ -260,7 +275,7 @@
                     <input type="radio" id="mode-hibernate" name="mode" value="hibernate" {% if current_mode == 'hibernate' %}checked{% endif %}>
                     <span class="scaling-label-text">
                         <span class="scaling-name">Hibernate (minScale: 0, maxScale: 1)</span>
-                        <span class="scaling-desc">Completely pauses background workers to achieve $0.00 compute spend. Tasks will remain queued.</span>
+                        <span class="scaling-desc">Scales to zero when idle, with at most one instance. Queued requests can still start processing and incur costs.</span>
                     </span>
                 </label>
                 
@@ -284,6 +299,9 @@
                     <i data-lucide="cpu"></i> Update Scaling Mode
                 </button>
             </form>
+            {% else %}
+            <p class="text-muted">Only administrators can change worker scaling. Current settings are shown above.</p>
+            {% endif %}
         </div>
     </div>
 

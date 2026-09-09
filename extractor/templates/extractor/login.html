@@ -339,9 +339,8 @@
             const type = params.get('type');
             
             if (accessToken && type === 'recovery') {
-                sessionStorage.setItem('supabase_recovery_token', accessToken);
                 globalThis.history.replaceState(null, null, globalThis.location.pathname);
-                globalThis.location.href = "{% url 'reset_password_confirm' %}";
+                globalThis.location.href = `{% url 'reset_password_confirm' %}#${params.toString()}`;
             } else if (accessToken) {
                 const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
                 const csrfToken = csrfInput ? csrfInput.value : '';

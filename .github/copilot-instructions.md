@@ -9,11 +9,29 @@
 Use `.agents/skills/aetheromni-delivery/SKILL.md` as the concise operational
 runbook. This file remains the authoritative cross-agent policy.
 
+`run_checks.sh` is the canonical local verification entrypoint. The legacy
+`scripts/verify-pipeline.sh` is a compatibility wrapper only and must not fetch,
+pull, stash, perform remote scans, or deploy.
+
+### Runtime reliability contracts
+
+- Dashboard refresh uses complete user-scoped status snapshots and periodic polling alongside Realtime hints. Missing rows imply deletion only when the response explicitly declares completeness.
+- Persist Cloud Tasks identities before dispatch. Cancellation records a durable stop marker and deletes queued work; running workers must fence writes by task identity and cancellation state. Already-running provider calls may finish before the next cancellation check.
+- Acknowledge task delivery only after a durable outcome. Unhandled failures remain retryable under the Pulumi queue retry policy; failed error persistence must propagate.
+- Keep document records when physical-file deletion fails, report the failure, and allow retry. Apply the additive document schema and Django migration before enabling task identity enforcement.
+- Deployment scaling mutations require a superuser and target only `WORKER_SERVICE_NAME`; never substitute `WEB_SERVICE_NAME` after lookup failure. Grant task deletion on the application queue through Pulumi before rollout.
+- Keep the Cloud Run worker private: deploy it with `--no-allow-unauthenticated` and invoke it only through Cloud Tasks OIDC. Production deployment must require `SUPABASE_DATABASE_URL`; SQLite is offline-only.
+- The runtime service account needs `roles/run.viewer` only to read the configured worker for the superuser deployment controller; retain least privilege and do not grant editor/admin roles.
+- XLSX ingestion must enforce parser-specific archive, worksheet, row, cell, and rendered-output budgets; generic upload and ZIP limits alone are insufficient.
+- In production, SurrealDB is the sole deletion-spend accounting authority; the Django `pre_delete` ledger signal is restricted to explicit offline mode so a mirrored row cannot double-count a document.
+- Dashboard RAG uses the authenticated SSE endpoint when readable streams are available, renders streamed tokens as text, and falls back to the sanitized JSON response when streaming is unavailable.
+- Use `scripts/normalize_system_settings.py` as a dry-run preflight for persisted settings drift; `--apply` requires reviewed deployment approval, must never print setting values, must verify its postconditions, and must purge retired `openrouter_api_key` data before the corresponding schema release.
+
 ### 1. Shift-Left Local Verification FIRST (Multi-Language Stack & Dual Git Hooks)
 
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
-  - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.git/hooks/pre-commit` which runs `bash run_checks.sh --fast`. This differential gate checks modified files with Ruff AST formatting/linting, ESLint, strict Sonar-aligned YAML linting, Hadolint Dockerfile audits, markdownlint, SurrealQL validation, Bandit, Semgrep, AST-Grep regex rules, Python Cognitive Complexity (scripts/check_code_quality.py <= 15), and ShellCheck where applicable. The AST-Grep rules block recurring regex complexity and backtracking findings before a push; new suppressions require a precise rule ID, with Semgrep and SonarQube suppressions also requiring a reason.
-  - **Pre-Push Gatekeeper Hook**: Local pushes are enforced by `.git/hooks/pre-push` running the full verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), Docker (`hadolint`), SurrealQL (`surreal validate`), and AST pattern rules (`ast-grep`).
+  - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.githooks/pre-commit` (with `core.hooksPath=.githooks`), which runs Sonar secrets scanning followed by `bash run_checks.sh --fast`. This differential gate checks modified files with Ruff AST formatting/linting, ESLint, strict Sonar-aligned YAML linting, Hadolint Dockerfile audits, markdownlint, SurrealQL validation, Bandit, Semgrep, AST-Grep regex rules, Python Cognitive Complexity (scripts/check_code_quality.py <= 15), and ShellCheck where applicable. The AST-Grep rules block recurring regex complexity and backtracking findings before a push; new suppressions require a precise rule ID, with Semgrep and SonarQube suppressions also requiring a reason.
+  - **Pre-Push Gatekeeper Hook**: Local pushes are enforced by `.githooks/pre-push` (with `core.hooksPath=.githooks`), running Sonar secrets scanning followed by the full verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), Docker (`hadolint`), SurrealQL (`surreal validate`), and AST pattern rules (`ast-grep`).
   - **Full Suite Run**: Execute `bash run_checks.sh` locally for the complete verification pass. Shell pipeline failures must propagate so log capture cannot mask a failed check.
   - **Runtime Alignment**: Create the local environment with the interpreter declared by `pyproject.toml` and install `requirements-dev.txt`; `run_checks.sh` rejects an incompatible interpreter rather than silently producing incompatible results.
   - **Active Linters & Auto-Fixers**: Ensure active auto-fixers (`markdownlint --fix`, `yamllint`, `ruff check --fix`, `ruff format`) are executed so document formatting, JS/Python code standards, and YAML schemas are automatically corrected.
@@ -68,10 +86,12 @@ runbook. This file remains the authoritative cross-agent policy.
 
 - Compute the release version before SonarCloud analysis and Cloud Build; never manually edit it or deploy a `latest` fallback. Cloud Build must unshallow trigger checkouts before deriving the commit-count patch.
 - Treat the public `/release/` response as the deployed release authority. Cloud Build must verify its version and commit SHA after deployment; README must not pin computed release values that can drift after squash merges.
-- Send Supabase CAPTCHA tokens in GoTrue `gotrue_meta_security`; require Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL` or server-controlled Supabase app metadata. Never auto-promote the first user.
+- Send Supabase CAPTCHA tokens in GoTrue `gotrue_meta_security`; require Turnstile before credential dispatch and grant admin only through `ADMIN_EMAIL`. Supabase app metadata must not grant Django superuser. Never auto-promote the first user.
 - In production, use the Supabase Auth subject UUID for document ownership, tenant filtering, exports, RAG access, and rate-limit keys; Django/SQLite IDs are offline-only implementation details.
 - Default the worker to bounded Cloud Run on-demand scaling with periodic maintenance disabled. Cloud Tasks wakes it for queued work; only opt into an always-on worker for an explicit scheduled-maintenance requirement. Web instances must not start maintenance threads.
 - Cloud Tasks must dispatch only to `WORKER_URL` in production; never fall back to a local web-process thread. Cloud Build resolves the worker URL and GCP project identity at deploy time, while `_APP_URL` may set the public Supabase confirmation origin.
+- Treat an unavailable or indeterminate distributed rate-limit result as a denied production request. Private document deduplication must remain tenant-scoped unless an explicit public corpus authorizes sharing. Deployment-managed credentials belong only in Secret Manager and must not appear as console inputs.
+- Keep Cloud Run memory floors synchronized across Pulumi, service manifests, and Cloud Build deploy flags. The local and Actions reliability-contract gate verifies this alongside Supabase CAPTCHA forwarding, configured email confirmation, and `ADMIN_EMAIL`-only administrator authority.
 - Treat the GitHub Actions summary as the actionable SonarCloud hand-off. Keep failures blocking so Jules can address scoped issues from PR checks or issues.
 - Public GitHub repositories run native SonarCloud analysis across all pull requests and branch pushes, providing live PR decoration and quality gate evaluation.
 - Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do not reintroduce secret-retrieval or imperative provisioning scripts.
@@ -112,9 +132,11 @@ runbook. This file remains the authoritative cross-agent policy.
    - Execute budget caps and atomic counters using SurrealDB native `BEGIN TRANSACTION ... COMMIT TRANSACTION;` blocks.
    - Validate all `.surql` files with `surreal validate` before committing. Integrated into Phase 2 of `run_checks.sh` and the fast `--fast` differential pass.
    - Use `concurrent.futures.ThreadPoolExecutor` worker dispatch in sync/async boundaries instead of monkeypatching event loops with `nest_asyncio`.
+   - Set `SURREAL_EXECUTOR_WORKERS` per deployment when tuning bounded SurrealDB RPC concurrency; it must be a positive integer.
+   - Keep `scripts/check_reliability_contracts.py` blocking in local and CI gates. It protects task ownership/cancellation, recovery-token lifetime, YAML export escaping, and dashboard polling lifecycle against regressions found by review tools.
 
 6. **Multi-Language Code Quality & Eco-Design**:
-   - Python: Target Python 3.14 across Docker, CI, local checks, and SonarQube, with `ruff`, `mypy`, and `bandit`.
+   - Python: Target Python 3.14+ across Docker, CI, local checks, and SonarQube, with `ruff` (target-version = py314, PEP 758 syntax), `mypy`, and `bandit`.
    - JavaScript: ESLint 10 with SonarQube JS conventions (`?.` optional chaining, global scope checks, complexity ≤ 15).
    - SurrealQL: `surreal validate` enforces `.surql` schema syntax on every pipeline run.
    - Adhere to Creedengo Eco-Design rules (low energy consumption, optimal memory management).

@@ -14,9 +14,10 @@ from extractor.models import SourceDocument
 class ReembeddingTestCase(TestCase):
     """Verifies that manually edited documents can be successfully re-chunked and re-embedded in the background."""
 
+    @patch("extractor.tasks.log_audit_event")
     @patch("extractor.tasks.generate_surreal_embeddings")
     @patch("extractor.surreal_db.recreate_chunks")
-    def test_reembed_edited_document_task(self, mock_recreate, mock_embeddings):
+    def test_reembed_edited_document_task(self, mock_recreate, mock_embeddings, mock_log_audit):
         # Create a document in COMPLETED state
         doc = SourceDocument.objects.create(
             original_filename="sample.txt",
@@ -47,6 +48,33 @@ class ReembeddingTestCase(TestCase):
 
         # Assert recreate_chunks is successfully called
         mock_recreate.assert_called_once()
+        mock_log_audit.assert_called_once()
+        event = mock_log_audit.call_args[0][0]
+        self.assertEqual(event.action, "DOCUMENT_EDITED")
+
+    @patch("extractor.tasks.check_budget_and_api_limit")
+    @patch("extractor.surreal_db.recreate_chunks")
+    def test_reembed_edited_document_budget_exceeded(self, mock_recreate, mock_budget):
+        from extractor.llm_gateway import BudgetExceededException
+
+        mock_budget.side_effect = BudgetExceededException("Monthly budget limit reached")
+
+        doc = SourceDocument.objects.create(
+            original_filename="sample.txt",
+            file_hash="sample-hash",
+            title="Old Title",
+            status="COMPLETED",
+            refined_markdown="This is paragraph one.\n\nThis is paragraph two.",
+        )
+
+        from extractor.tasks import reembed_edited_document_task
+
+        reembed_edited_document_task({"document_id": doc.id})
+
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, "FAILED")
+        self.assertIn("Monthly budget limit reached", doc.error_message)
+        mock_recreate.assert_not_called()
 
 
 class ResilienceAndSafetyTestCase(TestCase):
@@ -249,6 +277,23 @@ class ResilienceAndSafetyTestCase(TestCase):
 class CleanupExpiredDocumentsTestCase(TestCase):
     """Verifies reference-counted document garbage disposal and query optimization."""
 
+    @patch("extractor.tasks._resolve_local_doc_obj", return_value=None)
+    @patch("extractor.tasks.default_storage.exists", return_value=True)
+    @patch("extractor.tasks.default_storage.delete", side_effect=OSError("storage unavailable"))
+    def test_cleanup_retains_record_when_storage_delete_fails(self, _delete, _exists, _resolve):
+        from extractor.tasks import _cleanup_single_expired_doc
+
+        surreal = MagicMock()
+        retained = _cleanup_single_expired_doc(
+            {"doc_uuid": "retained-doc", "file_hash": "unique-hash", "file": "documents/retained.pdf"},
+            {"unique-hash": 1},
+            surreal,
+        )
+
+        self.assertFalse(retained)
+        surreal.delete_chunks.assert_not_called()
+        surreal.delete_document.assert_not_called()
+
     @patch("extractor.surreal_db.delete_chunks")
     @patch("extractor.surreal_db.purge_expired_rag_cache")
     @patch("django.core.files.storage.default_storage.delete")
@@ -375,3 +420,113 @@ class CleanupExpiredDocumentsTestCase(TestCase):
         mock_s1.assert_called_once()
         mock_s2.assert_not_called()
         mock_s3.assert_not_called()
+
+    @patch("extractor.cloud_tasks.enqueue")
+    @patch("extractor.surreal_db.update_document")
+    def test_reap_single_stale_doc_skips_cancelled_doc(self, mock_update, mock_enqueue):
+        from extractor.tasks import _reap_single_stale_doc
+
+        doc = {
+            "doc_uuid": "doc-cancelled-123",
+            "status": "EXTRACTING",
+            "retry_count": 0,
+            "cancel_requested": True,
+            "original_filename": "cancelled.pdf",
+        }
+        reaped = _reap_single_stale_doc(doc)
+        self.assertTrue(reaped)
+        # Should NOT enqueue auto-retry
+        mock_enqueue.assert_not_called()
+        # Should mark as FAILED
+        mock_update.assert_called_with(
+            "doc-cancelled-123",
+            {
+                "status": "FAILED",
+                "error_message": (
+                    "Task timed out or terminated unexpectedly. "
+                    "The background worker may have scaled down, been preempted, or queue permissions were missing."
+                ),
+            },
+        )
+
+    @patch("extractor.tasks.log_audit_event")
+    @patch("extractor.tasks._delete_physical_file", return_value=True)
+    @patch("extractor.surreal_db.delete_chunks")
+    @patch("extractor.surreal_db.delete_document")
+    def test_cleanup_single_expired_doc_passes_actor_id(
+        self, mock_del_doc, mock_del_chunks, mock_del_file, mock_log_audit
+    ):
+        from extractor.tasks import _cleanup_single_expired_doc
+
+        mock_db = MagicMock()
+        doc = {
+            "doc_uuid": "doc-expired-456",
+            "file_hash": "hash-exp-456",
+            "file": "uploads/expired.pdf",
+            "original_filename": "expired.pdf",
+            "uploaded_by_id": "supabase-user-uuid-999",
+        }
+        hash_counts = {"hash-exp-456": 1}
+
+        cleaned = _cleanup_single_expired_doc(doc, hash_counts, mock_db)
+        self.assertTrue(cleaned)
+        mock_log_audit.assert_called_once()
+        audit_event = mock_log_audit.call_args[0][0]
+        self.assertEqual(audit_event.actor_id, "supabase-user-uuid-999")
+        self.assertEqual(audit_event.action, "DELETE")
+
+    @patch("django.core.files.storage.default_storage.delete")
+    @patch("django.core.files.storage.default_storage.exists", return_value=True)
+    def test_delete_physical_file_sanitizes_paths(self, mock_exists, mock_delete):
+        from extractor.tasks import _delete_physical_file
+
+        # Case 1: Empty or whitespace path without doc_obj should return True and not call storage.exists
+        self.assertTrue(_delete_physical_file(None, "", "hash1"))
+        self.assertTrue(_delete_physical_file(None, "   ", "hash2"))
+        mock_exists.assert_not_called()
+        mock_delete.assert_not_called()
+
+        # Case 2: Valid path should call exists and delete
+        self.assertTrue(_delete_physical_file(None, " uploads/test.pdf ", "hash3"))
+        mock_exists.assert_called_once_with("uploads/test.pdf")
+        mock_delete.assert_called_once_with("uploads/test.pdf")
+
+    @patch("extractor.tasks.broadcast_status_change")
+    @patch("extractor.cloud_tasks.cancel_document_task")
+    @patch("extractor.tasks.log_audit_event")
+    @patch("extractor.tasks._delete_physical_file", return_value=True)
+    @patch("extractor.surreal_db.delete_chunks")
+    @patch("extractor.surreal_db.delete_document")
+    def test_cleanup_single_expired_doc_cancels_inflight_task(
+        self, mock_del_doc, mock_del_chunks, mock_del_file, mock_log_audit, mock_cancel_task, mock_bcast
+    ):
+        from extractor.tasks import _cleanup_single_expired_doc
+
+        mock_db = MagicMock()
+        mock_db.get_document.return_value = {"cloud_task_name": "task-abc"}
+        doc = {
+            "doc_uuid": "doc-inflight-789",
+            "file_hash": "hash-inf-789",
+            "file": "uploads/inflight.pdf",
+            "original_filename": "inflight.pdf",
+            "status": "EXTRACTING",
+            "uploaded_by_id": "supabase-user-uuid-111",
+        }
+        hash_counts = {"hash-inf-789": 1}
+
+        cleaned = _cleanup_single_expired_doc(doc, hash_counts, mock_db)
+        self.assertTrue(cleaned)
+        mock_cancel_task.assert_called_once_with("doc-inflight-789", {"cloud_task_name": "task-abc"})
+        mock_bcast.assert_any_call("doc-inflight-789", "FAILED")
+        mock_bcast.assert_any_call("doc-inflight-789", "DELETED")
+
+    @patch("extractor.surreal_db._run")
+    @patch("extractor.surreal_db._first_result", return_value=None)
+    def test_reap_stale_tasks_handles_none_result(self, mock_first_res, mock_run):
+        from extractor.tasks import reap_stale_tasks
+
+        with self.settings(SURREALDB_OFFLINE=False):
+            reaped = reap_stale_tasks()
+            self.assertEqual(reaped, 0)
+            mock_run.assert_called_once()
+            mock_first_res.assert_called_once()

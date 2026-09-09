@@ -34,6 +34,11 @@ class CloudTasksTestCase(TestCase):
     @patch("extractor.cloud_tasks.get_gcp_project_details")
     @patch("extractor.cloud_tasks.tasks_v2.CloudTasksClient")
     def test_enqueue_gcp_cloud_tasks_api(self, mock_client_class, mock_details):
+        from extractor.models import SourceDocument
+
+        document = SourceDocument.objects.create(original_filename="queued.txt")
+        cloud_tasks._tasks_client = None
+        self.addCleanup(setattr, cloud_tasks, "_tasks_client", None)
         mock_details.return_value = {
             "project_id": "my-gcp-project",
             "region": "asia-southeast1",
@@ -46,7 +51,7 @@ class CloudTasksTestCase(TestCase):
 
         # Mock project ID to return dummy
         with self.settings(DEBUG=False, APP_URL="https://my-app.run.app", WORKER_URL="https://my-app.run.app"):
-            cloud_tasks.enqueue("process_document", {"document_id": 99})
+            cloud_tasks.enqueue("process_document", {"document_id": document.id})
 
             # Check that the Cloud Tasks client was used to create a task
             mock_client.create_task.assert_called_once()
@@ -57,6 +62,8 @@ class CloudTasksTestCase(TestCase):
             task = kwargs.get("task") or args[1]
             self.assertEqual(task["http_request"]["url"], "https://my-app.run.app/internal/tasks/process_document/")
             self.assertEqual(task["http_request"]["headers"]["Content-Type"], "application/json")
+            document.refresh_from_db()
+            self.assertEqual(document.cloud_task_name, task["name"])
 
     @patch("extractor.cloud_tasks.get_gcp_project_details")
     def test_enqueue_production_rejects_missing_worker_configuration(self, mock_details):

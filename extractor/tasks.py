@@ -23,6 +23,8 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
+from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME
+
 logger = logging.getLogger(__name__)
 
 _MAX_TITLE_LEN = 255
@@ -268,7 +270,10 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
         )
     )
 
-    broadcast_status_change(doc_uuid, "EXTRACTING")
+    try:
+        broadcast_status_change(doc_uuid, "EXTRACTING")
+    except Exception as exc:
+        logger.debug("[Task/Prepare] Failed to broadcast EXTRACTING status: %s", exc)
     return doc
 
 
@@ -288,7 +293,10 @@ def _resolve_offline_source_doc(doc_or_id: Any):
 
     if isinstance(doc_or_id, SourceDocument):
         return doc_or_id
-    doc_id = doc_or_id
+    if isinstance(doc_or_id, dict):
+        doc_id = doc_or_id.get("doc_uuid") or doc_or_id.get("id")
+    else:
+        doc_id = doc_or_id
     try:
         import uuid
 
@@ -296,8 +304,9 @@ def _resolve_offline_source_doc(doc_or_id: Any):
             uuid.UUID(str(doc_id))
             return SourceDocument.objects.get(uuid=doc_id)
         except ValueError:
-            return SourceDocument.objects.get(id=int(getattr(doc_id, "id", doc_id)))
-    except (SourceDocument.DoesNotExist, ValueError):
+            target_id_raw = getattr(doc_id, "id", doc_id)
+            return SourceDocument.objects.get(id=int(str(target_id_raw)))
+    except SourceDocument.DoesNotExist, ValueError:
         raise ValueError(f"Document {doc_id} not found in SQLite")
 
 
@@ -402,7 +411,7 @@ def _get_doc_info_stage1(document_id):
                 doc = SourceDocument.objects.get(uuid=document_id)
             except ValueError:
                 doc = SourceDocument.objects.get(id=int(document_id))
-        except (SourceDocument.DoesNotExist, ValueError):
+        except SourceDocument.DoesNotExist, ValueError:
             logger.exception("[Worker] Document ID/UUID %s not found in SQLite", document_id)
             raise
         return doc, doc.original_filename.lower(), doc.id
@@ -553,7 +562,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
                     doc_ref = SourceDocument.objects.select_for_update().get(uuid=document_id)
                 except ValueError:
                     doc_ref = SourceDocument.objects.select_for_update().get(id=int(document_id))
-            except (SourceDocument.DoesNotExist, ValueError):
+            except SourceDocument.DoesNotExist, ValueError:
                 doc_ref = doc
             doc_ref.document_type = doc_type_detected
             doc_ref.page_count = page_count_detected
@@ -613,8 +622,9 @@ def _sanitise_yaml_block(raw: str) -> str:
             # Strip single-quote wrapping that the LLM sometimes adds
             if value.startswith("'") and value.endswith("'") and len(value) > 1:
                 value = value[1:-1]
-            # Escape any existing double-quotes inside the value
-            value = value.replace('"', '\\"')
+            # In double-quoted YAML scalars, backslashes are escape characters.
+            # Escape existing backslashes first, then escape double-quotes.
+            value = value.replace("\\", "\\\\").replace('"', '\\"')
             fixed_lines.append(f'{prefix}"{value}"')
         else:
             fixed_lines.append(line)
@@ -930,7 +940,36 @@ def _run_stage2(raw_markdown: str, doc_uuid: str) -> dict:
         doc.get("document_type", ""),
     )
 
+    return _persist_stage2_results(
+        doc,
+        doc_uuid,
+        parsed_meta,
+        refined_markdown,
+        yaml_metadata_block,
+        qa_dataset,
+        stage2_cost,
+        stage2_input_tokens,
+        stage2_output_tokens,
+    )
+
+
+def _persist_stage2_results(
+    doc: dict,
+    doc_uuid: str,
+    parsed_meta: dict,
+    refined_markdown: str,
+    yaml_metadata_block: str,
+    qa_dataset: list,
+    stage2_cost: float,
+    stage2_input_tokens: int,
+    stage2_output_tokens: int,
+) -> dict:
+    """Save stage 2 refined content, token usage, and metadata to SurrealDB."""
     doc_ref = surreal_db.get_document(doc_uuid)
+    if not doc_ref or not _check_pipeline_active(doc_uuid):
+        logger.warning("[Stage 2] Pipeline no longer active for %s; aborting stage 2 update.", doc_uuid)
+        return doc
+
     _update_doc_metadata(doc_ref, parsed_meta)
 
     input_tokens = _get_val(doc_ref, "input_tokens", 0) + stage2_input_tokens
@@ -986,7 +1025,46 @@ def _build_chunk_payload(
     return payload, current_page, current_chapter
 
 
-def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
+def _complete_stage3_empty_chunks(doc: dict, doc_uuid: str, retention_days: int) -> dict | None:
+    """Handle stage 3 completion when no semantic chunks are generated."""
+    if not _check_pipeline_active(doc_uuid):
+        logger.warning("[Stage 3] Pipeline no longer active for %s; aborting empty-chunks completion.", doc_uuid)
+        return None
+
+    surreal_db.delete_chunks(doc_uuid)
+    expires_at = timezone.now() + timedelta(days=retention_days)
+    existing_page_count = _get_val(doc, "page_count") or 0
+    final_page_count = max(0, existing_page_count)
+    return surreal_db.update_document(
+        doc_uuid,
+        {
+            "page_count": final_page_count,
+            "status": "COMPLETED",
+            "expires_at": format_datetime(expires_at),
+        },
+    )
+
+
+def _complete_stage3_chunks(
+    doc: dict, doc_uuid: str, chunks: list[str], chunk_payloads: list[dict], retention_days: int
+) -> dict | None:
+    """Handle stage 3 completion when semantic chunks are successfully generated."""
+    surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
+
+    expires_at = timezone.now() + timedelta(days=retention_days)
+    existing_page_count = _get_val(doc, "page_count") or 0
+    final_page_count = existing_page_count if existing_page_count > 0 else len(chunks)
+    return surreal_db.update_document(
+        doc_uuid,
+        {
+            "page_count": final_page_count,
+            "status": "COMPLETED",
+            "expires_at": format_datetime(expires_at),
+        },
+    )
+
+
+def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict | None:
     """
     Stage 3: Semantic chunking and SurrealDB HNSW vector embedding.
     """
@@ -1014,41 +1092,19 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict:
         # insert orphaned vector chunks for a non-existent document, polluting
         # RAG search results. Abort the pipeline if the doc no longer exists.
         fresh_doc = surreal_db.get_document(doc_uuid)
-        if not fresh_doc:
+        if not fresh_doc or not _check_pipeline_active(doc_uuid):
             logger.warning(
                 "[Worker] Document %s was deleted mid-pipeline (Stage 3). "
                 "Aborting recreate_chunks to avoid orphaned vector entries.",
                 doc_uuid,
             )
-            return {}
-        surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
-
-        expires_at = timezone.now() + timedelta(days=retention_days)
-        existing_page_count = _get_val(doc, "page_count") or 0
-        final_page_count = existing_page_count if existing_page_count > 0 else len(chunks)
-        updated = surreal_db.update_document(
-            doc_uuid,
-            {
-                "page_count": final_page_count,
-                "status": "COMPLETED",
-                "expires_at": format_datetime(expires_at),
-            },
-        )
+            return None
+        updated = _complete_stage3_chunks(doc, doc_uuid, chunks, chunk_payloads, retention_days)
     else:
-        surreal_db.delete_chunks(doc_uuid)
+        updated = _complete_stage3_empty_chunks(doc, doc_uuid, retention_days)
 
-        expires_at = timezone.now() + timedelta(days=retention_days)
-        existing_page_count = _get_val(doc, "page_count") or 0
-        final_page_count = max(0, existing_page_count)
-        updated = surreal_db.update_document(
-            doc_uuid,
-            {
-                "page_count": final_page_count,
-                "status": "COMPLETED",
-                "expires_at": format_datetime(expires_at),
-            },
-        )
-
+    if not updated:
+        return None
     broadcast_status_change(doc_uuid, "COMPLETED")
     return updated
 
@@ -1062,7 +1118,12 @@ def _check_pipeline_active(doc_uuid: str) -> bool:
     if not doc:
         logger.info("[Worker] Document %s was deleted. Aborting pipeline.", doc_uuid)
         return False
-    if doc.get("status") == "FAILED":
+    expected_task = surreal_db.document_task_name.get()
+    if (
+        doc.get("status") == "FAILED"
+        or doc.get(CANCEL_REQUESTED)
+        or (expected_task and doc.get(CLOUD_TASK_NAME) != expected_task)
+    ):
         logger.info("[Worker] Document %s was cancelled or failed. Aborting pipeline.", doc_uuid)
         return False
     return True
@@ -1122,10 +1183,24 @@ def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) ->
     if not _check_pipeline_active(doc_uuid):
         return False
 
+    # Mid-pipeline budget circuit breaker before Stage 3 embedding
+    try:
+        check_budget_and_api_limit()
+    except Exception as budget_err:
+        logger.warning("[Worker] Mid-pipeline budget limit breached before Stage 3: %s", budget_err)
+        _fail_document(
+            doc_uuid,
+            error_message=f"Mid-Pipeline Budget Capped Halt: {budget_err!s}",
+            details=f"Stage 3 budget breach: {budget_err!s}",
+        )
+        return False
+
     # Stage 3
     try:
         text_for_chunks = doc.get("refined_markdown") or doc.get("raw_markdown", "")
         doc = _run_stage3(text_for_chunks, doc_uuid)
+        if doc is None:
+            return False
         if not isinstance(doc, dict):
             doc = _model_to_dict(doc)
 
@@ -1171,8 +1246,7 @@ def process_document_task(payload: dict) -> None:
 
         temp_local_path = None
         try:
-            doc_id_str = str(getattr(doc, "id", doc))
-            working_path = _get_working_path(doc_id_str)
+            working_path = _get_working_path(doc)
             temp_local_path = working_path[0] if isinstance(working_path, tuple) else working_path
             _run_pipeline_stages(doc, temp_local_path, doc_uuid)
         finally:
@@ -1193,30 +1267,17 @@ def process_document_task(payload: dict) -> None:
             )
         except Exception as db_err:
             logger.exception("[Worker] Double-fault! Could not save crash to DB: %s", db_err)
+            raise
 
 
 def _claim_for_reembedding(doc_uuid: str) -> dict | None:
-    doc = surreal_db.get_document(doc_uuid)
-    if not doc:
-        logger.error("[Worker] Document %s does not exist.", doc_uuid)
-        return None
-
-    current_status = doc.get("status", "")
-    if current_status not in ("COMPLETED", "FAILED"):
-        logger.warning(
-            "[Worker] reembed_edited_document_task: doc %s has status=%s (expected COMPLETED/FAILED). Aborting.",
-            doc_uuid,
-            current_status,
-        )
-        return None
-
-    claimed = surreal_db.update_document(doc_uuid, {"status": "EMBEDDING"})
+    claimed = surreal_db.claim_document_for_reembedding(doc_uuid)
     if not claimed:
         logger.warning("[Worker] reembed_edited_document_task: failed to claim doc %s. Aborting.", doc_uuid)
         return None
 
     broadcast_status_change(doc_uuid, "EMBEDDING")
-    return doc
+    return claimed
 
 
 def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], existing_pages: int) -> int:
@@ -1224,20 +1285,14 @@ def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], exis
         return max(0, existing_pages)
 
     check_budget_and_api_limit()
-    if not surreal_db.get_document(doc_uuid):
+    if not _check_pipeline_active(doc_uuid):
         logger.info("[Worker] Document %s deleted during re-embedding, aborting.", doc_uuid)
         return -1
 
     embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
+    doc_language = doc.get("language") or ""
     chunk_payloads = [
-        {
-            "chunk_index": i,
-            "content": ct,
-            "token_count": len(ct.split()),
-            "language": doc.get("language") or "",
-            "embedding": emb,
-        }
-        for i, (ct, emb) in enumerate(zip(chunks, embeddings))
+        _build_chunk_payload(i, ct, emb, doc_language)[0] for i, (ct, emb) in enumerate(zip(chunks, embeddings))
     ]
     surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
     return existing_pages if existing_pages > 0 else len(chunks)
@@ -1259,12 +1314,13 @@ def reembed_edited_document_task(payload: dict) -> None:
         return
 
     try:
+        from extractor.llm_gateway import BudgetExceededException
+
         text_for_chunks = doc.get("refined_markdown") or doc.get("raw_markdown") or ""
         lang = (doc.get("language") or "").lower()
         chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
         chunks = chunk_document_semantically(text_for_chunks, max_chunk_size=chunk_size)
 
-        surreal_db.delete_chunks(doc_uuid)
         existing_pages = _get_val(doc, "page_count") or 0
         final_page_count = _recreate_and_embed_chunks(doc_uuid, doc, chunks, existing_pages)
         if final_page_count < 0:
@@ -1272,8 +1328,27 @@ def reembed_edited_document_task(payload: dict) -> None:
 
         surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
         logger.info("[Worker] Re-embedding successful for Document UUID: %s!", doc_uuid)
+        uploaded_by_id = doc.get("uploaded_by_id")
+        user = _resolve_user_by_id(uploaded_by_id)
+        log_audit_event(
+            AuditEvent(
+                action=AuditAction.DOCUMENT_EDITED,
+                user=user,
+                actor_id=uploaded_by_id,
+                document=doc,
+                details=f"Re-embedding completed successfully for '{doc.get('original_filename')}' (Pages: {final_page_count}).",
+            )
+        )
         broadcast_status_change(doc_uuid, "COMPLETED")
 
+    except BudgetExceededException as exc:
+        logger.warning("[Worker] Budget exceeded during re-embedding for doc %s: %s", doc_uuid, exc)
+        _fail_document(
+            doc_uuid,
+            error_message=str(exc),
+            details=f"Budget Capped Halt: {exc!s}",
+            log_audit=True,
+        )
     except Exception as exc:
         err_msg = traceback.format_exc()
         logger.exception("[Worker] Exception in re-embedding: %s", err_msg)
@@ -1309,14 +1384,29 @@ def _delete_physical_file(doc_obj, file_rel_path, file_hash):
         if doc_obj:
             doc_obj.file.delete(save=False)
         else:
-            if default_storage.exists(file_rel_path):
-                default_storage.delete(file_rel_path)
+            path_str = str(file_rel_path or "").strip()
+            if path_str and default_storage.exists(path_str):
+                default_storage.delete(path_str)
+        return True
     except Exception as exc:
         logger.warning("[Cron] Failed to delete physical file for hash %s: %s", file_hash, exc)
+        return False
 
 
-def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
-    """Purge one expired document: physical file, SurrealDB chunks, storage JSON, audit log."""
+def _abort_inflight_expired_doc(doc: dict, doc_uuid: str, surreal_db) -> None:
+    if doc.get("status") in {"PENDING", "EXTRACTING", "REFINING", "EMBEDDING"}:
+        try:
+            from extractor.cloud_tasks import cancel_document_task
+
+            raw_surreal_doc = surreal_db.get_document(doc_uuid) if hasattr(surreal_db, "get_document") else {}
+            cancel_document_task(doc_uuid, raw_surreal_doc or doc)
+            broadcast_status_change(str(doc_uuid), "FAILED")
+        except Exception as abort_err:
+            logger.debug("[Cron] Could not cancel in-flight expired doc %s: %s", doc_uuid, abort_err)
+
+
+def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db) -> bool:
+    """Purge one expired document and retain its record if storage deletion fails."""
     file_hash = doc.get("file_hash")
     doc_uuid = doc.get("doc_uuid")
     file_rel_path = doc.get("file", "")
@@ -1324,11 +1414,14 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
     total_refs = hash_counts.get(file_hash, 0)
     shared_references = max(0, total_refs - 1)
 
+    _abort_inflight_expired_doc(doc, str(doc_uuid), surreal_db)
+
     doc_obj = _resolve_local_doc_obj(doc_uuid)
 
     if shared_references == 0:
         logger.info("[Cron] Purging file hash %s from storage.", file_hash)
-        _delete_physical_file(doc_obj, file_rel_path, file_hash)
+        if not _delete_physical_file(doc_obj, file_rel_path, file_hash):
+            return False
     else:
         logger.info(
             "[Cron] Skipping physical delete for hash %s (referenced by %s records).", file_hash, shared_references
@@ -1344,16 +1437,32 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db):
         logger.warning("[Cron] Failed to delete SurrealDB chunks for %s: %s", doc_uuid, exc)
 
     # Write audit log before deletion
+    uploaded_by_id = doc.get("uploaded_by_id")
+    user = _resolve_user_by_id(uploaded_by_id)
     log_audit_event(
         AuditEvent(
             action=AuditAction.DELETE,
-            user=None,
+            user=user,
+            actor_id=uploaded_by_id,
             document=doc,
             details=f"GDPR retention cleanup: document '{doc.get('original_filename')}' (UUID: {doc_uuid}) expired and purged.",
         )
     )
 
     surreal_db.delete_document(doc_uuid)
+
+    try:
+        from extractor.models import SourceDocument
+
+        SourceDocument.objects.filter(uuid=doc_uuid).delete()
+    except Exception as sqlite_cleanup_err:
+        logger.debug("[Cron] SQLite cleanup for doc_uuid=%s skipped: %s", doc_uuid, sqlite_cleanup_err)
+
+    try:
+        broadcast_status_change(str(doc_uuid), "DELETED")
+    except Exception as bcast_err:
+        logger.debug("[Cron] Failed to broadcast status DELETED for %s: %s", doc_uuid, bcast_err)
+    return True
 
 
 def _fetch_expired_docs_offline(now, surreal_db):
@@ -1419,8 +1528,8 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
     purged_count = 0
     for doc in expired_docs:
-        _cleanup_single_expired_doc(doc, hash_counts, surreal_db)
-        purged_count += 1
+        if _cleanup_single_expired_doc(doc, hash_counts, surreal_db):
+            purged_count += 1
 
     # Purge expired SurrealDB RAG cache entries
     try:
@@ -1443,7 +1552,8 @@ def _reap_single_stale_doc(doc: dict) -> bool:
     current_status = doc.get("status", "UNKNOWN")
 
     # If document is stuck in PENDING or had a worker restart and has retries left, auto-re-enqueue it
-    if retry_count < 3:
+    # only if the user has not explicitly requested cancellation.
+    if retry_count < 3 and not doc.get(CANCEL_REQUESTED):
         logger.info(
             "[Reaper] Document %s was stuck in '%s' (attempt %s/3). Auto-re-enqueuing task...",
             doc_uuid,
@@ -1456,6 +1566,7 @@ def _reap_single_stale_doc(doc: dict) -> bool:
                 "status": "PENDING",
                 "retry_count": retry_count + 1,
                 "error_message": "",
+                CANCEL_REQUESTED: False,
             },
         )
         try:
@@ -1468,10 +1579,16 @@ def _reap_single_stale_doc(doc: dict) -> bool:
                 cloud_tasks.enqueue("process_document", {"document_id": doc_id})
             else:
                 cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+            try:
+                broadcast_status_change(str(doc_uuid), "PENDING")
+            except Exception as bcast_err:
+                logger.debug("[Reaper] Failed to broadcast status PENDING: %s", bcast_err)
             logger.info("[Reaper] Successfully auto-re-enqueued document %s", doc_uuid)
             return True
         except Exception as enq_err:
             logger.warning("[Reaper] Auto-retry enqueue failed for %s: %s", doc_uuid, enq_err)
+            surreal_db.update_document(doc_uuid, {"retry_count": retry_count, "status": current_status})
+            return False
 
     surreal_db.update_document(
         doc_uuid,
@@ -1539,7 +1656,7 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
         )
     reaped_count = 0
 
-    for doc in stale_docs:
+    for doc in stale_docs or []:
         if _reap_single_stale_doc(doc):
             reaped_count += 1
 
@@ -1568,9 +1685,9 @@ def store_user_memory_task(payload: dict) -> None:
     from extractor.rag import generate_surreal_embeddings
 
     user = _resolve_user_by_id(user_id)
-    # Even if Django User object is not present in local SQLite/Postgres auth table (e.g. Supabase Auth user),
-    # proceed if user_id is a valid UUID or string identifier.
-    effective_user_id = str(user.id) if user else str(user_id)
+    # In production, user_id is the persistent Supabase Auth subject UUID.
+    # Preserve it directly as effective_user_id to maintain tenant isolation across nodes.
+    effective_user_id = str(user_id) if user_id else (str(user.id) if user else "anonymous")
     user_display = getattr(user, "username", str(user_id))
 
     distill_prompt = (
@@ -1583,7 +1700,9 @@ def store_user_memory_task(payload: dict) -> None:
     )
 
     client = _init_refinement_client()
-    model = _resolve_model_name("google/gemini-3.1-flash-lite")
+    from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
+
+    model = _resolve_model_name(MODEL_GEMINI_FLASH_LITE)
 
     try:
         response, _ = execute_generate_content_with_fallback(client, model, contents=[distill_prompt])

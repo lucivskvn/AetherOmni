@@ -182,12 +182,19 @@ class SurrealNamespaceMigrator:
             logger.info("[Dry Run] Would migrate %d records for table '%s'.", src_count, table)
             return src_count
 
+        effective_batch_size = 50 if table in ("chunks", "rag_cache", "context_cache") else batch_size
+        migrated_total = self._copy_table_batches(table, src_count, effective_batch_size)
+
+        self._log_count_validation(table, src_count)
+        return migrated_total
+
+    def _copy_table_batches(self, table: str, src_count: int, batch_size: int) -> int:
+        """Copy a table in bounded batches and return the number transferred."""
         offset = 0
         migrated_total = 0
-        effective_batch_size = 50 if table in ("chunks", "rag_cache", "context_cache") else batch_size
 
         while True:
-            fetch_query = f"SELECT * FROM {table} START {offset} LIMIT {effective_batch_size};"  # nosec B608 # noqa: S608
+            fetch_query = f"SELECT * FROM {table} START {offset} LIMIT {batch_size};"  # nosec B608 # noqa: S608
             src_records_resp = self._execute_sql(self.source_ns, fetch_query)
             if not src_records_resp or "result" not in src_records_resp[0]:
                 break
@@ -208,10 +215,12 @@ class SurrealNamespaceMigrator:
                 migrated_total,
                 src_count,
             )
-            if len(records) < effective_batch_size or (src_count and migrated_total >= src_count):
+            if len(records) < batch_size or migrated_total >= src_count:
                 break
+        return migrated_total
 
-        # Validation
+    def _log_count_validation(self, table: str, src_count: int) -> None:
+        """Log source/target count consistency after a table copy."""
         dst_count = self.count_records(self.target_ns, table)
         if dst_count >= src_count:
             logger.info(
@@ -227,8 +236,6 @@ class SurrealNamespaceMigrator:
                 src_count,
                 dst_count,
             )
-
-        return migrated_total
 
     def run_migration(self, schema_file: str, dry_run: bool = False) -> bool:
         logger.info(

@@ -98,6 +98,44 @@ async function executeRagFetch(url) {
     return data;
 }
 
+class RagStreamUnavailableError extends Error {}
+
+async function executeRagStream(url, onEvent) {
+    const response = await fetch(url, { headers: { Accept: 'text/event-stream' } });
+    if (!response.ok) {
+        let data = null;
+        try {
+            data = await response.json();
+        } catch {
+            // The normal JSON error path below supplies a safe generic message.
+        }
+        throw new Error(data?.error || data?.message || 'An error occurred during vector search.');
+    }
+    if (!response.body || typeof response.body.getReader !== 'function' || typeof globalThis.TextDecoder !== 'function') {
+        throw new RagStreamUnavailableError('Streaming is unavailable in this browser.');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const processEvent = rawEvent => {
+        const dataLine = rawEvent.split('\n').find(line => line.startsWith('data:'));
+        if (!dataLine) return;
+        const payload = JSON.parse(dataLine.slice(5).trim());
+        onEvent(payload);
+    };
+
+    while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const events = buffer.split('\n\n');
+        buffer = events.pop();
+        events.forEach(processEvent);
+        if (done) break;
+    }
+    if (buffer.trim()) processEvent(buffer);
+}
+
 /**
  * Enables keyboard shortcuts and instant clearing for the Audit Logs search input.
  */
@@ -820,7 +858,10 @@ function initializeExportActions() {
                     exportForm.appendChild(actionInput);
                 }
                 actionInput.value = 'restart';
-                exportForm.action = bulkRestartBtn.dataset.actionUrl;
+                const actionUrl = bulkRestartBtn.dataset.actionUrl;
+                if (actionUrl && actionUrl.startsWith('/') && !actionUrl.startsWith('//')) {
+                    exportForm.action = actionUrl;
+                }
                 exportForm.submit();
             }
         });
@@ -842,7 +883,10 @@ function initializeExportActions() {
                     exportForm.appendChild(actionInput);
                 }
                 actionInput.value = 'delete';
-                exportForm.action = bulkDeleteBtn.dataset.actionUrl;
+                const actionUrl = bulkDeleteBtn.dataset.actionUrl;
+                if (actionUrl && actionUrl.startsWith('/') && !actionUrl.startsWith('//')) {
+                    exportForm.action = actionUrl;
+                }
                 exportForm.submit();
             }
         });
@@ -1098,13 +1142,29 @@ function initializeRAGSearch() {
         return Array.from(checkedBoxes).map(cb => cb.value);
     }
 
-    function buildRagUrl(query) {
+    function buildRagUrl(query, streaming = false) {
         const docIds = getSelectedDocIds();
-        let url = `/rag-search/?q=${encodeURIComponent(query)}`;
+        let url = `${streaming ? '/api/v1/stream-query/' : '/rag-search/'}?q=${encodeURIComponent(query)}`;
         if (docIds.length > 0) {
             url += `&document_ids=${docIds.join(',')}`;
         }
         return url;
+    }
+
+    function _setRagSearchBusy(isBusy) {
+        ragLoader.style.display = isBusy ? 'block' : 'none';
+        ragBtn.disabled = isBusy;
+        if (isBusy) {
+            ragResults.style.display = 'none';
+            ragBtn.setAttribute('title', 'Searching...');
+        } else {
+            ragBtn.removeAttribute('title');
+        }
+    }
+
+    function _renderFallbackRagAnswer(data) {
+        ragAnswer.textContent = String(data?.answer || data?.answer_html || '');
+        renderRagSources(data?.sources);
     }
 
     async function runSemanticRAG() {
@@ -1118,23 +1178,30 @@ function initializeRAGSearch() {
             return;
         }
 
-        ragLoader.style.display = 'block';
-        ragResults.style.display = 'none';
-        ragBtn.disabled = true;
-        ragBtn.setAttribute('title', 'Searching...');
+        _setRagSearchBusy(true);
 
         try {
-            const data = await executeRagFetch(buildRagUrl(query));
-            ragLoader.style.display = 'none';
-            ragBtn.disabled = false;
-            ragBtn.removeAttribute('title');
+            let streamedSources = [];
+            ragAnswer.textContent = '';
             ragResults.style.display = 'block';
-            ragAnswer.innerHTML = data.answer_html;
-            renderRagSources(data.sources);
+            try {
+                await executeRagStream(buildRagUrl(query, true), event => {
+                    if (event.error) throw new Error(event.error);
+                    if (event.sources) {
+                        streamedSources = event.sources;
+                        renderRagSources(streamedSources);
+                    }
+                    if (event.token) ragAnswer.textContent += event.token;
+                });
+            } catch (streamError) {
+                if (!(streamError instanceof RagStreamUnavailableError)) throw streamError;
+                const data = await executeRagFetch(buildRagUrl(query));
+                _renderFallbackRagAnswer(data);
+            }
+            _setRagSearchBusy(false);
+            ragResults.style.display = 'block';
         } catch (err) {
-            ragLoader.style.display = 'none';
-            ragBtn.disabled = false;
-            ragBtn.removeAttribute('title');
+            _setRagSearchBusy(false);
             showClientSideAlert(err.message || 'An error occurred during vector search.');
             console.error(err);
         }
@@ -1159,14 +1226,15 @@ let tokensChartInstance = null;
 
 function initializeTokensChart() {
     const tokensChartEl = document.getElementById('tokensChart');
-    if (!tokensChartEl) return;
+    if (!tokensChartEl || typeof Chart === 'undefined' || typeof tokensChartEl.getContext !== 'function') return;
 
     const ctx = tokensChartEl.getContext('2d');
+    if (!ctx) return;
+
     const prompt_tokens = Number.parseInt(tokensChartEl.dataset.prompt || '1', 10);
     const candidates_tokens = Number.parseInt(tokensChartEl.dataset.candidates || '0', 10);
     
-    if (typeof Chart !== 'undefined') {
-        tokensChartInstance = new Chart(ctx, {
+    tokensChartInstance = new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: ['Input Prompt', 'Output Reason'],
@@ -1191,20 +1259,20 @@ function initializeTokensChart() {
                 }
             }
         });
-    }
 }
 
 /**
  * Compact helper to format numbers (e.g. 15000 -> 15.0K, 1500000 -> 1.5M).
  */
 function formatCompact(num) {
-    if (num >= 1000000) {
-        return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    const val = Number(num) || 0;
+    if (val >= 1000000) {
+        return (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
     }
-    if (num >= 1000) {
-        return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    if (val >= 1000) {
+        return (val / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
     }
-    return num.toString();
+    return val.toString();
 }
 
 /**
@@ -1232,33 +1300,59 @@ function _checkNeedsPolling() {
 }
 
 function initializeStatusPoller() {
-    const POLL_INTERVAL = 5000; // 5 seconds
     let activePoll = false;
-
-    if (_checkNeedsPolling()) {
-        runPoller();
-        setInterval(runPoller, POLL_INTERVAL);
-    }
+    let pending = false;
+    let stopped = false;
+    let controller;
+    const onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') void runPoller();
+    };
+    const interval = setInterval(() => {
+        if (document.visibilityState !== 'hidden') void runPoller();
+    }, 5000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const stop = () => {
+        stopped = true;
+        clearInterval(interval);
+        controller?.abort();
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        globalThis.removeEventListener('pagehide', stop);
+    };
+    globalThis.addEventListener('pagehide', stop);
 
     async function runPoller() {
-        if (activePoll) return;
+        if (stopped) return;
+        if (activePoll) {
+            pending = true;
+            return;
+        }
         activePoll = true;
+        pending = false;
+        controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
         try {
-            const res = await fetch('/api/documents/status/');
+            const res = await fetch(`/api/documents/status/${globalThis.location.search}`, { signal: controller.signal });
             if (!res.ok) {
                 console.warn(`[Poller] Status endpoint returned HTTP ${res.status}. Skipping update.`);
                 return;
             }
             const data = await res.json();
             updateDashboardStats(data.stats);
-            updateDocumentsTable(data.documents);
+            if (stopped) return;
+            updateDocumentsTable(data.documents, data.documents_complete === true, data.dashboard_document_ids);
             updateDocumentDetailScreen(data);
         } catch (err) {
-            console.error('[Poller] Fetch error:', err);
+            if (err?.name !== 'AbortError' && !err?.message?.includes('abort')) {
+                console.error('[Poller] Fetch error:', err);
+            }
         } finally {
+            clearTimeout(timeout);
             activePoll = false;
+            if (pending && !stopped) void runPoller();
         }
     }
+    void runPoller();
+    return { refresh: runPoller, stop };
 }
 
 /**
@@ -1266,56 +1360,52 @@ function initializeStatusPoller() {
  * Upgrades background polling to instant, native WebSockets when credentials are configured.
  */
 function initializeSupabaseRealtime() {
+    if (!document.querySelector('.files-panel, .timeline-container')) return;
+    // Poll even with a healthy socket: broadcasts are hints, not durable delivery.
+    const poller = initializeStatusPoller();
     const supabaseUrl = document.body.dataset.supabaseUrl;
     const supabaseKey = document.body.dataset.supabaseKey;
 
     if (!supabaseUrl || !supabaseKey || typeof supabase === 'undefined') {
         console.debug("[Realtime] Realtime websocket channel unavailable. Falling back to background AJAX polling.");
-        initializeStatusPoller();
-        return;
+        return poller;
     }
 
     console.debug("[Realtime] Upgrading to Supabase Realtime WebSockets...");
-    const client = supabase.createClient(supabaseUrl, supabaseKey);
+    try {
+        const client = supabase.createClient(supabaseUrl, supabaseKey);
 
     // Gap D-7: Subscribe to broadcast events on 'document-updates' channel
-    client
+        const channel = client
         .channel('document-updates')
         .on(
             'broadcast',
             { event: 'status-changed' },
             () => {
                 console.debug('[Realtime] Received document update broadcast event');
-                triggerUpdate();
+                void poller.refresh();
             }
         )
         .subscribe((status) => {
             console.debug('[Realtime] Subscription status:', status);
+            if (status === 'SUBSCRIBED') void poller.refresh();
         });
-
-    let activeFetch = false;
-    async function triggerUpdate() {
-        if (activeFetch) return;
-        activeFetch = true;
-        try {
-            const res = await fetch('/api/documents/status/');
-            if (!res.ok) {
-                console.warn(`[Realtime] Status endpoint returned HTTP ${res.status}. Skipping update.`);
-                return;
+        globalThis.addEventListener('pagehide', () => {
+            try {
+                void client.removeChannel(channel);
+            } catch (teardownErr) {
+                console.debug('[Realtime] Teardown error on pagehide:', teardownErr);
             }
-            const data = await res.json();
-            updateDashboardStats(data.stats);
-            updateDocumentsTable(data.documents);
-            updateDocumentDetailScreen(data);
-        } catch (err) {
-            console.error('[Realtime] State update fetch error:', err);
-        } finally {
-            activeFetch = false;
-        }
+        });
+        globalThis.addEventListener('pageshow', (event) => {
+            if (event.persisted) {
+                void poller.refresh();
+            }
+        });
+    } catch (err) {
+        console.warn('[Realtime] Subscription unavailable; polling remains active.', err);
     }
-    
-    // Initial fetch to load stats and populate active state on page load
-    triggerUpdate();
+    return poller;
 }
 
 /**
@@ -1333,7 +1423,9 @@ function _updateTokenMetricCard(stats) {
         }
     }
     if (tokensChartInstance && stats.total_tokens > 0) {
-        tokensChartInstance.data.datasets[0].data = [stats.prompt_tokens, stats.candidates_tokens];
+        const promptTokens = Number(stats.prompt_tokens) || 0;
+        const candidatesTokens = Number(stats.candidates_tokens) || 0;
+        tokensChartInstance.data.datasets[0].data = [promptTokens, candidatesTokens];
         tokensChartInstance.update();
     }
 }
@@ -1360,11 +1452,15 @@ function updateDashboardStats(stats) {
 
     _updateTokenMetricCard(stats);
 
-    const billingAlert = document.querySelector('.alert-error');
-    if (billingAlert?.textContent.includes('Monthly API Billing Cap Triggered')) {
+    const billingAlert = document.querySelector('.billing-cap-alert') || document.querySelector('.alert-error');
+    const isBillingBanner = billingAlert?.textContent.includes('Monthly API Billing Cap Triggered');
+    if (isBillingBanner) {
         if (!stats.budget_exceeded) billingAlert.remove();
-    } else if (stats.budget_exceeded && !billingAlert) {
-        location.reload();
+    } else if (stats.budget_exceeded && !isBillingBanner) {
+        if (!globalThis._reloadTriggered) {
+            globalThis._reloadTriggered = true;
+            globalThis.location.reload();
+        }
     }
 }
 
@@ -1381,14 +1477,19 @@ function _findTableRowForDoc(tbody, doc) {
     return link ? link.closest('tr') : null;
 }
 
-function updateDocumentsTable(documents) {
+function updateDocumentsTable(documents, complete = false, visibleIds = []) {
     if (!documents) return;
     const tbody = document.querySelector('.files-panel table tbody');
     if (!tbody) return;
 
+    let newVisibleDocument = false;
     documents.forEach(doc => {
         const row = _findTableRowForDoc(tbody, doc);
-        if (!row) return;
+        if (!row) {
+            // Render new documents through the server template, including actions.
+            if (complete && visibleIds.includes(String(doc.id))) newVisibleDocument = true;
+            return;
+        }
 
         const previousStatus = row.dataset.status;
         row.dataset.docId = doc.id;
@@ -1416,9 +1517,13 @@ function updateDocumentsTable(documents) {
     });
 
     // BUG-06: Prune rows for documents no longer returned by the status API.
+    if (newVisibleDocument && !globalThis._reloadTriggered) {
+        globalThis._reloadTriggered = true;
+        globalThis.location.reload();
+    }
     // Previously, deleted documents stayed visible until a hard page reload.
     const activeIds = new Set(documents.map(d => String(d.id)));
-    const allRows = tbody.querySelectorAll('tr[data-doc-id]');
+    const allRows = complete ? tbody.querySelectorAll('tr[data-doc-id]') : [];
     allRows.forEach(row => {
         if (!activeIds.has(String(row.dataset.docId))) {
             row.style.transition = 'opacity 0.3s ease';
@@ -1490,14 +1595,20 @@ function updateDocumentDetailScreen(data) {
     // Check if finished or failed. If so, reload once to render the rich SFT Q&A + Markdown textareas or the failure board
     const isCurrentlyProcessing = ['PENDING', 'EXTRACTING', 'REFINING', 'EMBEDDING'].includes(currentStatus);
     const hasEditorForm = document.getElementById('editor-form');
-    const hasFailureBoard = document.querySelector('.timeline-step.failed') || document.querySelector('[data-doc-status="FAILED"]');
-    
+    const hasFailureBoard = document.querySelector('.timeline-step.failed')
+        || document.querySelector('[data-doc-status="FAILED"]')
+        || document.querySelector('.failed-pipeline-card');
+
     const shouldReloadForTerminalState = !isCurrentlyProcessing
         && ((currentStatus === 'COMPLETED' && !hasEditorForm)
-            || (currentStatus === 'FAILED' && !hasFailureBoard)
-            || (!hasEditorForm && !hasFailureBoard));
+            || (currentStatus === 'FAILED' && !hasFailureBoard));
+
     if (shouldReloadForTerminalState) {
-        globalThis.location.reload();
+        if (globalThis._reloadTriggered) return;
+        globalThis._reloadTriggered = true;
+        if (typeof globalThis.location?.reload === 'function') {
+            globalThis.location.reload();
+        }
     }
 }
 
@@ -1532,17 +1643,23 @@ function updateTimelineStep(stepEl, isActive, isCompleted) {
 
 
 function getStatusBadgeHTML(status, display) {
+    const safeDisplay = String(display ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     if (status === 'COMPLETED') {
-        return `<span class="badge badge-completed"><i data-lucide="check-circle-2" style="width:12px; height:12px;"></i> ${display}</span>`;
+        return `<span class="badge badge-completed"><i data-lucide="check-circle-2" style="width:12px; height:12px;"></i> ${safeDisplay}</span>`;
     }
     if (status === 'FAILED') {
         return `<span class="badge badge-failed"><i data-lucide="x-circle" style="width:12px; height:12px;"></i> Failed</span>`;
     }
     if (status === 'PENDING') {
-        return `<span class="badge badge-pending"><i data-lucide="clock" style="width:12px; height:12px;"></i> ${display}</span>`;
+        return `<span class="badge badge-pending"><i data-lucide="clock" style="width:12px; height:12px;"></i> ${safeDisplay}</span>`;
     }
     // Processing status (EXTRACTING, REFINING, EMBEDDING)
-    return `<span class="badge badge-processing"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> ${display}</span>`;
+    return `<span class="badge badge-processing"><i data-lucide="loader" class="spinner" style="width:12px; height:12px;"></i> ${safeDisplay}</span>`;
 }
 
 
@@ -1570,6 +1687,7 @@ function _removeDeletedRow(btn) {
     row.style.opacity = '0';
     setTimeout(() => {
         if (row.parentNode) row.remove();
+        toggleExportFooter();
         const remaining = document.querySelectorAll(
             '.files-panel table tbody tr[data-doc-id]'
         );
@@ -1580,6 +1698,9 @@ function _removeDeletedRow(btn) {
 async function _postDocumentAction(docId, endpointSuffix) {
     if (typeof fetch !== 'function') {
         return { ok: true, json: async () => ({ status: 'success' }) };
+    }
+    if (!/^[0-9a-zA-Z_-]{1,64}$/.test(String(docId))) {
+        throw new Error('Invalid document identifier.');
     }
     const csrfTokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
     const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
@@ -1611,12 +1732,21 @@ async function _processDocumentActionResponse(btn, response, endpointSuffix, def
 }
 
 /**
- * Helper to bind document state modifying actions (retry, cancel).
+ * Helper to bind document state modifying actions (retry, cancel, delete).
  */
 function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, defaultErrorMsg }) {
+    if (!document._initializedDocActions) {
+        document._initializedDocActions = new Set();
+    }
+    if (document._initializedDocActions.has(buttonClass)) {
+        return;
+    }
+    document._initializedDocActions.add(buttonClass);
+
     document.addEventListener('click', async (event) => {
         const btn = event.target.closest(buttonClass);
         if (!btn) return;
+        if (btn.disabled || btn.dataset.loading === 'true') return;
 
         event.preventDefault();
         const docId = btn.dataset.docId;
@@ -1626,6 +1756,7 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
             return;
         }
 
+        btn.dataset.loading = 'true';
         _setButtonLoading(btn, true);
 
         try {
@@ -1634,6 +1765,7 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
         } catch (err) {
             console.error('Error executing document action:', err);
             showClientSideAlert(err.message || defaultErrorMsg);
+            delete btn.dataset.loading;
             _setButtonLoading(btn, false);
         }
     });
@@ -1641,6 +1773,7 @@ function _handleDocumentStateAction({ buttonClass, confirmMsg, endpointSuffix, d
     globalThis.addEventListener('pageshow', (event) => {
         if (event.persisted) {
             document.querySelectorAll(buttonClass).forEach(b => {
+                delete b.dataset.loading;
                 _setButtonLoading(b, false);
             });
         }

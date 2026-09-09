@@ -78,3 +78,8 @@ class TemplateIntegrityTestCase(TestCase):
         attrs = 'data-src="https://cdn.example.com/untrusted.js"'
         match = SRC_ATTR_PATTERN.search(attrs)
         self.assertIsNone(match, "data-src attribute should not match external script src pattern")
+
+    def test_recovery_token_is_not_persisted_in_web_storage(self):
+        for name in ("extractor/login.html", "extractor/reset_password_confirm.html"):
+            content = (self.templates_dir / name).read_text(encoding="utf-8")
+            self.assertNotIn("sessionStorage", content)

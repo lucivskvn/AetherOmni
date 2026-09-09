@@ -20,6 +20,8 @@ DEFINE FIELD IF NOT EXISTS original_filename ON documents TYPE string;
 DEFINE FIELD IF NOT EXISTS file_hash         ON documents TYPE string;
 DEFINE FIELD IF NOT EXISTS status            ON documents TYPE string;          -- PENDING | EXTRACTING | REFINING | EMBEDDING | COMPLETED | FAILED
 DEFINE FIELD IF NOT EXISTS error_message     ON documents TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS cloud_task_name   ON documents TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS cancel_requested  ON documents TYPE bool DEFAULT false;
 DEFINE FIELD IF NOT EXISTS language          ON documents TYPE string DEFAULT "Unknown";
 DEFINE FIELD IF NOT EXISTS author            ON documents TYPE string DEFAULT "Unknown";
 DEFINE FIELD IF NOT EXISTS title             ON documents TYPE string DEFAULT "Untitled";
@@ -141,7 +143,6 @@ DEFINE FIELD IF NOT EXISTS monthly_budget_usd   ON system_settings TYPE float  D
 DEFINE FIELD IF NOT EXISTS selected_model       ON system_settings TYPE string DEFAULT "auto";
 DEFINE FIELD IF NOT EXISTS currency             ON system_settings TYPE string DEFAULT "auto";
 DEFINE FIELD IF NOT EXISTS csrf_trusted_origins ON system_settings TYPE string DEFAULT "";
-DEFINE FIELD IF NOT EXISTS openrouter_api_key   ON system_settings TYPE string DEFAULT "";
 
 
 -- ── 8. context_cache ─────────────────────────────────────────

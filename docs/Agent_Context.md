@@ -115,7 +115,9 @@ development mode or on Google Cloud Run.
   patch event loops to bridge sync and async code; use the existing worker
   dispatch approach.
 - Keep schema, migrations, models, and data-access code consistent. Validate
-  SurrealQL changes before completing work.
+  SurrealQL changes before completing work. For persisted `system_settings`
+  drift, use the dry-run `scripts/normalize_system_settings.py` preflight;
+  `--apply` needs reviewed production approval and must not reveal values.
 - Follow the established sequential filename convention for batch exports.
 - Prefer existing project dependencies. Before adding one, assess maintenance,
   licensing, security posture, runtime impact, and existing alternatives.
@@ -142,11 +144,15 @@ development mode or on Google Cloud Run.
 - Run <code>bash run_checks.sh --fast</code> for documentation-only or narrow
   chore changes. Run <code>bash run_checks.sh</code> for source, dependency,
   schema, or infrastructure changes.
+- <code>scripts/verify-pipeline.sh</code> remains only as a compatibility
+  wrapper around <code>run_checks.sh</code>; it must not synchronize Git state,
+  submit remote scans, or deploy.
 - Use the configured formatters and linters. Do not claim a check passed when it
   was skipped, unavailable, or excluded.
 - When architecture, runtime, linting, verification, or workflow rules change,
   update the steering and project documents named in <code>AGENTS.md</code> in
-  the same change.
+  the same change. Use runtime `/release/`, Cloud Build metadata, and deployed
+  revisions—not static documentation—for release identity claims.
 - Do not put volatile release, score, test-count, or tool-version values in
   documentation; use maintained badges or generated artifacts where required.
 - Keep all changes local for user review. Do not commit or push unless the user

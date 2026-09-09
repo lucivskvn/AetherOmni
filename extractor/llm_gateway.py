@@ -1405,6 +1405,40 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
     return yaml_block, refined_text
 
 
+def _extract_balanced_qa_objects(raw: str) -> list[Any]:
+    items = []
+    pattern = re.compile(r'\{\s*"question"\s*:\s*".*?"\s*,\s*"answer"\s*:\s*".*?"\s*\}', re.DOTALL)
+    for match in pattern.finditer(raw):
+        try:
+            item = json.loads(match.group(0))
+            if isinstance(item, dict) and "question" in item and "answer" in item:
+                items.append(item)
+        except json.JSONDecodeError:
+            continue
+    return items
+
+
+def _repair_and_parse_qa_json(raw_json_str: str) -> list[Any]:
+    raw = raw_json_str.strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, list) else []
+    except json.JSONDecodeError:
+        logger.debug("[Refinement Pass 2] Direct Q&A JSON parse failed; attempting repair.")
+
+    if raw.startswith("[") and not raw.endswith("]"):
+        try:
+            parsed = json.loads(raw + "]")
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            logger.debug("[Refinement Pass 2] Repaired Q&A JSON parse failed; extracting complete objects.")
+
+    return _extract_balanced_qa_objects(raw)
+
+
 def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[Any]]:
     """Parse Stage 2 LLM output into (refined_text, yaml_block, qa_list).
 
@@ -1423,15 +1457,7 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
     # Find JSON Q&A block
     json_match = re.search(r"`{3,4}json[ \t]*\n(.*)\n`{3,4}", refined_text, re.DOTALL)
     if json_match:
-        try:
-            parsed_json = json.loads(json_match.group(1))
-            if isinstance(parsed_json, list):
-                qa_list = parsed_json
-            else:
-                logger.warning("[Refinement Pass 2] JSON Q&A block did not evaluate to a list: %s", type(parsed_json))
-        except Exception:
-            logger.exception("[Refinement Pass 2] JSON Parsing error")
-
+        qa_list = _repair_and_parse_qa_json(json_match.group(1))
         pre_json = refined_text[: json_match.start()].rstrip()
         pre_json = re.sub(r"\r?\n#[^\r\n]*", "", pre_json).rstrip()
         refined_text = pre_json

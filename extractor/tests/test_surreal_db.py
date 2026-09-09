@@ -27,7 +27,7 @@ class SurrealDBClientTestCase(TestCase):
         mock_db.query = AsyncMock(return_value=return_value or [])
         return mock_db
 
-    @override_settings(DEBUG=True)
+    @override_settings(DEBUG=True, SURREALDB_OFFLINE=False)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_check_health_online(self, mock_surreal):
         mock_db = self._create_mock_db()
@@ -56,6 +56,11 @@ class SurrealDBClientTestCase(TestCase):
         mock_surreal.side_effect = Exception("Connection refused")
         self.assertFalse(surreal_db.check_health())
         mock_surreal.assert_called_once()
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run", side_effect=RuntimeError("database unavailable"))
+    def test_rate_limit_denies_when_surrealdb_is_unavailable(self, _run):
+        self.assertFalse(surreal_db.check_rate_limit_atomic("user:123", max_requests=5))
 
     @override_settings(SURREALDB_OFFLINE=True)
     @patch("extractor.models.MonthlySpendLog.add_cost", return_value=True)
@@ -208,14 +213,26 @@ class SurrealDBClientTestCase(TestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res.get("context_hash"), "abc")
 
-    @override_settings(DEBUG=True)
-    @patch("extractor.surreal_db.AsyncSurreal")
-    def test_rate_limiting_flow(self, mock_surreal):
-        mock_db = self._create_mock_db([[]])
-        mock_surreal.return_value = mock_db
+    @override_settings(DEBUG=True, SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run", return_value=[{"result": [True]}])
+    def test_rate_limiting_flow(self, _run):
 
         # First request allowed (initial entry created)
         allowed = surreal_db.check_rate_limit_atomic("user:123", max_requests=5)
+        self.assertTrue(allowed)
+
+    @override_settings(DEBUG=True, SURREALDB_OFFLINE=False)
+    @patch(
+        "extractor.surreal_db._run",
+        return_value=[
+            {"status": "OK", "result": None},
+            {"status": "OK", "result": None},
+            {"status": "OK", "result": True},
+            {"status": "OK", "result": None},
+        ],
+    )
+    def test_rate_limiting_multi_statement_transaction(self, _run):
+        allowed = surreal_db.check_rate_limit_atomic("user:456", max_requests=10)
         self.assertTrue(allowed)
 
     def test_update_document_offline_nonexistent(self):

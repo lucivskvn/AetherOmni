@@ -84,14 +84,15 @@ until `SUPABASE_DATABASE_URL` exists and a new Cloud Run revision binds it as
 1. Run the local gate before commit or PR work; run the full gate for source,
    security, workflow, or infrastructure changes.
 2. GitHub PR checks provide blocking shift-left security and quality feedback.
-   SonarQube Community Edition analyzes `main`; PR baseline output is context,
-   not PR analysis.
+   SonarCloud analyzes pull requests and protected branch pushes; its quality
+   gate is release evidence, not a substitute for the local gate.
 3. Cloud Build computes release metadata from the verified commit, waits for its
    successful mainline quality gate, checks only the existence of the required
    database secret, deploys worker first, then deploys web.
 4. Deployment must stop on any failed prerequisite. A release is not complete
    until Cloud Run startup, authentication, upload dispatch, worker processing,
-   and persistence smoke tests have passed.
+   persistence smoke tests, and public `/release/` version/commit identity
+   verification have passed.
 
 ## Explicit non-goals and planned work
 

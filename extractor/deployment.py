@@ -32,7 +32,7 @@ def _get_subprocess_env():
 
         # Restore true user home directory to allow gcloud fallback to find user credentials
         env["HOME"] = pwd.getpwuid(os.getuid()).pw_dir
-    except (ImportError, KeyError, AttributeError):
+    except ImportError, KeyError, AttributeError:
         env["HOME"] = os.path.expanduser("~")
     return env
 
@@ -93,7 +93,7 @@ def _query_metadata_server(path):
             f"http://metadata.google.internal/computeMetadata/v1/{path}",
             headers={"Metadata-Flavor": "Google"},
         )
-        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- Fixed Google metadata host; path selected by internal callers.
             return response.read().decode("utf-8").strip()
     except Exception:
         return None
@@ -183,11 +183,11 @@ def get_gcp_access_token():
         return None
 
     try:
-        req = urllib.request.Request(  # nosemgrep: python.lang.security.audit.insecure-transport.urllib.insecure-request-object.insecure-request-object
+        req = urllib.request.Request(  # nosemgrep: python.lang.security.audit.insecure-transport.urllib.insecure-request-object.insecure-request-object -- Google metadata token endpoint requires HTTP and the Metadata-Flavor header.
             "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
             headers={"Metadata-Flavor": "Google"},
         )
-        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- Fixed Google metadata token endpoint with a bounded timeout.
             data = json.loads(response.read().decode("utf-8"))
             return data["access_token"]
     except Exception as exc:
@@ -216,7 +216,7 @@ def get_service_config(service_name):
         url = f"https://{region}-run.googleapis.com/apis/serving.knative.dev/v1/namespaces/{project_namespace}/services/{safe_service}"
         try:
             req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "Accept": APPLICATION_JSON})
-            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- Cloud Run HTTPS API URL built from validated service and region identifiers.
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
             body = he.read().decode("utf-8") if he.fp else ""
@@ -434,7 +434,7 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
             headers={"Authorization": f"Bearer {token}", "Content-Type": APPLICATION_JSON},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- Fixed Google Logging HTTPS endpoint; filters are JSON request data.
             response_data = json.loads(response.read().decode("utf-8"))
             entries = response_data.get("entries", [])
             logs_parsed = []
@@ -546,3 +546,31 @@ def run_qa_checks():
         results.append(f"✗ [Django System Check] Failed:\n{e.output.decode('utf-8')}\n")
 
     return "".join(results)
+
+
+def check_service_dependencies_health() -> dict[str, bool]:
+    """Fast pre-flight connectivity probe checking SurrealDB and Supabase reachability."""
+    from extractor.surreal_db import check_health
+
+    surreal_ok = check_health()
+
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_PUBLIC_KEY", "")
+    supabase_ok = True
+
+    if supabase_url and supabase_key:
+        try:
+            req = urllib.request.Request(
+                f"{supabase_url.rstrip('/')}/auth/v1/health",
+                headers={"apikey": supabase_key},
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:  # nosec B310 nosemgrep
+                supabase_ok = bool(resp.status in (200, 204))
+        except Exception as exc:
+            logger.warning("[Deployment] Supabase health probe failed: %s", exc)
+            supabase_ok = False
+
+    return {
+        "surrealdb": surreal_ok,
+        "supabase": supabase_ok,
+    }
