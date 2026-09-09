@@ -1058,6 +1058,36 @@ def count_audit_logs() -> int:
     return rows[0].get("n", 0) if rows else 0
 
 
+def _record_document_spend(doc_uuid: str, created_at: datetime, cost: float, in_tok: int, out_tok: int) -> bool:
+    """Atomically record one deleted document's spend, tolerating retry attempts."""
+    sql = (
+        "BEGIN TRANSACTION; "
+        "LET $existing = (SELECT id FROM document_spend_reconciliations "
+        "WHERE doc_uuid = $doc_uuid LIMIT 1); "
+        "IF array::len($existing) = 0 { "
+        "CREATE document_spend_reconciliations CONTENT { "
+        "doc_uuid: $doc_uuid, year: $year, month: $month, cost_usd: $cost_usd, "
+        "input_tokens: $input_tokens, output_tokens: $output_tokens "
+        "}; }; COMMIT TRANSACTION;"
+    )
+    try:
+        _run(
+            sql,
+            {
+                "doc_uuid": doc_uuid,
+                "year": created_at.year,
+                "month": created_at.month,
+                "cost_usd": cost,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+            },
+        )
+    except Exception as exc:
+        logger.warning("[Delete] Failed to reconcile document spend: %s", exc)
+        return False
+    return True
+
+
 def _flush_document_cost(doc) -> bool:
     """Persist a document's spend before deletion, returning whether deletion is safe."""
     cost = doc.get("cost_usd") or 0.0
@@ -1083,21 +1113,31 @@ def _flush_document_cost(doc) -> bool:
         logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=string")
         return False
 
+    from django.conf import settings
+
+    input_tokens = doc.get("input_tokens") or 0
+    output_tokens = doc.get("output_tokens") or 0
+    if not getattr(settings, "SURREALDB_OFFLINE", False):
+        doc_uuid = str(doc.get("doc_uuid") or "")
+        if not doc_uuid:
+            logger.warning("[SurrealDB] event=surrealdb_missing_document_uuid")
+            return False
+        return _record_document_spend(doc_uuid, created_at, float(cost), input_tokens, output_tokens)
+
     from decimal import Decimal
 
     from extractor.models import MonthlySpendLog
 
     try:
-        persisted = MonthlySpendLog.add_cost(
+        return MonthlySpendLog.add_cost(
             date=created_at,
             cost=Decimal(str(cost)),
-            in_tok=doc.get("input_tokens") or 0,
-            out_tok=doc.get("output_tokens") or 0,
+            in_tok=input_tokens,
+            out_tok=output_tokens,
         )
     except Exception as exc:
         logger.warning("[Delete] Failed to flush cost to MonthlySpendLog in delete_document: %s", exc)
         return False
-    return persisted
 
 
 def _delete_offline_document(doc_uuid: str) -> None:

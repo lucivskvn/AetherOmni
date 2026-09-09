@@ -103,6 +103,23 @@ DEFINE INDEX IF NOT EXISTS idx_kv_cache_key ON kv_cache FIELDS cache_key UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_kv_cache_exp ON kv_cache FIELDS expires_at;
 
 
+-- ── 5. document_spend_reconciliations ─────────────────────────
+-- Durable, document-scoped deletion spend ledger.  The unique document key
+-- makes a retried purge idempotent without relying on a mutable cache value.
+DEFINE TABLE IF NOT EXISTS document_spend_reconciliations SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS doc_uuid      ON document_spend_reconciliations TYPE string;
+DEFINE FIELD IF NOT EXISTS year          ON document_spend_reconciliations TYPE int;
+DEFINE FIELD IF NOT EXISTS month         ON document_spend_reconciliations TYPE int;
+DEFINE FIELD IF NOT EXISTS cost_usd      ON document_spend_reconciliations TYPE float;
+DEFINE FIELD IF NOT EXISTS input_tokens  ON document_spend_reconciliations TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS output_tokens ON document_spend_reconciliations TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS reconciled_at ON document_spend_reconciliations TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_spend_reconciliation_doc ON document_spend_reconciliations FIELDS doc_uuid UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_spend_reconciliation_month ON document_spend_reconciliations FIELDS year, month;
+
+
 -- ── 5. audit_logs ─────────────────────────────────────────────
 -- Immutable compliance audit trail.  Dual-written from Django ORM
 -- (SQLite) + SurrealDB for long-term retention.

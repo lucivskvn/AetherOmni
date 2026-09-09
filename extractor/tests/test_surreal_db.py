@@ -90,6 +90,23 @@ class SurrealDBClientTestCase(TestCase):
         self.assertFalse(surreal_db._flush_document_cost({"created_at": "2026-08-12T00:00:00Z", "cost_usd": 1.25}))
         mock_add_cost.assert_called_once()
 
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run")
+    def test_online_cost_reconciliation_is_document_idempotent(self, mock_run):
+        document = {
+            "doc_uuid": "paid-document",
+            "created_at": "2026-08-12T00:00:00Z",
+            "cost_usd": 1.25,
+            "input_tokens": 10,
+            "output_tokens": 20,
+        }
+
+        self.assertTrue(surreal_db._flush_document_cost(document))
+        sql, params = mock_run.call_args.args
+        self.assertIn("BEGIN TRANSACTION", sql)
+        self.assertIn("document_spend_reconciliations", sql)
+        self.assertEqual(params["doc_uuid"], "paid-document")
+
     @override_settings(SURREALDB_OFFLINE=True)
     @patch("extractor.models.MonthlySpendLog.add_cost")
     def test_flush_document_cost_rejects_unsupported_timestamp(self, mock_add_cost):
