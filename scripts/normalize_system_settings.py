@@ -15,7 +15,7 @@ import httpx
 
 
 def _endpoint(url: str) -> str:
-    normalized = url.strip().removesuffix("/rpc").rstrip("/")
+    normalized = url.strip().rstrip("/").removesuffix("/rpc").rstrip("/")
     if normalized.startswith("wss://"):
         normalized = "https://" + normalized.removeprefix("wss://")
     elif not normalized.startswith("https://"):

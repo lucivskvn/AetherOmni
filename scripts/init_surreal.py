@@ -100,7 +100,7 @@ def apply_schema(client: httpx.Client) -> None:
 
 def _rest_endpoint(surreal_url: str) -> str:
     """Convert a secure SurrealDB RPC URL to its secure REST endpoint."""
-    normalized = surreal_url.strip().removesuffix("/rpc").rstrip("/")
+    normalized = surreal_url.strip().rstrip("/").removesuffix("/rpc").rstrip("/")
     if normalized.startswith("wss://"):
         return "https://" + normalized.removeprefix("wss://")
     if normalized.startswith("https://"):

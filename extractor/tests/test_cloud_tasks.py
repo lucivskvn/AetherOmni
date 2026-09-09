@@ -14,6 +14,8 @@ class CloudTasksTestCase(TestCase):
 
     @patch("extractor.cloud_tasks.logger")
     def test_enqueue_local_thread_fallback(self, mock_logger):
+        from extractor.models import SourceDocument
+
         # We test that in local environment (where get_gcp_project_details returns None)
         # the task triggers execution inside a local Thread pool fallback
         with self.settings(DEBUG=True), patch("extractor.cloud_tasks.get_gcp_project_details") as mock_details:
@@ -22,15 +24,20 @@ class CloudTasksTestCase(TestCase):
             # Let's mock the actual target task runner in extractor.tasks
             # to verify it gets invoked inside the fallback thread
             mock_target = MagicMock()
+            document = SourceDocument.objects.create(original_filename="local-queued.txt")
             with patch.dict("extractor.cloud_tasks._LOCAL_TASK_REGISTRY", {"process_document": mock_target}):
-                cloud_tasks.enqueue("process_document", {"document_id": 42})
+                cloud_tasks.enqueue("process_document", {"document_id": document.id})
 
                 # Wait for local thread pool execution to complete (we join or sleep a brief moment)
                 import time
 
                 time.sleep(0.5)
 
-                mock_target.assert_called_once_with({"document_id": 42})
+                payload = mock_target.call_args.args[0]
+                self.assertEqual(payload["document_id"], document.id)
+                self.assertTrue(payload["cloud_task_name"].startswith("local-"))
+                document.refresh_from_db()
+                self.assertEqual(document.cloud_task_name, payload["cloud_task_name"])
 
     @patch("extractor.cloud_tasks.get_gcp_project_details")
     @patch("extractor.cloud_tasks.tasks_v2.CloudTasksClient")

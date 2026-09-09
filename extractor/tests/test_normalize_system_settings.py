@@ -21,6 +21,7 @@ SPEC.loader.exec_module(normalizer)
 class SystemSettingsNormalizerTests(SimpleTestCase):
     def test_endpoint_requires_tls(self):
         self.assertEqual(normalizer._endpoint("wss://surreal.example.test/rpc"), "https://surreal.example.test/sql")
+        self.assertEqual(normalizer._endpoint("wss://surreal.example.test/rpc/"), "https://surreal.example.test/sql")
         with self.assertRaises(ValueError):
             normalizer._endpoint("ws://localhost:8001/rpc")
 

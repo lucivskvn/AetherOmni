@@ -5,6 +5,10 @@ import os
 import sys
 import tempfile
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Use private per-process cache directories when a deployment has not supplied
 # an explicit cache location. Fixed paths below /tmp are shared and unsafe.
 for cache_variable, cache_prefix in (
@@ -14,14 +18,9 @@ for cache_variable, cache_prefix in (
 ):
     os.environ.setdefault(cache_variable, tempfile.mkdtemp(prefix=cache_prefix))
 
-from dotenv import load_dotenv
-
 
 def main():
     """Run administrative tasks."""
-    # Load .env file at startup
-    load_dotenv()
-
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
     try:
         from django.core.management import execute_from_command_line

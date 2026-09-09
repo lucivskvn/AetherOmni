@@ -8,6 +8,12 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env before selecting private cache-directory fallbacks.
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
 # Configure private per-process cache directories. Cloud Run exposes /tmp, but
 # fixed paths there are shared by concurrent processes and are not safe defaults.
 for cache_variable, cache_prefix in (
@@ -16,13 +22,6 @@ for cache_variable, cache_prefix in (
     ("MPLCONFIGDIR", "aetheromni-mpl-"),
 ):
     os.environ.setdefault(cache_variable, tempfile.mkdtemp(prefix=cache_prefix))
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-# Load .env file
-load_dotenv(os.path.join(BASE_DIR, ".env"))
-
 
 TESTING = "test" in sys.argv
 SURREALDB_OFFLINE = TESTING or os.getenv("SURREALDB_OFFLINE", "False").lower() in ("true", "1", "t")

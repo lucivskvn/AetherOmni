@@ -88,6 +88,7 @@ class InitSurrealTestCase(TestCase):
 
     def test_rest_endpoint_requires_tls(self):
         self.assertEqual(init_surreal._rest_endpoint("wss://surreal.example.test/rpc"), "https://surreal.example.test")
+        self.assertEqual(init_surreal._rest_endpoint("wss://surreal.example.test/rpc/"), "https://surreal.example.test")
         with self.assertRaises(ValueError):
             init_surreal._rest_endpoint("ws://localhost:8001/rpc")
 

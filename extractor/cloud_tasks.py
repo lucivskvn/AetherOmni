@@ -95,6 +95,13 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
     """Execute task in a daemon thread (local development fallback)."""
     logger.info("[CloudTasks/local] Spawning thread for task '%s'", task_name)
 
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    if task_name in {"process_document", REEMBED_DOCUMENT_TASK}:
+        payload = dict(payload)
+        payload.setdefault(CLOUD_TASK_NAME, f"local-{uuid.uuid4().hex}")
+        _persist_document_task(task_name, payload)
+
     from extractor.task_handlers import get_task_registry
 
     task_registry = _LOCAL_TASK_REGISTRY if _LOCAL_TASK_REGISTRY else get_task_registry()
