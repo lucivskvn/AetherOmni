@@ -1264,7 +1264,7 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
                 continue
             from extractor.cloud_tasks import cancel_document_task
 
-            cancel_document_task(doc_uuid, doc)
+            cancel_document_task(doc_uuid, surreal_db.get_document(doc_uuid) or doc)
             broadcast_status_change(str(doc_uuid), "FAILED")
 
     def post(self, request):

@@ -1462,6 +1462,9 @@ def purge_all() -> None:
         _test_chunks.clear()
         return
 
+    documents = list_documents()
+    if not all(_flush_document_cost(document) for document in documents):
+        raise RuntimeError("Document costs could not be recorded; purge aborted.")
     _run("DELETE FROM documents; DELETE FROM chunks; DELETE FROM rag_cache; DELETE FROM user_memories;")
 
 
