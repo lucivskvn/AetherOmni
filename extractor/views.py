@@ -381,7 +381,7 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
         if getattr(settings, "SURREALDB_OFFLINE", False):
             logger.warning("[Budget Check] Offline budget evaluation failed; allowing local-only request: %s", exc)
             return False
-        logger.error("[Budget Check] Budget evaluation failed; denying production request: %s", exc)
+        logger.exception("[Budget Check] Budget evaluation failed; denying production request")
         return True
 
 
@@ -1718,7 +1718,7 @@ def _restart_single_document(doc, request, cloud_tasks):
             "cost_usd": 0.0,
             "input_tokens": 0,
             "output_tokens": 0,
-            "retry_count": 0,
+            "retry_count": retry_cnt + 1 if status == "FAILED" else retry_cnt,
             "error_message": "",
             CANCEL_REQUESTED: False,
             "updated_at": format_datetime(timezone.now()),
@@ -2023,7 +2023,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
                     or parsed.password
                     or parsed.query
                     or parsed.fragment
-                    or parsed.path not in ("", "/")
+                    or parsed.path
                 ):
                     bad_origins.append(origin)
             if bad_origins:

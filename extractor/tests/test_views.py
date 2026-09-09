@@ -1713,7 +1713,7 @@ class BulkDocumentActionTestCase(TestCase):
         self.assertEqual(self.doc1.status, "PENDING")
         self.assertEqual(self.doc2.status, "PENDING")
         self.assertEqual(self.doc1.retry_count, 0)
-        self.assertEqual(self.doc2.retry_count, 0)
+        self.assertEqual(self.doc2.retry_count, 1)
         self.assertEqual(float(self.doc1.cost_usd), 0.0)
         self.assertEqual(self.doc1.input_tokens, 0)
         self.assertEqual(self.doc1.output_tokens, 0)
