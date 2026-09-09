@@ -12,7 +12,7 @@ LOG_LEVEL = logging.INFO if DJANGO_DEBUG else logging.WARNING
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("init_surreal")
 
-SURREAL_URL = os.getenv("SURREAL_URL", "http://localhost:8001")
+SURREAL_URL = os.getenv("SURREAL_URL", "")
 SURREAL_USER = os.getenv("SURREAL_USER", "root")
 SURREAL_PASS = os.getenv("SURREAL_PASS", "")
 SURREAL_NS = os.getenv("SURREAL_NS", "korda")
@@ -96,6 +96,16 @@ def apply_schema(client: httpx.Client) -> None:
         logger.info("SurrealDB schema initialized successfully!")
     else:
         logger.error("Schema applied with %d errors.", errors)
+
+
+def _rest_endpoint(surreal_url: str) -> str:
+    """Convert a secure SurrealDB RPC URL to its secure REST endpoint."""
+    normalized = surreal_url.strip().removesuffix("/rpc").rstrip("/")
+    if normalized.startswith("wss://"):
+        return "https://" + normalized.removeprefix("wss://")
+    if normalized.startswith("https://"):
+        return normalized
+    raise ValueError("SURREAL_URL must use wss:// or https:// when initialization is enabled.")
 
 
 def _create_local_superuser_stub(admin_email):
@@ -265,12 +275,11 @@ def main():
         logger.info("SURREALDB_OFFLINE is True. Skipping initialization.")
         return
 
-    # Convert WebSocket URL scheme to HTTP scheme for REST requests
-    ws_prefix = "ws:" + "//"
-    wss_prefix = "wss:" + "//"
-    http_url = SURREAL_URL.replace(ws_prefix, "http://").replace(wss_prefix, "https://")
-    http_url = http_url.removesuffix("/rpc")
-    http_url = http_url.rstrip("/")
+    try:
+        http_url = _rest_endpoint(SURREAL_URL)
+    except ValueError as exc:
+        logger.error("SurrealDB initialization aborted: %s", exc)
+        return
 
     with httpx.Client(
         base_url=http_url,

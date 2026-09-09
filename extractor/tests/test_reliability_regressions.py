@@ -71,7 +71,15 @@ class DashboardReliabilityTests(TestCase):
         doc = SourceDocument.objects.create(original_filename="keep.txt", status="COMPLETED", uploaded_by=self.user)
         response = self.client.post(reverse("delete_document", args=[doc.uuid]), HTTP_X_REQUESTED_WITH="XMLHttpRequest")
         self.assertEqual(response.status_code, 503)
+        self.assertNotIn("Storage unavailable", response.json()["error"])
         self.assertTrue(SourceDocument.objects.filter(pk=doc.pk).exists())
+
+    @patch("extractor.cloud_tasks.cancel_document_task", side_effect=RuntimeError("Queue endpoint unavailable"))
+    def test_cancel_error_does_not_expose_provider_detail(self, _cancel):
+        doc = SourceDocument.objects.create(original_filename="cancel.txt", status="PENDING", uploaded_by=self.user)
+        response = self.client.post(reverse("cancel_document", args=[doc.uuid]), HTTP_X_REQUESTED_WITH="XMLHttpRequest")
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("Queue endpoint unavailable", response.json()["error"])
 
     @patch("extractor.deployment.update_service_scale")
     def test_staff_cannot_change_scaling(self, scale):

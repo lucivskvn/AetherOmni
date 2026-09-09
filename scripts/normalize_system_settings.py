@@ -18,10 +18,8 @@ def _endpoint(url: str) -> str:
     normalized = url.strip().removesuffix("/rpc").rstrip("/")
     if normalized.startswith("wss://"):
         normalized = "https://" + normalized.removeprefix("wss://")
-    # nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- Converts an operator-supplied local SurrealDB RPC endpoint to its HTTP SQL API; production requires wss://.
-    elif normalized.startswith("ws://"):
-        # nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- Local RPC endpoint conversion only; this command does not initiate a WebSocket connection.
-        normalized = "http://" + normalized.removeprefix("ws://")
+    elif not normalized.startswith("https://"):
+        raise ValueError("SURREAL_URL must use wss:// or https://.")
     return f"{normalized}/sql"
 
 

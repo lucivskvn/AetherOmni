@@ -19,6 +19,11 @@ SPEC.loader.exec_module(normalizer)
 
 
 class SystemSettingsNormalizerTests(SimpleTestCase):
+    def test_endpoint_requires_tls(self):
+        self.assertEqual(normalizer._endpoint("wss://surreal.example.test/rpc"), "https://surreal.example.test/sql")
+        with self.assertRaises(ValueError):
+            normalizer._endpoint("ws://localhost:8001/rpc")
+
     @patch.dict(os.environ, {"SURREAL_URL": "wss://surreal.example.test/rpc"}, clear=True)
     @patch.object(normalizer, "_run_sql", side_effect=httpx.ConnectError("unreachable"))
     def test_preflight_network_failure_is_value_safe(self, _run_sql):

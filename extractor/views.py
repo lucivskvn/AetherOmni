@@ -5,6 +5,8 @@ EXPORT_FAILURE_MSG = "Export generation failed. Please try again later."
 RAG_RATE_LIMIT_MSG = "Search rate limit reached. Please wait a moment before sending another query."
 SFT_PREVIEW_RATE_LIMIT_MSG = "Preview rate limit reached. Please wait a moment before trying again."
 CANCEL_PERM_DENIED_MSG = "Permission denied to cancel this document."
+DOCUMENT_DELETE_FAILURE_MSG = "Document deletion could not be completed. Please try again later."
+DOCUMENT_CANCEL_FAILURE_MSG = "Document processing could not be stopped. Please try again later."
 ROUTE_DOCUMENT_DETAIL = "document_detail"
 
 import json
@@ -1187,10 +1189,11 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         try:
             self._abort_active_processing(doc, doc_uuid)
             self._purge_physical_file(raw_doc.get("file", ""), file_hash, shared_references)
-        except RuntimeError as exc:
+        except RuntimeError:
+            logger.exception("Document deletion failed for %s", doc_uuid)
             if is_ajax:
-                return JsonResponse({"error": str(exc)}, status=503)
-            messages.error(request, str(exc))
+                return JsonResponse({"error": DOCUMENT_DELETE_FAILURE_MSG}, status=503)
+            messages.error(request, DOCUMENT_DELETE_FAILURE_MSG)
             return redirect("dashboard")
         surreal_db.delete_document(doc_uuid)
 
@@ -2280,10 +2283,11 @@ class DocumentCancelView(LoginRequiredMixin, View):
 
         try:
             cancel_document_task(doc_uuid, raw_doc)
-        except RuntimeError as exc:
+        except RuntimeError:
+            logger.exception("Document task cancellation failed for %s", doc_uuid)
             if is_ajax:
-                return JsonResponse({"error": str(exc)}, status=503)
-            messages.error(request, str(exc))
+                return JsonResponse({"error": DOCUMENT_CANCEL_FAILURE_MSG}, status=503)
+            messages.error(request, DOCUMENT_CANCEL_FAILURE_MSG)
             return redirect("dashboard")
         broadcast_status_change(str(doc_uuid), "FAILED")
 

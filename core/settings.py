@@ -2,16 +2,20 @@ import logging
 import logging.config
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
-# Configure specific temporary directories for libraries that need to write to the filesystem
-# in serverless environments (like Cloud Run) where only /tmp is writable.
-os.environ["HF_HOME"] = "/tmp/huggingface"  # nosec B108
-os.environ["XDG_CACHE_HOME"] = "/tmp/xdg_cache"  # nosec B108
-os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"  # nosec B108
+# Configure private per-process cache directories. Cloud Run exposes /tmp, but
+# fixed paths there are shared by concurrent processes and are not safe defaults.
+for cache_variable, cache_prefix in (
+    ("HF_HOME", "aetheromni-hf-"),
+    ("XDG_CACHE_HOME", "aetheromni-xdg-"),
+    ("MPLCONFIGDIR", "aetheromni-mpl-"),
+):
+    os.environ.setdefault(cache_variable, tempfile.mkdtemp(prefix=cache_prefix))
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent

@@ -86,6 +86,11 @@ class InitSurrealTestCase(TestCase):
         init_surreal.main()
         mock_httpx_client.assert_not_called()
 
+    def test_rest_endpoint_requires_tls(self):
+        self.assertEqual(init_surreal._rest_endpoint("wss://surreal.example.test/rpc"), "https://surreal.example.test")
+        with self.assertRaises(ValueError):
+            init_surreal._rest_endpoint("ws://localhost:8001/rpc")
+
     def test_local_superuser_bootstrap_does_not_log_email(self):
         admin_email = "bootstrap-admin@example.com"
 
