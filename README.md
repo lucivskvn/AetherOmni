@@ -443,7 +443,6 @@ SURREAL_PASS="root"
 # Bound the shared SurrealDB RPC executor; tune only with production load evidence.
 SURREAL_EXECUTOR_WORKERS="16"
 
-`bash run_checks.sh` and CI enforce reliability contracts for worker task fencing, recovery-token lifetime, YAML export escaping, and dashboard polling. These checks are derived from production-relevant SonarQube and review findings and are intentionally blocking.
 SURREALDB_OFFLINE=False
 
 # Supabase Auth & PostgreSQL (Optional for local offline SQLite fallback)
@@ -457,6 +456,8 @@ CF_TURNSTILE_SITE_KEY="your-turnstile-site-key"
 # Sentry Observability (Optional in local development)
 SENTRY_DSN=""
 ```
+
+`bash run_checks.sh` and CI enforce reliability contracts for worker task fencing, recovery-token lifetime, YAML export escaping, and dashboard polling. These checks are derived from production-relevant SonarQube and review findings and are intentionally blocking.
 
 > [!NOTE]
 > For production and remote SurrealDB deployments, `SURREAL_URL` must use a secure WebSocket RPC endpoint (`wss://<surrealdb-host>/rpc`). For purely offline testing without a live SurrealDB server, set `SURREALDB_OFFLINE=True`.

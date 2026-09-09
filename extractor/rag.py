@@ -650,7 +650,10 @@ def _get_grounded_context_and_sources(matching_chunks: list[dict[str, Any]]) -> 
     metadata_cache: dict[str, dict[str, Any]] = {}
     for idx, chunk in enumerate(matching_chunks):
         doc_uuid_str = str(chunk.get("doc_uuid", "") or "")
-        doc_meta = metadata_cache.setdefault(doc_uuid_str, _get_doc_metadata(doc_uuid_str))
+        doc_meta = metadata_cache.get(doc_uuid_str)
+        if doc_meta is None:
+            doc_meta = _get_doc_metadata(doc_uuid_str)
+            metadata_cache[doc_uuid_str] = doc_meta
         doc_info = _format_doc_info_parts(doc_meta, chunk)
 
         page_num = chunk.get("page_number") or 1

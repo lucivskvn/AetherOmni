@@ -167,10 +167,10 @@ describe('parseInline', () => {
     const safeResult = parseInline('![Diagram](https://example.com/chart.png)');
     expect(safeResult).toContain('<img src="https://example.com/chart.png" alt="Diagram"');
 
-    const jsResult = parseInline('![XSS](javascript:alert(1))');
+    const jsResult = parseInline('![XSS](javascript:alert`1`)');
     expect(jsResult).not.toContain('<img');
 
-    const dataResult = parseInline('![DataURI](data:text/html,<script>alert(1)</script>)');
+    const dataResult = parseInline('![DataURI](data:text/html;base64,PHNjcmlwdD4=)');
     expect(dataResult).not.toContain('<img');
   });
 });

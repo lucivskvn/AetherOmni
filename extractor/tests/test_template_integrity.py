@@ -83,3 +83,4 @@ class TemplateIntegrityTestCase(TestCase):
         for name in ("extractor/login.html", "extractor/reset_password_confirm.html"):
             content = (self.templates_dir / name).read_text(encoding="utf-8")
             self.assertNotIn("sessionStorage", content)
+            self.assertNotIn("localStorage", content)

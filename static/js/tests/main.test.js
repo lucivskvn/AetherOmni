@@ -56,6 +56,7 @@ describe('Dashboard refresh recovery', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    delete globalThis._reloadTriggered;
     document.body.innerHTML = '<div class="files-panel"><table><tbody></tbody></table></div>';
     document.body.dataset.supabaseUrl = 'https://example.test';
     document.body.dataset.supabaseKey = 'public-placeholder';
@@ -1552,4 +1553,3 @@ describe('_updateTokenMetricCard', () => {
     expect(tokenValue.textContent).toBe('100');
   });
 });
-
