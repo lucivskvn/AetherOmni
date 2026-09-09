@@ -125,15 +125,19 @@ async function executeRagStream(url, onEvent) {
         onEvent(payload);
     };
 
-    while (true) {
-        const { done, value } = await reader.read();
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        const events = buffer.split('\n\n');
-        buffer = events.pop();
-        events.forEach(processEvent);
-        if (done) break;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            const events = buffer.split('\n\n');
+            buffer = events.pop();
+            events.forEach(processEvent);
+            if (done) break;
+        }
+        if (buffer.trim()) processEvent(buffer);
+    } finally {
+        await reader.cancel().catch(() => {});
     }
-    if (buffer.trim()) processEvent(buffer);
 }
 
 /**

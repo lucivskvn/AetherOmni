@@ -923,7 +923,7 @@ def _build_surreal_user_clause(user, actor_id: str | None) -> tuple[str | None, 
     if not user or not user.is_authenticated:
         return "uploaded_by_id = NONE", {}
     if not (user.is_staff or user.is_superuser):
-        return "uploaded_by_id = $user_id OR uploaded_by_id = NONE", {"user_id": actor_id or str(user.id)}
+        return "(uploaded_by_id = $user_id OR uploaded_by_id = NONE)", {"user_id": actor_id or str(user.id)}
     return None, {}
 
 

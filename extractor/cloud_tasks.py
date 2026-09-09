@@ -236,7 +236,7 @@ def cancel_document_task(doc_uuid: str, document: dict) -> None:
     )
     if not updated:
         raise RuntimeError("Cancellation could not be saved. Please retry.")
-    task_name = document.get(CLOUD_TASK_NAME)
+    task_name = updated.get(CLOUD_TASK_NAME) or document.get(CLOUD_TASK_NAME)
     if not task_name or settings.DEBUG:
         return
     try:

@@ -1406,16 +1406,54 @@ def _parse_yaml_block(refined_text: str) -> tuple[str, str]:
 
 
 def _extract_balanced_qa_objects(raw: str) -> list[Any]:
-    items = []
-    pattern = re.compile(r'\{\s*"question"\s*:\s*".*?"\s*,\s*"answer"\s*:\s*".*?"\s*\}', re.DOTALL)
-    for match in pattern.finditer(raw):
+    """Extract complete JSON objects without regex backtracking on malformed LLM output."""
+    items: list[Any] = []
+    start = 0
+    while start < len(raw):
+        candidate, start = _next_balanced_json_object(raw, start)
+        if candidate is None:
+            continue
         try:
-            item = json.loads(match.group(0))
+            item = json.loads(candidate)
             if isinstance(item, dict) and "question" in item and "answer" in item:
                 items.append(item)
         except json.JSONDecodeError:
             continue
     return items
+
+
+def _next_balanced_json_object(raw: str, start: int) -> tuple[str | None, int]:
+    """Return the next quote-aware, brace-balanced JSON object and scan position."""
+    start = raw.find("{", start)
+    if start < 0:
+        return None, len(raw)
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(raw)):
+        char = raw[index]
+        if in_string:
+            in_string, escaped = _advance_json_string_state(char, escaped)
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth:
+                continue
+            return raw[start : index + 1], index + 1
+    return None, len(raw)
+
+
+def _advance_json_string_state(char: str, escaped: bool) -> tuple[bool, bool]:
+    """Return quote scanner state after a character within a JSON string."""
+    if escaped:
+        return True, False
+    if char == "\\":
+        return True, True
+    return char != '"', False
 
 
 def _repair_and_parse_qa_json(raw_json_str: str) -> list[Any]:

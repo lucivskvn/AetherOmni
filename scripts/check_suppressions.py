@@ -92,6 +92,8 @@ def tracked_lines() -> list[tuple[str, int, str]]:
     result: list[tuple[str, int, str]] = []
     for path in paths:
         file_path = ROOT / path
+        if not file_path.is_file():
+            continue
         try:
             result.extend(
                 (path, index, line) for index, line in enumerate(file_path.read_text(encoding="utf-8").splitlines(), 1)

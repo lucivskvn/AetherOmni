@@ -49,4 +49,4 @@ if [[ ! -f "run_checks.sh" ]]; then
     exit 2
 fi
 
-exec bash run_checks.sh "${ARGS[@]}"
+exec bash run_checks.sh ${ARGS[@]+"${ARGS[@]}"}
