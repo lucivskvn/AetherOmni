@@ -274,7 +274,7 @@ def process_json_local(file_path: str) -> str:
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
-    except ValueError, UnicodeDecodeError:
+    except ValueError:
         try:
             with open(file_path, encoding="latin-1") as f:
                 data = json.load(f)

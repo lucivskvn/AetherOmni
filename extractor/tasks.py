@@ -1686,7 +1686,9 @@ def store_user_memory_task(payload: dict) -> None:
     user = _resolve_user_by_id(user_id)
     # In production, user_id is the persistent Supabase Auth subject UUID.
     # Preserve it directly as effective_user_id to maintain tenant isolation across nodes.
-    effective_user_id = str(user_id) if user_id else (str(user.id) if user else "anonymous")
+    effective_user_id = str(user_id) if user_id else "anonymous"
+    if user is not None:
+        effective_user_id = str(user.id)
     user_display = getattr(user, "username", str(user_id))
 
     distill_prompt = (

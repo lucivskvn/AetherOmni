@@ -83,11 +83,12 @@ service_account = gcp.serviceaccount.Account(
 )
 
 # Least-privilege IAM bindings
+RUN_INVOKER_ROLE = "roles/run.invoker"
 iam_roles = [
     "roles/aiplatform.user",  # Vertex AI / Gemini 2.5
     "roles/secretmanager.secretAccessor",  # Secret Manager Access
     "roles/cloudtasks.enqueuer",  # Enqueue to Cloud Tasks
-    "roles/run.invoker",  # Invoke Cloud Run internal endpoints
+    RUN_INVOKER_ROLE,  # Invoke Cloud Run internal endpoints
     "roles/run.viewer",  # Read worker configuration for the superuser deployment controller
 ]
 
@@ -235,7 +236,7 @@ gcp.cloudrunv2.ServiceIamMember(
     name=worker_service.name,
     location=region,
     project=project,
-    role="roles/run.invoker",
+    role=RUN_INVOKER_ROLE,
     member=cloud_tasks_oidc_member,
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
@@ -282,7 +283,7 @@ gcp.cloudrunv2.ServiceIamMember(
     name=web_service.name,
     location=region,
     project=project,
-    role="roles/run.invoker",
+    role=RUN_INVOKER_ROLE,
     member="allUsers",
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )

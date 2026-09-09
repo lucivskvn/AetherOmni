@@ -277,8 +277,8 @@ def main():
 
     try:
         http_url = _rest_endpoint(SURREAL_URL)
-    except ValueError as exc:
-        logger.error("SurrealDB initialization aborted: %s", exc)
+    except ValueError:
+        logger.exception("SurrealDB initialization aborted")
         return
 
     with httpx.Client(

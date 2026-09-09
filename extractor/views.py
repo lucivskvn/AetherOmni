@@ -544,6 +544,14 @@ def _get_dashboard_stats(request, document_limit: int | None = None):
     }
 
 
+def _document_status_display(document: Any) -> str:
+    """Return the display label for either an ORM document or wrapped SurrealDB record."""
+    status_display = getattr(document, "get_status_display", None)
+    if callable(status_display):
+        return status_display()
+    return document.status.title() if document.status else "Unknown"
+
+
 def _filter_dashboard_docs(docs: list[Any], query: str) -> list[Any]:
     if not query:
         return docs
@@ -2094,11 +2102,7 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
                     "id": d.id,
                     "uuid": d.uuid,
                     "status": d.status,
-                    "status_display": (
-                        d.get_status_display()
-                        if callable(getattr(d, "get_status_display", None))
-                        else (d.status.title() if d.status else "Unknown")
-                    ),
+                    "status_display": _document_status_display(d),
                     "title": d.title,
                     "cost_usd": float(round(d.cost_usd, 6)),
                     "formatted_cost": format_localized_cost(d.cost_usd, stats["currency_details"]),

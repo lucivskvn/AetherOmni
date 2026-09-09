@@ -304,8 +304,7 @@ def _sync_postgres_memories_to_surreal(user, surreal_db, user_memory):
 def _format_memories_block(memories: list[dict[str, Any]]) -> str:
     sanitized_lines = []
     jailbreak_pattern = re.compile(
-        r"(ignore\s+(all\s+)?(previous\s+)?instructions|system\s+prompt|act\s+as\s+dan|disregard)",
-        re.IGNORECASE,
+        r"ignore(?:\s+all|\s+previous)*\s+instructions|system\s+prompt|act\s+as\s+dan|disregard", re.IGNORECASE
     )
     for m in memories:
         text = str(m.get("memory_text", "")).strip()[:200]

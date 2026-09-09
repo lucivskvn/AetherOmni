@@ -13,7 +13,8 @@ from django.test import SimpleTestCase
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "normalize_system_settings.py"
 SPEC = importlib.util.spec_from_file_location("normalize_system_settings", SCRIPT_PATH)
-assert SPEC and SPEC.loader
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("Could not load normalize_system_settings module.")
 normalizer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(normalizer)
 

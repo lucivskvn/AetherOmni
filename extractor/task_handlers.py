@@ -301,7 +301,7 @@ class CloudTaskHandlerView(View):
             # via crafted newline or control characters in the URL path segment.
             import re as _re
 
-            safe_task_name = _re.sub(r"[^a-zA-Z0-9_]", "_", task_name)[:64]
+            safe_task_name = _re.sub(r"\W", "_", task_name)[:64]
             logger.error("[CloudTasksHandler] Unknown task name: '%s'", safe_task_name)
             return JsonResponse({"error": "Unknown task."}, status=404)
 
