@@ -55,6 +55,18 @@ class DashboardReliabilityTests(TestCase):
         doc = SourceDocument.objects.create(original_filename="legacy-edit.txt", status="COMPLETED")
         self.assertEqual(surreal_db.claim_document_for_reembedding(str(doc.uuid))["status"], "EMBEDDING")
 
+    def test_reembedding_claim_allows_completed_document_with_current_task_identity(self):
+        doc = SourceDocument.objects.create(
+            original_filename="queued-edit.txt", status="COMPLETED", cloud_task_name="current"
+        )
+        token = surreal_db.document_task_name.set("current")
+        try:
+            claimed = surreal_db.claim_document_for_reembedding(str(doc.uuid))
+        finally:
+            surreal_db.document_task_name.reset(token)
+
+        self.assertEqual(claimed["status"], "EMBEDDING")
+
     @override_settings(SURREALDB_OFFLINE=True)
     def test_private_hash_deduplication_never_reads_another_users_document(self):
         other = User.objects.create_user(username="other-tenant", password="test-password")

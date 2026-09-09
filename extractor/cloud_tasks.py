@@ -102,8 +102,12 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
     def _run() -> None:
         from extractor import surreal_db
         from extractor.task_state import CLOUD_TASK_NAME
+        from extractor.utils import REEMBED_DOCUMENT_TASK
 
-        token = surreal_db.document_task_name.set(payload.get(CLOUD_TASK_NAME, ""))
+        task_identity = ""
+        if task_name in {"process_document", REEMBED_DOCUMENT_TASK}:
+            task_identity = payload.get(CLOUD_TASK_NAME, "")
+        token = surreal_db.document_task_name.set(task_identity)
         try:
             handler = task_registry.get(task_name)
             if handler is None:
@@ -167,8 +171,11 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
             except TypeError:
                 return str(obj)
 
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
     task_resource_name = f"{queue_path}/tasks/{uuid.uuid4().hex}"
-    payload = {**payload, CLOUD_TASK_NAME: task_resource_name}
+    if task_name in {"process_document", REEMBED_DOCUMENT_TASK}:
+        payload = {**payload, CLOUD_TASK_NAME: task_resource_name}
     body = json.dumps(payload, cls=_CloudTasksEncoder).encode()
 
     # Prefer the project-number-based compute SA (Cloud Run default SA format).

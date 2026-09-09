@@ -345,3 +345,20 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(mock_surreal.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
         mock_sleep.assert_has_calls([call(1), call(2)])
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db.recreate_chunks")
+    @patch("extractor.surreal_db.get_document_chunks")
+    def test_clone_chunks_pages_beyond_chunk_limit(self, get_chunks, recreate):
+        first_page = [{"chunk_index": index, "content": str(index)} for index in range(500)]
+        get_chunks.side_effect = [first_page, [{"chunk_index": 500, "content": "500"}], []]
+
+        surreal_db.clone_chunks("source", "target")
+
+        self.assertEqual(
+            get_chunks.call_args_list, [call("source", limit=500, start=0), call("source", limit=500, start=500)]
+        )
+        target_uuid, cloned_chunks = recreate.call_args.args
+        self.assertEqual(target_uuid, "target")
+        self.assertEqual(len(cloned_chunks), 501)
+        self.assertEqual(cloned_chunks[-1]["chunk_index"], 500)

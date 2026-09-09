@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
@@ -64,6 +65,21 @@ class CloudTasksTestCase(TestCase):
             self.assertEqual(task["http_request"]["headers"]["Content-Type"], "application/json")
             document.refresh_from_db()
             self.assertEqual(document.cloud_task_name, task["name"])
+
+    @patch("extractor.cloud_tasks.get_gcp_project_details")
+    @patch("extractor.cloud_tasks.tasks_v2.CloudTasksClient")
+    def test_maintenance_tasks_do_not_receive_document_task_identity(self, mock_client_class, mock_details):
+        cloud_tasks._tasks_client = None
+        self.addCleanup(setattr, cloud_tasks, "_tasks_client", None)
+        mock_details.return_value = {"project_id": "my-gcp-project", "region": "asia-southeast1"}
+        mock_client_class.return_value = MagicMock()
+
+        with self.settings(DEBUG=False, WORKER_URL="https://worker.example.test"):
+            cloud_tasks.enqueue("reap_stale_tasks", {})
+
+        task = mock_client_class.return_value.create_task.call_args.kwargs["task"]
+        payload = json.loads(task["http_request"]["body"])
+        self.assertNotIn("cloud_task_name", payload)
 
     @patch("extractor.cloud_tasks.get_gcp_project_details")
     def test_enqueue_production_rejects_missing_worker_configuration(self, mock_details):

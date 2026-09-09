@@ -76,6 +76,15 @@ def get_task_registry() -> dict[str, Callable]:
     return _TASK_REGISTRY
 
 
+def _document_task_identity(task_name: str, payload: dict) -> str:
+    """Return a write-fence identity only for a task that owns one document."""
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    if task_name in {"process_document", REEMBED_DOCUMENT_TASK}:
+        return payload.get(CLOUD_TASK_NAME, "")
+    return ""
+
+
 def _confirm_document_outcome(task_name: str, payload: dict) -> None:
     """Do not acknowledge an unfinished delivery after a worker/storage failure."""
     from extractor.utils import REEMBED_DOCUMENT_TASK
@@ -296,7 +305,7 @@ class CloudTaskHandlerView(View):
 
         from extractor import surreal_db
 
-        token = surreal_db.document_task_name.set(payload.get(CLOUD_TASK_NAME, ""))
+        token = surreal_db.document_task_name.set(_document_task_identity(task_name, payload))
         try:
             handler(payload)
             _confirm_document_outcome(task_name, payload)

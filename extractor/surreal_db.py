@@ -769,7 +769,7 @@ def claim_document_for_reembedding(doc_uuid: str) -> dict | None:
 
     doc_uuid = str(doc_uuid)
     task_name = document_task_name.get()
-    statuses = ["PENDING"] if task_name else ["PENDING", "COMPLETED", "FAILED"]
+    statuses = ["PENDING", "COMPLETED", "FAILED"]
     if getattr(settings, "SURREALDB_OFFLINE", False):
         from extractor.models import SourceDocument
 
@@ -1251,22 +1251,23 @@ def count_documents_chunks(doc_uuids: list[str]) -> dict[str, int]:
     return dict.fromkeys(doc_uuids, 0)
 
 
-def get_document_chunks(doc_uuid: str, limit: int = 100) -> list[dict[str, Any]]:
+def get_document_chunks(doc_uuid: str, limit: int = 100, start: int = 0) -> list[dict[str, Any]]:
     """Retrieve chunks for a document ordered by chunk_index."""
     doc_uuid = str(doc_uuid)
     limit = min(max(1, int(limit)), 500)
+    start = max(0, int(start))
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit;"
-        result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit}))
+        sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit START $start;"
+        result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit, "start": start}))
         if isinstance(result, list) and result:
             return result
         chunks = _test_chunks.get(doc_uuid, [])
-        return sorted(chunks, key=lambda x: int(x.get("chunk_index", 0)))[:limit]
+        return sorted(chunks, key=lambda x: int(x.get("chunk_index", 0)))[start : start + limit]
 
-    sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit;"
-    result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit}))
+    sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC LIMIT $limit START $start;"
+    result = _first_result(_run(sql, {"doc_uuid": doc_uuid, "limit": limit, "start": start}))
     if isinstance(result, list):
         return result
     return []
@@ -1288,7 +1289,11 @@ def clone_chunks(source_uuid: str, target_uuid: str) -> None:
         _test_chunks[target_uuid] = [{**c, "doc_uuid": target_uuid} for c in source_chunks]
         return
 
-    source_chunks = get_document_chunks(source_uuid, limit=500)
+    source_chunks = []
+    while page := get_document_chunks(source_uuid, limit=500, start=len(source_chunks)):
+        source_chunks.extend(page)
+        if len(page) < 500:
+            break
     if not source_chunks:
         return
 

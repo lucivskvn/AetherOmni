@@ -3,8 +3,9 @@ from unittest.mock import MagicMock, patch
 
 from django.test import RequestFactory, TestCase, override_settings
 
-from extractor import task_handlers
+from extractor import surreal_db, task_handlers
 from extractor.task_handlers import CloudTaskHandlerView
+from extractor.task_state import CLOUD_TASK_NAME
 
 
 class TaskHandlersTestCase(TestCase):
@@ -189,6 +190,28 @@ class TaskHandlersTestCase(TestCase):
             response = CloudTaskHandlerView().post(request, "process_document")
             self.assertEqual(response.status_code, 200)
             mock_handler.assert_called_once_with({"doc_id": 1})
+
+    def test_maintenance_task_does_not_set_document_write_fence(self):
+        observed_identities = []
+        task_handlers.TASK_REGISTRY["maintenance_test"] = lambda _: observed_identities.append(
+            surreal_db.document_task_name.get()
+        )
+        request = self.factory.post(
+            "/internal/tasks/maintenance_test/",
+            data=json.dumps({CLOUD_TASK_NAME: "maintenance-task"}),
+            content_type="application/json",
+        )
+        try:
+            with (
+                patch("extractor.task_handlers._verify_oidc_token", return_value=True),
+                patch("extractor.task_handlers._verify_source_ip", return_value=True),
+            ):
+                response = CloudTaskHandlerView().post(request, "maintenance_test")
+        finally:
+            task_handlers.TASK_REGISTRY.pop("maintenance_test", None)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(observed_identities, [""])
 
     def test_post_dispatch_unknown_task_returns_404(self):
         request = self.factory.post(
