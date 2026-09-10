@@ -569,7 +569,7 @@ def _save_stage1_offline(document_id, fallback_doc, stage1_result):
             return fallback_doc, False
 
         expected_task = surreal_db.document_task_name.get()
-        if expected_task and (doc_ref.cancel_requested or doc_ref.cloud_task_name != expected_task):
+        if doc_ref.cancel_requested or (expected_task and doc_ref.cloud_task_name != expected_task):
             return doc_ref, False
 
         doc_ref.document_type = doc_type_detected

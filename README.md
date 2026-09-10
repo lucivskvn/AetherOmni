@@ -103,11 +103,12 @@ uv venv .venv
 source .venv/bin/activate
 uv pip install -r requirements-dev.txt
 npm ci
+export SURREALDB_OFFLINE=True
 python manage.py migrate
 python manage.py runserver
 ```
 
-For offline development, configure the required local settings and use the explicit offline data-store mode. Production configuration is documented in the [GCP deployment guide](docs/gcp_deployment_guide.md).
+For offline development, set `SURREALDB_OFFLINE=True`; this uses the local SQLite database `db.sqlite3` and does not require `DATABASE_URL` or SurrealDB credentials. Production configuration is documented in the [GCP deployment guide](docs/gcp_deployment_guide.md).
 
 ## Quality and security
 
@@ -117,7 +118,7 @@ Run the complete local gate before committing source, UI, workflow, or infrastru
 bash run_checks.sh
 ```
 
-The repository combines local linting, typing, tests, SAST, dependency review, CodeQL, Semgrep SARIF, GitHub Actions security checks, SonarCloud, and scheduled supply-chain posture reporting. Workflow-security analysis checks out the repository before auditing it, preventing empty-workspace false failures, while Semgrep runs in an isolated environment and application checks install from `requirements-dev.txt`. Production images also receive an SPDX SBOM generated with Syft and retained as an Artifact Registry attachment.
+The repository combines local linting, typing, tests, SAST, dependency review, CodeQL, Semgrep SARIF, GitHub Actions security checks, SonarCloud, and scheduled supply-chain posture reporting. Workflow-security analysis checks out the repository before auditing it, preventing empty-workspace false failures, while Semgrep runs in an isolated environment and application checks install from `requirements-dev.txt`. Production images also receive an SPDX SBOM generated with Syft and attached to the same resolved Artifact Registry digest.
 
 ## Contributing
 

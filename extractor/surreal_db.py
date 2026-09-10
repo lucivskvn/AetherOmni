@@ -672,7 +672,10 @@ def _update_document_offline(doc_uuid, data):
             return {}
 
         expected_task = document_task_name.get()
-        if expected_task and (doc.cancel_requested or doc.cloud_task_name != expected_task):
+        is_cancellation_control_update = CANCEL_REQUESTED in data
+        if not is_cancellation_control_update and (
+            doc.cancel_requested or (expected_task and doc.cloud_task_name != expected_task)
+        ):
             return {}
 
         _apply_offline_doc_update(doc, data, user_model)

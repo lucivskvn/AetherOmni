@@ -306,7 +306,7 @@ def _format_memories_block(memories: list[dict[str, Any]]) -> str:
     jailbreak_patterns = (
         re.compile(r"\bignore\s+instructions\b", re.IGNORECASE),
         re.compile(r"\bignore\s+all\s+instructions\b", re.IGNORECASE),
-        re.compile(r"\bignore\s+previous\s+instructions\b", re.IGNORECASE),
+        re.compile(r"\bignore\s+(?:the\s+)?(?:above|prior|these|previous)\s+instructions\b", re.IGNORECASE),
         re.compile(r"\bsystem\s+prompt\b", re.IGNORECASE),
         re.compile(r"\bact\s+as\s+dan\b", re.IGNORECASE),
         re.compile(r"\bdisregard\b", re.IGNORECASE),

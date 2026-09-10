@@ -85,6 +85,17 @@ class DashboardReliabilityTests(TestCase):
         self.assertEqual(doc.status, "EXTRACTING")
 
     @override_settings(SURREALDB_OFFLINE=True)
+    def test_offline_worker_update_skips_cancelled_legacy_delivery(self):
+        doc = SourceDocument.objects.create(
+            original_filename="cancelled-legacy.txt", status="EXTRACTING", cancel_requested=True
+        )
+
+        self.assertEqual(surreal_db.update_document(str(doc.uuid), {"status": "REFINING"}), {})
+
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, "EXTRACTING")
+
+    @override_settings(SURREALDB_OFFLINE=True)
     def test_stage1_skips_save_and_broadcast_after_worker_is_cancelled(self):
         from extractor import tasks
 
@@ -109,6 +120,30 @@ class DashboardReliabilityTests(TestCase):
                 tasks._run_stage1("unused", str(doc.uuid))
         finally:
             surreal_db.document_task_name.reset(token)
+
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, "EXTRACTING")
+        broadcast.assert_not_called()
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    def test_stage1_skips_cancelled_legacy_delivery_without_task_name(self):
+        from extractor import tasks
+
+        doc = SourceDocument.objects.create(
+            original_filename="cancelled-legacy.txt", status="EXTRACTING", cancel_requested=True
+        )
+        with (
+            patch.object(
+                tasks,
+                "_get_doc_info_stage1",
+                return_value=(surreal_db.get_document(str(doc.uuid)), "txt", str(doc.uuid)),
+            ),
+            patch.object(
+                tasks, "_acquire_stage1_raw_markdown", return_value=("content", "TEXT", 1, Decimal("0"), 0, 0)
+            ),
+            patch.object(tasks, "broadcast_status_change") as broadcast,
+        ):
+            tasks._run_stage1("unused", str(doc.uuid))
 
         doc.refresh_from_db()
         self.assertEqual(doc.status, "EXTRACTING")

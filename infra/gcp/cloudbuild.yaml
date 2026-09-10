@@ -109,14 +109,27 @@ steps:
           --reproducible \
           --cleanup
 
-  # 2. Generate an SPDX SBOM without enabling billed Artifact Analysis scanning.
+  # 2. Resolve the pushed image once so the SBOM scan and attachment share one immutable target.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
+    id: 'resolve-image-digest'
+    waitFor: ['build-image']
+    entrypoint: bash
+    args:
+      - '-euc'
+      - |
+        IMAGE_URI='${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$SHORT_SHA'
+        DIGEST="$$(gcloud artifacts docker images describe "$${IMAGE_URI}" --format='value(image_summary.digest)')"
+        printf '%s' "$${DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$$'
+        printf 'registry:%s@%s' "$${IMAGE_URI%:*}" "$${DIGEST}" > /workspace/korda.image.reference
+
+  # 3. Generate an SPDX SBOM without enabling billed Artifact Analysis scanning.
   - name: 'docker.io/anchore/syft@sha256:8b4f89151b7b9fff795b111b2f7ab19a4aea566dca5aa017d3fd0357abee5c2b'
     id: 'generate-sbom'
-    waitFor: ['build-image']
+    waitFor: ['resolve-image-digest']
+    entrypoint: /bin/sh
     args:
-      - 'registry:${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$SHORT_SHA'
-      - '-o'
-      - 'spdx-json=/workspace/korda.sbom.spdx.json'
+      - '-ec'
+      - 'syft "$$(cat /workspace/korda.image.reference)" -o spdx-json=/workspace/korda.sbom.spdx.json'
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'attach-sbom'
@@ -125,8 +138,8 @@ steps:
     args:
       - '-euc'
       - |
-        IMAGE_URI='${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$SHORT_SHA'
-        DIGEST="$$(gcloud artifacts docker images describe "$${IMAGE_URI}" --format='value(image_summary.digest)')"
+        IMAGE_REFERENCE="$$(cat /workspace/korda.image.reference)"
+        DIGEST="$${IMAGE_REFERENCE##*@}"
         printf '%s' "$${DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$$'
         TARGET="projects/${PROJECT_ID}/locations/${_REGION}/repositories/cloud-run-source-deploy/packages/korda/versions/$${DIGEST}"
         gcloud artifacts attachments create "sbom-${BUILD_ID}" \
@@ -138,7 +151,7 @@ steps:
           --attachment-namespace='dev.aetheromni.sbom' \
           --files=/workspace/korda.sbom.spdx.json
 
-  # 3. Do not deploy until GitHub Actions reports a successful mainline SonarQube gate
+  # 4. Do not deploy until GitHub Actions reports a successful mainline SonarQube gate
   # for this exact commit. Container construction may run in parallel with analysis,
   # but production mutation remains blocked on the authoritative quality result.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
