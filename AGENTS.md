@@ -64,7 +64,7 @@ pull, stash, perform remote scans, or deploy.
   - Cloud Build may construct the immutable image in parallel, but it must wait for the successful GitHub SonarCloud check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
   - Cloud Build must generate an SPDX SBOM with pinned open-source Syft and attach it to the immutable Artifact Registry image. Do not enable billed Artifact Analysis scanning solely to generate SBOMs.
   - Before deployment, Cloud Build must verify the Pulumi-managed media bucket, the dedicated runtime service account, and that account's `roles/storage.objectAdmin` binding. These checks are blocking and must use the same dynamic project-derived names as Pulumi.
-  - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
+  - Keep CI security scanners such as Semgrep in an isolated virtual environment when their dependency graph differs from the application runtime; install application checks from `requirements-dev.txt` and keep the scan blocking.
   - Pin every GitHub Action to a full commit SHA, retaining the reviewed release tag only as an adjacent comment.
 
 ### 4.1 Native GitHub Auto-Merge & PR Creation Protocol

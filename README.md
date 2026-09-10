@@ -117,7 +117,7 @@ Run the complete local gate before committing source, UI, workflow, or infrastru
 bash run_checks.sh
 ```
 
-The repository combines local linting, typing, tests, SAST, dependency review, CodeQL, Semgrep SARIF, GitHub Actions security checks, SonarCloud, and scheduled supply-chain posture reporting. Workflow-security analysis checks out the repository before auditing it, preventing empty-workspace false failures. Production images also receive an SPDX SBOM generated with Syft and retained as an Artifact Registry attachment.
+The repository combines local linting, typing, tests, SAST, dependency review, CodeQL, Semgrep SARIF, GitHub Actions security checks, SonarCloud, and scheduled supply-chain posture reporting. Workflow-security analysis checks out the repository before auditing it, preventing empty-workspace false failures, while Semgrep runs in an isolated environment and application checks install from `requirements-dev.txt`. Production images also receive an SPDX SBOM generated with Syft and retained as an Artifact Registry attachment.
 
 ## Contributing
 

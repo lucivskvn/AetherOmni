@@ -98,7 +98,7 @@ pull, stash, perform remote scans, or deploy.
 - Treat the GitHub Actions summary as the actionable SonarCloud hand-off. Keep failures blocking so Jules can address scoped issues from PR checks or issues.
 - Public GitHub repositories run native SonarCloud analysis across all pull requests and branch pushes, providing live PR decoration and quality gate evaluation.
 - Use `scripts/gcp-diagnostics.sh` only for read-only Cloud Run diagnosis. Do not reintroduce secret-retrieval or imperative provisioning scripts.
-  - Keep CI security scanners in an isolated virtual environment when their dependency graph differs from the application runtime; the scan must remain blocking.
+  - Keep CI security scanners such as Semgrep in an isolated virtual environment when their dependency graph differs from the application runtime; install application checks from `requirements-dev.txt` and keep the scan blocking.
   - Pin every GitHub Action to a full commit SHA, retaining the reviewed release tag only as an adjacent comment.
 - Use Pulumi for new or rebuilt GCP environments. Import and preview existing
   infrastructure before applying changes.
