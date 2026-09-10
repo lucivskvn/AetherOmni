@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import threading
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass, field
@@ -1447,7 +1448,8 @@ def get_google_oidc_token(audience: str) -> str | None:
     if settings.DEBUG:
         return None
 
-    url = f"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}"
+    query = urllib.parse.urlencode({"audience": audience})
+    url = f"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?{query}"
     req = urllib.request.Request(url, headers={"Metadata-Flavor": "Google"})
     try:
         with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep

@@ -24,6 +24,7 @@ pull, stash, perform remote scans, or deploy.
 - The runtime service account needs `roles/run.viewer` only to read the configured worker for the superuser deployment controller; retain least privilege and do not grant editor/admin roles.
 - XLSX ingestion must enforce parser-specific archive, worksheet, row, cell, and rendered-output budgets; generic upload and ZIP limits alone are insufficient.
 - In production, SurrealDB is the sole deletion-spend accounting authority; the Django `pre_delete` ledger signal is restricted to explicit offline mode so a mirrored row cannot double-count a document.
+- Production `SURREAL_URL` must use encrypted `wss://` transport. Unencrypted WebSocket and HTTP-to-WebSocket normalization are restricted to debug/offline environments.
 - Dashboard RAG uses the authenticated SSE endpoint when readable streams are available, renders streamed tokens as text, and falls back to the sanitized JSON response when streaming is unavailable.
 - Use `scripts/normalize_system_settings.py` as a dry-run preflight for persisted settings drift; `--apply` requires reviewed deployment approval, must never print setting values, must verify its postconditions, and must purge retired `openrouter_api_key` data before the corresponding schema release.
 

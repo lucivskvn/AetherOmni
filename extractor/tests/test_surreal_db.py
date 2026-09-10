@@ -18,6 +18,7 @@ class SurrealDBClientTestCase(TestCase):
         from django.conf import settings
 
         settings.SURREALDB_OFFLINE = self.original_offline
+        surreal_db._detected_url = None
 
     def _create_mock_db(self, return_value=None):
         mock_db = MagicMock()
@@ -26,6 +27,21 @@ class SurrealDBClientTestCase(TestCase):
         mock_db.use = AsyncMock()
         mock_db.query = AsyncMock(return_value=return_value or [])
         return mock_db
+
+    @override_settings(
+        DEBUG=False,
+        SURREAL_URL="ws:" + "//surreal.example.test:8000",
+    )
+    def test_get_surreal_url_rejects_unencrypted_production_transport(self):
+        surreal_db._detected_url = None
+        with self.assertRaisesRegex(ValueError, "encrypted wss transport"):
+            surreal_db._get_surreal_url()
+
+    @override_settings(DEBUG=False, SURREAL_URL="https://surreal.example.test")
+    def test_get_surreal_url_normalizes_secure_http_transport(self):
+        surreal_db._detected_url = None
+        self.assertEqual(surreal_db._get_surreal_url(), "wss://surreal.example.test/rpc")
+        surreal_db._detected_url = None
 
     @override_settings(DEBUG=True, SURREALDB_OFFLINE=False)
     @patch("extractor.surreal_db.AsyncSurreal")

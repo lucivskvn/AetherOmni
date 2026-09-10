@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase
 
 from extractor.deployment import (
+    check_service_dependencies_health,
     get_gcp_access_token,
     get_gcp_project_details,
     get_service_config,
@@ -15,6 +16,15 @@ from extractor.deployment import (
 
 class DeploymentFunctionsTestCase(TestCase):
     """Verifies internal functions in extractor/deployment.py."""
+
+    @patch.dict("os.environ", {"SUPABASE_URL": "file:///tmp", "SUPABASE_PUBLIC_KEY": "test-key"})
+    @patch("urllib.request.urlopen")
+    def test_dependency_health_rejects_non_http_supabase_url(self, mock_urlopen):
+        with patch("extractor.surreal_db.check_health", return_value=True):
+            status = check_service_dependencies_health()
+
+        self.assertEqual(status, {"surrealdb": True, "supabase": False})
+        mock_urlopen.assert_not_called()
 
     @patch("os.getenv")
     def test_get_gcp_project_details_env(self, mock_getenv):

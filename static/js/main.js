@@ -1653,12 +1653,9 @@ function updateTimelineStep(stepEl, isActive, isCompleted) {
 
 
 function getStatusBadgeHTML(status, display) {
-    const safeDisplay = String(display ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    const label = document.createElement('span');
+    label.textContent = String(display ?? '');
+    const safeDisplay = label.innerHTML;
     if (status === 'COMPLETED') {
         return `<span class="badge badge-completed"><i data-lucide="check-circle-2" style="width:12px; height:12px;"></i> ${safeDisplay}</span>`;
     }

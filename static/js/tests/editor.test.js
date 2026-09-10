@@ -440,7 +440,7 @@ describe('copyTextToClipboard', () => {
   it('falls back to document.execCommand when clipboard API is absent', async () => {
     Object.assign(navigator, { clipboard: undefined });
     let execCommandCalled = false;
-    document.execCommand = (cmd) => {
+    document.execCommand = (cmd) => { // NOSONAR -- Verifies the intentionally retained legacy clipboard fallback.
       if (cmd === 'copy') {
         execCommandCalled = true;
         return true;

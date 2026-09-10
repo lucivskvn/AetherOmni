@@ -2786,13 +2786,8 @@ def _call_supabase_auth_endpoint(
         body_bytes = e.read().decode("utf-8", errors="replace")
         try:
             err_data = json.loads(body_bytes)
-            err_msg = (
-                err_data.get("msg")
-                or err_data.get("message")
-                or err_data.get("error_description")
-                or err_data.get("error")
-                or body_bytes
-            )
+            error_fields = ("msg", "message", "error_description", "error")
+            err_msg = next((err_data.get(field) for field in error_fields if err_data.get(field)), body_bytes)
         except json.JSONDecodeError, KeyError, AttributeError:
             err_msg = "Authentication provider returned an invalid response."
         return False, f"{failure_prefix}: {str(err_msg)[:255]}"

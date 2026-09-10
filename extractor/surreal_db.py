@@ -185,13 +185,17 @@ def _get_surreal_url() -> str:
             )
             url = "ws://localhost:8001/rpc"  # NOSONAR python:S5332 -- Local WebSocket dev fallback
 
-    ws_schemes = ("ws:" + "//", "wss:" + "//")
+    local_ws_scheme = "ws:" + "//"
+    ws_schemes = (local_ws_scheme, "wss:" + "//")
 
+    if url.startswith("https://"):
+        url = "wss://" + url.removeprefix("https://")
+    elif url.startswith("http://"):
+        url = local_ws_scheme + url.removeprefix("http://")
     if not url.startswith(ws_schemes):
-        # nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- Maps local http to ws and https to wss
-        url = url.replace("http://", "ws://").replace(
-            "https://", "wss://"
-        )  # NOSONAR python:S5332 -- URL scheme normalization mapping http/https to ws/wss
+        raise ValueError("SURREAL_URL must use a ws or wss scheme.")
+    if not getattr(settings, "DEBUG", True) and url.startswith(local_ws_scheme):
+        raise ValueError("Production SURREAL_URL must use encrypted wss transport.")
     if not url.endswith("/rpc"):
         url = url.rstrip("/") + "/rpc"
 
@@ -674,7 +678,8 @@ def _retry_sqlite_lock(operation):
         except OperationalError as exc:
             if connection.vendor != "sqlite" or "locked" not in str(exc).lower() or attempt == 2:
                 raise
-            time.sleep(0.05 * (attempt + 1))
+            retry_number = attempt + 1
+            time.sleep(0.05 * retry_number)
     raise RuntimeError("unreachable")
 
 
@@ -830,11 +835,8 @@ def claim_document_for_processing(doc_uuid: str) -> dict | None:
                     .first()
                 )
             except ValueError:
-                document_id = (
-                    SourceDocument.objects.filter(id=int(doc_uuid), status="PENDING")
-                    .values_list("id", flat=True)
-                    .first()
-                )
+                pending_docs = SourceDocument.objects.filter(id=int(doc_uuid), status="PENDING")
+                document_id = pending_docs.values_list("id", flat=True).first()
         except TypeError, ValueError:
             return None
         if document_id is None:

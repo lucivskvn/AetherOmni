@@ -384,7 +384,7 @@ describe('initializeDragAndDrop', () => {
     fileInput.click = () => { clicked = true; };
 
     initializeDragAndDrop();
-    const event = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    const event = new globalThis.KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
     dropZone.dispatchEvent(event);
 
     expect(clicked).toBe(true);
@@ -403,7 +403,7 @@ describe('initializeDragAndDrop', () => {
     fileInput.click = () => { clicked = true; };
 
     initializeDragAndDrop();
-    const event = new window.KeyboardEvent('keydown', { key: ' ', bubbles: true });
+    const event = new globalThis.KeyboardEvent('keydown', { key: ' ', bubbles: true });
     dropZone.dispatchEvent(event);
 
     expect(clicked).toBe(true);
@@ -630,15 +630,15 @@ describe('initializeSettingsModal Danger Zone Reset Flow', () => {
     const finalResetBtn = document.getElementById('final-reset-btn');
 
     confirmInput.value = 'res';
-    confirmInput.dispatchEvent(new window.Event('input'));
+    confirmInput.dispatchEvent(new globalThis.Event('input'));
     expect(finalResetBtn.disabled).toBe(true);
 
     confirmInput.value = 'reset';
-    confirmInput.dispatchEvent(new window.Event('input'));
+    confirmInput.dispatchEvent(new globalThis.Event('input'));
     expect(finalResetBtn.disabled).toBe(false);
 
     confirmInput.value = 'RESET ';
-    confirmInput.dispatchEvent(new window.Event('input'));
+    confirmInput.dispatchEvent(new globalThis.Event('input'));
     expect(finalResetBtn.disabled).toBe(false);
   });
 
@@ -673,9 +673,9 @@ describe('initializeSettingsModal Danger Zone Reset Flow', () => {
     initializeSettingsModal();
 
     const finalResetBtn = document.getElementById('final-reset-btn');
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(false);
 
-    const event = new window.MouseEvent('click', { cancelable: true });
+    const event = new globalThis.MouseEvent('click', { cancelable: true });
     finalResetBtn.dispatchEvent(event);
 
     expect(confirmSpy).toHaveBeenCalled();
@@ -705,11 +705,11 @@ describe('Drag and Drop File Input Validation', () => {
     initializeDragAndDrop();
     const clickSpy = vi.spyOn(fileInput, 'click');
 
-    const enterEvent = new window.KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    const enterEvent = new globalThis.KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
     dropZone.dispatchEvent(enterEvent);
     expect(clickSpy).toHaveBeenCalledTimes(1);
 
-    const spaceEvent = new window.KeyboardEvent('keydown', { key: ' ', cancelable: true });
+    const spaceEvent = new globalThis.KeyboardEvent('keydown', { key: ' ', cancelable: true });
     dropZone.dispatchEvent(spaceEvent);
     expect(clickSpy).toHaveBeenCalledTimes(2);
   });
@@ -717,9 +717,9 @@ describe('Drag and Drop File Input Validation', () => {
   it('filters out extensionless and unsupported files on change', () => {
     initializeDragAndDrop();
 
-    const validFile = new window.File(['content'], 'document.pdf', { type: 'application/pdf' });
-    const extensionlessFile = new window.File(['content'], 'notes', { type: 'text/plain' });
-    const unsupportedFile = new window.File(['content'], 'executable.exe', { type: 'application/x-msdownload' });
+    const validFile = new globalThis.File(['content'], 'document.pdf', { type: 'application/pdf' });
+    const extensionlessFile = new globalThis.File(['content'], 'notes', { type: 'text/plain' });
+    const unsupportedFile = new globalThis.File(['content'], 'executable.exe', { type: 'application/x-msdownload' });
 
     Object.defineProperty(fileInput, 'files', {
       value: [validFile, extensionlessFile, unsupportedFile],
@@ -790,7 +790,7 @@ describe('Document State Actions (Retry and Cancel)', () => {
   it('triggers confirmation before POST to /document/:id/cancel/ on cancel button click', async () => {
     initializeCancelActions();
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
     globalThis.fetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ status: 'success', message: 'Stopped' }),
@@ -812,7 +812,7 @@ describe('Document State Actions (Retry and Cancel)', () => {
   it('aborts cancel action when user rejects confirmation dialog', async () => {
     initializeCancelActions();
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(false);
 
     const cancelBtn = document.querySelector('.btn-cancel-doc');
     cancelBtn.click();
@@ -830,7 +830,7 @@ describe('Document State Actions (Retry and Cancel)', () => {
     `;
     initializeDeleteActions();
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
     globalThis.fetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ status: 'success', message: 'Deleted' }),
@@ -996,7 +996,7 @@ describe('initializeExportActions Flow', () => {
   });
 
   it('submits bulk restart with action=restart when confirmed', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
     initializeExportActions();
 
     bulkRestartBtn.click();
@@ -1011,7 +1011,7 @@ describe('initializeExportActions Flow', () => {
   });
 
   it('submits bulk delete with action=delete when confirmed', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
     initializeExportActions();
 
     bulkDeleteBtn.click();
@@ -1026,7 +1026,7 @@ describe('initializeExportActions Flow', () => {
   });
 
   it('rejects external or protocol-relative action URLs in dataset', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
     bulkDeleteBtn.dataset.actionUrl = 'https://malicious.test/api';
     initializeExportActions();
 
@@ -1499,7 +1499,7 @@ describe('trapFocus', () => {
     const last = document.getElementById('last-btn');
     last.focus();
 
-    const event = new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: false, cancelable: true });
+    const event = new globalThis.KeyboardEvent('keydown', { key: 'Tab', shiftKey: false, cancelable: true });
     trapFocus(dialog, event);
 
     expect(document.activeElement).toBe(first);
@@ -1517,7 +1517,7 @@ describe('trapFocus', () => {
     const last = document.getElementById('last-btn');
     first.focus();
 
-    const event = new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true });
+    const event = new globalThis.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true });
     trapFocus(dialog, event);
 
     expect(document.activeElement).toBe(last);
