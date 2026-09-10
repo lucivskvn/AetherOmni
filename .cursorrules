@@ -58,6 +58,7 @@ pull, stash, perform remote scans, or deploy.
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
      2. Shift-Left Security — runs Ruff, ESLint, strict Sonar-aligned YAML linting, AST-Grep regex rules, Semgrep, Bandit, and tests with coverage.
   - GitHub-managed CodeQL and the SonarCloud GitHub integration publish code-scanning findings. CI publishes blocking Semgrep SARIF findings, while Dependency Review rejects newly introduced moderate-or-higher vulnerable dependencies on pull requests.
+  - SonarCloud Automatic Analysis reads `.sonarcloud.properties`, not `sonar-project.properties`; keep its Python version and test scope aligned with the runtime and test layout.
   - CI blocks on zizmor GitHub Actions security findings. OpenSSF Scorecard publishes scheduled, advisory supply-chain posture findings to GitHub code scanning.
   - Cloud Build resolves an image digest once before generating and attaching an SPDX SBOM, so both operations target the same Artifact Registry version.
   - Workflow-security scanners must check out the repository before auditing it so an empty runner workspace cannot produce a false failure.

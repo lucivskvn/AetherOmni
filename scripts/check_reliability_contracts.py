@@ -41,6 +41,7 @@ def main() -> int:
         pulumi = _read("infra/pulumi/__main__.py")
         settings_normalizer = _read("scripts/normalize_system_settings.py")
         surreal_schema = _read("schema.surql")
+        sonar_autoscan = _read(".sonarcloud.properties")
     except OSError as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
@@ -187,6 +188,16 @@ def main() -> int:
         settings_normalizer,
         ('parser.add_argument("--apply"', "Dry run only", "has_retired_field", "postcondition failed"),
         "System-settings normalization must remain dry-run by default and verify retired-field removal explicitly.",
+    )
+    _require(
+        errors,
+        sonar_autoscan,
+        (
+            "sonar.tests=extractor/tests,core/tests",
+            "sonar.test.inclusions=extractor/tests/**/*.py,core/tests/**/*.py",
+            "sonar.python.version=3.14",
+        ),
+        "SonarCloud Automatic Analysis must use the supported Python version and explicit test scope.",
     )
 
     if errors:
