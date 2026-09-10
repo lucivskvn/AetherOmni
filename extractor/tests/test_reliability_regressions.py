@@ -1,12 +1,14 @@
 """Regression coverage for cancellation, durable delivery, and complete UI snapshots."""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
-from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.db import OperationalError, close_old_connections
+from django.test import RequestFactory, SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from google.api_core.exceptions import NotFound
@@ -19,6 +21,50 @@ from extractor.views import (
     SFTDatasetPreviewView,
     _find_existing_doc_by_hash,
 )
+
+
+@override_settings(SURREALDB_OFFLINE=True)
+class OfflineAtomicWriteTests(TransactionTestCase):
+    def _separate_connection(self, operation):
+        def run():
+            close_old_connections()
+            try:
+                return operation()
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(run).result()
+
+    def test_worker_update_skips_cancelled_row_from_separate_connection(self):
+        doc = SourceDocument.objects.create(original_filename="cancelled.txt", status="EXTRACTING")
+        SourceDocument.objects.filter(pk=doc.pk).update(cancel_requested=True)
+
+        result = self._separate_connection(lambda: surreal_db.update_document(str(doc.uuid), {"status": "REFINING"}))
+
+        self.assertEqual(result, {})
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, "EXTRACTING")
+
+    def test_stage1_update_skips_cancelled_row_from_separate_connection(self):
+        from extractor import tasks
+
+        doc = SourceDocument.objects.create(original_filename="cancelled.txt", status="EXTRACTING")
+        SourceDocument.objects.filter(pk=doc.pk).update(cancel_requested=True)
+        stage1_result = ("content", "TEXT", 1, Decimal("0"), 1, 2)
+
+        _, saved = self._separate_connection(lambda: tasks._save_stage1_offline(str(doc.uuid), {}, stage1_result))
+
+        self.assertFalse(saved)
+        doc.refresh_from_db()
+        self.assertEqual(doc.raw_markdown, "")
+
+    def test_sqlite_lock_retry_is_bounded(self):
+        operation = MagicMock(side_effect=[OperationalError("database is locked"), "saved"])
+        with patch("time.sleep") as sleep:
+            self.assertEqual(surreal_db._retry_sqlite_lock(operation), "saved")
+        self.assertEqual(operation.call_count, 2)
+        sleep.assert_called_once_with(0.05)
 
 
 class DashboardReliabilityTests(TestCase):

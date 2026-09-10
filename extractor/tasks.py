@@ -19,7 +19,6 @@ from typing import Any
 
 from django.conf import settings
 from django.core.files.storage import default_storage
-from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -553,34 +552,36 @@ def _acquire_stage1_raw_markdown(
 
 def _save_stage1_offline(document_id, fallback_doc, stage1_result):
     """Persist Stage 1 output only while the locked offline row still belongs to this worker."""
+    from django.db.models import F
+
     from extractor.models import SourceDocument
 
     raw_markdown, doc_type_detected, page_count_detected, stage1_cost, input_tokens, output_tokens = stage1_result
-    with transaction.atomic():
-        try:
-            import uuid
+    try:
+        lookup = surreal_db._offline_document_lookup(document_id)
+    except ValueError:
+        return fallback_doc, False
 
-            try:
-                uuid.UUID(str(document_id))
-                doc_ref = SourceDocument.objects.select_for_update().get(uuid=document_id)
-            except ValueError:
-                doc_ref = SourceDocument.objects.select_for_update().get(id=int(document_id))
-        except SourceDocument.DoesNotExist, ValueError:
-            return fallback_doc, False
-
+    def conditional_update():
+        query = SourceDocument.objects.filter(**lookup, cancel_requested=False)
         expected_task = surreal_db.document_task_name.get()
-        if doc_ref.cancel_requested or (expected_task and doc_ref.cloud_task_name != expected_task):
-            return doc_ref, False
+        if expected_task:
+            query = query.filter(cloud_task_name=expected_task)
+        updated = query.update(
+            document_type=doc_type_detected,
+            page_count=page_count_detected,
+            raw_markdown=raw_markdown,
+            input_tokens=F("input_tokens") + input_tokens,
+            output_tokens=F("output_tokens") + output_tokens,
+            cost_usd=F("cost_usd") + stage1_cost,
+            status="REFINING",
+            updated_at=timezone.now(),
+        )
+        if updated != 1:
+            return fallback_doc, False
+        return SourceDocument.objects.get(**lookup), True
 
-        doc_ref.document_type = doc_type_detected
-        doc_ref.page_count = page_count_detected
-        doc_ref.raw_markdown = raw_markdown
-        doc_ref.input_tokens += input_tokens
-        doc_ref.output_tokens += output_tokens
-        doc_ref.cost_usd += stage1_cost
-        doc_ref.status = "REFINING"
-        doc_ref.save()
-    return doc_ref, True
+    return surreal_db._retry_sqlite_lock(conditional_update)
 
 
 def _run_stage1(working_path: str, document_id: str | int) -> Any:

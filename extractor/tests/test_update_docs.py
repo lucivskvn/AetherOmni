@@ -50,10 +50,23 @@ class UpdateDocsTestCase(unittest.TestCase):
         self.assertEqual(info["sha"], "abc1234")
         self.assertFalse(info["dirty"])
 
-    def test_get_test_count(self):
-        count = get_test_count()
-        self.assertIsInstance(count, str)
-        self.assertTrue(not count or count.isdigit())
+    @patch("scripts.update_docs.ROOT")
+    def test_get_test_count_reads_valid_cache(self, mock_root):
+        cache = MagicMock()
+        cache.exists.return_value = True
+        cache.read_text.return_value = "450\n"
+        mock_root.__truediv__.return_value = cache
+
+        self.assertEqual(get_test_count(), "450")
+
+    @patch("scripts.update_docs.ROOT")
+    def test_get_test_count_rejects_invalid_cache(self, mock_root):
+        cache = MagicMock()
+        cache.exists.return_value = True
+        cache.read_text.return_value = "invalid"
+        mock_root.__truediv__.return_value = cache
+
+        self.assertEqual(get_test_count(), "")
 
     def test_get_health_scores(self):
         scores = get_health_scores()

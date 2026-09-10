@@ -118,7 +118,7 @@ Run the complete local gate before committing source, UI, workflow, or infrastru
 bash run_checks.sh
 ```
 
-The repository combines local linting, typing, tests, SAST, dependency review, CodeQL, Semgrep SARIF, GitHub Actions security checks, SonarCloud, and scheduled supply-chain posture reporting. Workflow-security analysis checks out the repository before auditing it, preventing empty-workspace false failures, while Semgrep runs in an isolated environment and application checks install from `requirements-dev.txt`. Production images also receive an SPDX SBOM generated with Syft and attached to the same resolved Artifact Registry digest.
+`bash run_checks.sh` is the local lint, type, test, and security gate. GitHub Actions adds Dependency Review, CodeQL, Semgrep SARIF, and zizmor; SonarCloud runs its separate hosted analysis. Cloud Build requires commit-scoped passing SonarCloud, CodeQL, and Semgrep results before deployment. CI installs application checks from the committed `uv.lock`, keeps Semgrep isolated, and checks out the repository before workflow-security analysis. Production images receive an SPDX SBOM generated with Syft and attached to the same resolved Artifact Registry digest.
 
 ## Contributing
 

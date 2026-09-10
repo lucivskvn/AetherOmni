@@ -59,7 +59,7 @@ pull, stash, perform remote scans, or deploy.
   - CI blocks on zizmor GitHub Actions security findings. OpenSSF Scorecard publishes scheduled, advisory supply-chain posture findings to GitHub code scanning.
   - Cloud Build resolves an image digest once before generating and attaching an SPDX SBOM, so both operations target the same Artifact Registry version.
   - Workflow-security scanners must check out the repository before auditing it so an empty runner workspace cannot produce a false failure.
-  - Install application checks from `requirements-dev.txt`; keep dependency-divergent scanners such as Semgrep in an isolated virtual environment while preserving their blocking result.
+  - Install CI application checks from the committed `uv.lock`; keep dependency-divergent scanners such as Semgrep in an isolated virtual environment while preserving their blocking result.
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
   - Cloud Build may construct the immutable image in parallel, but it must wait for the successful GitHub SonarCloud check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
   - Cloud Build must generate an SPDX SBOM with pinned open-source Syft and attach it to the immutable Artifact Registry image. Do not enable billed Artifact Analysis scanning solely to generate SBOMs.
