@@ -15,7 +15,7 @@
     "@vitest/browser": "^4.1.11",
     "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.9.1",
-    "jsdom": "^26.1.0",
+    "jsdom": "^30.0.1",
     "vitest": "^4.1.11"
   }
 }
