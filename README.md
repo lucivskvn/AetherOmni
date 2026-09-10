@@ -1,520 +1,129 @@
-# 🚀 KORDA — Knowledge Orchestration, Retrieval & Document Analysis Platform
+# KORDA
 
-> **Modern Django platform featuring Multi-Model LLM Gateways, Dual Database Engine (SurrealDB HNSW Vector RAG + Relational Store), Async 3-Stage Processing Pipelines, and Serverless Cloud Native Infrastructure.**
+KORDA is a secure knowledge workspace for turning document collections into searchable, grounded answers. Upload source material, follow its processing status, and retrieve answers with links back to the documents that support them.
 
-<!-- auto:badges -->
-[![DevSecOps CI Pipeline](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=bugs)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
-[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
+[![CI](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-<!-- /auto:badges -->
 
-Runtime release identity is intentionally not duplicated in this static README. The configured public app exposes `GET /release/`; Cloud Build verifies that endpoint reports the computed release version and commit SHA after each deployment.
+## What it does
 
-For local verification, use `bash run_checks.sh` as the canonical gate. The
-legacy `scripts/verify-pipeline.sh` path is a local-only compatibility wrapper.
-Before deploying a `system_settings` schema change, run the boolean-only
-`scripts/normalize_system_settings.py` dry run; its approved `--apply` path
-purges retired persisted provider credentials and verifies its postconditions before the schema release.
+- Ingests PDF, office documents, images, text, structured data, and ZIP batches.
+- Tracks asynchronous extraction, curation, embedding, and cancellation safely.
+- Provides tenant-scoped semantic search with grounded source references.
+- Exports curated document bundles and dataset-ready formats.
+- Applies configurable spend limits, audit logging, and production-grade authentication controls.
 
-Dashboard updates combine periodic status snapshots with Realtime notifications. The status response is complete and user-scoped so row removal cannot confuse pagination with deletion. RAG search streams text-safe SSE tokens when supported and falls back to the established sanitized response otherwise. Cancellation persists a stop marker and removes queued work; a running provider call may finish before the worker checks cancellation. Storage deletion failures retain the document for retry. Deployment scaling and global settings changes are restricted to superusers; the configured worker is private and accepts Cloud Tasks OIDC delivery only. Production deployments require the Supabase database secret rather than falling back to SQLite. The runtime account has only the Cloud Run read permission required for the superuser deployment controller to inspect the worker before changing its scale.
+## How people use KORDA
 
-Spreadsheet ingestion applies separate XLSX archive, worksheet, row, cell, and rendered-Markdown budgets before parsing. It rejects oversized workbooks rather than allowing a document to consume a worker's memory allocation.
+1. Sign in and upload one or more source files from the dashboard.
+2. Follow each document through queued, processing, completed, or failed states.
+3. Open a document to review and refine its extracted content, or retry and cancel work when needed.
+4. Ask a question in Semantic Spotlight Search and inspect the grounded source material returned with the answer.
+5. Select documents and export a Markdown archive, SFT JSONL, SQLite FTS database, or CSV metadata summary.
 
-[![Desloppify Codebase Health](docs/scorecard.png)](docs/scorecard.png)
+The dashboard keeps document activity, monthly AI spend, processing status, and semantic search in the same workspace. Administrators additionally have access to configuration, audit history, and the deployment controller.
 
----
+## Detailed use cases
 
-## 📌 Executive Summary, Technical Outputs & Business Use Cases
+### Compliance, legal, and policy research
 
-**KORDA** (**K**nowledge **O**rchestration, **R**etrieval & **D**ocument **A**nalysis) is a multi-lingual document intelligence and RAG platform that ingests unstructured, multi-format documents (PDF, DOCX, CSV, Excel, TXT, and recursive ZIP archives) and transforms them into **standardized, queryable knowledge assets**.
+Bring contracts, policy manuals, regulatory guidance, and internal procedures into one searchable workspace. KORDA keeps the original document relationship visible through grounded source references, so a reviewer can move from an answer back to the supporting material instead of treating generated text as the only record. Curated exports provide a portable review or archive package when a matter needs to leave the workspace.
 
----
+### Research libraries and long-form source material
 
-## 👁️ Multi-Perspective Architectural Evaluation & Value Analysis
+Researchers can ingest papers, reports, scans, notes, and structured datasets in batches, then ask focused questions across the collection. Document-level editing helps correct or enrich extracted material before it is used for retrieval. The JSONL and SQLite exports are useful when a project needs a reproducible hand-off to an offline analysis or evaluation workflow.
 
-KORDA's architecture is evaluated across four primary stakeholder perspectives to articulate its concrete utility, engineering rigor, financial sustainability, and scholarly rigor.
+### Operational knowledge and incident follow-up
 
-```mermaid
-flowchart TD
-    Sub1["<b>🟢 Non-Technical PoV</b><br>Zero Data Entry · Automated Layout Conversion"]
-    Sub2["<b>🔵 Technical & Engineering PoV</b><br>3-Stage Async Pipeline · Hybrid RAG (BM25 + HNSW)"]
-    Sub3["<b>💼 Business & Enterprise PoV</b><br>SHA-256 $0.00 Caching · Immutable Audit Trail"]
-    Sub4["<b>🎓 Academic Research PoV</b><br>Verifiable Citations · Multilingual SFT Datasets"]
+For runbooks, support material, post-incident notes, and architecture documents, the dashboard gives a small team a live view of what is still processing, what failed, and what can be retried. Semantic search is designed for finding relevant material quickly while retaining the references a responder needs to validate an answer.
 
-    Sub1 --> Pipeline["<b>KORDA Core Engine</b>"]
-    Sub2 --> Pipeline
-    Sub3 --> Pipeline
-    Sub4 --> Pipeline
-```
+### AI and data preparation
 
----
+KORDA is useful before model evaluation or dataset curation: it transforms mixed document input into reviewed, structured output with provenance retained in the workspace. Teams can export selected documents as an SFT JSONL dataset, a full-text SQLite database, a Markdown archive, or CSV metadata rather than building separate conversion scripts for each hand-off.
 
-### 1. 🟢 Non-Technical & Executive Perspective: "What Does It Do & Why Use It?"
+## Typical workflow
 
-- **The Problem**: Organizations waste thousands of hours manually copying data from PDFs, spreadsheets, and mixed document archives into databases and internal wikis. Crucial knowledge remains locked in silos.
-- **The KORDA Solution**: KORDA acts as an **Automated Digital Knowledge Converter**. Simply upload your documents (PDFs, Word files, spreadsheets, text files, ZIP archives), and KORDA automatically cleans, organizes, transcribes, and connects your files into an intelligent, searchable library.
-- **Key User Benefits**:
-  - **Zero Manual Data Entry**: Reads complex tables, flowcharts, and multi-column pages automatically.
-  - **Multilingual Support**: Natively handles complex languages like Arabic (with proper Right-to-Left formatting) alongside English.
-  - **Instant Answers**: Ask questions in plain language and receive precise, cited answers directly referencing your uploaded documents.
-  - **Clean Single-File Exports**: Download structured ZIP bundles (`documents/001_contract.md`, `manifest.json`) ready for archiving or sharing with non-technical team members.
+| Step | What happens | What the user can do |
+| --- | --- | --- |
+| Upload | The dashboard validates accepted files and records the submission. | Add individual files or batches, then see them immediately in the library. |
+| Process | A queued worker extracts, curates, and indexes document content. | Follow status, cancel work that is no longer needed, or retry a failed document. |
+| Review | The document detail view exposes the resulting content and metadata. | Refine a document before it becomes part of a downstream export or search workflow. |
+| Retrieve | Hybrid search locates relevant content and produces a grounded response. | Ask a question, read the answer, and inspect its returned source context. |
+| Export | Selected content is packaged for a specific downstream use. | Download a Markdown archive, SFT JSONL, SQLite FTS database, or CSV summary. |
 
----
+## Current capabilities
 
-### 2. 🔵 Technical & Engineering Perspective: "How Is It Built & Architected?"
+| Area | Available now |
+| --- | --- |
+| Document intake | PDF, office files, images, text, JSON, CSV, spreadsheets, and recursive ZIP batches. |
+| Processing | Queued worker execution with durable task identity, cancellation fencing, retry controls, and safe failure handling. |
+| Knowledge retrieval | Tenant-scoped hybrid retrieval, grounded source references, and streaming answers with a safe JSON fallback. |
+| Curation and export | Editable document detail views plus Markdown ZIP, SFT JSONL, SQLite FTS, and CSV exports. |
+| Governance | Spend caps, immutable audit records, user-scoped data access, and administrator-only operational controls. |
+| Delivery | Private Cloud Run worker, Cloud Tasks OIDC delivery, Pulumi-managed GCP resources, and immutable image release verification. |
 
-- **The Pipeline Engineering**: Built on a decoupled, asynchronous 3-stage architecture (Stage 1: Layout Ingestion & SHA-256 Deduplication, Stage 2: Multi-Model LLM Gateway & Spend Control, Stage 3: SurrealDB HNSW Vector Storage & RRF RAG).
-- **Hybrid Dense-Sparse RAG (Reciprocal Rank Fusion)**: Combines sparse BM25 keyword matching with dense SurrealDB HNSW vector embeddings (`DIMENSION 768 DIST COSINE`) to eliminate search hallucination and optimize context window precision.
-- **Durable Tenant Ownership**: Production document access is keyed by the Supabase Auth subject UUID, so Cloud Run restarts cannot orphan a user's workspace from its documents.
-- **Resilient Multi-Provider Gateway**: Implements exponential backoff and circuit-breaking across stable Google Gemini 2.5 Flash / 2.5 Flash-Lite on Vertex AI, plus OpenRouter fallbacks (Llama 3, Gemma 2, Qwen 2).
-- **DevSecOps & Code Health Rigor**:
-  - **Shift-Left Local Verification**: Multi-language `run_checks.sh` pipeline enforcing Python AST auditing (`ruff`), static typing (`mypy`), differential security scanning (`bandit`, Semgrep, AST-Grep), JavaScript conventions (`eslint`), YAML schema validation (`yamllint`), container hardening (`hadolint`), and comprehensive automated unit test coverage. CI uses the pinned official AST-Grep CLI; the Python library distribution is not a CLI substitute. New suppressions must identify the exact rule; Semgrep and SonarQube suppressions also require a justification.
-  - **Desloppify Codebase Health**: Continuous structural complexity, cohesion, and dependency cycle monitoring across all 17 sensors to maintain high objective codebase quality and security scores.
-  - **Cloud SAST & Quality Gate**: Automated CI pipeline integrating static application security testing with remote SonarQube MQR Quality Gate enforcement.
-  - **Immutable CI Dependencies**: GitHub Actions are pinned to reviewed commit SHAs, preventing tag-repointing supply-chain changes.
-  - **Reproducible CI Tooling**: Security scanners run in an isolated environment when their dependencies differ from the application runtime, without weakening blocking checks.
-  - **Reliability Contract Gate**: Local and GitHub Actions verification rejects private cross-tenant deduplication, permissive production rate-limit failures, web-entered deployment credentials, duplicate online deletion-spend accounting, weakened Supabase Auth checks, and reduced Cloud Run memory safeguards in Pulumi, manifests, and deploy commands before remote quality analysis or deployment.
+## Current milestone
 
----
+**Reliable knowledge-workspace MVP — active.** The current focus is a dependable path from authenticated upload to worker processing, grounded retrieval, and portable export. Reliability work now includes task-identity fencing, recoverable storage cleanup, user-scoped dashboard status refreshes, production-only distributed controls, and release verification before deployment.
 
-### 3. 💼 Business & Financial Enterprise Perspective: "What Is the ROI & Governance Risk?"
+## Roadmap and status
 
-- **Financial Predictability & Cost Reduction**:
-  - **Instant SHA-256 Hash Caching ($0.00 Cost)**: Deduplicates incoming documents by SHA-256 checksums to instantly reuse extracted metadata without calling LLM APIs ($0.00 processing cost).
-  - **Persisted Spend Accounting (`MonthlySpendLog`)**: Tracks monthly API spend in real-time. Spend logs persist even if source document records are purged, guaranteeing financial auditability.
-  - **Serverless Scale-to-Zero GCP Infrastructure**: Deployed on GCP Cloud Run with zero-scale scaling limits to minimize idle infrastructure costs.
-- **Regulatory Compliance & Risk Mitigation**:
-  - **SOC 2 Immutable Audit Ledger**: Overridden `save()` and `delete()` methods in `AuditLog` combined with PostgreSQL database triggers and SurrealDB table permissions prevent tampering or deletion of audit logs.
-  - **Data Privacy & Air-Gapped Deployment**: Supports self-hosted database execution (`SURREALDB_OFFLINE=True`) and keyless GCP Application Default Credentials (ADC) to eliminate hardcoded credentials in Git codebases.
+| Initiative | Status | Outcome |
+| --- | --- | --- |
+| Reliable knowledge-workspace MVP | **Active** | Complete the dependable upload, processing, retrieval, and export path before expanding collaboration features. |
+| Task identity, cancellation, and recovery hardening | **Delivered** | Prevent stale or cancelled work from writing results and retain recoverable document state on storage failures. |
+| User-scoped dashboard refresh and streamed search fallback | **Delivered** | Keep status views accurate and preserve usable retrieval when streaming is unavailable. |
+| Saved searches and document collections | **Proposed** | Preserve recurring research views and reuse well-defined source sets. |
+| Organization roles and shared workspaces | **Proposed** | Add explicit membership and role boundaries before introducing broader collaboration. |
+| User-facing processing explanations | **Proposed** | Show actionable failure reasons, retry guidance, and worker progress milestones alongside each document. |
+| Feedback and evaluation workflow | **Proposed** | Capture answer usefulness and citation quality against real team tasks. |
+| Retention and export lifecycle controls | **Proposed** | Give administrators scheduled retention, export history, and recovery visibility without weakening deletion guarantees. |
 
----
+Proposed items are intentionally not represented as shipped capabilities. Their order reflects the recommended sequence: preserve individual research workflows first, establish collaboration boundaries second, then add richer operational and evaluation tooling.
 
-### 4. 🎓 Academic & Scholarly Research Perspective: "How Does It Support Scientific Rigor?"
+## Architecture
 
-- **Multilingual Corpus Ingestion & Philological Preservation**: Preserves complex manuscript layouts, RTL typography, and custom metadata via standardized YAML frontmatter headers.
-- **Verifiable Page-Level Grounding & Citation Attribution**: Inserts strict structural block markers (`<!-- SOURCE_START_1 -->` / `<!-- SOURCE_END_1 -->`) into `master_archival_source.md`, enabling scholars to verify AI outputs against original source pages.
-- **Reproducible Dataset Creation for Machine Learning**: Automatically formats unstructured academic publications into Supervised Fine-Tuning (SFT) Q&A JSON datasets (`[{"question": "...", "answer": "..."}]`) for fine-tuning scientific domain models.
-
----
-
-### 📊 Multi-Stakeholder Evaluation Summary Matrix
-
-| Stakeholder PoV | Primary Objective | KORDA Feature Implementation | Practical Business & Technical Value |
-| :--- | :--- | :--- | :--- |
-| **Non-Technical User** | Ease of Use & Automated Ingestion | Drag-and-drop uploads, simple markdown view, instant single-copy ZIP export (`documents/001_title.md`). | Zero technical learning curve; eliminates manual document transcription. |
-| **Software Engineer** | Architecture Rigor & Zero Hallucination | Decoupled 3-stage pipeline, SurrealDB HNSW vector RAG, RRF hybrid search (BM25 + HNSW). | High-precision sub-100ms retrieval with zero prompt context window waste. |
-| **DevSecOps Engineer** | Security, SAST & Pipeline Stability | Complete `run_checks.sh` gate: Ruff, Mypy, ast-grep, Semgrep SAST, Bandit, Hadolint, **`surreal validate`** SurrealQL schema lint, ShellCheck, SonarQube MQR. | Prevents broken code, security vulnerabilities, or failing tests from entering main branch. |
-| **CFO / Finance Lead** | Cost Control & Budget Predictability | Instant SHA-256 hash caching ($0.00 cost reuse), `MonthlySpendLog` USD caps, Cloud Run scale-to-zero. | Eliminates duplicate LLM API charges; ensures spend stays within strict monthly caps. |
-| **Compliance Officer** | Auditability & SOC 2 Governance | Immutable append-only `AuditLog` with PostgreSQL triggers and client IP logging (`get_client_ip`). | Complete tamper-evident audit trail for regulatory compliance. |
-| **Academic Researcher** | Scientific Rigor & Verifiable Citations | Structural source boundaries (`<!-- SOURCE_START -->`), SFT Q&A JSON dataset export, RTL Arabic layout. | Verifiable peer-reviewed citation attribution and reproducible ML dataset preparation. |
-
----
-
-### 📤 Platform Technical Outputs & Output Artifact Examples
-
-1. **Archival Structured Markdown with Metadata**:
-   - Converts document layouts into clean, sanitized Markdown text preserved with YAML frontmatter headers (title, author, language, SHA-256 hash, export timestamps) and Right-to-Left (RTL) Arabic HTML wrappers (`dir="rtl" class="arabic-text"`).
-
-   ```markdown
-   ---
-   title: "Enterprise Legal Contract"
-   author: "Legal Compliance Team"
-   language: "Arabic"
-   document_type: "PDF"
-   source_hash: "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
-   exported_at: "2026-08-08T22:00:00Z"
-   ---
-
-   <div dir="rtl" class="arabic-text">
-   ### اتفاقية الشروط العامة والتنفيذ
-   تم الاتفاق بين الأطراف الموقعة على الالتزام الكامل بكافة بنود العقد...
-   </div>
-   ```
-
-2. **Supervised Fine-Tuning (SFT) Q&A Datasets**:
-   - Automatically generates structured JSON Q&A pairs for offline model fine-tuning and domain training.
-
-   ```json
-   [
-     {
-       "question": "How does KORDA ensure sub-100ms vector search latency for hybrid RAG queries?",
-       "answer": "KORDA uses SurrealDB v3.x HNSW vector indexing combined with BM25 sparse term matching fused via Reciprocal Rank Fusion (RRF)."
-     }
-   ]
-   ```
-
-3. **Multi-Modal Visual Diagram & Schema Captions**:
-   - Extracts flowcharts, architectural schemas, and tabular diagrams into structured Markdown text using Gemini 2.5 Flash / Vertex AI Vision.
-
-   ```markdown
-   ### 📊 Page 2 Visual Diagram & Schema Extraction
-   **Diagram Type**: System Architecture Flowchart
-   **Extracted Components**:
-   - `Client Request` -> Dispatches PDF upload to `GCP Cloud Run`
-   - `Worker Queue` -> `Cloud Tasks` enqueues ingestion job for `tasks.py`
-   - `Vector Store` -> Embeddings written to `SurrealDB HNSW Index`
-   ```
-
-4. **Taxonomic Archival ZIP Bundles**:
-   - Bundles document collections into structured directory trees (`Language/` and `Author/`) accompanied by `manifest.json` and a merged `master_archival_source.md`.
-
-   ```text
-   Language/
-   └── arabic/
-       └── 001_enterprise_legal_contract.md
-   Author/
-   └── legal_team/
-       └── 001_enterprise_legal_contract.md
-   manifest.json
-   master_archival_source.md
-   ```
-
-### 🏢 Comprehensive Target Use Cases & Application Domains
-
-KORDA serves three core application tiers: Business Enterprise, Academic & Scholarly Research, and AI/ML Engineering & Developer Ecosystems.
-
-#### 1. 💼 Enterprise & Business Use Cases
-
-- **Conversational RAG Knowledge Base**: Internal teams execute semantic search queries over processed document repositories with grounded citation attribution.
-- **Legal & Compliance Archiving**: Regulatory teams export structured single-copy ZIP bundles with immutable SOC 2 audit trails (`AuditLogListView`) and spend logs (`MonthlySpendLog`).
-- **Visual Diagram & Schema Analysis**: Engineering teams search and retrieve embedded architectural diagrams and flowcharts processed by multi-modal OCR.
-
-#### 2. 🎓 Academic & Scholarly Research Use Cases
-
-- **Multilingual Corpus Ingestion**: Digital humanists and researchers ingest multi-lingual texts (including Arabic RTL typography, ancient manuscripts, and legal codices) with structural frontmatter retention.
-- **Verifiable Citation & Grounding**: Generates exact page-level and block-level citations (`<!-- SOURCE_START_1 -->`) for peer-reviewed academic synthesis.
-- **Domain-Specific SFT Dataset Generation**: Formats complex academic papers into standardized JSON Q&A pairs for training specialized research models.
-
-#### 3. 🛠️ Developer & AI Engineering Use Cases
-
-- **Zero-Cost SHA-256 Deduplication Caching**: Developers prevent duplicate API charges during iterative dataset processing via instant SHA-256 hash lookups.
-- **Multi-Provider Resilient LLM Gateway**: Fallback chain automatically switches between Gemini 2.5 Flash / 2.5 Flash-Lite, Vertex AI, and OpenRouter free tiers to ensure 99.99% uptime.
-- **Air-Gapped Local Verification**: Supports offline development (`SURREALDB_OFFLINE=True`) and the complete DevSecOps pipeline (`run_checks.sh`).
-
----
-
-## ⚡ Current MVP Capabilities
-
-| Feature Area | Current Production Capability | Implementation & Location |
-| -------------- | ---------------- | --------------------------- |
-| **Multi-Format Ingestion** | Ingests PDF, DOCX, CSV, TXT, and recursive ZIP batch archives with instant SHA-256 deduplication caching. | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) |
-| **Arabic & Multilingual RTL** | Automatic Arabic typography detection (`dir="rtl" class="arabic-text"`), Markdown rendering, HTML sanitization. | `parse_arabic_layout` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L48) |
-| **Multi-Model LLM Gateway** | Dynamic provider fallbacks across Gemini 2.5 Flash / 2.5 Flash-Lite / 2.5 Pro, Vertex AI (multi-region), and OpenRouter (Llama 3, Gemma 2, Qwen 2 free tiers). | `generate_llm_content_unified` in [`llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) |
-| **SurrealDB HNSW Vector RAG** | High-dimensional HNSW similarity search, document UUID scope filtering, Reciprocal Rank Fusion (RRF), and TTL semantic cache. | `search_rag_cache_hnsw` in [`surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py#L880) |
-| **Persisted Budget Accounting** | Hard monthly USD budget caps; online deletion accounting is held in SurrealDB, while `MonthlySpendLog` supports explicit offline mode. | `MonthlySpendLog.add_cost()` in [`models.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/models.py#L313) |
-| **Curated ZIP & Single-Copy Exports** | Single-copy standardized document exports (`documents/001_title.md`) with optional multi-taxonomy views (`Language/`, `Author/`) and `manifest.json`. | `generate_curated_zip_bundle` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L322) |
-| **Automated Artifact Cleanup** | Automated DevSecOps file retention policy (`cleanup_stale_temp_artifacts`) purging temporary processing scratch files older than 24h. | `cleanup_stale_temp_artifacts` in [`file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py#L420) |
-| **SOC 2 Immutable Audit Trail** | Logs user IDs, client IPs (`get_client_ip`), actions, and timestamps in an immutable ledger. | `AuditLogListView` in [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py#L1520) |
-| **5-Phase DevSecOps Suite** | Automated verification pipeline: AST pattern scanning, Semgrep zero-finding SAST, Bandit ReDoS audit, Mypy static typing, Hadolint container hardening, **SurrealQL schema validation** (`surreal validate`), ShellCheck POSIX safety, SonarQube MQR Gatekeeper, and a comprehensive unit test suite with `coverage.xml` reporting. | `run_checks.sh`, `scripts/verify-pipeline.sh` & `.github/workflows/ci.yml` |
-| **Knowledge Graph RAG** | Multi-hop reasoning via `entities`, `chunk_references`, and `entity_relations` graph edges with HNSW 768 entity embeddings. | `query_knowledge_graph` in [`surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py) |
-| **Real-Time SSE Streaming** | Server-Sent Events (`text/event-stream`) streaming endpoint (`/api/v1/stream-query/`) with non-blocking token generators. | [`views.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/views.py) |
-
----
-
-## 🗺️ Engineering Milestones & Progressive Roadmap
-
-KORDA follows an **MVP-First Engineering Philosophy**, prioritizing solid core extraction, zero-cost caching, hybrid vector search, and clean batch exports before scaling to advanced multi-tenant agentic workflows.
-
-```mermaid
-flowchart LR
-    M1["✅ Milestone 1.0 MVP<br>Multi-Format Ingestion & Caching"] --> M2["✅ Milestone 2.0 MVP<br>Dual DB & LLM Gateway"]
-    M2 --> M3["✅ Milestone 3.0 MVP<br>Hybrid RAG & Vision OCR"]
-    M3 --> M35["✅ Milestone 3.5 MVP<br>DevSecOps Hardening & SurrealQL"]
-    M35 --> M36["✅ Milestone 3.6 MVP<br>Auth & Release Reliability"]
-    M36 --> M37["✅ Milestone 3.7 MVP<br>Observability & Sentry Release"]
-    M37 --> M4["📈 Milestone 4.0 Enterprise<br>Multi-Format Export & SQLite FTS5"]
-    M4 --> M5["🚀 Milestone 5.0 Enterprise<br>Graph RAG & Agent Tools"]
-```
-
-### ✅ Milestone 1.0 (MVP Core — Multi-Format Layout Ingestion & Instant Caching)
-
-- [x] **Multi-Format Document Ingestion**: Ingests PDF, DOCX, CSV, Excel (`.xlsx`, `.xls`), TXT, Markdown (`.md`), JSON (`.json`), and recursive ZIP batch archives with $0.00 local zero-cost parsers.
-- [x] **Arabic & Multilingual RTL Typography**: Automatic Arabic layout detection (`dir="rtl" class="arabic-text"`), Markdown rendering, and HTML sanitization.
-- [x] **Instant SHA-256 Hash Caching ($0.00 Cost)**: Deduplicates incoming documents by SHA-256 checksums to instantly reuse extracted metadata without calling LLM APIs.
-- [x] **Standardized Batch Export & Single-Copy Bundles**: Exports single-copy standardized files (`documents/001_title.md`) with optional multi-taxonomy views (`Language/`, `Author/`), `manifest.json`, and `master_archival_source.md`.
-- [x] **Automated Artifact Cleanup Policy**: Enforces DevSecOps file retention (`cleanup_stale_temp_artifacts`) to purge temporary processing scratch files older than 24 hours.
-
-### ✅ Milestone 2.0 (MVP Core — Dual Database Engine & Multi-Model LLM Gateway)
-
-- [x] **Multi-Model LLM Fallback Gateway**: Dynamic provider switching across stable Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), Vertex AI, and dynamic `openrouter/free` meta-router with exponential backoff.
-- [x] **SurrealDB Native Transactions & Schema-Driven Security**: Strict SurrealQL schema (`schema.surql`) validated continuously with `surreal validate`.
-- [x] **Strict Sub-Token Budget Allocation & Spend Caps**: Atomic sliding-window rate limits and per-tenant query limits.
-- [x] **Declarative Pulumi IaC Foundation**: Modeled, tested, and provisioned Cloud Run (`korda-web`, `korda-worker`), Secret Manager bindings, IAM least-privilege roles, Artifact Registry, Cloud Tasks, and Storage bucket in `asia-southeast1` (Singapore) with full Disaster Recovery lifecycle verification.
-- [x] **Persisted Budget Accounting**: Hard monthly USD spend limits backed by immutable `MonthlySpendLog` ledgers.
-
-### ✅ Milestone 3.0 (MVP Core — Hybrid RAG, Context Caching & Vision OCR)
-
-- [x] **Native SurrealDB WebSocket Connection Pools**: Upgraded SurrealDB client logic for high-concurrency connection handling (`surrealdb==2.0.0`).
-- [x] **Hybrid Dense-Sparse RAG Search (BM25 + HNSW)**: Implemented Reciprocal Rank Fusion (RRF) in `rag.py` to merge exact keyword BM25 matches with dense vector embeddings (`search_chunks_bm25`).
-- [x] **Multi-Modal Diagram & Schema Vision OCR**: Extracted embedded flowcharts, tables, and architectural diagrams using Gemini 2.5 Flash / Vertex AI Vision (`extract_pdf_diagrams_with_vision`).
-- [x] **Structural Context Chunking & Provenance Deep Linking**: Boundary-aware chunking preserving Surahs, Ayahs, and Hadiths with page and chapter metadata (`page_number`, `chapter_title`, `anchor_id`) stored in SurrealDB `chunks`.
-- [x] **SurrealDB Context Caching & Memories**: Zero-cost query short-circuiting via `rag_cache` (cosine distance $\le 0.15$), tokenized `context_cache`, and `user_memories`.
-
-### ✅ Milestone 3.5 (MVP Core — DevSecOps Hardening, SurrealQL Validation & Runtime Alignment)
-
-- [x] **Runtime Upgrade**: Builder and runtime use the digest-pinned image declared by `Dockerfile`; CI and Ruff follow the canonical versions in project configuration.
-- [x] **Shell-Free Container Startup**: A Python entrypoint runs migrations, starts bounded database initialization, and `exec`s Gunicorn without a shell interpreter in the startup path.
-- [x] **SurrealQL Schema Validation** (`surreal validate`): `schema.surql` is validated on every pipeline run via the official `surreal` CLI. Integrated into Phase 2 of `run_checks.sh` and the fast differential `--fast` pass for `.surql` file changes.
-- [x] **Full-Suite Tool Alignment**: All DevSecOps tools verified at latest stable — `ruff`, `mypy`, `bandit`, `pip-audit`, `semgrep`, `yamllint`, `hadolint`, `ast-grep`, `markdownlint-cli`, `eslint`, `shellcheck`, `surreal`. Application dependencies are tracked in `requirements.txt`; local Python verification tools are tracked in `requirements-dev.txt`.
-- [x] **SonarQube Multi-Language SAST**: Removed the single-language lock; SonarQube scans Python and JavaScript in the same analysis pass using repository-managed analyzer configuration.
-- [x] **Python Runtime Alignment**: Docker, GitHub Actions, local checks, and SonarQube use Python 3.14 semantics, preventing version-dependent findings and syntax drift.
-- [x] **Full Test Suite**: All Django unit tests pass cleanly under `SURREALDB_OFFLINE=True` with `coverage.xml` generated for SonarQube ingestion.
-
-### ✅ Milestone 3.6 (MVP Reliability — Authentication & Release Integrity)
-
-- [x] **Supabase Email Login Recovery**: Turnstile is required before credential dispatch and its token is forwarded through GoTrue security metadata; successful sessions bridge into Django without first-user privilege escalation. GitHub OAuth and Passkeys remain planned.
-- [x] **Release Traceability**: SonarQube and Cloud Build derive the same commit-count release from full Git history, then propagate it to the immutable image tag, Cloud Run, and application UI. Cloud Build waits for the exact commit's successful mainline SonarQube check before deployment.
-- [x] **Worker-Only Ingestion Dispatch**: Production uploads enqueue OIDC-authenticated work for the worker service only. Cloud Build resolves worker routing and the Vertex project identity at deploy time; an optional public-origin substitution keeps Supabase confirmation redirects on the browser-facing application URL.
-- [x] **On-Demand Worker Processing**: Cloud Tasks wakes a bounded zero-minimum worker only for queued ingestion; periodic maintenance is disabled by default and can be enabled only with an explicit always-on operating decision. Spend-ledger persistence is validated before document deletion.
-- [ ] **Protected Delivery Path**: Require PR checks for DevSecOps, CodeQL, dependency review, and SonarQube before `main` can merge.
-
-### ✅ Milestone 3.7 (MVP Reliability — Operations & Multi-MCP Triage)
-
-- [x] **Multi-MCP Triage & Observability**: Dedicated Model Context Protocol server workflows for SonarQube quality gates, Google Cloud Logging container inspections, Google Cloud Monitoring metrics, Chrome DevTools accessibility testing, and Google Developer Knowledge.
-- [x] **Operational Runbook & Diagnostic Tools**: Read-only GCP diagnostics CLI (`scripts/gcp-diagnostics.sh`) for Cloud Run revisions, readiness status, and bounded error log inspection.
-- [x] **Sentry Release Observability**: Correlated errors, performance tracing, profiling, and deployments with computed `RELEASE_VERSION` and verification test route (`/sentry-debug/`).
-- [x] **Declarative Pulumi IaC Foundation**: Modeled, tested, and provisioned Cloud Run (`korda-web`, `korda-worker`), Secret Manager bindings, IAM least-privilege roles, Artifact Registry, Cloud Tasks, and Storage bucket in `asia-southeast1` (Singapore) with full Disaster Recovery lifecycle verification.
-
-### 📦 Milestone 4.0 (Enterprise Roadmap — Multi-Format Export, Real-Time Streaming & Automated Benchmarking)
-
-- [x] **Full Legal & Copyright Metadata Extraction**: Embeds Publisher, Publication Year, License Type (CC-BY-4.0, MIT), DOI, SHA-256 hash, and `validation_status` across schemas, models, and export headers.
-- [x] **User Provenance & Authentication Tracking**: Embeds `uploaded_by_user_id`, `uploaded_by_username`, and `exported_by_username` in exported headers and manifest metadata.
-- [x] **Multi-Format Export Selector**: Download extracted datasets in **Markdown (`.zip`)**, **Hugging Face SFT (`.jsonl`)**, **SQLite Mobile (`.db`)**, and **CSV Summary (`.csv`)** with formula injection sanitization.
-- [x] **Offline Mobile SQLite FTS5 Indexing**: Self-contained SQLite `.db` bundles with FTS5 full-text search index for offline iOS / Android / Flutter integration.
-- [x] **Real-Time Response Streaming (SSE)**: Server-Sent Events (`text/event-stream`) streaming endpoint (`/api/v1/stream-query/`) with non-blocking token generators and live UI rendering.
-- [x] **Automated RAG Benchmarking**: Continuous assessment of context precision, answer relevance, and faithfulness ($\ge 0.85$ quality score threshold) via synthetic evaluation pipelines.
-- [ ] **Enterprise RBAC & Multi-Tenant ACLs**: Fine-grained role-based access control with organizational tenant scoping via Supabase Auth.
-
-### 🚀 Milestone 5.0 (Enterprise Roadmap — Knowledge Graph RAG & Autonomous Agent Tools)
-
-- [x] **Multi-Tenant Knowledge Graph RAG Schema**: SurrealDB Graph Relational RAG (`entities`, `chunk_references`, `entity_relations`) schema defined in `schema.surql` and wired via `upsert_entity()`, `relate_chunk_to_entity()`, and `query_knowledge_graph()` in `surreal_db.py`.
-- [ ] **Knowledge Graph Pipeline Ingestion**: Full pipeline ingestion and entity extraction for Graph RAG.
-- [ ] **Autonomous Tool-Executing Agents**: Integration with Google Antigravity Agentic SDK for automated multi-step research and data ingestion workflows.
-
----
-
-## 🏗️ 3-Stage Architectural Pipeline
+KORDA uses Django for the web workspace, Supabase Auth and PostgreSQL for identity, and SurrealDB for high-throughput document and vector operations. Cloud Tasks dispatches ingestion to a private Cloud Run worker. The production deployment uses Pulumi-managed GCP resources and immutable container images.
 
 ```text
-┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐
-│     STAGE 1: LAYOUT     │ ──> │   STAGE 2: REFINEMENT   │ ──> │     STAGE 3: VECTOR     │ ──> │ STAGE 4: KNOWLEDGE GRAPH│
-│   Ingestion & Parsing   │     │    Multi-Model LLM      │     │  SurrealDB HNSW Index   │     │   Entities & Relations  │
-└─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘     └─────────────────────────┘
+Browser → Django workspace → Cloud Tasks → private worker
+                         ↘              ↙
+                     Supabase       SurrealDB
 ```
 
-| Pipeline Stage | Implementation Module | Architecture & Operations |
-| ---------------- | ----------------- | ----------------------------------- |
-| **Stage 1: Layout & Ingestion** | [`extractor/file_utils.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/file_utils.py) | • Validates document headers, sanitizes HTML, computes SHA-256 hashes.<br>• Executes instant SHA-256 hash deduplication ($0.00 cost reuse).<br>• Parses Arabic RTL typography (`parse_arabic_layout`) and extracts YAML frontmatter.<br>• Unpacks ZIP archives recursively into single-copy standardized files (`documents/001_title.md`). |
-| **Stage 2: LLM Refinement & Cost Control** | [`extractor/llm_gateway.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/llm_gateway.py) | • Evaluates `check_budget_and_api_limit()` against `MonthlySpendLog` USD caps.<br>• Dispatches prompts across primary LLM providers (Gemini / Vertex / OpenRouter) with exponential backoff.<br>• Extracts multi-modal visual diagrams and flowcharts via Gemini 2.5 Flash / Vertex AI Vision.<br>• Calculates real-time prompt/completion token spend and logs costs. |
-| **Stage 3: Vector HNSW Indexing & RAG** | [`extractor/rag.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/rag.py) | • Executes semantic boundary chunking (`chunk_document_semantically`).<br>• Generates text embeddings and writes to SurrealDB HNSW vector index (`DIMENSION 768`).<br>• Executes Reciprocal Rank Fusion (RRF) combining BM25 keyword matching with dense HNSW vector search.<br>• Manages TTL-enforced RAG cache (`upsert_rag_cache`) for fast semantic retrieval. |
-| **Stage 4: Knowledge Graph Storage** | [`extractor/surreal_db.py`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/extractor/surreal_db.py) | • Upserts semantic entities (`upsert_entity()`) with HNSW 768 vector embeddings.<br>• Connects document chunks to entities via `chunk_references` graph edges (`relate_chunk_to_entity()`).<br>• Establishes relationships between concepts via `entity_relations`.<br>• Facilitates multi-hop reasoning (`query_knowledge_graph()`). |
+The browser dashboard uses complete, authenticated status snapshots with Realtime hints. This keeps the interface correct even if a transient notification is missed, while the worker remains the only production path that performs document processing.
 
----
+## Local development
 
-## 🧰 Technology Stack Inventory
-
-| Component Layer | Technology / Tool | Version / Details | Purpose |
-| ----------------- | ------------------- | ------------------- | --------- |
-| **Core Framework** | Python / Django | Python 3.14 · Django 6.x | Core MVC architecture, ORM data layer, admin backend, session management |
-| **Relational Storage & Auth** | Supabase PostgreSQL / Supabase Auth | PostgreSQL 17 · GoTrue REST API · Cloudflare Turnstile | User identity, authentication, session tokens with `gotrue_meta_security`, spend logs, and audit trails |
-| **High-Throughput Vector & Cache DB** | SurrealDB | v3.x (HNSW Indexing) · SDK `surrealdb==2.0.0` | Multi-model vector store (HNSW 768 cosine), prompt prefix cache (`context_cache`), sliding rate limits (`rate_limits`), and `user_memories` |
-| **Knowledge Graph Engine** | SurrealDB | Graph Relational | Stores nodes (`entities`), semantic embeddings (HNSW 768), and bidirectional graph edges (`chunk_references`, `entity_relations`) for multi-hop RAG |
-| **Secrets & Keyless IAM** | GCP Secret Manager / IAM ADC | Application Default Credentials (ADC) | Keyless IAM runtime authentication, dynamic resolution of API keys (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) with zero committed secrets |
-| **LLM Gateway & Multimodal AI** | Google Gemini / Vertex AI / OpenRouter | Gemini 2.5 Flash / 2.5 Flash-Lite (ranked: asia-southeast1 (Singapore) -> europe-west9/europe-west4 (Paris/NL) -> northamerica-northeast1 (Montreal CA)), OpenRouter dynamic `openrouter/free` | Multi-provider fallback chain with cost control, multi-modal diagram extraction, and automated retries |
-| **Cloud Serverless Hosting** | GCP Cloud Run | Fully Managed Serverless · region `asia-southeast1` | Zero-scale web app and worker process containers with ephemeral stateless persistence |
-| **Asynchronous Task Queue** | GCP Cloud Tasks | OIDC Authenticated Worker Tasks | Production asynchronous document processing queue with localized thread fallbacks |
-| **Cloud Object Storage** | Google Cloud Storage | GCS Bucket (`google-cloud-storage`) | Secure cloud asset storage for raw documents and curated export bundles |
-| **CI/CD & Git Automation** | GitHub Actions / GitHub CLI | Pinned commit SHAs · `gh` CLI | 3-Phase Shift-Left validation, CodeQL, and Dependabot security |
-| **Container Runtime & Build** | Docker / Kaniko | Multi-stage OWASP non-root build · Kaniko debug image | Immutable digest-pinned containers with zero shell footprint in the application startup path |
-| **DevSecOps & SAST Suite** | SonarCloud / Semgrep Cloud SAST / Hadolint / Ruff / Mypy / ast-grep / **surreal validate** / Desloppify | SonarCloud Quality Gate, Semgrep SAST, SurrealQL validation | Shift-left security verification, static typing, regex ReDoS prevention, and continuous codebase health |
-| **AI Agent Tooling & MCP** | Sequential Thinking / SonarCloud / Google Cloud Logging / Chrome DevTools / Google Dev Knowledge | Model Context Protocol (MCP) servers | Fast grounded triage, multi-step sequential reasoning, live quality gate queries, Cloud Run log inspection, and UI/UX accessibility auditing |
-
----
-
-## ✨ Core Feature Matrix
-
-- 🧠 **Knowledge Graph RAG**: Employs SurrealDB's graph relational model to connect semantic entities, multi-hop `entity_relations`, and `chunk_references` for advanced reasoning.
-- ⚡ **Real-Time SSE Streaming**: Low-latency Server-Sent Events (`/api/v1/stream-query/`) endpoint for instant token streaming to live UIs.
-- 🌐 **Multilingual & RTL Layout Preservation**: Full support for Right-to-Left Arabic text formatting and multi-column document parsing.
-- 📦 **Curated ZIP Archival Export**: Bundles filtered documents into organized folder hierarchies (`Language/English`, `Author/Shakespeare`) complete with `manifest.json` and combined `master_archival_source.md`.
-- 🔎 **Hybrid Semantic RAG Search**: Combines SurrealDB HNSW vector search with BM25 sparse keyword matching using Reciprocal Rank Fusion (RRF).
-- 💰 **Persisted Monthly Spend Accounting**: Persists deleted document costs via `MonthlySpendLog.add_cost()` to maintain financial audit integrity even after purging records.
-- 🛡️ **SOC 2 & ISO 27001 Audit Logs**: Logs client IP addresses (`get_client_ip`), user IDs, action names, and timestamps in an immutable audit trail (`AuditLogListView`).
-
----
-
-## 🛡️ DevSecOps & 5-Phase Quality Gates
-
-KORDA strictly enforces **Shift-Left Local Verification** before code can be committed or merged into production branches.
-
-### 🧪 Complete Verification Gate (`run_checks.sh`)
-
-Execute the local verification script to validate all quality gates prior to opening a Pull Request. Pipeline failure propagation ensures captured test output cannot turn a failed command into a false-green result:
+KORDA targets the Python version declared in `pyproject.toml` and uses Node.js for the browser test suite.
 
 ```bash
-bash run_checks.sh --autofix
-# OR the full pipeline (includes git pull, Desloppify, and SonarCloud submission):
-bash scripts/verify-pipeline.sh
-```
-
-`run_checks.sh` executes the complete quality gate pipeline in sequence:
-
-1. **Phase 1: Code Formatting & Syntax**:
-   - Ruff AST Formatter (`ruff format --check .`)
-   - Ruff Cyclomatic Complexity & Linter (`ruff check .`)
-   - Yamllint Configuration Audit & Hadolint Docker Hardening
-2. **Phase 2: Infrastructure & Schema Validation**:
-   - Mypy Data Flow & Static Type Checker (`mypy core/ extractor/`)
-   - AST-Grep Structural Pattern Auditor (`ast-grep scan`)
-   - **SurrealQL Schema Validator** (`surreal validate **/*.surql`) — enforces SurrealQL syntax on all `.surql` files
-   - ShellCheck POSIX Script Safety Auditor (`shellcheck run_checks.sh scripts/*.sh`)
-3. **Phase 3: Deep Security & SAST Audit**:
-   - Semgrep OSS SAST Engine (`semgrep scan --config=auto`) — strict 0 findings gate
-   - Bandit ReDoS & Cryptographic Vulnerability Auditor (`bandit -c bandit.yaml`)
-   - Pip-Audit Supply-Chain CVE Dependency Audit (`pip-audit -r requirements.txt`)
-4. **Phase 4: Runtime Verification & Test Suite**:
-   - Django System Integrity Check (`python manage.py check`)
-   - Django Unit Test Suite & Coverage Export (`coverage run manage.py test` & `coverage.xml`)
-5. **Phase 5: Documentation Governance & SonarCloud Gate**:
-   - Markdownlint Syntax Auditor (`markdownlint README.md docs/gcp_deployment_guide.md`)
-   - Automated Version & Metadata Synchronizer (`python scripts/update_docs.py`)
-   - GitHub workflow updates are manual-only to avoid auto-commits on `main`
-     that can create merge/rebase churn.
-
-### 🔒 Remote 3-Phase CI/CD Pipeline
-
-Every commit pushed to GitHub automatically triggers the remote CI/CD workflow (`.github/workflows/ci.yml`):
-
-1. **Pre-Scan Validation**: Blocks on shell-script or container-file lint failures (`hadolint`).
-2. **SonarCloud Deep SAST & Multi-Language Quality Gate**: Runs Ruff, ESLint, Python coverage tests (`coverage.xml`), JavaScript coverage tests (Vitest LCOV), and SonarCloud code analysis, alongside a separate parallel Semgrep Cloud SAST job across both pull requests and mainline pushes with native GitHub PR annotations.
-3. **Quality Gate Gatekeeper**: Publishes the actionable condition table to the Actions log and summary, annotates failing metrics, and blocks failed gates. Cloud Build independently waits for that exact commit check before mutating Cloud Run.
-
-Before either Cloud Run deployment, Cloud Build also verifies the Pulumi-managed media bucket, dedicated runtime service account, and its object-storage IAM binding. A deployment cannot replace a healthy revision when that storage contract is missing or inconsistent.
-
-The PR lifecycle workflow automatically compares every open PR with its target
-branch after a merge, updates a stale branch, and enables squash auto-merge only
-after it is mergeable. Refresh, conflict, and GitHub CLI errors fail the workflow
-visibly so a successful lifecycle check proves it performed the intended action.
-
-Cloud Build uses Kaniko's BusyBox-enabled debug image, pinned by immutable
-digest, when a build step must source computed release metadata. The standard
-executor image is shell-less. It uses a registry-backed cache and bounded pull,
-extraction, and push retries.
-
----
-
-## 🚀 Local Development Setup Guide
-
-### 1. Prerequisites
-
-- **Python**: Target version declared in `pyproject.toml` (Python 3.14+ required)
-- **Node.js**: Node.js v20+ & npm (for Vitest & ESLint 10)
-- **uv**: Astral `uv` Python package manager (recommended for sub-second installs)
-- **Docker**: Docker & Docker Compose (optional for local SurrealDB)
-- **Pulumi & gcloud CLI**: Optional for infrastructure deployment & DR testing
-
-### 2. Environment Configuration
-
-Create a `.env` file in the root directory with the complete set of local settings:
-
-```env
-# Core Django & Security
-DJANGO_SECRET_KEY="your-secure-development-secret-key"
-DJANGO_DEBUG=True
-DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
-
-# LLM Gateway & APIs
-GEMINI_API_KEY="your-gemini-api-key"
-# Only this server-configured identity is eligible for Django administrator access.
-ADMIN_EMAIL="admin@example.com"
-
-# SurrealDB Vector & High-Throughput Engine (Local or Remote)
-SURREAL_URL="ws://localhost:8001/rpc"
-SURREAL_USER="root"
-SURREAL_PASS="root"
-# Bound the shared SurrealDB RPC executor; tune only with production load evidence.
-SURREAL_EXECUTOR_WORKERS="16"
-
-SURREALDB_OFFLINE=False
-
-# Supabase Auth & PostgreSQL (Optional for local offline SQLite fallback)
-SUPABASE_URL="https://<YOUR_PROJECT_ID>.supabase.co"
-SUPABASE_PUBLIC_KEY="your-supabase-public-anon-key"
-SUPABASE_SERVICE_ROLE_KEY="your-supabase-service-role-key"
-
-# Cloudflare Turnstile Bot Defense (Optional in local development)
-CF_TURNSTILE_SITE_KEY="your-turnstile-site-key"
-
-# Sentry Observability (Optional in local development)
-SENTRY_DSN=""
-```
-
-`bash run_checks.sh` and CI enforce reliability contracts for worker task fencing, recovery-token lifetime, YAML export escaping, and dashboard polling. These checks are derived from production-relevant SonarQube and review findings and are intentionally blocking.
-
-> [!NOTE]
-> For production and remote SurrealDB deployments, `SURREAL_URL` must use a secure WebSocket RPC endpoint (`wss://<surrealdb-host>/rpc`). For purely offline testing without a live SurrealDB server, set `SURREALDB_OFFLINE=True`.
-
-### 3. Install Dependencies & Initialize Database
-
-```bash
-# Recommended: use uv (ultra-fast Python package manager)
 uv venv .venv
 source .venv/bin/activate
-
-# Install Python & JS development dependencies
 uv pip install -r requirements-dev.txt
-npm install
-
-# Run database migrations & bootstrap SurrealDB schemas
+npm ci
+export SURREALDB_OFFLINE=True
 python manage.py migrate
-python scripts/init_surreal.py
+python manage.py runserver
 ```
 
-### 4. Launch Development Server
+For offline development, set `SURREALDB_OFFLINE=True`; this uses the local SQLite database `db.sqlite3` and does not require `DATABASE_URL` or SurrealDB credentials. Production configuration is documented in the [GCP deployment guide](docs/gcp_deployment_guide.md).
+
+## Quality and security
+
+Run the complete local gate before committing source, UI, workflow, or infrastructure changes:
 
 ```bash
-python manage.py runserver 0.0.0.0:8000
-```
-
-Access the application in your browser at `http://localhost:8000`.
-
-### 5. Execute Full Quality & Test Verification
-
-```bash
-# Run the differential pre-commit check:
-bash run_checks.sh --fast
-
-# Run the complete 5-layer DevSecOps test & security suite:
 bash run_checks.sh
 ```
 
----
+`bash run_checks.sh` is the local lint, type, test, and security gate. GitHub Actions adds Dependency Review, CodeQL, Semgrep SARIF, and zizmor; SonarCloud runs its separate hosted analysis. Cloud Build requires commit-scoped passing SonarCloud, CodeQL, and Semgrep results before deployment. CI installs application checks from the committed `uv.lock`, keeps Semgrep isolated, and checks out the repository before workflow-security analysis. Production images receive an SPDX SBOM generated with Syft and attached to the same resolved Artifact Registry digest.
 
-## ☁️ Cloud Run Deployment & Live Diagnostics
+## Contributing
 
-### Deploying to GCP Cloud Run
+Keep changes focused, preserve tenant boundaries and task-identity fencing, and run the relevant verification gate. For GCP changes, use the existing Pulumi project and preview infrastructure changes before applying them.
 
-Refer to the complete step-by-step deployment and Pulumi IaC guide in [`docs/gcp_deployment_guide.md`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/docs/gcp_deployment_guide.md).
+## License
 
-### Live Cloud Diagnostics
-
-To inspect readiness, recent revisions, and recent runtime errors without reading
-secrets or changing cloud resources:
-
-```bash
-bash scripts/gcp-diagnostics.sh --service all
-```
-
----
-
-## 📄 License
-
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [`LICENSE`](file:///media/elang/TMSSD/CrossSharing/Repos/AetherOmni/LICENSE) for full details.
+KORDA is licensed under [AGPL-3.0](LICENSE).

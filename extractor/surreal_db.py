@@ -652,26 +652,93 @@ def _apply_offline_doc_update(doc, data, user_model):
             setattr(doc, k, v)
 
 
+def _offline_document_lookup(doc_uuid):
+    import uuid
+
+    try:
+        uuid.UUID(str(doc_uuid))
+        return {"uuid": doc_uuid}
+    except ValueError:
+        return {"id": int(doc_uuid)}
+
+
+def _retry_sqlite_lock(operation):
+    """Retry only transient SQLite lock errors with a small bounded backoff."""
+    import time
+
+    from django.db import OperationalError, connection
+
+    for attempt in range(3):
+        try:
+            return operation()
+        except OperationalError as exc:
+            if connection.vendor != "sqlite" or "locked" not in str(exc).lower() or attempt == 2:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+    raise RuntimeError("unreachable")
+
+
+def _offline_update_values(data, user_model):
+    from extractor.models import SourceDocument
+
+    valid_fields = {field.name for field in SourceDocument._meta.fields}
+    values = {}
+    for key, value in data.items():
+        if key == "uploaded_by_id":
+            values[key] = value if value and user_model.objects.filter(id=value).exists() else None
+        elif key == "expires_at":
+            from django.utils.dateparse import parse_datetime
+
+            values[key] = parse_datetime(value) if value else None
+        elif key in valid_fields:
+            values[key] = value
+    return values
+
+
+def _update_document_worker_offline(source_document, lookup, data, user_model, expected_task):
+    values = _offline_update_values(data, user_model)
+
+    def conditional_update():
+        from django.utils import timezone
+
+        query = source_document.objects.filter(**lookup, cancel_requested=False)
+        if expected_task:
+            query = query.filter(cloud_task_name=expected_task)
+        if not values:
+            doc = query.first()
+            return _model_to_dict(doc) if doc else {}
+        if query.update(**values, updated_at=timezone.now()) != 1:
+            return {}
+        return _model_to_dict(source_document.objects.get(**lookup))
+
+    return _retry_sqlite_lock(conditional_update)
+
+
 def _update_document_offline(doc_uuid, data):
     from django.contrib.auth import get_user_model
+    from django.db import transaction
 
     from extractor.models import SourceDocument
 
     user_model = get_user_model()
     try:
-        import uuid
-
-        try:
-            uuid.UUID(str(doc_uuid))
-            doc = SourceDocument.objects.get(uuid=doc_uuid)
-        except ValueError:
-            doc = SourceDocument.objects.get(id=int(doc_uuid))
-    except SourceDocument.DoesNotExist, ValueError:
+        lookup = _offline_document_lookup(doc_uuid)
+    except ValueError:
         return {}
 
-    _apply_offline_doc_update(doc, data, user_model)
-    doc.save()
-    return _model_to_dict(doc)
+    expected_task = document_task_name.get()
+    if CANCEL_REQUESTED not in data:
+        return _update_document_worker_offline(SourceDocument, lookup, data, user_model, expected_task)
+
+    with transaction.atomic():
+        try:
+            doc = SourceDocument.objects.select_for_update().get(**lookup)
+        except SourceDocument.DoesNotExist:
+            return {}
+
+        _apply_offline_doc_update(doc, data, user_model)
+        doc.save()
+        return _model_to_dict(doc)
 
 
 def _update_document_surreal(doc_uuid, data):

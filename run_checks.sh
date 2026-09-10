@@ -177,7 +177,8 @@ if [[ "$DOCS_ONLY" = true ]]; then
     CHANGED_TEMPLATES=$(echo "$CHANGED_FILES" | grep -E '\.(py|html|js|css)$' || true)
     if [[ -n "$CHANGED_TEMPLATES" ]]; then
         echo -e "${YELLOW}[Diff Audit] Verifying Django System Integrity & Template Configuration...${NC}"
-        $PYTHON_BIN manage.py check --deploy --fail-level=ERROR || exit 1
+        SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
+            $PYTHON_BIN manage.py check --deploy --fail-level=ERROR || exit 1
         $PYTHON_BIN scripts/verify_templates_and_assets.py || exit 1
         echo -e "${GREEN}✓ Django system check & template asset integrity passed cleanly (0 errors).${NC}"
     fi
@@ -413,11 +414,13 @@ fi
 # ── PHASE 4: RUNTIME INTEGRITY & AUTOMATED VERIFICATION ──────────────────────
 
 echo -e "\n${YELLOW}[System Integrity] Verifying Django Application Configuration...${NC}"
-$PYTHON_BIN manage.py check
+SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
+    $PYTHON_BIN manage.py check
 echo -e "${GREEN}✓ Django system integrity verification completed cleanly.${NC}"
 
 echo -e "\n${YELLOW}[Schema Drift] Checking for missing Django database migrations...${NC}"
-$PYTHON_BIN manage.py makemigrations --check --dry-run
+SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
+    $PYTHON_BIN manage.py makemigrations --check --dry-run
 echo -e "${GREEN}✓ Database schema is synchronized with Django models (0 unapplied model changes).${NC}"
 
 echo -e "\n${YELLOW}[Automated Testing] Executing Django Unit Test Suite & Coverage Analysis...${NC}"

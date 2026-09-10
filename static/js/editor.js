@@ -287,8 +287,7 @@ async function copyTextToClipboard(text) {
     textarea.focus();
     textarea.select();
     try {
-        // NOSONAR -- Clipboard API is unavailable on legacy/insecure contexts; this is the bounded fallback.
-        const successful = document.execCommand('copy');
+        const successful = document.execCommand('copy'); // NOSONAR -- Clipboard API is unavailable on legacy/insecure contexts; this is the bounded fallback.
         if (!successful) {
             throw new Error('execCommand copy returned false');
         }

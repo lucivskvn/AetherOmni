@@ -45,7 +45,7 @@ Key operational policies:
 
 - **Zero Committed Secrets & Dynamic Project Resolution**: Cloud Run service manifests and Pulumi configurations resolve project IDs and Secret Manager references dynamically at runtime (`GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`).
 - **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks-v2`, and GCS bucket `<PROJECT_ID>-media-korda`) are colocated in **`asia-southeast1` (Singapore)** to eliminate cross-region egress and intra-region data transfer fees.
-- **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching and SonarCloud Quality Gate verification. The deployment fails before either service is updated if `SUPABASE_DATABASE_URL` is unavailable; production must not silently use SQLite.
+- **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching, an SPDX SBOM attached to the immutable Artifact Registry image, and SonarCloud Quality Gate verification. The deployment fails before either service is updated if `SUPABASE_DATABASE_URL` is unavailable; production must not silently use SQLite.
 
 ---
 
@@ -520,9 +520,9 @@ provisioning and reconciliation path after infrastructure import and preview.
 
 ## 8. Continuous Updates & Redeployment
 
-Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. With SonarCloud on the public repository, the CI pipeline blocks on repository-native shift-left checks, GitHub security tools, test suite with coverage, and SonarCloud analysis across all PRs and pushes with native PR annotations. Cloud Build automatically builds the immutable container, but updates both Cloud Run services only after the exact commit's quality gate succeeds:
+Whenever you update your code, run the local verification suite first. Its differential pre-commit gate runs Bandit, Semgrep, AST-Grep, and ShellCheck on relevant changed files and rejects newly added unreasoned suppressions. Pipeline failures propagate through output capture, so a failed test cannot be reported as successful. GitHub-managed CodeQL and the SonarCloud GitHub integration publish their own code-scanning results; CI blocks on repository-native shift-left checks, Semgrep SARIF publication, zizmor, dependency review, and the test suite with coverage without resubmitting a duplicate SonarCloud scan. OpenSSF Scorecard reports supply-chain posture on the default branch without blocking delivery. Cloud Build automatically builds the immutable container, but updates both Cloud Run services only after the exact commit's required SonarCloud check succeeds:
 
-CI installs Python security scanners in an isolated environment if their dependency graph differs from the application runtime. AST-Grep is invoked through its pinned official npm CLI because the similarly named Python package does not expose a command-line executable. This preserves reproducible application tests and keeps all scanner results blocking.
+CI installs application checks from the committed `uv.lock` and keeps dependency-divergent Python security scanners such as Semgrep in an isolated environment. Workflow-security scanners check out the repository before auditing it so an empty runner workspace cannot produce a false failure. Cloud Build resolves the pushed image digest once and uses that same immutable reference for both Syft SBOM generation and Artifact Registry attachment. AST-Grep is invoked through its pinned official npm CLI because the similarly named Python package does not expose a command-line executable. This preserves reproducible application tests and keeps all required scanner results blocking.
 
 ```bash
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)

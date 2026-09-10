@@ -19,7 +19,6 @@ from typing import Any
 
 from django.conf import settings
 from django.core.files.storage import default_storage
-from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -551,10 +550,52 @@ def _acquire_stage1_raw_markdown(
     )
 
 
+def _save_stage1_offline(document_id, fallback_doc, stage1_result):
+    """Persist Stage 1 output only while the locked offline row still belongs to this worker."""
+    from django.db.models import F
+
+    from extractor.models import SourceDocument
+
+    raw_markdown, doc_type_detected, page_count_detected, stage1_cost, input_tokens, output_tokens = stage1_result
+    try:
+        lookup = surreal_db._offline_document_lookup(document_id)
+    except ValueError:
+        return fallback_doc, False
+
+    def conditional_update():
+        query = SourceDocument.objects.filter(**lookup, cancel_requested=False)
+        expected_task = surreal_db.document_task_name.get()
+        if expected_task:
+            query = query.filter(cloud_task_name=expected_task)
+        updated = query.update(
+            document_type=doc_type_detected,
+            page_count=page_count_detected,
+            raw_markdown=raw_markdown,
+            input_tokens=F("input_tokens") + input_tokens,
+            output_tokens=F("output_tokens") + output_tokens,
+            cost_usd=F("cost_usd") + stage1_cost,
+            status="REFINING",
+            updated_at=timezone.now(),
+        )
+        if updated != 1:
+            return fallback_doc, False
+        return SourceDocument.objects.get(**lookup), True
+
+    return surreal_db._retry_sqlite_lock(conditional_update)
+
+
 def _run_stage1(working_path: str, document_id: str | int) -> Any:
     """Stage 1: OCR / local parsing."""
     doc, lower_name, doc_id_display = _get_doc_info_stage1(document_id)
     file_hash = (doc.get("file_hash") if isinstance(doc, dict) else getattr(doc, "file_hash", None)) or ""
+
+    stage1_result = _acquire_stage1_raw_markdown(working_path, lower_name, doc, file_hash, doc_id_display)
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        doc_ref, saved = _save_stage1_offline(document_id, doc, stage1_result)
+        if saved:
+            broadcast_status_change(str(doc_ref.uuid), "REFINING")
+        return doc_ref
 
     (
         raw_markdown,
@@ -563,49 +604,23 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
         stage1_cost,
         stage1_input_tokens,
         stage1_output_tokens,
-    ) = _acquire_stage1_raw_markdown(working_path, lower_name, doc, file_hash, doc_id_display)
+    ) = stage1_result
+    current_input = doc.get("input_tokens") or 0
+    current_output = doc.get("output_tokens") or 0
+    current_cost = doc.get("cost_usd") or 0.0
 
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        with transaction.atomic():
-            from extractor.models import SourceDocument
-
-            try:
-                import uuid
-
-                try:
-                    uuid.UUID(str(document_id))
-                    doc_ref = SourceDocument.objects.select_for_update().get(uuid=document_id)
-                except ValueError:
-                    doc_ref = SourceDocument.objects.select_for_update().get(id=int(document_id))
-            except SourceDocument.DoesNotExist, ValueError:
-                doc_ref = doc
-            doc_ref.document_type = doc_type_detected
-            doc_ref.page_count = page_count_detected
-            doc_ref.raw_markdown = raw_markdown
-            doc_ref.input_tokens += stage1_input_tokens
-            doc_ref.output_tokens += stage1_output_tokens
-            doc_ref.cost_usd += stage1_cost
-            doc_ref.status = "REFINING"
-            doc_ref.save()
-        broadcast_status_change(str(doc_ref.uuid), "REFINING")
-        return doc_ref
-    else:
-        current_input = doc.get("input_tokens") or 0
-        current_output = doc.get("output_tokens") or 0
-        current_cost = doc.get("cost_usd") or 0.0
-
-        updated_data = {
-            "document_type": doc_type_detected,
-            "page_count": page_count_detected,
-            "raw_markdown": raw_markdown,
-            "input_tokens": current_input + stage1_input_tokens,
-            "output_tokens": current_output + stage1_output_tokens,
-            "cost_usd": float(Decimal(str(current_cost)) + stage1_cost),
-            "status": "REFINING",
-        }
-        surreal_db.update_document(str(doc.get("doc_uuid")), updated_data)
-        broadcast_status_change(str(doc.get("doc_uuid")), "REFINING")
-        return doc
+    updated_data = {
+        "document_type": doc_type_detected,
+        "page_count": page_count_detected,
+        "raw_markdown": raw_markdown,
+        "input_tokens": current_input + stage1_input_tokens,
+        "output_tokens": current_output + stage1_output_tokens,
+        "cost_usd": float(Decimal(str(current_cost)) + stage1_cost),
+        "status": "REFINING",
+    }
+    surreal_db.update_document(str(doc.get("doc_uuid")), updated_data)
+    broadcast_status_change(str(doc.get("doc_uuid")), "REFINING")
+    return doc
 
 
 def _sanitise_yaml_block(raw: str) -> str:
