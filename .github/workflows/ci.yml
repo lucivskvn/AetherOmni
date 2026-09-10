@@ -141,7 +141,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           pip install --no-cache-dir --only-binary :all: --upgrade pip==26.0.1
-          pip install --no-cache-dir --only-binary :all: -r requirements-dev.txt --quiet  # NOSONAR: requirements-dev.txt and its included application requirements use exact pins.
+          pip install --no-cache-dir --only-binary :all: -r requirements-dev.txt --quiet  # NOSONAR githubactions:S8544 -- Included requirements are exact-pinned.
           python -m venv .semgrep-venv
           .semgrep-venv/bin/pip install --no-cache-dir --only-binary :all: --upgrade pip==26.0.1 --quiet
           .semgrep-venv/bin/pip install --no-cache-dir --only-binary :all: semgrep==1.176.1 --quiet
