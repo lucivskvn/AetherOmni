@@ -2224,6 +2224,24 @@ dialog.settings-dialog .dialog-footer button i {
     -webkit-text-fill-color: transparent !important;
 }
 
+/* Keep the third-party sign-in affordance legible when the card is light. */
+[data-theme="light"] .btn-github-auth {
+    background: #1f2937;
+    border-color: #334155;
+    color: #ffffff;
+}
+
+[data-theme="light"] .btn-github-auth:hover {
+    background: #111827;
+    border-color: #1f2937;
+    color: #ffffff;
+}
+
+[data-theme="light"] .login-divider::before,
+[data-theme="light"] .login-divider::after {
+    border-color: rgba(15, 23, 42, 0.18);
+}
+
 /* Processing Pipeline card and other explicit dark backgrounds in light mode */
 [data-theme="light"] .processing-pipeline-card {
     background: rgba(241, 245, 249, 0.5) !important;
@@ -2515,3 +2533,33 @@ dialog.settings-dialog .dialog-footer button i {
     color: #b91c1c !important;
     border-color: rgba(185, 28, 28, 0.3) !important;
 }
+
+/* ── Unified dashboard design system ────────────────────────────────────── */
+:root { --surface-raised: #111827; --surface-input: #0b1220; --surface-hover: #1f2937; --border-subtle: #334155; --text-link: #a5b4fc; --status-success-fg: #6ee7b7; --status-pending-fg: #fcd34d; --status-processing-fg: #a5b4fc; --status-failed-fg: #fca5a5; }
+[data-theme="light"] { --surface-raised: #ffffff; --surface-input: #ffffff; --surface-hover: #f1f5f9; --border-subtle: #cbd5e1; --text-link: #4338ca; --status-success-fg: #047857; --status-pending-fg: #92400e; --status-processing-fg: #3730a3; --status-failed-fg: #b91c1c; }
+
+header, footer { background: var(--surface-raised); }
+.nav-container { padding-block: 14px; }
+.brand-logo { gap: 10px; }
+.brand-mark { flex: 0 0 auto; filter: drop-shadow(0 6px 12px var(--primary-glow)); }
+.brand-wordmark { color: var(--text-heading); font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; letter-spacing: -0.05em; }
+.release-badge { align-self: center; background: var(--surface-hover); border: 1px solid var(--border-subtle); border-radius: 999px; color: var(--text-muted); display: inline-flex; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.04em; margin-left: 4px; padding: 3px 8px; }
+.glass-card, .filter-card, .files-panel, .search-panel { background: var(--surface-raised); border-color: var(--border-subtle); }
+.btn-secondary { background: var(--surface-raised); border-color: var(--border-subtle); color: var(--text-main); }
+.btn-secondary:hover { background: var(--surface-hover); border-color: var(--primary); }
+.dashboard-intro { align-items: end; display: flex; gap: 24px; justify-content: space-between; margin: 8px 0 28px; }
+.dashboard-intro h1 { font-size: clamp(1.75rem, 3vw, 2.5rem); line-height: 1.12; margin: 4px 0 10px; max-width: 760px; }
+.dashboard-intro p:not(.eyebrow) { color: var(--text-muted); max-width: 680px; }
+.eyebrow { color: var(--primary); font-size: 0.75rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.dashboard-upload-action { flex: 0 0 auto; white-space: nowrap; }
+.metric-card { min-height: 150px; }
+.metric-value, .token-value-text { color: var(--text-heading); }
+.budget-bar-container, .upload-zone, .search-input, .table-filter-input, select, input[type="search"] { background: var(--surface-input); border-color: var(--border-subtle); color: var(--text-main); }
+.upload-zone { border-color: var(--border-subtle); min-height: 210px; }
+.upload-zone:hover, .upload-zone.dragover, .upload-zone:focus-visible { background: color-mix(in srgb, var(--primary) 8%, var(--surface-raised)); }
+.search-results, .export-footer { background: var(--surface-raised); border-color: var(--border-subtle); }
+td { border-bottom-color: var(--border-subtle); }
+tr:hover td { background: var(--surface-hover); }
+.doc-title-cell a, .sort-link:hover, .result-answer a { color: var(--text-link); }
+.badge-completed { color: var(--status-success-fg); }.badge-pending { color: var(--status-pending-fg); }.badge-processing { color: var(--status-processing-fg); }.badge-failed { color: var(--status-failed-fg); }
+@media (max-width: 720px) { main { padding: 18px; }.dashboard-intro { align-items: flex-start; flex-direction: column; }.dashboard-upload-action { width: 100%; }.release-badge { display: none; }.nav-container { padding-inline: 18px; }.nav-actions { gap: 6px; }.nav-link { padding: 8px; } }

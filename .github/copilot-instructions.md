@@ -54,10 +54,12 @@ pull, stash, perform remote scans, or deploy.
 - Once `run_checks.sh` passes locally and the user approves remote pushing, push to `origin main` or open a PR.
 - The 3-phase GitHub Actions pipeline will automatically trigger:
      1. Pre-Scan Validation — blocking Hadolint + shell script syntax check
-     2. SonarCloud Quality Gate & Shift-Left Security — runs Ruff, ESLint, strict Sonar-aligned YAML linting, AST-Grep regex rules, Semgrep, Bandit, tests with coverage, and official SonarCloud analysis across both PRs and mainline pushes with native GitHub annotations.
-     3. Quality Gate Gatekeeper — publishes the actionable condition table in both the Actions log and summary, annotates failures, and blocks violations
+     2. Shift-Left Security — runs Ruff, ESLint, strict Sonar-aligned YAML linting, AST-Grep regex rules, Semgrep, Bandit, and tests with coverage.
+  - GitHub-managed CodeQL and the SonarCloud GitHub integration publish code-scanning findings. CI publishes blocking Semgrep SARIF findings, while Dependency Review rejects newly introduced moderate-or-higher vulnerable dependencies on pull requests.
+  - CI blocks on zizmor GitHub Actions security findings. OpenSSF Scorecard publishes scheduled, advisory supply-chain posture findings to GitHub code scanning.
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
-  - Cloud Build may construct the immutable image in parallel, but it must wait for a successful GitHub SonarCloud Quality Gate check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
+  - Cloud Build may construct the immutable image in parallel, but it must wait for the successful GitHub SonarCloud check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
+  - Cloud Build must generate an SPDX SBOM with pinned open-source Syft and attach it to the immutable Artifact Registry image. Do not enable billed Artifact Analysis scanning solely to generate SBOMs.
   - Before deployment, Cloud Build must verify the Pulumi-managed media bucket, the dedicated runtime service account, and that account's `roles/storage.objectAdmin` binding. These checks are blocking and must use the same dynamic project-derived names as Pulumi.
 
 ### 4.1 Native GitHub Auto-Merge & PR Creation Protocol

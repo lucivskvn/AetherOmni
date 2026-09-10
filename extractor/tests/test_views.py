@@ -852,6 +852,14 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
         # Should not raise exception
         csrf_mw.process_view(request, dummy_view, (), {})
 
+    @patch("core.middleware.urllib.parse.urlparse", side_effect=ValueError("malformed origin"))
+    @patch("core.middleware.logger")
+    def test_origin_parse_failure_does_not_log_origin_or_error(self, logger, _parse):
+        from core.middleware import _extract_host_from_origin
+
+        self.assertIsNone(_extract_host_from_origin("https://secret.example.test"))
+        logger.debug.assert_called_once_with("[Middleware] Could not parse host from origin")
+
     def test_csrf_middleware_is_loopback_variations(self):
         """Verify _is_loopback handles empty, IPv6, and non-loopback inputs."""
         from core.middleware import DynamicCsrfTrustedOriginsMiddleware

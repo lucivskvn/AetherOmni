@@ -90,12 +90,9 @@
     <header>
         <div class="nav-container">
             <a href="{% url 'dashboard' %}" class="brand-logo" aria-label="KORDA Dashboard">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    <path d="m9 12 2 2 4-4"/>
-                </svg>
-                <h1>KORDA</h1>
-                <span class="release-badge" style="font-family: var(--font-mono, monospace); font-size: 9px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3); color: var(--text-glow, #a5b4fc); padding: 2px 6px; border-radius: 4px; font-weight: 700; letter-spacing: 0.05em; margin-left: 8px; display: inline-flex; align-items: center; align-self: center;" title="Release: v{{ RELEASE_VERSION }} | Commit: {{ COMMIT_SHA }}">
+                <img class="brand-mark" src="{% static 'img/korda-mark.svg' %}" width="36" height="36" alt="">
+                <span class="brand-wordmark">KORDA</span>
+                <span class="release-badge" title="Release: v{{ RELEASE_VERSION }} | Commit: {{ COMMIT_SHA }}">
                     v{{ RELEASE_VERSION }} &middot; {{ COMMIT_SHA }}
                 </span>
             </a>

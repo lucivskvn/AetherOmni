@@ -654,24 +654,30 @@ def _apply_offline_doc_update(doc, data, user_model):
 
 def _update_document_offline(doc_uuid, data):
     from django.contrib.auth import get_user_model
+    from django.db import transaction
 
     from extractor.models import SourceDocument
 
     user_model = get_user_model()
-    try:
-        import uuid
-
+    with transaction.atomic():
         try:
-            uuid.UUID(str(doc_uuid))
-            doc = SourceDocument.objects.get(uuid=doc_uuid)
-        except ValueError:
-            doc = SourceDocument.objects.get(id=int(doc_uuid))
-    except SourceDocument.DoesNotExist, ValueError:
-        return {}
+            import uuid
 
-    _apply_offline_doc_update(doc, data, user_model)
-    doc.save()
-    return _model_to_dict(doc)
+            try:
+                uuid.UUID(str(doc_uuid))
+                doc = SourceDocument.objects.select_for_update().get(uuid=doc_uuid)
+            except ValueError:
+                doc = SourceDocument.objects.select_for_update().get(id=int(doc_uuid))
+        except SourceDocument.DoesNotExist, ValueError:
+            return {}
+
+        expected_task = document_task_name.get()
+        if expected_task and (doc.cancel_requested or doc.cloud_task_name != expected_task):
+            return {}
+
+        _apply_offline_doc_update(doc, data, user_model)
+        doc.save()
+        return _model_to_dict(doc)
 
 
 def _update_document_surreal(doc_uuid, data):

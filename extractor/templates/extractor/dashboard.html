@@ -4,6 +4,17 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
+<section class="dashboard-intro" aria-labelledby="dashboard-title">
+    <div>
+        <p class="eyebrow">Knowledge workspace</p>
+        <h1 id="dashboard-title">Your document intelligence, in one place.</h1>
+        <p>Ingest source material, monitor processing, and search grounded answers without losing track of cost or progress.</p>
+    </div>
+    <button type="button" class="btn btn-primary dashboard-upload-action" onclick="document.getElementById('file-input').click()">
+        <i data-lucide="upload" aria-hidden="true"></i> Upload documents
+    </button>
+</section>
+
 <!-- Top Metrics Highlights Row -->
 <div class="metrics-row">
     <!-- Total Cost Spend & Budget -->

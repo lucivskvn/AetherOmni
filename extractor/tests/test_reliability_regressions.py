@@ -2,6 +2,7 @@
 
 import json
 from datetime import timedelta
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
@@ -68,6 +69,50 @@ class DashboardReliabilityTests(TestCase):
             surreal_db.document_task_name.reset(token)
 
         self.assertEqual(claimed["status"], "EMBEDDING")
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    def test_offline_worker_update_rechecks_task_fence_under_lock(self):
+        doc = SourceDocument.objects.create(
+            original_filename="fenced.txt", status="EXTRACTING", cloud_task_name="current"
+        )
+        token = surreal_db.document_task_name.set("stale")
+        try:
+            self.assertEqual(surreal_db.update_document(str(doc.uuid), {"status": "REFINING"}), {})
+        finally:
+            surreal_db.document_task_name.reset(token)
+
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, "EXTRACTING")
+
+    @override_settings(SURREALDB_OFFLINE=True)
+    def test_stage1_skips_save_and_broadcast_after_worker_is_cancelled(self):
+        from extractor import tasks
+
+        doc = SourceDocument.objects.create(
+            original_filename="cancelled.txt", status="EXTRACTING", cloud_task_name="current", cancel_requested=True
+        )
+        token = surreal_db.document_task_name.set("current")
+        try:
+            with (
+                patch.object(
+                    tasks,
+                    "_get_doc_info_stage1",
+                    return_value=(surreal_db.get_document(str(doc.uuid)), "txt", str(doc.uuid)),
+                ),
+                patch.object(
+                    tasks,
+                    "_acquire_stage1_raw_markdown",
+                    return_value=("content", "TEXT", 1, Decimal("0"), 0, 0),
+                ),
+                patch.object(tasks, "broadcast_status_change") as broadcast,
+            ):
+                tasks._run_stage1("unused", str(doc.uuid))
+        finally:
+            surreal_db.document_task_name.reset(token)
+
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, "EXTRACTING")
+        broadcast.assert_not_called()
 
     @override_settings(SURREALDB_OFFLINE=True)
     def test_private_hash_deduplication_never_reads_another_users_document(self):

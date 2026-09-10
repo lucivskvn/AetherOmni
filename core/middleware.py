@@ -111,8 +111,8 @@ def _extract_host_from_origin(origin: str) -> str | None:
             # Django ALLOWED_HOSTS uses leading dot (.example.com) for wildcard subdomains
             host = host[1:]
         return host or None
-    except Exception as parse_err:
-        logger.debug("[Middleware] Could not parse host from origin '%s': %s", origin, parse_err)
+    except Exception:
+        logger.debug("[Middleware] Could not parse host from origin")
         return None
 
 
