@@ -15,7 +15,7 @@ The production system consists of:
 5. **Vertex AI & Gemini Multi-Modal Gateway**: Direct Application Default Credentials (ADC) access (`roles/aiplatform.user`) for stable Vertex v1 Gemini 2.5 Flash / Flash-Lite and Vertex AI Vision.
 6. **Cloud Storage (GCS)**: Stores raw, uploaded PDF assets securely in GCP bucket (`GS_BUCKET_NAME`).
 7. **Supabase Auth (GoTrue REST API)**: Handles user credentials, login, and registration securely (configured via `SUPABASE_URL`).
-8. **GCP Secret Manager (Source of Truth for Credentials)**: Sourced and mounted at container runtime into environment variables (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CF_TURNSTILE_SITE_KEY`, `SENTRY_DSN`, `ADMIN_EMAIL`).
+8. **GCP Secret Manager (Source of Truth for Credentials)**: Sourced and mounted at container runtime into environment variables (`DJANGO_SECRET_KEY`, `SURREAL_URL`, `SURREAL_USER`, `SURREAL_PASS`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLIC_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DATABASE_URL`, `CF_TURNSTILE_SITE_KEY`, `SENTRY_DSN`, `ADMIN_EMAIL`).
 
 `SURREAL_EXECUTOR_WORKERS` is a non-secret positive integer configuration value. Set it with Cloud Run runtime configuration to bound synchronous SurrealDB RPC dispatch for the available instance CPU and concurrency.
 
@@ -45,7 +45,7 @@ Key operational policies:
 
 - **Zero Committed Secrets & Dynamic Project Resolution**: Cloud Run service manifests and Pulumi configurations resolve project IDs and Secret Manager references dynamically at runtime (`GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`).
 - **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks-v2`, and GCS bucket `<PROJECT_ID>-media-korda`) are colocated in **`asia-southeast1` (Singapore)** to eliminate cross-region egress and intra-region data transfer fees.
-- **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching, an SPDX SBOM attached to the immutable Artifact Registry image, and SonarCloud Quality Gate verification. The deployment fails before either service is updated if `SUPABASE_DATABASE_URL` is unavailable; production must not silently use SQLite.
+- **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching, an SPDX SBOM attached to the immutable Artifact Registry image, and SonarCloud Quality Gate verification. Required secrets, including `SUPABASE_DATABASE_URL`, are verified before the image build and infrastructure contracts before deployment; production must not silently use SQLite.
 
 ---
 
