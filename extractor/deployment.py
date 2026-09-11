@@ -6,7 +6,7 @@ import subprocess  # nosec B404
 import sys
 import urllib.request
 
-from extractor.utils import APPLICATION_JSON, KNATIVE_MIN_SCALE
+from extractor.utils import APPLICATION_JSON, KNATIVE_MIN_SCALE, validate_url_scheme
 
 logger = logging.getLogger(__name__)
 
@@ -560,8 +560,10 @@ def check_service_dependencies_health() -> dict[str, bool]:
 
     if supabase_url and supabase_key:
         try:
+            health_url = f"{supabase_url.rstrip('/')}/auth/v1/health"
+            validate_url_scheme(health_url)
             req = urllib.request.Request(
-                f"{supabase_url.rstrip('/')}/auth/v1/health",
+                health_url,
                 headers={"apikey": supabase_key},
             )
             with urllib.request.urlopen(req, timeout=3) as resp:  # nosec B310 nosemgrep

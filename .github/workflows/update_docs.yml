@@ -67,7 +67,7 @@ jobs:
           echo "  Today       : ${TODAY}"
 
   # ──────────────────────────────────────────────────────────────────────────────
-  # Job 2: Refresh docs with the computed version + commit back to the branch
+  # Job 2: Refresh docs locally and report whether the manual run found drift
   # ──────────────────────────────────────────────────────────────────────────────
   update-docs:
     name: Refresh Docs — ${{ needs.compute-version.outputs.release_ver }}
@@ -75,14 +75,14 @@ jobs:
     needs: compute-version
 
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -137,22 +137,22 @@ jobs:
           fi
 
       - name: Summary
+        env:
+          RELEASE_VER: ${{ needs.compute-version.outputs.release_ver }}
+          SEMVER: ${{ needs.compute-version.outputs.semver }}
+          COMMIT_SHA: ${{ needs.compute-version.outputs.sha }}
+          TODAY: ${{ needs.compute-version.outputs.today }}
+          DOCS_UPDATED: ${{ steps.diff.outputs.changed }}
         run: |
-          release_ver='${{ needs.compute-version.outputs.release_ver }}'
-          semver='${{ needs.compute-version.outputs.semver }}'
-          commit_sha='${{ needs.compute-version.outputs.sha }}'
-          today='${{ needs.compute-version.outputs.today }}'
-          docs_updated='${{ steps.diff.outputs.changed }}'
-
-          echo "### 📦 Version: ${release_ver}" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📦 Version: ${RELEASE_VER}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          semver_line="| Semver | \\`${semver}\\` |"
+          semver_line="| Semver | \\`${SEMVER}\\` |"
           echo "$semver_line" >> "$GITHUB_STEP_SUMMARY"
-          release_line="| Release Version | \\`${release_ver}\\` |"
+          release_line="| Release Version | \\`${RELEASE_VER}\\` |"
           echo "$release_line" >> "$GITHUB_STEP_SUMMARY"
-          sha_line="| Commit SHA | \\`${commit_sha}\\` |"
+          sha_line="| Commit SHA | \\`${COMMIT_SHA}\\` |"
           echo "$sha_line" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Date | ${today} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Docs updated | ${docs_updated} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Date | ${TODAY} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Docs updated | ${DOCS_UPDATED} |" >> "$GITHUB_STEP_SUMMARY"

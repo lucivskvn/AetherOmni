@@ -15,6 +15,8 @@
 # ==============================================================================
 name: DevSecOps CI Pipeline
 
+permissions: {}
+
 on:
   push:
     branches: [main, next]

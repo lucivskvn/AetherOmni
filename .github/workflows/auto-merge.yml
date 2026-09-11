@@ -46,7 +46,14 @@ jobs:
             PR_NUMBERS="${EVENT_PR_NUMBER}"
           else
             # A base-branch push can change mergeability for every PR targeting it.
-            PR_NUMBERS="$(gh pr list               --repo "${GH_REPO}"               --state open               --base "${PUSH_REF_NAME}"               --json number               --jq '.[].number')"
+            PR_NUMBERS="$(
+              gh pr list \
+                --repo "${GH_REPO}" \
+                --state open \
+                --base "${PUSH_REF_NAME}" \
+                --json number \
+                --jq '.[].number'
+            )"
           fi
 
           if [[ -z "${PR_NUMBERS}" ]]; then
@@ -60,9 +67,19 @@ jobs:
             [[ -z "${PR}" ]] && continue
             echo "Inspecting PR #${PR}."
 
-            if ! DETAILS="$(gh pr view "${PR}"               --repo "${GH_REPO}"               --json number,isDraft,baseRefName,headRefName,headRefOid,mergeable,mergeStateStatus,reviewDecision,autoMergeRequest)"; then
+            if ! DETAILS="$(
+              gh pr view "${PR}" \
+                --repo "${GH_REPO}" \
+                --json number,state,isDraft,baseRefName,headRefName,headRefOid,mergeable,mergeStateStatus,reviewDecision,autoMergeRequest
+            )"; then
               echo "::error title=PR inspection failed::Unable to inspect PR #${PR}; refusing to report it safe."
               FAILED=1
+              continue
+            fi
+
+            PR_STATE="$(jq -r '.state' <<<"${DETAILS}")"
+            if [[ "${PR_STATE}" != "OPEN" ]]; then
+              echo "PR #${PR} is ${PR_STATE}; skipping a stale lifecycle event."
               continue
             fi
 
@@ -73,7 +90,12 @@ jobs:
               echo "GitHub is still calculating PR #${PR} mergeability (attempt $((RETRY_COUNT + 1))/6)."
               sleep 5
               RETRY_COUNT=$((RETRY_COUNT + 1))
-              MERGEABLE_STATE="$(gh pr view "${PR}"                 --repo "${GH_REPO}"                 --json mergeable                 --jq '.mergeable // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")"
+              MERGEABLE_STATE="$(
+                gh pr view "${PR}" \
+                  --repo "${GH_REPO}" \
+                  --json mergeable \
+                  --jq '.mergeable // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN"
+              )"
             done
 
             IS_DRAFT="$(jq -r '.isDraft' <<<"${DETAILS}")"
