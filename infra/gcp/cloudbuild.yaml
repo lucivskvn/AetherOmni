@@ -122,16 +122,29 @@ steps:
         printf '%s' "$${DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$$'
         printf 'registry:%s@%s' "$${IMAGE_URI%:*}" "$${DIGEST}" > /workspace/korda.image.reference
 
-  # 3. Generate an SPDX SBOM without enabling billed Artifact Analysis scanning.
-  # Syft's default image is shell-less. Use the official BusyBox-enabled debug
-  # variant because this step reads the immutable digest resolved above.
+  # 3. Prepare a narrow writable directory for Syft's non-root debug image.
+  # Cloud Build's workspace is root-owned; retaining the broader workspace mode
+  # avoids granting Syft write access to unrelated build inputs.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
+    id: 'prepare-sbom-workspace'
+    waitFor: ['resolve-image-digest']
+    entrypoint: bash
+    args:
+      - '-euc'
+      - |
+        install -d -m 0777 /workspace/sbom
+        install -m 0644 /workspace/korda.image.reference /workspace/sbom/korda.image.reference
+
+  # 4. Generate an SPDX SBOM without enabling billed Artifact Analysis scanning.
+  # Syft's default image is shell-less and its debug image runs as non-root, so
+  # write only to the prepared directory while reading the immutable digest.
   - name: 'docker.io/anchore/syft@sha256:00e5ae9840b64eab10d45b821549a01b45b8da452da5059d9240f44323087a45'
     id: 'generate-sbom'
-    waitFor: ['resolve-image-digest']
+    waitFor: ['prepare-sbom-workspace']
     entrypoint: /busybox/sh
     args:
       - '-ec'
-      - '/syft "$$(cat /workspace/korda.image.reference)" -o spdx-json=/workspace/korda.sbom.spdx.json'
+      - '/syft "$$(cat /workspace/sbom/korda.image.reference)" -o spdx-json=/workspace/sbom/korda.sbom.spdx.json'
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'attach-sbom'
@@ -140,7 +153,7 @@ steps:
     args:
       - '-euc'
       - |
-        IMAGE_REFERENCE="$$(cat /workspace/korda.image.reference)"
+        IMAGE_REFERENCE="$$(cat /workspace/sbom/korda.image.reference)"
         DIGEST="$${IMAGE_REFERENCE##*@}"
         printf '%s' "$${DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$$'
         TARGET="projects/${PROJECT_ID}/locations/${_REGION}/repositories/cloud-run-source-deploy/packages/korda/versions/$${DIGEST}"
@@ -151,7 +164,7 @@ steps:
           --target="$${TARGET}" \
           --attachment-type='application/spdx+json' \
           --attachment-namespace='dev.aetheromni.sbom' \
-          --files=/workspace/korda.sbom.spdx.json
+          --files=/workspace/sbom/korda.sbom.spdx.json
 
   # 4. Do not deploy until GitHub Actions reports a successful mainline SonarQube gate
   # for this exact commit. Container construction may run in parallel with analysis,
