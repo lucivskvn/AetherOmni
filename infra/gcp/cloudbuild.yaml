@@ -75,14 +75,34 @@ steps:
         echo "Computed RELEASE_VERSION=$${RELEASE_VERSION}"
         echo "Computed IMAGE_TAG=$${IMAGE_TAG}"
 
-  # 1. Kaniko Container Build with Layer Caching
+  # 1. Verify all deployment secrets before incurring image-build cost.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
+    id: 'validate-build-secrets'
+    waitFor: ['compute-version']
+    entrypoint: bash
+    args:
+      - '-euc'
+      - |
+        required_secrets="DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER"
+        required_secrets="$${required_secrets} SURREAL_PASS ADMIN_EMAIL SUPABASE_URL"
+        required_secrets="$${required_secrets} SUPABASE_PUBLIC_KEY SUPABASE_SERVICE_ROLE_KEY SUPABASE_DATABASE_URL CF_TURNSTILE_SITE_KEY"
+        for secret in $${required_secrets}; do
+          if ! gcloud secrets describe "$${secret}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+            echo "ERROR: Required secret '$${secret}' is missing in project '${PROJECT_ID}'." >&2
+            echo "Create it in GCP Secret Manager before triggering deployment." >&2
+            exit 1
+          fi
+        done
+        echo "All required Secret Manager entries verified."
+
+  # 2. Kaniko Container Build with Layer Caching
   # The build must push the exact version tag selected by compute-version so the
   # later deploy steps can reference an image that actually exists in Artifact Registry.
   # The standard executor image is shell-less. This step must source the
   # computed release metadata, so use Kaniko's official BusyBox-enabled image.
   - name: 'gcr.io/kaniko-project/executor@sha256:2562c4fe551399514277ffff7dcca9a3b1628c4ea38cb017d7286dc6ea52f4cd'
     id: 'build-image'
-    waitFor: ['compute-version']
+    waitFor: ['validate-build-secrets']
     entrypoint: /busybox/sh
     args:
       - '-euc'
@@ -264,27 +284,14 @@ steps:
         raise SystemExit(1)
         PY
 
-  # 4. Validate Production Prerequisites & Secrets
+  # 5. Validate Pulumi-managed infrastructure before deployment.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'validate-prerequisites'
-    waitFor: ['wait-for-quality-gate', 'attach-sbom']
+    waitFor: ['compute-version']
     entrypoint: bash
     args:
       - '-euc'
       - |
-        echo "Validating Secret Manager prerequisites..."
-        required_secrets="DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER"
-        required_secrets="$${required_secrets} SURREAL_PASS ADMIN_EMAIL SUPABASE_URL"
-        required_secrets="$${required_secrets} SUPABASE_PUBLIC_KEY SUPABASE_SERVICE_ROLE_KEY CF_TURNSTILE_SITE_KEY"
-        for secret in $${required_secrets}; do
-          if ! gcloud secrets describe "$${secret}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
-            echo "ERROR: Required secret '$${secret}' is missing in project '${PROJECT_ID}'." >&2
-            echo "Please create '$${secret}' in GCP Secret Manager before triggering deployment." >&2
-            exit 1
-          fi
-        done
-        echo "All required secrets verified in GCP Secret Manager."
-
         MEDIA_BUCKET="${PROJECT_ID}-media-korda"
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
         RUNTIME_MEMBER="serviceAccount:$${RUNTIME_SERVICE_ACCOUNT}"
@@ -310,7 +317,7 @@ steps:
   # 4. Production GCP Cloud Run Worker Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-worker'
-    waitFor: ['validate-prerequisites']
+    waitFor: ['validate-prerequisites', 'wait-for-quality-gate', 'attach-sbom']
     entrypoint: bash
     args:
       - '-euc'
