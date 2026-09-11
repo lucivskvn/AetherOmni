@@ -118,7 +118,7 @@ Run the complete local gate before committing source, UI, workflow, or infrastru
 bash run_checks.sh
 ```
 
-`bash run_checks.sh` is the local lint, type, test, and security gate. GitHub Actions adds Dependency Review, CodeQL, Semgrep SARIF, and zizmor; SonarCloud runs its separate hosted analysis using `.sonarcloud.properties` for the Python runtime and test scope. Cloud Build requires commit-scoped passing SonarCloud, CodeQL, and Semgrep results before deployment. CI installs application checks from the committed `uv.lock`, keeps Semgrep isolated, and checks out the repository before workflow-security analysis. Production images receive an SPDX SBOM generated with Syft and attached to the same resolved Artifact Registry digest.
+`bash run_checks.sh` is the local lint, type, test, and security gate. GitHub Actions adds Dependency Review, CodeQL, Semgrep SARIF, and zizmor; SonarCloud runs its separate hosted analysis using `.sonarcloud.properties` for the Python runtime and test scope. Cloud Build requires commit-scoped passing SonarCloud, CodeQL, and Semgrep results before deployment. CI installs application checks from the committed `uv.lock`, keeps Semgrep isolated, and checks out the repository before workflow-security analysis. Production images receive an SPDX SBOM generated with pinned Syft's BusyBox-enabled image and attached to the same resolved Artifact Registry digest.
 
 Report suspected vulnerabilities privately through the process in [SECURITY.md](SECURITY.md). Production SurrealDB connections require encrypted `wss://` transport; unencrypted connections remain limited to explicit local development.
 

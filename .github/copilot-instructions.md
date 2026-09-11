@@ -64,7 +64,7 @@ pull, stash, perform remote scans, or deploy.
   - Install CI application checks from the committed `uv.lock`; keep dependency-divergent scanners such as Semgrep in an isolated virtual environment while preserving their blocking result.
   - Cloud Build steps that source computed metadata must use Kaniko's BusyBox-enabled debug image pinned by immutable digest; the standard executor image has no shell. Use a registry-backed Kaniko cache and bounded image, filesystem, and push retries.
   - Cloud Build may construct the immutable image in parallel, but it must wait for the successful GitHub SonarCloud check on the exact commit SHA before either Cloud Run deployment. Manual builds must provide a previously verified commit SHA.
-  - Cloud Build must generate an SPDX SBOM with pinned open-source Syft and attach it to the immutable Artifact Registry image. Do not enable billed Artifact Analysis scanning solely to generate SBOMs.
+  - Cloud Build must generate an SPDX SBOM with pinned open-source Syft and attach it to the immutable Artifact Registry image. Use Syft's BusyBox-enabled image and `/busybox/sh` when reading the resolved reference; the default image is shell-less. Do not enable billed Artifact Analysis scanning solely to generate SBOMs.
   - Before deployment, Cloud Build must verify the Pulumi-managed media bucket, the dedicated runtime service account, and that account's `roles/storage.objectAdmin` binding. These checks are blocking and must use the same dynamic project-derived names as Pulumi.
 
 ### 4.1 Native GitHub Auto-Merge & PR Creation Protocol
