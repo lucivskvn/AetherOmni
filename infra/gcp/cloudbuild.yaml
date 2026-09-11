@@ -317,7 +317,7 @@ steps:
   # 4. Production GCP Cloud Run Worker Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-worker'
-    waitFor: ['wait-for-quality-gate', 'attach-sbom']
+    waitFor: ['validate-prerequisites', 'wait-for-quality-gate', 'attach-sbom']
     entrypoint: bash
     args:
       - '-euc'
