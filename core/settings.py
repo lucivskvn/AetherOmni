@@ -532,6 +532,9 @@ if SENTRY_DSN:
             event_level=logging.ERROR,
         )
 
+        from django.core.exceptions import PermissionDenied
+        from django.http import Http404
+
         sentry_kwargs = {
             "dsn": SENTRY_DSN,
             "integrations": [DjangoIntegration(), logging_integration],
@@ -539,6 +542,7 @@ if SENTRY_DSN:
             "send_default_pii": send_pii,
             "release": f"korda@{release_ver}",
             "environment": "production" if not DEBUG else "development",
+            "ignore_errors": [PermissionDenied, Http404],
         }
         if profile_session_rate > 0.0:
             sentry_kwargs["profile_session_sample_rate"] = profile_session_rate
