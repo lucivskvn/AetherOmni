@@ -41,3 +41,6 @@
 ## 2026-08-29 - Use `aria-disabled` for Loading States
 **Learning:** Disabling buttons visually using `pointer-events: none` and `opacity` during asynchronous actions (like bulk deletes) is sufficient for mouse users, but it fails to communicate the disabled state to screen readers.
 **Action:** Dynamically add `aria-disabled="true"` alongside visual CSS state changes to correctly announce the "loading" or disabled state to assistive technologies, and remember to clear it when restoring the button.
+## 2026-08-30 - Fix aria-disabled matching in template components
+**Learning:** Some custom UI templates like reset password and deployment controller implemented manual spinner behaviors with `pointerEvents` but missed accessibility `aria-disabled` flags during loading.
+**Action:** Always verify components matching `btn.style.pointerEvents = 'none'` also apply `btn.setAttribute('aria-disabled', 'true')` to properly inform screen readers of intermediate disabled states.
