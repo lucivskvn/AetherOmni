@@ -1148,8 +1148,9 @@ class DeploymentControllerViewTestCase(TestCase):
         # Temporarily stop the test_func override to test forbidden status
         self.patchers[0].stop()
         try:
-            response = self.client.get(reverse("deployment_controller"))
-            self.assertEqual(response.status_code, 403)
+            response = self.client.get(reverse("deployment_controller"), follow=True)
+            self.assertRedirects(response, reverse("dashboard"))
+            self.assertContains(response, "Access restricted to system administrators.")
         finally:
             self.patchers[0].start()
 
@@ -1663,6 +1664,21 @@ class SecurityAuthTestCase(TestCase):
             # Normal user should NOT be promoted to superuser/staff
             self.assertFalse(user.is_superuser)
             self.assertFalse(user.is_staff)
+
+    def test_comma_separated_admin_emails(self):
+        from extractor.auth import _sync_supabase_user
+
+        with self.settings(ADMIN_EMAIL="admin1@example.com, admin2@example.com"):
+            user1 = _sync_supabase_user(None, {"user": {"email": "admin1@example.com"}}, "admin1@example.com")
+            user2 = _sync_supabase_user(None, {"user": {"email": "ADMIN2@EXAMPLE.COM"}}, "ADMIN2@EXAMPLE.COM")
+            user3 = _sync_supabase_user(None, {"user": {"email": "other@example.com"}}, "other@example.com")
+
+        self.assertTrue(user1.is_superuser)
+        self.assertTrue(user1.is_staff)
+        self.assertTrue(user2.is_superuser)
+        self.assertTrue(user2.is_staff)
+        self.assertFalse(user3.is_superuser)
+        self.assertFalse(user3.is_staff)
 
 
 class BulkDocumentActionTestCase(TestCase):
