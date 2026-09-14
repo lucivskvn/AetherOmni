@@ -1481,6 +1481,25 @@ describe('initializeAlerts & initializeSupabaseRealtime', () => {
   it('gracefully handles initializeSupabaseRealtime with missing credentials', () => {
     expect(() => initializeSupabaseRealtime()).not.toThrow();
   });
+
+  it('renders accessible alert container and dismisses via direct close button click in showClientSideAlert', () => {
+    document.body.innerHTML = '';
+    showClientSideAlert('Test notification message', 'error');
+
+    const container = document.querySelector('.alert-container');
+    expect(container).not.toBeNull();
+    expect(container.getAttribute('aria-live')).toBe('polite');
+    expect(container.getAttribute('aria-atomic')).toBe('true');
+
+    const card = container.querySelector('.alert-card');
+    expect(card).not.toBeNull();
+    expect(card.querySelector('.alert-msg-span').textContent).toBe('Test notification message');
+
+    const closeBtn = card.querySelector('.alert-close-btn');
+    expect(closeBtn).not.toBeNull();
+    closeBtn.click();
+    expect(card.classList.contains('fade-out')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

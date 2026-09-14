@@ -86,7 +86,8 @@ def _evaluate_admin_claim(user_email: str, user_info: dict) -> bool:
             "[Auth] app_metadata.is_admin=True claim detected for %s — ignored per SEC-04 policy.",
             user_email,
         )
-    return bool(admin_email) and user_email.lower() == admin_email.lower()
+    admin_emails = {e.strip().lower() for e in admin_email.split(",") if e.strip()}
+    return bool(admin_emails) and user_email.lower() in admin_emails
 
 
 def _attach_supabase_session(request: HttpRequest | None, user_info: dict) -> None:

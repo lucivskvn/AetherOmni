@@ -545,6 +545,8 @@ function showClientSideAlert(message, type = 'error') {
     if (!container) {
         container = document.createElement('div');
         container.className = 'alert-container';
+        container.setAttribute('aria-live', 'polite');
+        container.setAttribute('aria-atomic', 'true');
         document.body.appendChild(container);
     }
     const cardId = 'client-alert-' + Date.now();
@@ -562,6 +564,10 @@ function showClientSideAlert(message, type = 'error') {
         </button>
     `;
     card.querySelector('.alert-msg-span').textContent = message;
+    const closeBtn = card.querySelector('.alert-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => dismissCard(card));
+    }
     container.appendChild(card);
     if (typeof lucide !== 'undefined' && lucide.createIcons) {
         lucide.createIcons();

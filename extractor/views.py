@@ -2571,6 +2571,12 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
     def test_func(self):
         return self.request.user.is_superuser or self.request.user.is_staff
 
+    def handle_no_permission(self):
+        if self.request.user.is_authenticated:
+            messages.error(self.request, "Access restricted to system administrators.")
+            return redirect("dashboard")
+        return super().handle_no_permission()
+
     def get(self, request):
         from django.conf import settings
 
