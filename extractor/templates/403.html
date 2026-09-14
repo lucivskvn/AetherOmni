@@ -46,18 +46,18 @@
         height: 72px;
         margin: 0 auto 20px;
         border-radius: 20px;
-        background: rgba(239, 68, 68, 0.12);
-        border: 1px solid rgba(239, 68, 68, 0.25);
+        background: var(--status-failed-bg, #240c0c);
+        border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.1));
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #ef4444;
+        color: var(--status-failed-fg, #fca5a5);
     }
 
     .error-title {
         font-size: 24px;
         font-weight: 700;
-        color: var(--text-main, #f8fafc);
+        color: var(--text-heading, #f8fafc);
         margin: 0 0 12px;
     }
 
@@ -79,8 +79,8 @@
         align-items: center;
         gap: 8px;
         padding: 10px 20px;
-        background: var(--primary-accent, #6366f1);
-        color: #ffffff;
+        background: var(--primary, #6366f1);
+        color: var(--text-heading, #ffffff);
         font-size: 14px;
         font-weight: 600;
         border-radius: 12px;
@@ -94,7 +94,7 @@
     }
 
     .btn-return-home:focus-visible {
-        outline: 2px solid var(--primary-accent, #6366f1);
+        outline: 2px solid var(--primary, #6366f1);
         outline-offset: 2px;
     }
 </style>
