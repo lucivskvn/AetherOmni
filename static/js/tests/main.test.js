@@ -1497,8 +1497,18 @@ describe('initializeAlerts & initializeSupabaseRealtime', () => {
 
     const closeBtn = card.querySelector('.alert-close-btn');
     expect(closeBtn).not.toBeNull();
-    closeBtn.click();
+    closeBtn.dispatchEvent(new globalThis.MouseEvent('click', { bubbles: false }));
     expect(card.classList.contains('fade-out')).toBe(true);
+  });
+
+  it('ensures existing pre-rendered .alert-container receives live-region attributes', () => {
+    document.body.innerHTML = '<div class="alert-container"></div>';
+    const container = document.querySelector('.alert-container');
+    expect(container.hasAttribute('aria-live')).toBe(false);
+
+    showClientSideAlert('New warning', 'warning');
+    expect(container.getAttribute('aria-live')).toBe('polite');
+    expect(container.getAttribute('aria-atomic')).toBe('true');
   });
 });
 

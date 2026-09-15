@@ -545,10 +545,10 @@ function showClientSideAlert(message, type = 'error') {
     if (!container) {
         container = document.createElement('div');
         container.className = 'alert-container';
-        container.setAttribute('aria-live', 'polite');
-        container.setAttribute('aria-atomic', 'true');
         document.body.appendChild(container);
     }
+    container.setAttribute('aria-live', 'polite');
+    container.setAttribute('aria-atomic', 'true');
     const cardId = 'client-alert-' + Date.now();
     const card = document.createElement('div');
     card.className = `alert-card alert-${type}`;
