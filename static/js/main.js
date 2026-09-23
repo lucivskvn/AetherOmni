@@ -674,6 +674,7 @@ function initializeSettingsModal() {
             }
             if (finalResetBtn) {
                 finalResetBtn.disabled = true;
+                finalResetBtn.setAttribute('aria-disabled', 'true');
                 finalResetBtn.setAttribute('title', 'Type RESET to enable');
             }
         });
@@ -689,8 +690,10 @@ function initializeSettingsModal() {
                 const val = resetConfirmInput.value.trim().toUpperCase();
                 finalResetBtn.disabled = (val !== 'RESET');
                 if (finalResetBtn.disabled) {
+                    finalResetBtn.setAttribute('aria-disabled', 'true');
                     finalResetBtn.setAttribute('title', 'Type RESET to enable');
                 } else {
+                    finalResetBtn.removeAttribute('aria-disabled');
                     finalResetBtn.removeAttribute('title');
                 }
             }
