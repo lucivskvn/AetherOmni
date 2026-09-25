@@ -429,6 +429,7 @@
                     }
                     if (finalResetBtn) {
                         finalResetBtn.disabled = true;
+                        finalResetBtn.setAttribute('aria-disabled', 'true');
                     }
                 });
             }
@@ -444,9 +445,11 @@
                 confirmInput.addEventListener('input', function() {
                     if (confirmInput.value.trim() === 'RESET') {
                         finalResetBtn.disabled = false;
+                        finalResetBtn.removeAttribute('aria-disabled');
                         finalResetBtn.removeAttribute('title');
                     } else {
                         finalResetBtn.disabled = true;
+                        finalResetBtn.setAttribute('aria-disabled', 'true');
                         finalResetBtn.setAttribute('title', 'Type RESET to enable');
                     }
                 });
