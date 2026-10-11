@@ -618,6 +618,7 @@ describe('initializeSettingsModal Danger Zone Reset Flow', () => {
     expect(confirmState.style.display).toBe('flex');
     expect(confirmInput.value).toBe('');
     expect(finalResetBtn.disabled).toBe(true);
+    expect(finalResetBtn.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('enables final reset button only when input matches "RESET"', () => {
@@ -632,14 +633,17 @@ describe('initializeSettingsModal Danger Zone Reset Flow', () => {
     confirmInput.value = 'res';
     confirmInput.dispatchEvent(new globalThis.Event('input'));
     expect(finalResetBtn.disabled).toBe(true);
+    expect(finalResetBtn.getAttribute('aria-disabled')).toBe('true');
 
     confirmInput.value = 'reset';
     confirmInput.dispatchEvent(new globalThis.Event('input'));
     expect(finalResetBtn.disabled).toBe(false);
+    expect(finalResetBtn.hasAttribute('aria-disabled')).toBe(false);
 
     confirmInput.value = 'RESET ';
     confirmInput.dispatchEvent(new globalThis.Event('input'));
     expect(finalResetBtn.disabled).toBe(false);
+    expect(finalResetBtn.hasAttribute('aria-disabled')).toBe(false);
   });
 
   it('resets back to initial state when cancel button is clicked', () => {
