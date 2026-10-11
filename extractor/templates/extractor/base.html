@@ -97,7 +97,7 @@
                 </span>
             </a>
             <div class="nav-actions">
-                <button type="button" id="theme-toggle-btn" class="nav-link" aria-label="Switch to light theme" title="Toggle Theme" aria-pressed="true" style="background: none; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border-radius: 50%; color: var(--text-muted); transition: var(--transition-smooth);">
+                <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Switch to light theme" title="Toggle Theme" aria-pressed="true">
                     <svg id="theme-sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
                     <svg id="theme-moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 </button>
@@ -124,7 +124,7 @@
                 {% endif %}
                 <form action="{% url 'logout' %}" method="post" style="display: inline-block; margin: 0;">
                     {% csrf_token %}
-                    <button type="submit" class="nav-link logout-btn" style="background: none; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-family: inherit; font-size: inherit; font-weight: inherit;" aria-label="Sign out of Console">
+                    <button type="submit" class="nav-link logout-btn" aria-label="Sign out of Console">
                         <i data-lucide="log-out"></i> Logout
                     </button>
                 </form>
@@ -161,7 +161,7 @@
         <div class="dialog-header" style="flex-direction: column; align-items: flex-start; gap: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <h3 id="settings-modal-title" style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text-main);">System Configuration Settings</h3>
-                <button id="settings-close-btn" class="close-btn" style="background: none; border: none; cursor: pointer; color: var(--text-muted);" aria-label="Close Settings" title="Close Settings">
+                <button id="settings-close-btn" class="close-btn" aria-label="Close Settings" title="Close Settings">
                     <i data-lucide="x"></i>
                 </button>
             </div>
@@ -249,7 +249,7 @@
                 
                 <form action="{% url 'purge_all_documents' %}" method="post" class="full-width-form" id="purge-all-form">
                     {% csrf_token %}
-                    <button type="submit" id="final-reset-btn" class="btn btn-danger full-width" title="Type RESET to enable" disabled>
+                    <button type="submit" id="final-reset-btn" class="btn btn-danger full-width" title="Type RESET to enable" disabled aria-disabled="true">
                         <i data-lucide="shield-alert"></i> Permanently Wipe Database & Files
                     </button>
                 </form>
@@ -429,6 +429,7 @@
                     }
                     if (finalResetBtn) {
                         finalResetBtn.disabled = true;
+                        finalResetBtn.setAttribute('aria-disabled', 'true');
                     }
                 });
             }
@@ -444,9 +445,11 @@
                 confirmInput.addEventListener('input', function() {
                     if (confirmInput.value.trim() === 'RESET') {
                         finalResetBtn.disabled = false;
+                        finalResetBtn.removeAttribute('aria-disabled');
                         finalResetBtn.removeAttribute('title');
                     } else {
                         finalResetBtn.disabled = true;
+                        finalResetBtn.setAttribute('aria-disabled', 'true');
                         finalResetBtn.setAttribute('title', 'Type RESET to enable');
                     }
                 });
