@@ -308,21 +308,20 @@ else
 fi
 
 echo -e "\n${YELLOW}[SurrealQL] Validating SurrealQL schema syntax (surreal validate)...${NC}"
-if command -v surreal &> /dev/null && surreal version &> /dev/null; then
-    SURQL_FILES=$(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" 2>/dev/null | tr '\n' ' ')
-    if [[ -n "$SURQL_FILES" ]]; then
-        # shellcheck disable=SC2086  # intentional word-splitting: SURQL_FILES holds space-separated filenames
-        if surreal validate $SURQL_FILES 2>&1; then
-            echo -e "${GREEN}✓ SurrealQL schema syntax verified cleanly (0 errors).${NC}"
-        else
-            echo -e "${RED}✗ SurrealQL validation found schema errors! Fix before committing.${NC}" >&2
-            exit 1
-        fi
+if ! command -v surreal &> /dev/null || ! surreal version &> /dev/null; then
+    echo -e "${RED}✗ SurrealDB CLI is required for SurrealQL validation.${NC}" >&2
+    exit 1
+fi
+mapfile -t SURQL_FILES < <(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" -not -path "./node_modules/*" 2>/dev/null)
+if (( ${#SURQL_FILES[@]} > 0 )); then
+    if surreal validate "${SURQL_FILES[@]}" 2>&1; then
+        echo -e "${GREEN}✓ SurrealQL schema syntax verified cleanly (0 errors).${NC}"
     else
-        echo -e "${GREEN}✓ No .surql files found (skipping).${NC}"
+        echo -e "${RED}✗ SurrealQL validation found schema errors! Fix before committing.${NC}" >&2
+        exit 1
     fi
 else
-    echo -e "${YELLOW}⚠ surreal CLI not found or executable (install: curl -sSf https://install.surrealdb.com | sh). Skipping SurrealQL validation.${NC}"
+    echo -e "${GREEN}✓ No .surql files found (skipping).${NC}"
 fi
 
 echo -e "\n${YELLOW}[UI/UX Gatekeeper] Auditing Template & Static Asset Integrity...${NC}"

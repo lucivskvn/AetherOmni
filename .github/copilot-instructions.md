@@ -13,6 +13,10 @@ runbook. This file remains the authoritative cross-agent policy.
 `scripts/verify-pipeline.sh` is a compatibility wrapper only and must not fetch,
 pull, stash, perform remote scans, or deploy.
 
+GitHub Actions use an explicit supported Ubuntu LTS runner label so image
+migrations are reviewed. CI installs a pinned SurrealDB CLI and treats
+`surreal validate` as a blocking check; a missing validator must fail the job.
+
 ### Runtime reliability contracts
 
 - Dashboard refresh uses complete user-scoped status snapshots and periodic polling alongside Realtime hints. Missing rows imply deletion only when the response explicitly declares completeness.

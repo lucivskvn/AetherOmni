@@ -37,7 +37,7 @@ jobs:
   # ============================================================================
   pre-scan-validation:
     name: 1. Pre-Scan Validation & Security Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -84,6 +84,18 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install SurrealDB CLI
+        run: |
+          archive="$RUNNER_TEMP/surreal-v3.3.4.linux-amd64.tgz"
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 \
+            https://download.surrealdb.com/v3.3.4/surreal-v3.3.4.linux-amd64.tgz \
+            -o "$archive"
+          echo "6593071833ad9c85cf533cf70b1643eb08966c868f8624001e30839ea29a2689  $archive" \
+            | sha256sum --check --status
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          chmod +x "$RUNNER_TEMP/surreal"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       - name: Supply Chain Audit (pip-audit)
         run: |
           pip install --no-cache-dir --only-binary :all: pip-audit==2.10.1 --quiet
@@ -91,14 +103,9 @@ jobs:
 
       - name: SurrealQL Schema Validation
         run: |
-          if command -v surreal &>/dev/null; then
-            SURQL_FILES=$(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" | tr '\n' ' ')
-            if [[ -n "$SURQL_FILES" ]]; then
-              # shellcheck disable=SC2086
-              surreal validate $SURQL_FILES
-            fi
-          else
-            echo "::notice title=SurrealQL::surreal CLI not installed in runner. Install for local validation."
+          mapfile -t SURQL_FILES < <(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" -not -path "./node_modules/*")
+          if (( ${#SURQL_FILES[@]} > 0 )); then
+            surreal validate "${SURQL_FILES[@]}"
           fi
 
   # ============================================================================
@@ -108,7 +115,7 @@ jobs:
   # ============================================================================
   tests-and-coverage:
     name: 2. PR Shift-Left Security Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: pre-scan-validation
     permissions:
@@ -246,7 +253,7 @@ jobs:
   dependency-review:
     name: Dependency Review
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -259,7 +266,7 @@ jobs:
 
   zizmor:
     name: GitHub Actions Security (zizmor)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       actions: read

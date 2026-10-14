@@ -61,7 +61,7 @@ KORDA is useful before model evaluation or dataset curation: it transforms mixed
 | Knowledge retrieval | Tenant-scoped hybrid retrieval, grounded source references, and streaming answers with a safe JSON fallback. |
 | Curation and export | Editable document detail views plus Markdown ZIP, SFT JSONL, SQLite FTS, and CSV exports. |
 | Governance | Spend caps, immutable audit records, user-scoped data access, and administrator-only operational controls. |
-| Delivery | Private Cloud Run worker, Cloud Tasks OIDC delivery, Pulumi-managed GCP resources, and immutable image release verification. |
+| Delivery | Private Cloud Run worker, Cloud Tasks OIDC delivery, Pulumi-managed GCP resources, immutable image release verification, and blocking CI schema checks. |
 
 ## Current milestone
 
