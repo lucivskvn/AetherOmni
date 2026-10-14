@@ -30,7 +30,9 @@ Use `bash run_checks.sh` for local delivery verification. The retained
 compatibility; it performs no Git synchronization, remote scan, or deployment.
 GitHub Actions pin a supported Ubuntu LTS runner label and install a versioned
 SurrealDB CLI; SurrealQL validation is blocking, so a missing validator or
-invalid schema stops the build.
+invalid schema stops the build. Pulumi requires the computed semantic release
+version and matching image tag; missing, mismatched, or floating `latest`
+inputs fail closed.
 
 ---
 
@@ -63,6 +65,10 @@ cd infra/pulumi
 # Set your target project ID (if not already set in environment)
 pulumi config set gcp:project <YOUR_GCP_PROJECT_ID>
 pulumi config set gcp:region asia-southeast1
+
+# Set both values from the approved release computation before previewing.
+pulumi config set korda-infra:release_version "$RELEASE_VERSION"
+pulumi config set korda-infra:image_tag "$IMAGE_TAG"
 
 # Preview resource topology
 pulumi preview --stack prod

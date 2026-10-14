@@ -16,6 +16,8 @@ pull, stash, perform remote scans, or deploy.
 GitHub Actions use an explicit supported Ubuntu LTS runner label so image
 migrations are reviewed. CI installs a pinned SurrealDB CLI and treats
 `surreal validate` as a blocking check; a missing validator must fail the job.
+Pulumi requires the computed semantic `release_version` and matching
+`IMAGE_TAG`; missing, mismatched, or floating `latest` inputs fail closed.
 
 ### Runtime reliability contracts
 
