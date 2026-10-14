@@ -28,6 +28,9 @@ Before a deployment that changes the `system_settings` contract, run `python scr
 Use `bash run_checks.sh` for local delivery verification. The retained
 `scripts/verify-pipeline.sh` command only delegates to that gate for backward
 compatibility; it performs no Git synchronization, remote scan, or deployment.
+GitHub Actions pin a supported Ubuntu LTS runner label and install a versioned
+SurrealDB CLI; SurrealQL validation is blocking, so a missing validator or
+invalid schema stops the build.
 
 ---
 
