@@ -204,19 +204,34 @@ ASGI_APPLICATION = "core.asgi.application"
 # All document/vector/KV data lives in SurrealDB. Django relational state uses
 # Supabase PostgreSQL in production and SQLite only for explicit offline/test use.
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-if DATABASE_URL and not SURREALDB_OFFLINE:
-    from core.database import database_config_from_url
 
-    DATABASES = {"default": database_config_from_url(DATABASE_URL)}
-else:
-    if os.getenv("K_SERVICE") and not SURREALDB_OFFLINE:
-        logger.info("[Database] DATABASE_URL not configured on Cloud Run; utilizing local SQLite storage.")
-    DATABASES = {
+
+def _database_config_for_runtime(database_url: str, *, is_cloud_run: bool, offline: bool, base_dir: Path) -> dict:
+    if is_cloud_run and offline:
+        raise ImproperlyConfigured("SURREALDB_OFFLINE cannot be enabled for production Cloud Run deployments.")
+
+    if database_url and not offline:
+        from core.database import database_config_from_url
+
+        return {"default": database_config_from_url(database_url)}
+
+    if is_cloud_run:
+        raise ImproperlyConfigured("DATABASE_URL must be configured for production Cloud Run deployments.")
+
+    return {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            "NAME": base_dir / "db.sqlite3",
         }
     }
+
+
+DATABASES = _database_config_for_runtime(
+    DATABASE_URL,
+    is_cloud_run=bool(os.getenv("K_SERVICE")),
+    offline=SURREALDB_OFFLINE,
+    base_dir=BASE_DIR,
+)
 
 AUTHENTICATION_BACKENDS = [
     "extractor.auth.SupabaseAuthBackend",
