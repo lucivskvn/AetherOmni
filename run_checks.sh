@@ -28,19 +28,17 @@ CYAN='\033[0;36m'
 NC='\033[0;m'
 
 PYTHON_BIN="${PYTHON_BIN:-}"
-if [[ -z "$PYTHON_BIN" ]] && [[ -x ".venv/bin/python3.14" ]]; then
-    PYTHON_BIN=".venv/bin/python3.14"
-elif [[ -z "$PYTHON_BIN" ]] && [[ -x ".venv/bin/python3" ]]; then
-    PYTHON_BIN=".venv/bin/python3"
-elif [[ -z "$PYTHON_BIN" ]] && [[ -x ".venv/bin/python" ]]; then
-    PYTHON_BIN=".venv/bin/python"
-elif command -v python3.14 &> /dev/null; then
-    PYTHON_BIN="python3.14"
-else
-    PYTHON_BIN="python3"
+if [[ -z "$PYTHON_BIN" ]]; then
+    for PYTHON_CANDIDATE in .venv/bin/python3.14 .venv/bin/python3 .venv/bin/python python3.14 python3; do
+        if [[ -x "$PYTHON_CANDIDATE" ]] && \
+            "$PYTHON_CANDIDATE" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))' &> /dev/null; then
+            PYTHON_BIN="$PYTHON_CANDIDATE"
+            break
+        fi
+    done
 fi
 
-if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))'; then
+if [[ -z "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))'; then
     echo -e "${RED}✗ Python 3.14 or newer is required. Recreate .venv with Python 3.14 and install requirements-dev.txt.${NC}" >&2
     exit 1
 fi
