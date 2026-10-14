@@ -30,9 +30,14 @@ NC='\033[0;m'
 PYTHON_BIN="${PYTHON_BIN:-}"
 if [[ -z "$PYTHON_BIN" ]]; then
     for PYTHON_CANDIDATE in .venv/bin/python3.14 .venv/bin/python3 .venv/bin/python python3.14 python3; do
-        if [[ -x "$PYTHON_CANDIDATE" ]] && \
-            "$PYTHON_CANDIDATE" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))' &> /dev/null; then
-            PYTHON_BIN="$PYTHON_CANDIDATE"
+        if [[ "$PYTHON_CANDIDATE" == */* ]]; then
+            PYTHON_RESOLVED="$PYTHON_CANDIDATE"
+        else
+            PYTHON_RESOLVED="$(command -v "$PYTHON_CANDIDATE" 2>/dev/null || true)"
+        fi
+        if [[ -n "$PYTHON_RESOLVED" && -x "$PYTHON_RESOLVED" ]] && \
+            "$PYTHON_RESOLVED" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))' &> /dev/null; then
+            PYTHON_BIN="$PYTHON_RESOLVED"
             break
         fi
     done
