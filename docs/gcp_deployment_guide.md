@@ -51,7 +51,7 @@ Key operational policies:
 - **Deletion recovery**: A storage deletion error retains the document and returns an explicit failure for retry. Investigate retained documents and storage permissions before retrying; do not report physical erasure until storage deletion succeeds.
 
 - **Zero Committed Secrets & Dynamic Project Resolution**: Cloud Run service manifests and Pulumi configurations resolve project IDs and Secret Manager references dynamically at runtime (`GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`).
-- **Regional Colocation & Network Cost Minimization**: All serverless components (Cloud Run `korda-web`, `korda-worker`, Cloud Tasks `extractor-tasks-v2`, and GCS bucket `<PROJECT_ID>-media-korda`) are colocated in **`asia-southeast1` (Singapore)** to eliminate cross-region egress and intra-region data transfer fees.
+- **Independent Resource Placement**: Cloud Run and the media bucket use the resource region. Cloud Tasks uses its independently configured queue region; preserve the existing queue location when reconciling infrastructure and pass it to both services.
 - **Continuous Deployment**: Automated builds trigger via `infra/gcp/cloudbuild.yaml` with Kaniko layer caching, an SPDX SBOM attached to the immutable Artifact Registry image, and SonarCloud Quality Gate verification. Required secrets, including `SUPABASE_DATABASE_URL`, are verified before the image build and infrastructure contracts before deployment; production must not silently use SQLite.
 
 ---
@@ -292,8 +292,9 @@ Use Google Cloud Build to build and push your Docker container:
 ```bash
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
 DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
-gcloud builds submit --config infra/gcp/cloudbuild.yaml \
-  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA},_APP_URL=https://your-public-app.example"
+gcloud builds submit https://github.com/lucivskvn/AetherOmni.git \
+  --git-source-revision="${DEPLOY_COMMIT_SHA}" --config infra/gcp/cloudbuild.yaml \
+  --substitutions="COMMIT_SHA=${DEPLOY_COMMIT_SHA},_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA},_APP_URL=https://your-public-app.example"
 ```
 
 Cloud Build resolves the current Cloud Run web and worker URLs before deployment,
@@ -506,6 +507,14 @@ DEFINE INDEX IF NOT EXISTS idx_rate_limits_exp ON rate_limits FIELDS expires_at;
 
 We deploy both the `web` service and the `worker` service. Deployments are managed declaratively using Knative service specifications in `service.yaml` and `service-worker.yaml` (which reference Secret Manager for credentials).
 
+Render fallback manifests with the computed `RELEASE_VERSION` and explicit
+`GCP_QUEUE_LOCATION`. They use the active queue and the Supabase database secret.
+Preserve each service's memory floor. Cloud Build binds source to the approved
+commit and deploys both services using the same resolved digest as the SBOM;
+it verifies both deployed images before checking the public release identity.
+Manual builds must supply `COMMIT_SHA` and submit the repository at that exact
+Git revision, so source identity remains verifiable without local Git metadata.
+
 ### Deploy Services Declaratively (Recommended)
 
 Cloud Build computes the release version before it builds or deploys. The production
@@ -526,8 +535,9 @@ of truth for a deployed release.
 # Run the pipeline to build and deploy web + worker services
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
 DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
-gcloud builds submit --config infra/gcp/cloudbuild.yaml \
-  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
+gcloud builds submit https://github.com/lucivskvn/AetherOmni.git \
+  --git-source-revision="${DEPLOY_COMMIT_SHA}" --config infra/gcp/cloudbuild.yaml \
+  --substitutions="COMMIT_SHA=${DEPLOY_COMMIT_SHA},_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```
 
 ### Emergency recovery
@@ -548,8 +558,9 @@ CI installs application checks from the committed `uv.lock` and keeps dependency
 ```bash
 RELEASE_VERSION=$(python scripts/update_docs.py --print-version)
 DEPLOY_COMMIT_SHA=$(git rev-parse HEAD)
-gcloud builds submit --config infra/gcp/cloudbuild.yaml \
-  --substitutions="_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
+gcloud builds submit https://github.com/lucivskvn/AetherOmni.git \
+  --git-source-revision="${DEPLOY_COMMIT_SHA}" --config infra/gcp/cloudbuild.yaml \
+  --substitutions="COMMIT_SHA=${DEPLOY_COMMIT_SHA},_RELEASE_VERSION=${RELEASE_VERSION},_DEPLOY_COMMIT_SHA=${DEPLOY_COMMIT_SHA}"
 ```
 
 ---
@@ -569,11 +580,11 @@ AI agents and platform operators leverage Model Context Protocol (MCP) servers f
 
 ## 10. Intra-Region & Inter-Service Network Cost Optimization
 
-To minimize Google Cloud billing anomalies and eliminate **Intra-Region & Cross-Region Data Transfer Egress** charges:
+To control regional placement and assess transfer costs:
 
-1. **Strict Same-Region Colocation (`asia-southeast1`)**:
-   - Cloud Run Web (`korda-web`), Cloud Run Worker (`korda-worker`), Cloud Tasks (`extractor-tasks-v2`), and Google Cloud Storage bucket (`<PROJECT_ID>-media-korda`) reside exclusively in `asia-southeast1` (Singapore).
-   - Ingress and egress traffic between Cloud Run, Cloud Tasks, and Cloud Storage in the same GCP region is priced at **$0.00/GB** (free intra-region data transfer).
+1. **Explicit Resource and Queue Regions**:
+   - Keep Cloud Run and the media bucket in their configured resource region. Preserve the queue's independently configured region and pass it consistently to dispatch, IAM, and deployment configuration.
+   - Review current transfer pricing for the configured resource and queue regions; an independently placed queue does not imply that every data path is free.
 
 2. **Vertex AI Multimodal Regional Gateway Routing (Latency-Ranked)**:
    - `extractor/llm_gateway.py` evaluates the local region **SG (`asia-southeast1` Singapore)** first for all Vertex AI Gemini 2.5 Flash and Flash-Lite inference calls.

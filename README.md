@@ -2,6 +2,11 @@
 
 KORDA is a secure knowledge workspace for turning document collections into searchable, grounded answers. Upload source material, follow its processing status, and retrieve answers with links back to the documents that support them.
 
+Production delivery binds submitted source to the approved commit and deploys
+both services from the same resolved image digest used for the SBOM. Fallback
+manifests require the computed release, an independent queue location, and the
+Supabase database secret while preserving the configured memory floors.
+
 [![CI](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)

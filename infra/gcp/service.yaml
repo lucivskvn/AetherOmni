@@ -17,7 +17,7 @@ spec:
       serviceAccountName: "${SERVICE_ACCOUNT}"
       timeoutSeconds: 900
       containers:
-      - image: "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/cloud-run-source-deploy/korda:${IMAGE_TAG}"
+      - image: "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/cloud-run-source-deploy/korda:${RELEASE_VERSION}"
         name: web
         securityContext:
           runAsNonRoot: true
@@ -46,7 +46,7 @@ spec:
         - name: GCP_REGION
           value: "${GCP_REGION}"
         - name: GCP_QUEUE_LOCATION
-          value: "${GCP_REGION}"
+          value: "${GCP_QUEUE_LOCATION}"
         - name: GCP_QUEUE_NAME
           value: "extractor-tasks-v2"
         - name: APP_URL
@@ -84,6 +84,11 @@ spec:
           valueFrom:
             secretKeyRef:
               name: SURREAL_URL
+              key: "latest"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: SUPABASE_DATABASE_URL
               key: "latest"
         - name: ADMIN_EMAIL
           valueFrom:
