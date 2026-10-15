@@ -165,13 +165,38 @@ gcp.storage.BucketIAMMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-# 4. Artifact Registry Repository
+# 4. Artifact Registry Repository (for container images)
+artifact_repo_id = config.get("artifact_repo_id") or "cloud-run-source-deploy"
 artifact_repo = gcp.artifactregistry.Repository(
-    "korda-repo",
-    repository_id="korda-repo",
+    "korda-artifact-registry",
+    repository_id=artifact_repo_id,
     location=region,
     format="DOCKER",
-    description="Docker container registry for KORDA images",
+    description="Cloud Run Source Deployments",
+    cleanup_policy_dry_run=False,
+    cleanup_policies=[
+        gcp.artifactregistry.RepositoryCleanupPolicyArgs(
+            id="delete-all-versions-after-30-days",
+            action="DELETE",
+            condition=gcp.artifactregistry.RepositoryCleanupPolicyConditionArgs(
+                older_than="2592000s",
+                tag_state="ANY",
+            ),
+        ),
+        gcp.artifactregistry.RepositoryCleanupPolicyArgs(
+            id="delete-untagged-after-1-day",
+            action="DELETE",
+            condition=gcp.artifactregistry.RepositoryCleanupPolicyConditionArgs(
+                older_than="86400s",
+                tag_state="UNTAGGED",
+            ),
+        ),
+        gcp.artifactregistry.RepositoryCleanupPolicyArgs(
+            id="keep-10-most-recent-per-package",
+            action="KEEP",
+            most_recent_versions=gcp.artifactregistry.RepositoryCleanupPolicyMostRecentVersionsArgs(keep_count=10),
+        ),
+    ],
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
