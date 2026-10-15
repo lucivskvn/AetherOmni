@@ -78,6 +78,9 @@ pulumi config set korda-infra:image_tag "$IMAGE_TAG"
 Cloud Tasks may run in a different region from Cloud Run. Set `_QUEUE_REGION`
 in Cloud Build and `queue_region` in Pulumi to the existing queue's location;
 the deployment must pass that value as `GCP_QUEUE_LOCATION` to both services.
+When importing or reconciling Artifact Registry, preserve its existing cleanup
+policies and repository metadata so an infrastructure update does not silently
+change image retention.
 
 # Preview resource topology
 pulumi preview --stack prod

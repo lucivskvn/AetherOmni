@@ -26,6 +26,9 @@ full-stack provider migration.
 Keep the Cloud Tasks queue region independently configured from the Cloud Run
 resource region. Propagate `GCP_QUEUE_LOCATION` to web and worker services and
 use the same queue region for the queue IAM binding and Cloud Build deployment.
+Pulumi must preserve existing Artifact Registry cleanup policies and repository
+metadata during imports and targeted reconciliations; review retention changes
+explicitly before applying them.
 
 ### Runtime reliability contracts
 
