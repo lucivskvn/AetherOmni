@@ -18,6 +18,11 @@ migrations are reviewed. CI installs a pinned SurrealDB CLI and treats
 `surreal validate` as a blocking check; a missing validator must fail the job.
 Pulumi requires the computed semantic `release_version` and matching
 `IMAGE_TAG`; missing, mismatched, or floating `latest` inputs fail closed.
+Keep Pulumi's `gcp:region` provider setting separate from resource placement
+(`resource_region` or `GCP_REGION`). Preserve the provider region recorded in
+existing stack state and preserve each resource's default or explicit provider
+association during targeted reconciliations; changing either can require a
+full-stack provider migration.
 
 ### Runtime reliability contracts
 
