@@ -6,17 +6,17 @@
     --bg-surface: rgba(17, 24, 39, 0.75);
     --bg-glass: rgba(15, 23, 42, 0.75); /* More opaque for cleaner layering */
     --bg-glass-active: rgba(31, 41, 55, 0.90);
-    
+
     --border-glass: rgba(255, 255, 255, 0.1); /* Slightly higher visibility */
     --border-glass-glow: rgba(99, 102, 241, 0.3);
-    
+
     --primary: #6366f1; /* Indigo */
     --primary-glow: rgba(99, 102, 241, 0.4);
     --secondary: #a855f7; /* Purple */
     --secondary-glow: rgba(168, 85, 247, 0.4);
     --accent: #14b8a6; /* Teal */
     --accent-glow: rgba(20, 184, 166, 0.4);
-    
+
     --text-main: #cbd5e1; /* Slate 300 - softer for body text, reduces screen glare */
     --text-heading: #f8fafc; /* Slate 50 - sharp and bright for headings */
     --text-muted: #94a3b8; /* Slate 400 - clean and legible */
@@ -32,14 +32,14 @@
     --status-pending-bg: #241a07;
     --status-processing-bg: #111333;
     --status-failed-bg: #240c0c;
-    
+
     --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    
+
     --font-display: 'Outfit', 'Inter', sans-serif;
     --font-body: 'Inter', sans-serif;
     --font-arabic: 'Scheherazade New', 'Amiri', serif;
-    
+
     --bg-gradient-1: rgba(99, 102, 241, 0.08); /* Muted gradient brightness */
     --bg-gradient-2: rgba(168, 85, 247, 0.06);
     --bg-gradient-3: rgba(20, 184, 166, 0.03);
@@ -65,17 +65,17 @@
     --bg-surface: #ffffff; /* Solid white for surface elements */
     --bg-glass: rgba(255, 255, 255, 0.95); /* Mostly solid white - high contrast, consistent */
     --bg-glass-active: #e2e8f0; /* Slate 200 */
-    
+
     --border-glass: rgba(15, 23, 42, 0.12); /* Higher contrast border */
     --border-glass-glow: rgba(99, 102, 241, 0.45);
-    
+
     --primary: #4f46e5; /* Indigo-600 */
     --primary-glow: rgba(79, 70, 229, 0.2);
     --secondary: #9333ea; /* Purple-600 */
     --secondary-glow: rgba(147, 51, 234, 0.2);
     --accent: #0d9488; /* Teal-600 */
     --accent-glow: rgba(13, 148, 136, 0.2);
-    
+
     --text-main: #1e293b; /* Slate 800 - extremely sharp for reading */
     --text-heading: #0f172a; /* Slate 900 - bold and deep space black for headers */
     --text-muted: #475569; /* Slate 600 - high contrast subtexts */
@@ -91,9 +91,9 @@
     --status-pending-bg: #fef3c7;
     --status-processing-bg: #e0e7ff;
     --status-failed-bg: #fee2e2;
-    
+
     --card-shadow: 0 4px 20px 0 rgba(15, 23, 42, 0.08);
-    
+
     --bg-gradient-1: rgba(99, 102, 241, 0.03);
     --bg-gradient-2: rgba(168, 85, 247, 0.02);
     --bg-gradient-3: rgba(20, 184, 166, 0.01);
@@ -138,7 +138,7 @@
 
 body {
     background-color: var(--bg-base);
-    background-image: 
+    background-image:
         radial-gradient(at 0% 0%, var(--bg-gradient-1) 0px, transparent 50%),
         radial-gradient(at 100% 100%, var(--bg-gradient-2) 0px, transparent 50%),
         radial-gradient(at 50% 50%, var(--bg-gradient-3) 0px, transparent 50%);
