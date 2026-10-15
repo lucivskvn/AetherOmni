@@ -9,6 +9,7 @@
 #
 # Substitution Variables (configure in Cloud Build trigger):
 #   _REGION          - GCP region (default: asia-southeast1)
+#   _QUEUE_REGION    - Cloud Tasks queue region (default: asia-southeast2)
 #
 # Built-in Cloud Build substitutions used:
 #   $PROJECT_ID      - Auto-populated by Cloud Build
@@ -29,6 +30,7 @@
 # ==============================================================================
 substitutions:
   _REGION: asia-southeast1
+  _QUEUE_REGION: asia-southeast2
   _GITHUB_REPOSITORY: lucivskvn/AetherOmni
   # Optional public application URL. Resolved dynamically if left empty.
   _APP_URL: ""
@@ -341,7 +343,7 @@ steps:
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
-        ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
+        ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_QUEUE_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
         ENV_VARS="$${ENV_VARS},SURREAL_NS=korda,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
         ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-2.5-flash,GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
@@ -401,7 +403,7 @@ steps:
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
         ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
-        ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
+        ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_QUEUE_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL},EXTRA_ALLOWED_HOSTS=$${CUSTOM_DOMAINS}"
         ENV_VARS="$${ENV_VARS},SURREAL_NS=korda,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
         ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-2.5-flash,GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"

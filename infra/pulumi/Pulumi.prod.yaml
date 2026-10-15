@@ -5,3 +5,4 @@ config:
   korda-infra:worker_min_instances: "0"
   korda-infra:worker_max_instances: "5"
   korda-infra:resource_region: asia-southeast1
+  korda-infra:queue_region: asia-southeast2

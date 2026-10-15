@@ -30,6 +30,7 @@ if not project or "${" in project:
 
 region = config.get("resource_region") or os.getenv("GCP_REGION") or "asia-southeast1"
 provider_region = gcp_config.get("region") or region
+queue_region = config.get("queue_region") or provider_region
 
 # Stack configuration parameters
 release_version = config.get("release_version") or os.getenv("RELEASE_VERSION")
@@ -67,7 +68,7 @@ queue_name = config.get("queue_name") or os.getenv("CLOUD_TASKS_QUEUE") or "extr
 tasks_queue = gcp.cloudtasks.Queue(
     "korda-tasks-queue",
     name=queue_name,
-    location=region,
+    location=queue_region,
     project=project,
     rate_limits=gcp.cloudtasks.QueueRateLimitsArgs(
         max_concurrent_dispatches=10,
@@ -113,7 +114,7 @@ for idx, role in enumerate(iam_roles):
 task_deleter = gcp.cloudtasks.QueueIamMember(
     "korda-task-deleter",
     project=project,
-    location=region,
+    location=queue_region,
     name=tasks_queue.name,
     role="roles/cloudtasks.taskDeleter",
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
@@ -155,6 +156,7 @@ common_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="DJANGO_DEBUG", value="False"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_PROJECT_ID", value=project),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_REGION", value=region),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_QUEUE_LOCATION", value=queue_region),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_QUEUE_NAME", value=tasks_queue.name),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GS_BUCKET_NAME", value=media_bucket.name),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="SURREAL_NS", value="korda"),

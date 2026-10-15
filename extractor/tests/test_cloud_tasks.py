@@ -58,14 +58,19 @@ class CloudTasksTestCase(TestCase):
         mock_client_class.return_value = mock_client
 
         # Mock project ID to return dummy
-        with self.settings(DEBUG=False, APP_URL="https://my-app.run.app", WORKER_URL="https://my-app.run.app"):
+        with self.settings(
+            DEBUG=False,
+            APP_URL="https://my-app.run.app",
+            WORKER_URL="https://my-app.run.app",
+            GCP_QUEUE_LOCATION="asia-southeast2",
+        ):
             cloud_tasks.enqueue("process_document", {"document_id": document.id})
 
             # Check that the Cloud Tasks client was used to create a task
             mock_client.create_task.assert_called_once()
             args, kwargs = mock_client.create_task.call_args
             parent = kwargs.get("parent") or args[0]
-            self.assertIn("projects/my-gcp-project/locations/asia-southeast1/queues/", parent)
+            self.assertIn("projects/my-gcp-project/locations/asia-southeast2/queues/", parent)
 
             task = kwargs.get("task") or args[1]
             self.assertEqual(task["http_request"]["url"], "https://my-app.run.app/internal/tasks/process_document/")

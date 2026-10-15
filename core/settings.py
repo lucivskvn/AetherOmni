@@ -506,6 +506,7 @@ if not DEBUG and not GEMINI_API_KEY and not os.getenv("GOOGLE_CLOUD_PROJECT") an
 GCP_PROJECT = os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
 # Canonical default: asia-southeast1 (Singapore) — matches cloudbuild.yaml, Pulumi, and deployment.py
 GCP_REGION = os.getenv("GCP_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "asia-southeast1"
+GCP_QUEUE_LOCATION = os.getenv("GCP_QUEUE_LOCATION") or GCP_REGION
 VERTEX_API_KEY = os.getenv("VERTEX_API_KEY")
 
 
