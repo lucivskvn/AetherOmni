@@ -21,10 +21,10 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    
+
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@0.453.0/dist/umd/lucide.min.js" integrity="sha384-0v3Wh0ZtiQBYCYywQoeMDA5mAw5Z01p0lhorqy0BlwFrcN6u3lmN7K0U/e1uezmr" crossorigin="anonymous"></script>
-    
+
     <!-- Chart.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" integrity="sha512-ZwR1/gSZM3ai6vCdI+LVF1zSq/5HznD3ZSTk7kajkaj4D292NLuduDCO1c/NT8Id+jE58KYLKT7hXnbtryGmMg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
@@ -46,7 +46,7 @@
             max-width: 100%;
         }
     </style>
-    
+
     <!-- Conditionally load Supabase Realtime client if credentials exist -->
     {% if SUPABASE_URL and SUPABASE_PUBLIC_KEY %}
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js" integrity="sha384-qafw21c/iciq0VXsi9FzkfoQv5I/V0iqE4lSNcKXPnW9/UTJLnv5CcN4FHxVLnKg" crossorigin="anonymous"></script>
@@ -60,7 +60,7 @@
     <!-- Centralized Deferred JS -->
     {% static 'js/main.js' as main_js_url %}
     <script defer src="{{ main_js_url|cache_bust }}"></script>
-    
+
     {% block extra_css %}{% endblock %}
     <style>
         .skip-to-main {
@@ -167,19 +167,19 @@
             </div>
             <p id="settings-modal-desc" style="margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.4;">Configure monthly budgets, default Gemini models, and trusted CORS/CSRF proxy hosts.</p>
         </div>
-        
+
         <!-- Settings Form -->
         <form action="{% url 'save_settings' %}" method="post" id="settings-form">
             {% csrf_token %}
             <fieldset>
                 <legend class="visually-hidden">System and Budget Configurations</legend>
-                
+
                 <div class="form-group">
                     <label for="monthly_budget_usd">Monthly AI Processing Budget (USD) <span class="text-danger" aria-hidden="true">*</span></label>
                     <input type="number" id="monthly_budget_usd" name="monthly_budget_usd" min="1" step="0.01" value="{{ system_settings.monthly_budget_usd }}" aria-describedby="budget-desc" inputmode="decimal" enterkeyhint="next" required>
                     <small id="budget-desc">Max cumulative spent permitted across model runs before automatic capping.</small>
                 </div>
-                
+
                 <div class="form-group">
                     <label for="selected_model">Default LLM & Intelligence Router</label>
                     <select id="selected_model" name="selected_model" aria-describedby="model-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
@@ -195,7 +195,7 @@
                 <div class="form-group">
                     <output class="settings-note" for="selected_model">OpenRouter credentials are deployment-managed through GCP Secret Manager and are never entered or stored in this console.</output>
                 </div>
-                
+
                 <div class="form-group">
                     <label for="currency">Display Currency Override</label>
                     <select id="currency" name="currency" aria-describedby="currency-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
@@ -212,7 +212,7 @@
                     <textarea id="csrf_trusted_origins" name="csrf_trusted_origins" aria-describedby="csrf-desc" style="width: 100%; min-height: 80px; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem; resize: vertical;">{{ system_settings.csrf_trusted_origins }}</textarea>
                     <small id="csrf-desc">Comma-separated list of custom domains or tunnel/proxy URLs to whitelist for CSRF (e.g., <code>https://my-good-domain.com, https://another-tunnel.ngrok-free.app</code>).</small>
                 </div>
-                
+
                 <div class="dialog-footer border-sep">
                     <button type="submit" class="btn btn-primary">
                         <i data-lucide="save"></i> Save Configurations
@@ -220,7 +220,7 @@
                 </div>
             </fieldset>
         </form>
-        
+
         <!-- Danger Zone / Reset Memory -->
         {% if user.is_superuser %}
         <div class="danger-zone">
@@ -230,14 +230,14 @@
             <p class="danger-desc">
                 Wipe all source documents, parsing metadata, semantic chunks, and vector embeddings physically and logically from memory.
             </p>
-            
+
             <!-- Interactive Dual Action Confirmation Flow -->
             <div id="reset-initial-state">
                 <button type="button" id="reset-trigger-btn" class="btn btn-danger full-width">
                     <i data-lucide="trash-2"></i> Reset All Memory
                 </button>
             </div>
-            
+
             <div id="reset-confirm-state">
                 <div class="danger-warning">
                     <p>
@@ -246,7 +246,7 @@
                 </div>
                 <label for="reset_confirm_input">Type <strong>RESET</strong> below to confirm:</label>
                 <input type="text" id="reset_confirm_input" placeholder="RESET">
-                
+
                 <form action="{% url 'purge_all_documents' %}" method="post" class="full-width-form" id="purge-all-form">
                     {% csrf_token %}
                     <button type="submit" id="final-reset-btn" class="btn btn-danger full-width" title="Type RESET to enable" disabled aria-disabled="true">

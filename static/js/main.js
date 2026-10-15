@@ -619,7 +619,7 @@ function initializeSettingsModal() {
     const settingsModal = document.getElementById('settings-modal');
     const settingsTriggerBtn = document.getElementById('settings-trigger-btn');
     const settingsCloseBtn = document.getElementById('settings-close-btn');
-    
+
     const resetTriggerBtn = document.getElementById('reset-trigger-btn');
     const resetCancelBtn = document.getElementById('reset-cancel-btn');
     const resetConfirmInput = document.getElementById('reset_confirm_input');
@@ -937,7 +937,7 @@ function toggleExportFooter() {
     const count = checkboxes.length;
     const footer = document.getElementById('export-actions-bar');
     const countLabel = document.getElementById('selected-count');
-    
+
     if (countLabel) countLabel.textContent = count;
     if (footer) {
         if (count > 0) {
@@ -1246,7 +1246,7 @@ function initializeTokensChart() {
 
     const prompt_tokens = Number.parseInt(tokensChartEl.dataset.prompt || '1', 10);
     const candidates_tokens = Number.parseInt(tokensChartEl.dataset.candidates || '0', 10);
-    
+
     tokensChartInstance = new Chart(ctx, {
             type: 'doughnut',
             data: {
@@ -1843,11 +1843,11 @@ function initializeLocalTimezones() {
     timeElements.forEach(el => {
         const utcStr = el.dateTime || el.dataset.utc;
         if (!utcStr) return;
-        
+
         try {
             const date = new Date(utcStr);
             if (Number.isNaN(date.getTime())) return;
-            
+
             const options = {
                 year: 'numeric',
                 month: '2-digit',
