@@ -66,7 +66,9 @@ cd infra/pulumi
 
 # Set your target project ID (if not already set in environment)
 pulumi config set gcp:project <YOUR_GCP_PROJECT_ID>
-pulumi config set gcp:region asia-southeast1
+# Keep existing provider settings and per-resource provider assignments during state reconciliation.
+pulumi config set gcp:region "$GCP_PROVIDER_REGION"
+pulumi config set korda-infra:resource_region "$GCP_REGION"
 
 # Set both values from the approved release computation before previewing.
 pulumi config set korda-infra:release_version "$RELEASE_VERSION"

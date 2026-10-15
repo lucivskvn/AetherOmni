@@ -124,7 +124,7 @@ Report suspected vulnerabilities privately through the process in [SECURITY.md](
 
 ## Contributing
 
-Keep changes focused, preserve tenant boundaries and task-identity fencing, and run the relevant verification gate. For GCP changes, use the existing Pulumi project and preview infrastructure changes before applying them.
+Keep changes focused, preserve tenant boundaries and task-identity fencing, and run the relevant verification gate. For GCP changes, use the existing Pulumi project and preview infrastructure changes before applying them. Keep Pulumi's `gcp:region` provider setting separate from resource placement (`resource_region` or `GCP_REGION`) and preserve each existing resource's default or explicit provider association during targeted state reconciliation.
 
 ## License
 

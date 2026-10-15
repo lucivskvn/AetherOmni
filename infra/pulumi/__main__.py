@@ -28,7 +28,8 @@ if not project or "${" in project:
         "GCP project ID must be specified via 'pulumi config set gcp:project <id>' or GCP_PROJECT_ID env var."
     )
 
-region = gcp_config.get("region") or os.getenv("GCP_REGION") or "asia-southeast1"
+region = config.get("resource_region") or os.getenv("GCP_REGION") or "asia-southeast1"
+provider_region = gcp_config.get("region") or region
 
 # Stack configuration parameters
 release_version = config.get("release_version") or os.getenv("RELEASE_VERSION")
@@ -45,7 +46,7 @@ worker_min_instances = config.get_int("worker_min_instances") or 0
 worker_max_instances = config.get_int("worker_max_instances") or 5
 
 # Explicit GCP Provider passing resolved project and region dynamically
-gcp_provider = gcp.Provider("gcp-provider", project=project, region=region)
+gcp_provider = gcp.Provider("gcp-provider", project=project, region=provider_region)
 project_info = gcp.organizations.get_project(project_id=project, opts=pulumi.InvokeOptions(provider=gcp_provider))
 cloud_tasks_oidc_member = f"serviceAccount:{project_info.number}-compute@developer.gserviceaccount.com"
 
@@ -86,7 +87,6 @@ service_account = gcp.serviceaccount.Account(
     "korda-service-account",
     account_id="korda-runtime",
     display_name="KORDA Cloud Run Runtime Service Account",
-    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # Least-privilege IAM bindings
@@ -106,7 +106,6 @@ for idx, role in enumerate(iam_roles):
         project=project,
         role=role,
         member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
-        opts=pulumi.ResourceOptions(provider=gcp_provider),
     )
     iam_members.append(member)
 
