@@ -14,12 +14,12 @@
 # Built-in Cloud Build substitutions used:
 #   $PROJECT_ID      - Auto-populated by Cloud Build
 #   $PROJECT_NUMBER  - Auto-populated by Cloud Build
-#   $SHORT_SHA       - Git short commit SHA (auto-populated by Cloud Build trigger)
+#   $COMMIT_SHA      - Full source commit SHA (supply explicitly for manual builds)
 #
 # RELEASE_VERSION scheme (matches update_docs.py and sonar-project.properties):
-#   vMAJOR.MINOR.PATCH
+#   MAJOR.MINOR.PATCH
 #   MAJOR.MINOR is read from the VERSION file in the repo root.
-#   PATCH is derived from the latest release tag and kept stable for Docker/Cloud Run tag safety.
+#   PATCH is derived from the complete Git commit history count.
 #   We intentionally avoid appending +SHORT_SHA to the image tag because Docker and
 #   Cloud Run reject '+' in image tags. The short SHA remains available in the app
 #   metadata when needed, but the deployable image tag is the stable semver.
@@ -48,6 +48,20 @@ steps:
     args:
       - '-euc'
       - |
+        SOURCE_SHA='${COMMIT_SHA}'
+        DEPLOY_SHA='${_DEPLOY_COMMIT_SHA}'
+        if [ -d .git ]; then
+          SOURCE_SHA=$$(git rev-parse HEAD)
+          if [ -n '${COMMIT_SHA}' ] && [ "$${SOURCE_SHA}" != '${COMMIT_SHA}' ]; then
+            echo "Submitted source does not match COMMIT_SHA" >&2
+            exit 1
+          fi
+        fi
+        printf '%s' "$${SOURCE_SHA}" | grep -Eq '^[0-9a-f]{40}$$'
+        if [ -n "$${DEPLOY_SHA}" ] && [ "$${SOURCE_SHA}" != "$${DEPLOY_SHA}" ]; then
+          echo "Submitted source does not match the approved deployment commit" >&2
+          exit 1
+        fi
         # Compute MAJOR.MINOR from VERSION file
         MAJOR_MINOR=$$(cat VERSION | tr -d '[:space:]' | cut -d. -f1-2)
 
@@ -61,15 +75,13 @@ steps:
             exit 1
           fi
           if [ "$$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
-            git fetch --unshallow --no-tags origin 2>/dev/null || git fetch --unshallow --no-tags 2>/dev/null || true
+            git fetch --unshallow --no-tags origin
           fi
+          test "$$(git rev-parse --is-shallow-repository)" = "false"
           PATCH=$$(git rev-list --count HEAD)
           RELEASE_VERSION="$${MAJOR_MINOR}.$${PATCH}"
         fi
-        BUILD_SHA="${SHORT_SHA:-}"
-        if [ -z "$${BUILD_SHA}" ]; then
-          BUILD_SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo "local")
-        fi
+        BUILD_SHA="$${SOURCE_SHA:0:7}"
         IMAGE_TAG="$${RELEASE_VERSION}"
         echo "RELEASE_VERSION=$${RELEASE_VERSION}" > /workspace/release_version.env
         echo "IMAGE_TAG=$${IMAGE_TAG}" >> /workspace/release_version.env
@@ -119,7 +131,8 @@ steps:
         /kaniko/executor \
           --context=dir:///workspace \
           --dockerfile=/workspace/Dockerfile \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$SHORT_SHA \
+          --digest-file=/workspace/korda.image.digest \
+          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${BUILD_SHA} \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:latest \
           --cache=true \
@@ -139,10 +152,13 @@ steps:
     args:
       - '-euc'
       - |
-        IMAGE_URI='${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$SHORT_SHA'
-        DIGEST="$$(gcloud artifacts docker images describe "$${IMAGE_URI}" --format='value(image_summary.digest)')"
+        . /workspace/release_version.env
+        IMAGE_URI='${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda'
+        DIGEST="$$(cat /workspace/korda.image.digest)"
         printf '%s' "$${DIGEST}" | grep -Eq '^sha256:[0-9a-f]{64}$$'
-        printf 'registry:%s@%s' "$${IMAGE_URI%:*}" "$${DIGEST}" > /workspace/korda.image.reference
+        REMOTE_DIGEST="$$(gcloud artifacts docker images describe "$${IMAGE_URI}@$${DIGEST}" --format='value(image_summary.digest)')"
+        test "$${REMOTE_DIGEST}" = "$${DIGEST}"
+        printf 'registry:%s@%s' "$${IMAGE_URI}" "$${DIGEST}" > /workspace/korda.image.reference
 
   # 3. Prepare a narrow writable directory for Syft's non-root debug image.
   # Cloud Build's workspace is root-owned; retaining the broader workspace mode
@@ -330,8 +346,8 @@ steps:
           echo "Missing computed release version metadata" >&2
           exit 1
         fi
-        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
-        IMAGE_TAG="$${IMAGE_TAG//+/-}"
+        IMAGE_REFERENCE="$$(sed 's/^registry://' /workspace/korda.image.reference)"
+        printf '%s' "$${IMAGE_REFERENCE}" | grep -Eq '^${_REGION}-docker[.]pkg[.]dev/${PROJECT_ID}/cloud-run-source-deploy/korda@sha256:[0-9a-f]{64}$$'
         WEB_URL="$$(gcloud run services describe korda-web --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         WORKER_URL="$$(gcloud run services describe korda-worker --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         APP_URL='${_APP_URL}'
@@ -360,7 +376,7 @@ steps:
           SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
         fi
         gcloud run deploy korda-worker \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
+          --image="$${IMAGE_REFERENCE}" \
           --region=${_REGION} \
           --platform=managed \
           --no-allow-unauthenticated \
@@ -385,8 +401,8 @@ steps:
           echo "Missing computed release version metadata" >&2
           exit 1
         fi
-        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
-        IMAGE_TAG="$${IMAGE_TAG//+/-}"
+        IMAGE_REFERENCE="$$(sed 's/^registry://' /workspace/korda.image.reference)"
+        printf '%s' "$${IMAGE_REFERENCE}" | grep -Eq '^${_REGION}-docker[.]pkg[.]dev/${PROJECT_ID}/cloud-run-source-deploy/korda@sha256:[0-9a-f]{64}$$'
         WEB_URL="$$(gcloud run services describe korda-web --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         WORKER_URL="$$(gcloud run services describe korda-worker --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         CUSTOM_DOMAINS="$$(gcloud beta run domain-mappings list --region=${_REGION} --format='value(DOMAIN)' 2>/dev/null | tr '\n' ',' | sed 's/,$$//')"
@@ -420,7 +436,7 @@ steps:
           SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
         fi
         gcloud run deploy korda-web \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
+          --image="$${IMAGE_REFERENCE}" \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
@@ -438,6 +454,14 @@ steps:
       - '-euc'
       - |
         . /workspace/release_version.env
+        EXPECTED_IMAGE="$$(sed 's/^registry://' /workspace/korda.image.reference)"
+        for service in korda-web korda-worker; do
+          ACTUAL_IMAGE="$$(gcloud run services describe "$${service}" --region=${_REGION} --format='value(spec.template.spec.containers[0].image)')"
+          if [ "$${ACTUAL_IMAGE}" != "$${EXPECTED_IMAGE}" ]; then
+            echo "Deployed image identity mismatch for $${service}" >&2
+            exit 1
+          fi
+        done
         WEB_URL="$$(gcloud run services describe korda-web --region=${_REGION} --format='value(status.url)')"
         export WEB_URL RELEASE_VERSION BUILD_SHA
         python3 - <<'PY'

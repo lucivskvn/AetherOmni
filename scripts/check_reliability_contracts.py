@@ -21,6 +21,38 @@ def _require(errors: list[str], source: str, required: tuple[str, ...], message:
         errors.append(message)
 
 
+def _check_deployment_identity(errors: list[str], manifests: tuple[str, ...], cloudbuild: str) -> None:
+    for manifest in manifests:
+        _require(
+            errors,
+            manifest,
+            (
+                "cloud-run-source-deploy/korda:${RELEASE_VERSION}",
+                'value: "${GCP_QUEUE_LOCATION}"',
+                'value: "extractor-tasks-v2"',
+                "name: DATABASE_URL",
+                "name: SUPABASE_DATABASE_URL",
+            ),
+            "Cloud Run manifests must use the computed release, independent queue region, and Supabase database secret.",
+        )
+    _require(
+        errors,
+        cloudbuild,
+        (
+            "Submitted source does not match the approved deployment commit",
+            'test "$$(git rev-parse --is-shallow-repository)" = "false"',
+            'BUILD_SHA="$${SOURCE_SHA:0:7}"',
+            "--digest-file=/workspace/korda.image.digest",
+            'test "$${REMOTE_DIGEST}" = "$${DIGEST}"',
+            "for service in korda-web korda-worker; do",
+            'if [ "$${ACTUAL_IMAGE}" != "$${EXPECTED_IMAGE}" ]; then',
+        ),
+        "Cloud Build must bind source identity, require full version history, and verify both deployed images.",
+    )
+    if cloudbuild.count('--image="$${IMAGE_REFERENCE}"') != 2:
+        errors.append("Both Cloud Run deploys must use the resolved SBOM image digest.")
+
+
 def main() -> int:
     """Verify task, tenant, auth, export, and deployment controls before remote checks."""
     errors: list[str] = []
@@ -156,7 +188,7 @@ def main() -> int:
     _require(
         errors,
         worker_manifest,
-        ("memory: 1024Mi",),
+        ("memory: 2Gi",),
         "Worker Cloud Run manifest must retain the post-incident memory floor.",
     )
     _require(
@@ -177,6 +209,7 @@ def main() -> int:
         ("--memory=1Gi", "--memory=2Gi", "--no-allow-unauthenticated", "DATABASE_URL=SUPABASE_DATABASE_URL:latest"),
         "Cloud Build must retain memory floors, a private worker, and a required Supabase database secret.",
     )
+    _check_deployment_identity(errors, (service_manifest, worker_manifest), cloudbuild)
     _require(
         errors,
         views,

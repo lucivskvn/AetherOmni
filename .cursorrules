@@ -9,6 +9,12 @@
 Use `.agents/skills/aetheromni-delivery/SKILL.md` as the concise operational
 runbook. This file remains the authoritative cross-agent policy.
 
+Deployment manifests must use the computed release image, the independently
+configured queue location, the active queue name, and the Supabase database
+secret. Cloud Build must bind submitted source to the approved commit, fail if
+history cannot be unshallowed, and deploy and verify both services against the
+same resolved image digest used for the SBOM.
+
 `run_checks.sh` is the canonical local verification entrypoint. The legacy
 `scripts/verify-pipeline.sh` is a compatibility wrapper only and must not fetch,
 pull, stash, perform remote scans, or deploy.
