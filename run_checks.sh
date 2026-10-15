@@ -75,6 +75,19 @@ if [[ -d "${HOME}/.surrealdb" ]]; then
     export PATH="${HOME}/.surrealdb:${PATH}"
 fi
 
+if [[ "$DOCS_ONLY" != true ]]; then
+    for REQUIRED_TOOL in markdownlint yamllint hadolint shellcheck ast-grep semgrep; do
+        if ! command -v "$REQUIRED_TOOL" &> /dev/null; then
+            echo -e "${RED}✗ Required verification tool '$REQUIRED_TOOL' is not installed or not on PATH.${NC}" >&2
+            exit 1
+        fi
+    done
+    if ! $PYTHON_BIN -m mypy --version &> /dev/null; then
+        echo -e "${RED}✗ mypy is required for static type checking.${NC}" >&2
+        exit 1
+    fi
+fi
+
 if [[ "$DOCS_ONLY" = true ]]; then
     echo -e "\n${CYAN}⚡ Executing Fast Differential Verification Pass (Targeting Changed Files Only)...${NC}"
     
@@ -88,7 +101,11 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed markdown files
     CHANGED_MD=$(echo "$CHANGED_FILES" | grep -E '\.(md|markdown)$' || true)
-    if [[ -n "$CHANGED_MD" ]] && command -v markdownlint &> /dev/null; then
+    if [[ -n "$CHANGED_MD" ]]; then
+        if ! command -v markdownlint &> /dev/null; then
+            echo -e "${RED}✗ markdownlint is required for changed Markdown files.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Scanning changed Markdown files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_MD holds space-separated filenames
         markdownlint --fix $CHANGED_MD 2>/dev/null || true
@@ -99,14 +116,18 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed YAML files
     CHANGED_YAML=$(echo "$CHANGED_FILES" | grep -E '\.(yml|yaml)$' || true)
-    if [[ -n "$CHANGED_YAML" ]] && command -v yamllint &> /dev/null; then
+    if [[ -n "$CHANGED_YAML" ]]; then
+        if ! command -v yamllint &> /dev/null; then
+            echo -e "${RED}✗ yamllint is required for changed YAML files.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Scanning changed YAML files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_YAML holds space-separated filenames
         yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" $CHANGED_YAML
         echo -e "${GREEN}✓ Changed YAML structures verified cleanly.${NC}"
     fi
 
-    if [[ -n "$CHANGED_YAML" ]] && command -v yamllint &> /dev/null; then
+    if [[ -n "$CHANGED_YAML" ]]; then
         for SONAR_YAML_FILE in bandit.yaml docker-compose.yml; do
             if echo "$CHANGED_YAML" | grep -Fxq "$SONAR_YAML_FILE"; then
                 yamllint "$SONAR_YAML_FILE"
@@ -158,7 +179,11 @@ if [[ "$DOCS_ONLY" = true ]]; then
     fi
 
     CHANGED_DOCKER=$(echo "$CHANGED_FILES" | grep -E '(^|/)Dockerfile' || true)
-    if [[ -n "$CHANGED_DOCKER" ]] && command -v hadolint &> /dev/null; then
+    if [[ -n "$CHANGED_DOCKER" ]]; then
+        if ! command -v hadolint &> /dev/null; then
+            echo -e "${RED}✗ Hadolint is required for changed Dockerfiles.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Running Hadolint on changed Dockerfiles...${NC}"
         # shellcheck disable=SC2086
         hadolint $CHANGED_DOCKER || exit 1
@@ -188,7 +213,11 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed SurrealQL files
     CHANGED_SURQL=$(echo "$CHANGED_FILES" | grep -E '\.surql$' || true)
-    if [[ -n "$CHANGED_SURQL" ]] && command -v surreal &> /dev/null && surreal version &> /dev/null; then
+    if [[ -n "$CHANGED_SURQL" ]]; then
+        if ! command -v surreal &> /dev/null || ! surreal version &> /dev/null; then
+            echo -e "${RED}✗ SurrealDB CLI is required for changed SurrealQL files.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Validating changed SurrealQL files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_SURQL holds space-separated filenames
         surreal validate $CHANGED_SURQL 2>&1 || exit 1
@@ -275,7 +304,8 @@ elif command -v npm &> /dev/null; then
     npm test
     echo -e "${GREEN}✓ JavaScript unit tests passed cleanly (0 failures).${NC}"
 else
-    echo -e "${YELLOW}⚠ Vitest / npm not found (skipping JS unit tests).${NC}"
+    echo -e "${RED}✗ Vitest / npm is required for JavaScript unit tests.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Verifying Source Code Formatting Consistency...${NC}"
@@ -292,7 +322,8 @@ if command -v yamllint &> /dev/null; then
         docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml
     echo -e "${GREEN}✓ Configuration schemas and YAML structures verified successfully.${NC}"
 else
-    echo -e "${YELLOW}⚠ yamllint not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ yamllint is required for configuration validation.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Container Security] Executing Hadolint Dockerfile Hardening Audit...${NC}"
@@ -300,7 +331,8 @@ if command -v hadolint &> /dev/null; then
     hadolint Dockerfile
     echo -e "${GREEN}✓ Container hardening and Dockerfile standards verified.${NC}"
 else
-    echo -e "${YELLOW}⚠ Hadolint not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ Hadolint is required for Dockerfile validation.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Infrastructure as Code] Auditing Pulumi Python Stack Integrity...${NC}"
@@ -337,7 +369,8 @@ if command -v shellcheck &> /dev/null; then
     shellcheck run_checks.sh scripts/*.sh
     echo -e "${GREEN}✓ ShellCheck script conventions & POSIX safety verified cleanly.${NC}"
 else
-    echo -e "${YELLOW}⚠ ShellCheck not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ ShellCheck is required for shell validation.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Template Audit] Checking HTML templates for SRI integrity and security standards...${NC}"
@@ -359,7 +392,8 @@ elif command -v mypy &> /dev/null; then
     mypy --ignore-missing-imports core/ extractor/
     echo -e "${GREEN}✓ Static type definitions & data flow analysis passed cleanly (0 errors).${NC}"
 else
-    echo -e "${YELLOW}⚠ mypy not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ mypy is required for static type checking.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[AST Security] Executing AST-Grep Code Pattern Auditor...${NC}"
@@ -374,7 +408,8 @@ if command -v ast-grep &> /dev/null; then
     fi
     echo -e "${GREEN}✓ AST pattern scan completed: 0 errors, $AST_WARNS warning(s).${NC}"
 else
-    echo -e "${YELLOW}⚠ ast-grep not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ ast-grep is required for repository pattern checks.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[SAST Engine] Executing Semgrep Static Application Security Testing...${NC}"
@@ -386,7 +421,8 @@ if command -v semgrep &> /dev/null; then
         exit 1
     fi
 else
-    echo -e "${YELLOW}⚠ Semgrep not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ Semgrep is required for static application security analysis.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Code Quality & Cognitive Complexity] Running AST Gatekeeper & Literal Deduplication...${NC}"
@@ -503,7 +539,8 @@ if command -v markdownlint &> /dev/null; then
     markdownlint README.md docs/gcp_deployment_guide.md
     echo -e "${GREEN}✓ Documentation syntax & markdown standards verified.${NC}"
 else
-    echo -e "${YELLOW}⚠ markdownlint not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ markdownlint is required for documentation validation.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Release Governance] Synchronizing Documentation & Version Metadata...${NC}"
