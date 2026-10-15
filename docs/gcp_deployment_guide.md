@@ -69,10 +69,15 @@ pulumi config set gcp:project <YOUR_GCP_PROJECT_ID>
 # Keep existing provider settings and per-resource provider assignments during state reconciliation.
 pulumi config set gcp:region "$GCP_PROVIDER_REGION"
 pulumi config set korda-infra:resource_region "$GCP_REGION"
+pulumi config set korda-infra:queue_region "$GCP_QUEUE_REGION"
 
 # Set both values from the approved release computation before previewing.
 pulumi config set korda-infra:release_version "$RELEASE_VERSION"
 pulumi config set korda-infra:image_tag "$IMAGE_TAG"
+
+Cloud Tasks may run in a different region from Cloud Run. Set `_QUEUE_REGION`
+in Cloud Build and `queue_region` in Pulumi to the existing queue's location;
+the deployment must pass that value as `GCP_QUEUE_LOCATION` to both services.
 
 # Preview resource topology
 pulumi preview --stack prod

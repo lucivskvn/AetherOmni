@@ -23,6 +23,9 @@ Keep Pulumi's `gcp:region` provider setting separate from resource placement
 existing stack state and preserve each resource's default or explicit provider
 association during targeted reconciliations; changing either can require a
 full-stack provider migration.
+Keep the Cloud Tasks queue region independently configured from the Cloud Run
+resource region. Propagate `GCP_QUEUE_LOCATION` to web and worker services and
+use the same queue region for the queue IAM binding and Cloud Build deployment.
 
 ### Runtime reliability contracts
 
