@@ -25,7 +25,9 @@ XLSX ingestion has dedicated archive, worksheet, row, cell, and rendered-output 
 
 Before a deployment that changes the `system_settings` contract, run `python scripts/normalize_system_settings.py` against a non-production copy. Review only its boolean status output; use `--apply` only in an approved change after confirming valid CSRF origins will be preserved. The command never displays persisted settings values and fails if its postcondition readback is not normalized. For the retired `openrouter_api_key` field, run the approved purge before applying the Surreal schema and Django migration that remove the field.
 
-Use `bash run_checks.sh` for local delivery verification. The retained
+Use `bash run_checks.sh` for local delivery verification. Required linters,
+type checks, and security scanners must fail closed when missing; skipped tools
+do not constitute a successful gate. The retained
 `scripts/verify-pipeline.sh` command only delegates to that gate for backward
 compatibility; it performs no Git synchronization, remote scan, or deployment.
 GitHub Actions pin a supported Ubuntu LTS runner label and install a versioned
