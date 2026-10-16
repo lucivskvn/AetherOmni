@@ -249,13 +249,17 @@ class ProductionDeploymentContractTestCase(TestCase):
         self.assertIn('name="GS_BUCKET_NAME", value=media_bucket.name', pulumi_program)
         self.assertEqual(cloudbuild.count("GS_BUCKET_NAME=${PROJECT_ID}-media-korda"), 2)
         self.assertEqual(
-            cloudbuild.count('RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"'), 3
+            cloudbuild.count('RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"'), 2
         )
         self.assertEqual(cloudbuild.count('--service-account="$${RUNTIME_SERVICE_ACCOUNT}"'), 2)
 
     def test_cloud_build_blocks_deployment_without_bucket_runtime_iam_contract(self):
         cloudbuild = self._repo_file("infra", "gcp", "cloudbuild.yaml")
 
-        self.assertIn('gcloud storage buckets describe "gs://$${MEDIA_BUCKET}"', cloudbuild)
-        self.assertIn('gcloud iam service-accounts describe "$${RUNTIME_SERVICE_ACCOUNT}"', cloudbuild)
-        self.assertIn("roles/storage.objectAdmin", cloudbuild)
+        self.assertIn("python3 scripts/verify_gcp_prerequisites.py", cloudbuild)
+        self.assertIn('--project="${PROJECT_ID}" --project-number="${PROJECT_NUMBER}"', cloudbuild)
+        self.assertIn('--region="${_REGION}" --queue-region="${_QUEUE_REGION}"', cloudbuild)
+        preflight = self._repo_file("scripts", "verify_gcp_prerequisites.py")
+        self.assertIn('_metadata(project, "storage", "buckets", "describe", bucket)', preflight)
+        self.assertIn('_metadata(project, "iam", "service-accounts", "describe", account)', preflight)
+        self.assertIn("roles/storage.objectAdmin", preflight)

@@ -22,6 +22,7 @@ def _require(errors: list[str], source: str, required: tuple[str, ...], message:
 
 
 def _check_deployment_identity(errors: list[str], manifests: tuple[str, ...], cloudbuild: str) -> None:
+    _check_task_authentication(errors, cloudbuild)
     for manifest in manifests:
         _require(
             errors,
@@ -51,6 +52,32 @@ def _check_deployment_identity(errors: list[str], manifests: tuple[str, ...], cl
     )
     if cloudbuild.count('--image="$${IMAGE_REFERENCE}"') != 2:
         errors.append("Both Cloud Run deploys must use the resolved SBOM image digest.")
+
+
+def _check_task_authentication(errors: list[str], cloudbuild: str) -> None:
+    _require(
+        errors,
+        _read("extractor/cloud_tasks.py"),
+        ('"audience": service_url.rstrip("/")', "Cloud Tasks OIDC service account is not configured"),
+        "Cloud Tasks requires an explicit signing identity and service-root audience.",
+    )
+    _require(
+        errors,
+        _read("infra/pulumi/__main__.py"),
+        (
+            "korda-task-invoker-account",
+            "korda-task-creator-act-as",
+            "korda-task-agent-act-as",
+            'value=f"https://korda-worker-{project_info.number}.{region}.run.app"',
+        ),
+        "Pulumi must provision scoped task identities and bootstrap the worker self URL.",
+    )
+    _require(
+        errors,
+        cloudbuild,
+        ("require_enabled_secret", "scripts/verify_gcp_prerequisites.py", "korda-tasks-invoker@${PROJECT_ID}"),
+        "Deployment must verify enabled secrets and task invocation prerequisites.",
+    )
 
 
 def main() -> int:

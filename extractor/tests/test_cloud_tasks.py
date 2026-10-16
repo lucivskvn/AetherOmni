@@ -61,7 +61,8 @@ class CloudTasksTestCase(TestCase):
         with self.settings(
             DEBUG=False,
             APP_URL="https://my-app.run.app",
-            WORKER_URL="https://my-app.run.app",
+            WORKER_URL="https://my-app.run.app/",
+            CLOUD_TASKS_SERVICE_ACCOUNT="tasks-invoker@my-gcp-project.iam.gserviceaccount.com",
             GCP_QUEUE_LOCATION="asia-southeast2",
         ):
             cloud_tasks.enqueue("process_document", {"document_id": document.id})
@@ -75,6 +76,13 @@ class CloudTasksTestCase(TestCase):
             task = kwargs.get("task") or args[1]
             self.assertEqual(task["http_request"]["url"], "https://my-app.run.app/internal/tasks/process_document/")
             self.assertEqual(task["http_request"]["headers"]["Content-Type"], "application/json")
+            self.assertEqual(
+                task["http_request"]["oidc_token"],
+                {
+                    "service_account_email": "tasks-invoker@my-gcp-project.iam.gserviceaccount.com",
+                    "audience": "https://my-app.run.app",
+                },
+            )
             document.refresh_from_db()
             self.assertEqual(document.cloud_task_name, task["name"])
 
@@ -86,7 +94,11 @@ class CloudTasksTestCase(TestCase):
         mock_details.return_value = {"project_id": "my-gcp-project", "region": "asia-southeast1"}
         mock_client_class.return_value = MagicMock()
 
-        with self.settings(DEBUG=False, WORKER_URL="https://worker.example.test"):
+        with self.settings(
+            DEBUG=False,
+            WORKER_URL="https://worker.example.test",
+            CLOUD_TASKS_SERVICE_ACCOUNT="tasks@my-gcp-project.iam.gserviceaccount.com",
+        ):
             cloud_tasks.enqueue("reap_stale_tasks", {})
 
         task = mock_client_class.return_value.create_task.call_args.kwargs["task"]
@@ -103,30 +115,15 @@ class CloudTasksTestCase(TestCase):
         ):
             cloud_tasks.enqueue("process_document", {"document_id": 99})
 
-    @patch("urllib.request.urlopen")
-    def test_get_gcp_service_account_success(self, mock_urlopen):
-        mock_response = MagicMock()
-        mock_response.read.return_value = b"test-sa@project.iam.gserviceaccount.com\n"
-        mock_response.__enter__.return_value = mock_response
-        mock_urlopen.return_value = mock_response
-
-        with self.settings(DEBUG=True):
-            account = cloud_tasks.get_gcp_service_account()
-
-        self.assertEqual(account, "test-sa@project.iam.gserviceaccount.com")
-        mock_urlopen.assert_called_once()
-        req = mock_urlopen.call_args[0][0]
-        self.assertEqual(
-            req.full_url, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
-        )
-        self.assertEqual(req.headers, {"Metadata-flavor": "Google"})
-
-    @patch("urllib.request.urlopen")
-    def test_get_gcp_service_account_failure(self, mock_urlopen):
-        mock_urlopen.side_effect = Exception("Connection error")
-
-        with self.settings(DEBUG=True):
-            account = cloud_tasks.get_gcp_service_account()
-
-        self.assertIsNone(account)
-        mock_urlopen.assert_called_once()
+    @patch("extractor.cloud_tasks._persist_document_task")
+    @patch("extractor.cloud_tasks._get_tasks_client")
+    @patch("extractor.cloud_tasks.get_gcp_project_details")
+    def test_missing_task_identity_fails_before_persistence_or_api_calls(self, mock_details, mock_client, mock_persist):
+        mock_details.return_value = {"project_id": "my-gcp-project", "region": "asia-southeast1"}
+        with (
+            self.settings(DEBUG=False, WORKER_URL="https://worker.example.test", CLOUD_TASKS_SERVICE_ACCOUNT=""),
+            self.assertRaisesRegex(RuntimeError, "OIDC service account is not configured"),
+        ):
+            cloud_tasks.enqueue("process_document", {"document_id": 99})
+        mock_client.assert_not_called()
+        mock_persist.assert_not_called()

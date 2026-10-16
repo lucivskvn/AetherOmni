@@ -49,7 +49,6 @@ worker_max_instances = config.get_int("worker_max_instances") or 5
 # Explicit GCP Provider passing resolved project and region dynamically
 gcp_provider = gcp.Provider("gcp-provider", project=project, region=provider_region)
 project_info = gcp.organizations.get_project(project_id=project, opts=pulumi.InvokeOptions(provider=gcp_provider))
-cloud_tasks_oidc_member = f"serviceAccount:{project_info.number}-compute@developer.gserviceaccount.com"
 
 # 1. Cloud Storage Media Bucket
 media_bucket = gcp.storage.Bucket(
@@ -90,6 +89,14 @@ service_account = gcp.serviceaccount.Account(
     display_name="KORDA Cloud Run Runtime Service Account",
 )
 
+# Keep task tokens separate from the runtime identity's data-access permissions.
+task_invoker_account = gcp.serviceaccount.Account(
+    "korda-task-invoker-account",
+    account_id="korda-tasks-invoker",
+    display_name="KORDA Cloud Tasks worker invocation",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
 # Least-privilege IAM bindings
 RUN_INVOKER_ROLE = "roles/run.invoker"
 iam_roles = [
@@ -109,6 +116,23 @@ for idx, role in enumerate(iam_roles):
         member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
     )
     iam_members.append(member)
+
+for resource_name, principal in (
+    ("korda-task-creator-act-as", service_account.email.apply(lambda email: f"serviceAccount:{email}")),
+    (
+        "korda-task-agent-act-as",
+        f"serviceAccount:service-{project_info.number}@gcp-sa-cloudtasks.iam.gserviceaccount.com",
+    ),
+):
+    iam_members.append(
+        gcp.serviceaccount.IAMMember(
+            resource_name,
+            service_account_id=task_invoker_account.name,
+            role="roles/iam.serviceAccountUser",
+            member=principal,
+            opts=pulumi.ResourceOptions(provider=gcp_provider),
+        )
+    )
 
 # Cancellation can delete tasks only in this application's queue.
 task_deleter = gcp.cloudtasks.QueueIamMember(
@@ -176,6 +200,9 @@ extra_csrf_origins = config.get("extra_csrf_origins") or os.getenv("EXTRA_CSRF_O
 
 # Common Environment Variables
 common_env = [
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+        name="WORKER_URL", value=f"https://korda-worker-{project_info.number}.{region}.run.app"
+    ),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="RELEASE_VERSION", value=release_version),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="DJANGO_DEBUG", value="False"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_PROJECT_ID", value=project),
@@ -188,7 +215,9 @@ common_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="SURREALDB_OFFLINE", value="False"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL", value="gemini-2.5-flash"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_BATCH", value="gemini-2.5-flash-lite"),
-    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="CLOUD_TASKS_SERVICE_ACCOUNT", value=service_account.email),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+        name="CLOUD_TASKS_SERVICE_ACCOUNT", value=task_invoker_account.email
+    ),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="CLOUD_TASKS_QUEUE", value=queue_name),
 ]
 
@@ -263,20 +292,19 @@ worker_service = gcp.cloudrunv2.Service(
 )
 
 # Cloud Tasks signs worker callbacks with this project-scoped OIDC identity.
-gcp.cloudrunv2.ServiceIamMember(
+worker_invoker_binding = gcp.cloudrunv2.ServiceIamMember(
     "korda-worker-cloud-tasks-invoker",
     name=worker_service.name,
     location=region,
     project=project,
     role=RUN_INVOKER_ROLE,
-    member=cloud_tasks_oidc_member,
+    member=task_invoker_account.email.apply(lambda email: f"serviceAccount:{email}"),
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # 6. Cloud Run Web Service (korda-web)
 web_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="2"),
-    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="WORKER_URL", value=worker_service.uri),
 ]
 if custom_domain:
     web_env.append(gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="APP_URL", value=f"https://{custom_domain}"))
@@ -306,7 +334,7 @@ web_service = gcp.cloudrunv2.Service(
             )
         ],
     ),
-    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
+    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=[*iam_members, worker_invoker_binding]),
 )
 
 # Public access IAM policy for korda-web

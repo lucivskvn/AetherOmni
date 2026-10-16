@@ -205,3 +205,16 @@ As an AI coding assistant, execute the requested task following these strict rep
    Release versions must be computed as MAJOR.MINOR.PATCH before SonarCloud analysis and deployment.
 7. Standardized Model & Auth Naming: Use Gemini 2.5 Flash / 2.5 Flash-Lite for the stable Vertex v1 production path; preview-model adoption requires an availability check. Refer to Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
 ```
+
+### Cloud Tasks deployment authentication
+
+Use the deterministic Cloud Run worker service URL derived from the project
+number and resource region as `WORKER_URL` on both services, including the
+worker itself. OIDC audiences must be the service root URL, without handler
+paths. Dispatch fails closed without the configured signing identity.
+Pulumi provisions a dedicated task invoker with worker-scoped invocation;
+only the runtime account and Cloud Tasks service agent receive account-scoped
+`roles/iam.serviceAccountUser` on that identity. Cloud Build verifies these
+metadata-only IAM prerequisites before deployment and requires enabled latest
+versions of deployment secrets without accessing their values.
+Keep text checkouts in LF format for consistent Windows, WSL, and CI behavior.

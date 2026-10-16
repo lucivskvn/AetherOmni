@@ -17,6 +17,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+from datetime import UTC
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -95,7 +96,7 @@ def _has_active_document_claim(doc: dict) -> bool:
     if updated_at is None:
         return True
     if timezone.is_naive(updated_at):
-        updated_at = timezone.make_aware(updated_at, timezone.UTC)
+        updated_at = timezone.make_aware(updated_at, UTC)
     return updated_at > timezone.now() - timezone.timedelta(minutes=5)
 
 
@@ -267,15 +268,11 @@ class CloudTaskHandlerView(View):
 
         # ── Security checks (production only) ─────────────────────────────
         worker_url = getattr(settings, "WORKER_URL", "").rstrip("/")
-        app_url = getattr(settings, "APP_URL", "http://localhost:8080").rstrip("/")
+        if not worker_url and not settings.DEBUG:
+            logger.error("[CloudTasksHandler] WORKER_URL must be configured in production.")
+            return HttpResponse("Worker routing is not configured", status=503)
 
-        audiences = [f"{(worker_url or app_url)}/internal/tasks/{task_name}/"]
-        if worker_url:
-            audiences.append(f"{worker_url}/internal/tasks/{task_name}/")
-        if app_url:
-            audiences.append(f"{app_url}/internal/tasks/{task_name}/")
-
-        if not _verify_oidc_token(request, audiences):
+        if not _verify_oidc_token(request, [worker_url]):
             return HttpResponse("Unauthorized", status=401)
 
         if not _verify_source_ip(request):

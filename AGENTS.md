@@ -239,3 +239,16 @@ If the command reports that the file contains a secret, **do not read the file**
 2. Advise them to rotate the leaked credential at its source of truth and remove it from the file.
 3. Do not proceed with the original request until the secret has been removed.
 <!-- sonar:end:codex-secrets-on-read -->
+
+### Cloud Tasks deployment authentication
+
+Use the deterministic Cloud Run worker service URL derived from the project
+number and resource region as `WORKER_URL` on both services, including the
+worker itself. OIDC audiences must be the service root URL, without handler
+paths. Dispatch fails closed without the configured signing identity.
+Pulumi provisions a dedicated task invoker with worker-scoped invocation;
+only the runtime account and Cloud Tasks service agent receive account-scoped
+`roles/iam.serviceAccountUser` on that identity. Cloud Build verifies these
+metadata-only IAM prerequisites before deployment and requires enabled latest
+versions of deployment secrets without accessing their values.
+Keep text checkouts in LF format for consistent Windows, WSL, and CI behavior.
