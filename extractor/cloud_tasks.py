@@ -130,25 +130,6 @@ def _enqueue_local(task_name: str, payload: dict) -> None:
     thread.start()
 
 
-def get_gcp_service_account() -> str | None:
-    """Fetch the service account email from the local GCP Metadata Server."""
-    import urllib.request
-
-    from extractor.utils import validate_url_scheme
-
-    url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"  # nosemgrep: python.lang.security.audit.insecure-transport.urllib.insecure-request-object.insecure-request-object -- GCP metadata service is link-local and requires HTTP.
-    try:
-        validate_url_scheme(url)
-        req = urllib.request.Request(  # nosemgrep: python.lang.security.audit.insecure-transport.urllib.insecure-request-object.insecure-request-object -- GCP metadata service is link-local and requires HTTP.
-            url,
-            headers={"Metadata-Flavor": "Google"},
-        )
-        with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- Fixed metadata host and timeout.
-            return response.read().decode("utf-8").strip()
-    except Exception:
-        return None
-
-
 def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
     """Create a Cloud Tasks HTTP target task for production delivery."""
     details = get_gcp_project_details()
@@ -171,6 +152,12 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
         logger.error("[CloudTasks] %s", message)
         raise RuntimeError(message)
 
+    service_account = (getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "") or "").strip()
+    if not service_account:
+        message = "Cloud Tasks OIDC service account is not configured; dispatch was not attempted."
+        logger.error("[CloudTasks] %s", message)
+        raise RuntimeError(message)
+
     handler_url = f"{service_url.rstrip('/')}/internal/tasks/{task_name}/"
     queue_path = f"projects/{project}/locations/{region}/queues/{queue_name}"
     from django.core.serializers.json import DjangoJSONEncoder
@@ -189,12 +176,6 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
         payload = {**payload, CLOUD_TASK_NAME: task_resource_name}
     body = json.dumps(payload, cls=_CloudTasksEncoder).encode()
 
-    # Prefer the project-number-based compute SA (Cloud Run default SA format).
-    # Fall back to the appspot SA if project_number is unavailable.
-    project_number = details.get("project_number") or project
-    default_sa = f"{project_number}-compute@developer.gserviceaccount.com"
-    service_account = settings.CLOUD_TASKS_SERVICE_ACCOUNT or get_gcp_service_account() or default_sa
-
     task: dict[str, Any] = {
         "name": task_resource_name,
         "http_request": {
@@ -204,7 +185,7 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
             "body": body,
             "oidc_token": {
                 "service_account_email": service_account,
-                "audience": handler_url,
+                "audience": service_url.rstrip("/"),
             },
         },
     }

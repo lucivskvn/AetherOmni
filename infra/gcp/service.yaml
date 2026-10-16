@@ -49,6 +49,8 @@ spec:
           value: "${GCP_QUEUE_LOCATION}"
         - name: GCP_QUEUE_NAME
           value: "extractor-tasks-v2"
+        - name: CLOUD_TASKS_SERVICE_ACCOUNT
+          value: "korda-tasks-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
         - name: APP_URL
           value: "${APP_URL}"
         - name: WORKER_URL

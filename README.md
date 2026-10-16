@@ -131,6 +131,19 @@ Report suspected vulnerabilities privately through the process in [SECURITY.md](
 
 Keep changes focused, preserve tenant boundaries and task-identity fencing, and run the relevant verification gate. For GCP changes, use the existing Pulumi project and preview infrastructure changes before applying them. Keep Pulumi's `gcp:region` provider setting separate from resource placement (`resource_region` or `GCP_REGION`), and configure the Cloud Tasks queue's region separately through `queue_region` and `GCP_QUEUE_LOCATION`. Preserve each existing resource's default or explicit provider association and Artifact Registry cleanup policies during targeted state reconciliation.
 
+## Cloud Tasks deployment authentication
+
+Use the deterministic Cloud Run worker service URL derived from the project
+number and resource region as `WORKER_URL` on both services, including the
+worker itself. OIDC audiences must be the service root URL, without handler
+paths. Dispatch fails closed without the configured signing identity.
+Pulumi provisions a dedicated task invoker with worker-scoped invocation;
+only the runtime account and Cloud Tasks service agent receive account-scoped
+`roles/iam.serviceAccountUser` on that identity. Cloud Build verifies these
+metadata-only IAM prerequisites before deployment and requires enabled latest
+versions of deployment secrets without accessing their values.
+Keep text checkouts in LF format for consistent Windows, WSL, and CI behavior.
+
 ## License
 
 KORDA is licensed under [AGPL-3.0](LICENSE).

@@ -598,3 +598,16 @@ To control regional placement and assess transfer costs:
 
 4. **Zero Scale-to-Idle Worker Strategy**:
    - `korda-worker` scales to `0` minimum instances when idle (`min_instance_count: 0`). Cloud Tasks wakes the worker on-demand via OIDC authenticated HTTP invocation, preventing continuous compute fees.
+
+### Cloud Tasks deployment authentication
+
+Use the deterministic Cloud Run worker service URL derived from the project
+number and resource region as `WORKER_URL` on both services, including the
+worker itself. OIDC audiences must be the service root URL, without handler
+paths. Dispatch fails closed without the configured signing identity.
+Pulumi provisions a dedicated task invoker with worker-scoped invocation;
+only the runtime account and Cloud Tasks service agent receive account-scoped
+`roles/iam.serviceAccountUser` on that identity. Cloud Build verifies these
+metadata-only IAM prerequisites before deployment and requires enabled latest
+versions of deployment secrets without accessing their values.
+Keep text checkouts in LF format for consistent Windows, WSL, and CI behavior.
