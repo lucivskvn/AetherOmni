@@ -54,3 +54,8 @@
 
 **Learning:** Some custom UI templates like reset password and deployment controller implemented manual spinner behaviors with `pointerEvents` but missed accessibility `aria-disabled` flags during loading.
 **Action:** Always verify components matching `btn.style.pointerEvents = 'none'` also apply `btn.setAttribute('aria-disabled', 'true')` to properly inform screen readers of intermediate disabled states.
+
+## 2026-09-02 - Add ARIA Labels to Bulk Selection Buttons
+
+**Learning:** Context-dependent buttons like "Select All" or "Clear" provide insufficient context to screen reader users when read in isolation.
+**Action:** Always add descriptive `aria-label` attributes to such buttons (e.g., `aria-label="Select all documents"`) so their function is explicitly clear to assistive technology.
