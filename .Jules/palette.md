@@ -54,3 +54,13 @@
 
 **Learning:** Some custom UI templates like reset password and deployment controller implemented manual spinner behaviors with `pointerEvents` but missed accessibility `aria-disabled` flags during loading.
 **Action:** Always verify components matching `btn.style.pointerEvents = 'none'` also apply `btn.setAttribute('aria-disabled', 'true')` to properly inform screen readers of intermediate disabled states.
+
+## 2026-09-01 - Add ARIA Labels to Context-Dependent Buttons
+
+**Learning:** Context-dependent buttons such as 'Select All' or 'Clear' provide insufficient context to screen reader users when read in isolation.
+**Action:** Always add descriptive `aria-label` attributes to these buttons (e.g., `aria-label="Select all documents"`) to make their function explicitly clear to assistive technologies.
+
+## 2026-10-21 - Add ARIA Hidden to Decorative Inline SVGs
+
+**Learning:** Decorative inline `<svg>` elements used alongside inputs or visually distinct elements are flagged by accessibility scanners like SonarCloud if they lack an accessible name or role, polluting the scanner reports.
+**Action:** Always add `aria-hidden="true"` or `role="presentation"` to purely decorative inline `<svg>` elements (like input icons) to ensure they are ignored by screen readers and correctly satisfy accessibility audits.
