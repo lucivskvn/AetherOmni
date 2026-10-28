@@ -54,3 +54,7 @@
 
 **Learning:** Some custom UI templates like reset password and deployment controller implemented manual spinner behaviors with `pointerEvents` but missed accessibility `aria-disabled` flags during loading.
 **Action:** Always verify components matching `btn.style.pointerEvents = 'none'` also apply `btn.setAttribute('aria-disabled', 'true')` to properly inform screen readers of intermediate disabled states.
+
+## 2025-03-01 - Inline SVG Accessibility in JavaScript Templates
+**Learning:** Dynamic DOM injections with template literals containing purely decorative SVGs (like loading spinners or search icons) often miss `aria-hidden="true"`, causing screen readers to misinterpret them or announce redundant layout data.
+**Action:** Always include `aria-hidden="true"` on dynamically injected SVG icons in JS template strings.
