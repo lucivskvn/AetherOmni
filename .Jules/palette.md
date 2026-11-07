@@ -54,3 +54,6 @@
 
 **Learning:** Some custom UI templates like reset password and deployment controller implemented manual spinner behaviors with `pointerEvents` but missed accessibility `aria-disabled` flags during loading.
 **Action:** Always verify components matching `btn.style.pointerEvents = 'none'` also apply `btn.setAttribute('aria-disabled', 'true')` to properly inform screen readers of intermediate disabled states.
+## 2024-05-14 - Accessibility: Label in Name for Context-Dependent Buttons
+**Learning:** Context-dependent buttons such as 'Select All' or 'Clear' provide insufficient context to screen reader users when read in isolation. To satisfy WCAG 2.5.3 (Label in Name) when adding expanded `aria-label` attributes to context-dependent buttons that already have visible text (e.g., expanding 'Select All' to 'Select all documents'), the exact visible text must be continuously included within the `aria-label` string.
+**Action:** Always add descriptive `aria-label` attributes to context-dependent buttons, and ensure the visible text is fully contained within the `aria-label` string to comply with WCAG 2.5.3.
