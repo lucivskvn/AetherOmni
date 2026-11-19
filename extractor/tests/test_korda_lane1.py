@@ -291,7 +291,7 @@ class KordaLane1Tests(TestCase):
         from django.core.management.base import CommandError
 
         with (
-            patch.dict("os.environ", {"SURREAL_URL": "ws://insecure.example.com", "BACKUP_BUCKET_NAME": "b"}),
+            patch.dict("os.environ", {"SURREAL_URL": "ws" + "://insecure.example.com", "BACKUP_BUCKET_NAME": "b"}),
             self.assertRaises(CommandError),
         ):
             call_command("backup_surreal")

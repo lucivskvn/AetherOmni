@@ -879,21 +879,28 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
         "created_at": format_datetime(timezone.now()),
         "updated_at": format_datetime(timezone.now()),
     }
-    doc = surreal_db.create_document(data)
+    try:
+        doc = surreal_db.create_document(data)
 
-    _record_view_audit(
-        request,
-        AuditAction.UPLOAD,
-        f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
-        document=doc,
-        ip=ip,
-    )
+        _record_view_audit(
+            request,
+            AuditAction.UPLOAD,
+            f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
+            document=doc,
+            ip=ip,
+        )
 
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
-        cloud_tasks.enqueue("process_document", {"document_id": doc_id})
-    else:
-        cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
+            cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+        else:
+            cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
+    except Exception:
+        try:
+            default_storage.delete(saved_path)
+        except Exception as cleanup_exc:
+            logger.warning("[Upload] Failed to clean up orphaned file %s: %s", saved_path, cleanup_exc)
+        raise
     return {"status": "success", "name": orig_name}
 
 

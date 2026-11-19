@@ -49,6 +49,12 @@ spec:
           value: "${BACKUP_BUCKET_NAME}"
         - name: CLOUD_TASKS_SERVICE_ACCOUNT
           value: "${CLOUD_TASKS_SERVICE_ACCOUNT}"
+        - name: EVENTARC_SERVICE_ACCOUNT
+          value: "${CLOUD_TASKS_SERVICE_ACCOUNT}"
+        - name: GUNICORN_TIMEOUT
+          value: "900"
+        - name: RUN_MIGRATIONS_ON_STARTUP
+          value: "False"
         - name: SURREAL_NS
           value: "korda"
         - name: SURREAL_DB
@@ -127,7 +133,7 @@ spec:
               key: "latest"
         resources:
           limits:
-            cpu: 1000m
+            cpu: 2000m
             memory: 2Gi
   traffic:
   - latestRevision: true

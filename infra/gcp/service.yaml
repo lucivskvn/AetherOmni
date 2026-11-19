@@ -57,6 +57,8 @@ spec:
           value: "${BACKUP_BUCKET_NAME}"
         - name: CLOUD_TASKS_SERVICE_ACCOUNT
           value: "${CLOUD_TASKS_SERVICE_ACCOUNT}"
+        - name: EVENTARC_SERVICE_ACCOUNT
+          value: "${CLOUD_TASKS_SERVICE_ACCOUNT}"
         - name: SURREAL_NS
           value: "korda"
         - name: SURREAL_DB
