@@ -258,3 +258,67 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
         data = json.loads(resp.content)
         self.assertEqual(data["score"], 1)
         self.assertEqual(data["total"], 1)
+
+    def test_quiz_submit_idempotency_and_rate_endpoint_offline(self):
+        import json
+        from types import SimpleNamespace
+
+        from django.test import RequestFactory, override_settings
+
+        from extractor import surreal_db, views
+
+        surreal_db._test_korda_exam_items.clear()
+        surreal_db._test_korda_attempts.clear()
+        rf = RequestFactory()
+        user = SimpleNamespace(is_authenticated=True, id=8, username="u8")
+        with override_settings(SURREALDB_OFFLINE=True):
+            surreal_db.save_exam_items(
+                "8",
+                [
+                    {
+                        "item_id": "item-8",
+                        "topic": "FSRS",
+                        "difficulty": "Easy",
+                        "item_format": "Short Answer",
+                        "stem": "What does FSRS stand for?",
+                        "choices": [],
+                        "correct_answer": "Free Spaced Repetition Scheduler",
+                        "hint": "Spaced repetition",
+                        "distractor_rationales": {},
+                        "anchor_ids": [],
+                    }
+                ],
+            )
+            with patch.object(views, "_enforce_distributed_rate_limit", return_value=True):
+                req1 = rf.post(
+                    "/api/v1/quiz/submit/",
+                    data=json.dumps(
+                        {
+                            "session_id": "s-idem",
+                            "item_ids": ["item-8"],
+                            "answers": {"item-8": "  free spaced   repetition scheduler "},
+                        }
+                    ),
+                    content_type="application/json",
+                )
+                req1.user = user
+                r1 = views.QuizSubmitAPIView.as_view()(req1)
+                self.assertEqual(r1.status_code, 200)
+                self.assertEqual(json.loads(r1.content)["score"], 1)
+
+                # Resubmitting the same session_id + item_id updates idempotently instead of duplicating.
+                r2 = views.QuizSubmitAPIView.as_view()(req1)
+                self.assertEqual(r2.status_code, 200)
+                self.assertEqual(len(surreal_db._test_korda_attempts), 1)
+
+                # Rate endpoint updates FSRS rating cleanly.
+                rate_req = rf.post(
+                    "/api/v1/quiz/rate/",
+                    data=json.dumps({"session_id": "s-idem", "item_id": "item-8", "rating": 4}),
+                    content_type="application/json",
+                )
+                rate_req.user = user
+                rate_resp = views.QuizRateAPIView.as_view()(rate_req)
+                self.assertEqual(rate_resp.status_code, 200)
+                self.assertEqual(json.loads(rate_resp.content)["rating"], 4)
+                self.assertEqual(surreal_db._test_korda_exam_items["item-8"]["fsrs_reps"], 2)

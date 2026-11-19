@@ -23,7 +23,9 @@ def validate_ephemeral_bucket(args: ResourceValidationArgs, report_violation: Re
     retention = soft_delete.get("retentionDurationSeconds")
     versioning = args.props.get("versioning") or {}
 
-    if "backup" in name:
+    labels = args.props.get("labels") or {}
+    tier = str(labels.get("korda-tier") or "")
+    if tier == "backup" or (not tier and "backup" in name):
         if retention is None or int(retention) <= 0:
             report_violation(f"Backup GCS bucket '{name}' must enable Soft Delete (retentionDurationSeconds > 0).")
         if versioning.get("enabled") is not True:
@@ -58,7 +60,7 @@ def validate_private_worker_iam(args: ResourceValidationArgs, report_violation: 
     if args.resource_type not in iam_types:
         return
     service_name = str(args.props.get("name") or args.name)
-    if "worker" not in service_name:
+    if "web" in service_name and "worker" not in service_name:
         return
 
     forbidden = {"allUsers", "allAuthenticatedUsers"}

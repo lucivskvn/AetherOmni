@@ -248,12 +248,6 @@ def init_django_admin():
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
         django.setup()
         from django.conf import settings
-        from django.core.management import call_command
-
-        try:
-            call_command("migrate", interactive=False)
-        except Exception as me:
-            logger.warning("Django migrate warning: %s", me)
 
         supabase_url = getattr(settings, "SUPABASE_URL", "")
         admin_email = os.getenv("ADMIN_EMAIL", getattr(settings, "ADMIN_EMAIL", "")).strip()
@@ -268,7 +262,8 @@ def init_django_admin():
             _setup_local_admin(admin_email, admin_password, supabase_url)
         else:
             logger.info("ADMIN_EMAIL is not configured; skipping local administrator stub creation.")
-        _migrate_system_settings()
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            _migrate_system_settings()
 
     except Exception:
         logger.exception("Failed to initialize Django superuser")

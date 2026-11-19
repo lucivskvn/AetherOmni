@@ -42,10 +42,18 @@ def _start_database_initialization() -> None:
     subprocess.Popen([sys.executable, "init_surreal.py"])  # nosec B603
 
 
+ALLOWED_COMMANDS: dict[tuple[str, ...], list[str]] = {
+    ("manage.py", "backup_surreal"): [sys.executable, "manage.py", "backup_surreal"],
+}
+
+
 def main() -> NoReturn:
     if len(sys.argv) > 1:
-        cmd = [sys.executable, *sys.argv[1:]]
-        os.execvp(cmd[0], cmd)  # noqa: S606 # nosec B606
+        key = tuple(sys.argv[1:])
+        allowed = ALLOWED_COMMANDS.get(key)
+        if allowed is None:
+            raise SystemExit(f"Unsupported entrypoint command: {key!r}")
+        os.execv(sys.executable, allowed)  # noqa: S606 # nosec B606
     _run_migrations()
     _start_database_initialization()
     command = _gunicorn_command()

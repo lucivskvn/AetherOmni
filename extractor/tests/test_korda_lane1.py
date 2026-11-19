@@ -1,12 +1,12 @@
 import json
 from unittest.mock import MagicMock, patch
 
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 
 from extractor import compiler, file_utils, llm_gateway, rag, task_handlers
 
 
-class KordaLane1Tests(SimpleTestCase):
+class KordaLane1Tests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
@@ -118,7 +118,7 @@ class KordaLane1Tests(SimpleTestCase):
                 ],
             },
         ]
-        bundles = compiler.compile_markdown_bundles(crystals, bundle_title="KORDA KB", max_words_per_bundle=12)
+        bundles = compiler.compile_markdown_bundles(crystals, bundle_title="KORDA KB", max_words_per_bundle=40)
         self.assertGreaterEqual(len(bundles), 2)
         for bundle in bundles:
             self.assertTrue(bundle.startswith("---\n"))
@@ -275,3 +275,79 @@ class KordaLane1Tests(SimpleTestCase):
                 self.assertEqual(comp_resp.status_code, 200)
                 self.assertEqual(comp_resp["X-Content-Type-Options"], "nosniff")
                 self.assertIn("GCS Zero Copy", comp_resp.content.decode("utf-8"))
+
+    def test_compiler_splits_oversized_single_crystal(self):
+        from extractor.compiler import compile_markdown_bundles
+
+        long_summary = " ".join(f"word{i}" for i in range(40))
+        bundles = compile_markdown_bundles(
+            [{"title": "Giant", "summary": long_summary, "doc_slug": "giant", "anchors": []}],
+            max_words_per_bundle=15,
+        )
+        self.assertGreaterEqual(len(bundles), 3)
+
+    def test_backup_surreal_rejects_insecure_url_and_empty_export(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with (
+            patch.dict("os.environ", {"SURREAL_URL": "ws://insecure.example.com", "BACKUP_BUCKET_NAME": "b"}),
+            self.assertRaises(CommandError),
+        ):
+            call_command("backup_surreal")
+
+        mock_resp = MagicMock()
+        mock_resp.iter_bytes.return_value = iter([b""])
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream.return_value = mock_resp
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("httpx.Client", return_value=mock_client),
+            patch.dict(
+                "os.environ",
+                {
+                    "SURREAL_URL": "wss://db.example.com",
+                    "BACKUP_BUCKET_NAME": "b",
+                    "SURREAL_USER": "u",
+                    "SURREAL_PASS": "p",
+                },
+            ),
+            self.assertRaises(CommandError),
+        ):
+            call_command("backup_surreal")
+
+    def test_eventarc_digitalize_increments_version_and_records_spend(self):
+        from django.test import override_settings
+
+        from extractor import surreal_db, task_handlers
+
+        surreal_db._test_korda_sources.clear()
+        surreal_db._test_korda_anchors.clear()
+        payload = {
+            "bucket": "test-bucket",
+            "name": "raw/latest/u99/spec/doc.pdf",
+            "contentType": "application/pdf",
+            "metadata": {"sha256": "sha-v2"},
+        }
+        with (
+            override_settings(SURREALDB_OFFLINE=True),
+            patch("extractor.llm_gateway.check_budget_and_api_limit", return_value=None),
+            patch("extractor.task_handlers._record_korda_spend") as mock_spend,
+            patch(
+                "extractor.llm_gateway.extract_anchors_from_gcs_uri",
+                return_value={
+                    "anchors": [{"quote": "v1", "page_num": 1}],
+                    "usage": {"input_tokens": 100, "output_tokens": 20, "cost_usd": 0.001},
+                },
+            ),
+        ):
+            r1 = task_handlers._digitalize_gcs_object(payload, "test-bucket", "raw/latest/u99/spec/doc.pdf")
+            r2 = task_handlers._digitalize_gcs_object(payload, "test-bucket", "raw/latest/u99/spec/doc.pdf")
+        self.assertEqual(r1["version"], 1)
+        self.assertEqual(r2["version"], 2)
+        self.assertEqual(mock_spend.call_count, 2)

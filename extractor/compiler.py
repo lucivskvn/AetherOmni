@@ -71,6 +71,36 @@ def _render_bundle_header(bundle_title: str, part_index: int, doc_slugs: list[st
     return f"---\n{yaml_block}\n---\n\n# {heading}\n\n"
 
 
+def _split_oversized_section(section_md: str, max_words: int) -> list[str]:
+    """Split a single section exceeding max_words into word-bounded chunks."""
+    words = section_md.split()
+    return [" ".join(words[i : i + max_words]) for i in range(0, len(words), max_words)]
+
+
+def _flush_bundle(
+    bundles: list[str],
+    bundle_title: str,
+    sections: list[str],
+    slugs: list[str],
+) -> None:
+    if not sections:
+        return
+    header = _render_bundle_header(bundle_title, len(bundles) + 1, slugs)
+    bundles.append(header + "\n".join(sections))
+
+
+def _append_oversized_crystal(
+    bundles: list[str],
+    bundle_title: str,
+    section_md: str,
+    max_words: int,
+    slug: str,
+) -> None:
+    slug_list = [slug] if slug else []
+    for part_md in _split_oversized_section(section_md, max_words):
+        _flush_bundle(bundles, bundle_title, [part_md], slug_list)
+
+
 def compile_markdown_bundles(
     crystals: list[dict[str, Any]],
     *,
@@ -90,20 +120,22 @@ def compile_markdown_bundles(
     for crystal in crystals:
         section_md = _render_crystal_section(crystal)
         section_words = len(section_md.split())
+        slug = str(crystal.get("doc_slug") or "")
+
+        if section_words > max_words:
+            _flush_bundle(bundles, bundle_title, current_sections, current_slugs)
+            current_sections, current_slugs, current_words = [], [], 0
+            _append_oversized_crystal(bundles, bundle_title, section_md, max_words, slug)
+            continue
+
         if current_sections and (current_words + section_words > max_words):
-            header = _render_bundle_header(bundle_title, len(bundles) + 1, current_slugs)
-            bundles.append(header + "\n".join(current_sections))
-            current_sections = []
-            current_slugs = []
-            current_words = 0
+            _flush_bundle(bundles, bundle_title, current_sections, current_slugs)
+            current_sections, current_slugs, current_words = [], [], 0
 
         current_sections.append(section_md)
-        if crystal.get("doc_slug"):
-            current_slugs.append(str(crystal["doc_slug"]))
+        if slug:
+            current_slugs.append(slug)
         current_words += section_words
 
-    if current_sections:
-        header = _render_bundle_header(bundle_title, len(bundles) + 1, current_slugs)
-        bundles.append(header + "\n".join(current_sections))
-
+    _flush_bundle(bundles, bundle_title, current_sections, current_slugs)
     return bundles

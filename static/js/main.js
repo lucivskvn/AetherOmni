@@ -1190,23 +1190,125 @@ function initializeRAGSearch() {
             },
             body: JSON.stringify({ query }),
         });
-        const data = await resp.json();
+        const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data?.error || 'Strict Librarian search failed.');
         const evidence = Array.isArray(data?.evidence) ? data.evidence : [];
+        const ragSourcesWrap = document.getElementById('rag-sources');
         ragAnswer.textContent = evidence.length
             ? `Strict Librarian (${evidence.length} verbatim matches, zero LLM):`
             : 'No verbatim anchor matches found.';
         ragSourcesList.replaceChildren();
+        if (ragSourcesWrap) ragSourcesWrap.style.display = evidence.length ? 'block' : 'none';
         evidence.forEach(ev => {
             const li = document.createElement('li');
-            li.textContent = `[${ev.doc_slug || ev.source_id || 'source'} | ${ev.coord || ''}] ${ev.quote || ''}`;
+            const label = document.createElement('label');
+            label.style.cssText = 'display: flex; align-items: flex-start; gap: 0.45rem; cursor: pointer;';
+            if (ev.anchor_id) {
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'korda-anchor-select';
+                cb.value = String(ev.anchor_id);
+                cb.dataset.docSlug = String(ev.doc_slug || '');
+                label.appendChild(cb);
+            }
+            const textSpan = document.createElement('span');
+            textSpan.textContent = `[${ev.doc_slug || ev.source_id || 'source'} | ${ev.coord || ''}] ${ev.quote || ''}`;
+            label.appendChild(textSpan);
+            li.appendChild(label);
             ragSourcesList.appendChild(li);
         });
-        if (evidence.length === 0) {
-            const li = document.createElement('li');
-            li.textContent = 'No verbatim anchor matches found.';
-            ragSourcesList.appendChild(li);
-        }
+    }
+
+    document.querySelectorAll('.btn-compile-kb').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const compileUrl = btn.getAttribute('data-compile-url');
+            if (!compileUrl) return;
+            btn.disabled = true;
+            try {
+                const resp = await fetch(compileUrl);
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data?.error || 'Failed to compile knowledge base.');
+                const count = Number(data?.bundle_count || 0);
+                if (count < 1) {
+                    showClientSideAlert('No verified crystals available to compile yet. Synthesize a crystal first.', 'warning');
+                    return;
+                }
+                for (let part = 1; part <= count; part += 1) {
+                    const link = document.createElement('a');
+                    link.href = `${compileUrl}?download=1&part=${part}`;
+                    link.download = `korda_kb_part_${part}.md`;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                }
+            } catch (err) {
+                showClientSideAlert(err.message || 'Markdown compilation failed.', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    });
+
+    const crystalDialog = document.getElementById('crystal-synth-dialog');
+    const crystalForm = document.getElementById('crystal-synth-form');
+    const openCrystalBtn = document.getElementById('btn-open-crystal-dialog');
+    const closeCrystalBtn = document.getElementById('btn-close-crystal-dialog');
+    const cancelCrystalBtn = document.getElementById('btn-cancel-crystal-dialog');
+    if (crystalDialog && crystalForm && openCrystalBtn) {
+        openCrystalBtn.addEventListener('click', () => {
+            const checkedAnchors = Array.from(document.querySelectorAll('.korda-anchor-select:checked'));
+            const anchorInput = document.getElementById('crystal-anchor-ids');
+            const slugInput = document.getElementById('crystal-doc-slug');
+            if (anchorInput && checkedAnchors.length) {
+                anchorInput.value = checkedAnchors.map(el => el.value).join(', ');
+            }
+            if (slugInput && !slugInput.value && checkedAnchors[0]?.dataset?.docSlug) {
+                slugInput.value = checkedAnchors[0].dataset.docSlug;
+            }
+            if (typeof crystalDialog.showModal === 'function') crystalDialog.showModal();
+        });
+        [closeCrystalBtn, cancelCrystalBtn].forEach(el => {
+            if (el) el.addEventListener('click', () => crystalDialog.close());
+        });
+        crystalForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const statusEl = document.getElementById('crystal-synth-status');
+            const submitBtn = document.getElementById('btn-submit-crystal');
+            const synthUrl = crystalForm.getAttribute('data-synthesize-url');
+            if (!synthUrl) return;
+            const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+            const anchorIds = (document.getElementById('crystal-anchor-ids')?.value || '')
+                .split(',').map(s => s.trim()).filter(Boolean);
+            const tags = (document.getElementById('crystal-tags')?.value || '')
+                .split(',').map(s => s.trim()).filter(Boolean);
+            if (submitBtn) submitBtn.disabled = true;
+            if (statusEl) statusEl.textContent = 'Saving verified crystal...';
+            try {
+                const resp = await fetch(synthUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+                    },
+                    body: JSON.stringify({
+                        title: document.getElementById('crystal-title')?.value || '',
+                        doc_slug: document.getElementById('crystal-doc-slug')?.value || 'general',
+                        summary: document.getElementById('crystal-summary')?.value || '',
+                        anchor_ids: anchorIds,
+                        tags,
+                    }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data?.error || 'Failed to save crystal.');
+                if (statusEl) statusEl.textContent = `Saved crystal (${data?.crystal?.status || 'ok'}).`;
+                crystalForm.reset();
+                setTimeout(() => crystalDialog.close(), 500);
+            } catch (err) {
+                if (statusEl) statusEl.textContent = err.message || 'Crystal synthesis failed.';
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        });
     }
 
     async function _executeStreamingOrFallbackRag(query) {

@@ -18,10 +18,12 @@ class ComplianceBucket(pulumi.ComponentResource):
         project: str,
         ephemeral: bool = True,
         export_retention_days: int = 14,
+        legacy_name: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("korda:storage:ComplianceBucket", name, None, opts)
-        child_opts = pulumi.ResourceOptions(parent=self)
+        aliases = [pulumi.Alias(name=legacy_name, parent=pulumi.ROOT_STACK_OBJECT)] if legacy_name else None
+        child_opts = pulumi.ResourceOptions(parent=self, aliases=aliases)
 
         if ephemeral:
             soft_delete = gcp.storage.BucketSoftDeletePolicyArgs(retention_duration_seconds=0)
@@ -65,6 +67,7 @@ class ComplianceBucket(pulumi.ComponentResource):
             soft_delete_policy=soft_delete,
             versioning=versioning,
             lifecycle_rules=lifecycle_rules,
+            labels={"korda-tier": "ephemeral" if ephemeral else "backup"},
             opts=child_opts,
         )
         self.name = self.bucket.name
@@ -92,10 +95,12 @@ class ScaleToZeroWorker(pulumi.ComponentResource):
         timeout: str = "900s",
         execution_environment: str | None = None,
         is_public: bool = False,
+        legacy_name: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("korda:compute:ScaleToZeroWorker", name, None, opts)
-        child_opts = pulumi.ResourceOptions(parent=self)
+        aliases = [pulumi.Alias(name=legacy_name, parent=pulumi.ROOT_STACK_OBJECT)] if legacy_name else None
+        child_opts = pulumi.ResourceOptions(parent=self, aliases=aliases)
 
         scaling = gcp.cloudrunv2.ServiceTemplateScalingArgs(
             min_instance_count=min_instances,
@@ -125,6 +130,7 @@ class ScaleToZeroWorker(pulumi.ComponentResource):
             location=location,
             project=project,
             ingress="INGRESS_TRAFFIC_ALL",
+            labels={"korda-role": "web" if is_public else "worker"},
             template=gcp.cloudrunv2.ServiceTemplateArgs(**template_kwargs),
             opts=child_opts,
         )
@@ -137,7 +143,7 @@ class ScaleToZeroWorker(pulumi.ComponentResource):
                 project=project,
                 role="roles/run.invoker",
                 member="allUsers",
-                opts=child_opts,
+                opts=pulumi.ResourceOptions(parent=self),
             )
 
         self.uri = self.service.uri
@@ -177,6 +183,11 @@ class EventarcRawTrigger(pulumi.ComponentResource):
                 gcp.eventarc.TriggerMatchingCriteriaArgs(
                     attribute="bucket",
                     value=bucket_name,
+                ),
+                gcp.eventarc.TriggerMatchingCriteriaArgs(
+                    attribute="subject",
+                    operator="match-path-pattern",
+                    value="objects/raw/**",
                 ),
             ],
             destination=gcp.eventarc.TriggerDestinationArgs(

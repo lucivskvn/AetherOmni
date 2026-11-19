@@ -119,7 +119,6 @@ steps:
           --dockerfile=/workspace/Dockerfile \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$SHORT_SHA \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:latest \
           --cache=true \
           --cache-repo=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda-cache \
           --cache-ttl=24h \
@@ -339,7 +338,7 @@ steps:
         # Keep the deploy contract aligned with the Pulumi-managed media bucket
         # and its least-privilege runtime identity.
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda,BACKUP_BUCKET_NAME=${PROJECT_ID}-backup-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
@@ -399,7 +398,7 @@ steps:
         # Keep the deploy contract aligned with the Pulumi-managed media bucket
         # and its least-privilege runtime identity.
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda,BACKUP_BUCKET_NAME=${PROJECT_ID}-backup-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL},EXTRA_ALLOWED_HOSTS=$${CUSTOM_DOMAINS}"

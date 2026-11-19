@@ -197,6 +197,19 @@ def main() -> int:
         "SonarCloud Automatic Analysis must use the supported Python version and explicit test scope.",
     )
 
+    _require(
+        errors,
+        pulumi + "\n" + pulumi_components,
+        (
+            "objects/raw/**",
+            "korda-backup-schedule",
+            "gcp.cloudscheduler.Job",
+        ),
+        "Pulumi must scope Eventarc to objects/raw/** and schedule off-host SurrealDB backups.",
+    )
+    if ":latest" in service_manifest or ":latest" in worker_manifest:
+        errors.append("Cloud Run service manifests must not deploy :latest container images.")
+
     if errors:
         print("FAILED: Reliability contract violation(s):", file=sys.stderr)
         for error in errors:

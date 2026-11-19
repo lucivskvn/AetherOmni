@@ -31,7 +31,7 @@ if not project or "${" in project:
 region = gcp_config.get("region") or os.getenv("GCP_REGION") or "asia-southeast1"
 
 release_version = config.get("release_version") or "1.5.0"
-image_tag = config.get("image_tag") or "latest"
+image_tag = config.get("image_tag") or os.getenv("IMAGE_TAG") or release_version
 web_min_instances = config.get_int("web_min_instances") or 0
 web_max_instances = config.get_int("web_max_instances") or 5
 worker_min_instances = config.get_int("worker_min_instances") or 0
@@ -48,6 +48,7 @@ media_bucket = ComplianceBucket(
     location=region,
     project=project,
     ephemeral=True,
+    legacy_name="korda-media-bucket",
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
@@ -98,6 +99,8 @@ iam_roles = [
     "roles/cloudtasks.enqueuer",
     "roles/run.viewer",
     "roles/eventarc.eventReceiver",
+    "roles/iam.serviceAccountUser",
+    "roles/iam.serviceAccountTokenCreator",
 ]
 
 iam_members = []
@@ -155,7 +158,9 @@ artifact_repo = gcp.artifactregistry.Repository(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-container_image = config.get("container_image") or f"{region}-docker.pkg.dev/{project}/korda-repo/korda-app:{image_tag}"
+container_image = (
+    config.get("container_image") or f"{region}-docker.pkg.dev/{project}/cloud-run-source-deploy/korda:{image_tag}"
+)
 
 custom_domain = config.get("custom_domain")
 extra_allowed_hosts = config.get("extra_allowed_hosts") or ""
@@ -236,6 +241,7 @@ worker_component = ScaleToZeroWorker(
     min_instances=worker_min_instances,
     max_instances=worker_max_instances,
     is_public=False,
+    legacy_name="korda-worker",
     opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
 )
 worker_service = worker_component.service
@@ -293,6 +299,7 @@ web_component = ScaleToZeroWorker(
     min_instances=web_min_instances,
     max_instances=web_max_instances,
     is_public=True,
+    legacy_name="korda-web",
     opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
 )
 web_service = web_component.service
@@ -333,12 +340,41 @@ backup_job = gcp.cloudrunv2.Job(
     opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
 )
 
+gcp.cloudrunv2.JobIamMember(
+    "korda-backup-job-invoker",
+    name=backup_job.name,
+    location=region,
+    project=project,
+    role=RUN_INVOKER_ROLE,
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+backup_schedule = gcp.cloudscheduler.Job(
+    "korda-backup-schedule",
+    name="korda-backup-daily",
+    description="Daily off-host SurrealDB backup export to GCS",
+    schedule="0 3 * * *",
+    time_zone="UTC",
+    region=region,
+    project=project,
+    http_target=gcp.cloudscheduler.JobHttpTargetArgs(
+        http_method="POST",
+        uri=f"https://{region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/{project}/jobs/korda-backup-job:run",
+        oauth_token=gcp.cloudscheduler.JobHttpTargetOauthTokenArgs(
+            service_account_email=service_account.email,
+        ),
+    ),
+    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=[backup_job]),
+)
+
 # Stack Outputs
 pulumi.export("web_url", web_service.uri)
 pulumi.export("worker_url", worker_service.uri)
 pulumi.export("bucket_name", media_bucket.name)
 pulumi.export("backup_bucket_name", backup_bucket.name)
 pulumi.export("backup_job_name", backup_job.name)
+pulumi.export("backup_schedule_name", backup_schedule.name)
 pulumi.export("service_account_email", service_account.email)
 pulumi.export("queue_name", tasks_queue.name)
 pulumi.export("artifact_registry_name", artifact_repo.name)

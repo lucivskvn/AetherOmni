@@ -282,15 +282,23 @@
                     <i data-lucide="search" aria-hidden="true"></i>
                 </button>
             </form>
-            <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 13px;">
+            <div style="margin-top: 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; font-size: 13px;">
                 <label style="display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer;">
                     <input type="checkbox" id="strict-librarian-toggle" data-librarian-url="{% url 'strict_librarian_search' %}">
                     <span>Strict Librarian Mode (Zero-LLM Verbatim + Coordinates)</span>
                 </label>
+                <div style="display: inline-flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button type="button" id="btn-open-crystal-dialog" class="btn btn-secondary btn-sm">
+                        <i data-lucide="sparkles" aria-hidden="true"></i> Synthesize Crystal
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-compile-kb" data-compile-url="{% url 'compile_markdown' %}" title="Compile Verified Crystals into NotebookLM Markdown">
+                        <i data-lucide="book-marked" aria-hidden="true"></i> Compile KB (.md)
+                    </button>
+                </div>
             </div>
 
             <!-- Loader -->
-            <div id="rag-loader" class="search-loader">
+            <div id="rag-loader" class="search-loader" role="status" aria-live="polite">
                 <i data-lucide="loader" class="spinner" aria-hidden="true"></i>
                 <div class="search-loader-text">Running vector search &amp; generating response...</div>
             </div>
@@ -307,8 +315,45 @@
     </div>
 </div>
 
+<!-- Crystal Synthesis Modal -->
+<dialog id="crystal-synth-dialog" aria-labelledby="crystal-dialog-title" style="max-width: 540px; width: 92%; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-main); padding: 1.25rem;">
+    <form id="crystal-synth-form" data-synthesize-url="{% url 'crystal_synthesize' %}">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h3 id="crystal-dialog-title" style="margin: 0; font-size: 1.05rem;">Synthesize Verified Crystal</h3>
+            <button type="button" id="btn-close-crystal-dialog" class="btn btn-secondary btn-sm" aria-label="Close">✕</button>
+        </div>
+        <div style="display: grid; gap: 0.75rem;">
+            <div>
+                <label for="crystal-title" class="text-sm font-medium">Title</label>
+                <input type="text" id="crystal-title" required maxlength="200" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="e.g., FSRS Memory Stability Formula">
+            </div>
+            <div>
+                <label for="crystal-doc-slug" class="text-sm font-medium">Doc Slug</label>
+                <input type="text" id="crystal-doc-slug" maxlength="120" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="general">
+            </div>
+            <div>
+                <label for="crystal-summary" class="text-sm font-medium">Distilled Summary</label>
+                <textarea id="crystal-summary" required rows="4" maxlength="5000" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="Synthesized knowledge grounded in selected Strict Librarian anchors..."></textarea>
+            </div>
+            <div>
+                <label for="crystal-anchor-ids" class="text-sm font-medium">Anchor IDs (comma-separated, auto-filled from checked evidence)</label>
+                <input type="text" id="crystal-anchor-ids" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="anchor_1, anchor_2">
+            </div>
+            <div>
+                <label for="crystal-tags" class="text-sm font-medium">Tags (comma-separated)</label>
+                <input type="text" id="crystal-tags" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="fsrs, core-concept">
+            </div>
+            <p id="crystal-synth-status" role="status" aria-live="polite" style="margin: 0; font-size: 0.85rem;"></p>
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                <button type="button" id="btn-cancel-crystal-dialog" class="btn btn-secondary btn-sm">Cancel</button>
+                <button type="submit" id="btn-submit-crystal" class="btn btn-primary btn-sm">Save Verified Crystal</button>
+            </div>
+        </div>
+    </form>
+</dialog>
+
 <!-- Floating Actions bottom bar (positioned relative to viewport for correct float/sticky behavior) -->
-<div id="export-actions-bar" class="export-footer">
+<div id="export-actions-bar" class="export-footer" role="region" aria-label="Selected source actions">
     <span>
         <span id="selected-count">0</span> sources selected
     </span>
@@ -325,9 +370,9 @@
         <button type="submit" form="export-form" id="btn-export-submit" class="btn btn-primary" title="Export Selected Documents">
             <i data-lucide="download-cloud" aria-hidden="true"></i> Export Selected
         </button>
-        <a href="{% url 'compile_markdown' %}?download=1" class="btn btn-secondary" title="Compile Verified Crystals into NotebookLM Markdown">
+        <button type="button" class="btn btn-secondary btn-compile-kb" data-compile-url="{% url 'compile_markdown' %}" title="Compile Verified Crystals into NotebookLM Markdown">
             <i data-lucide="book-marked" aria-hidden="true"></i> Compile KB (.md)
-        </a>
+        </button>
         <button type="button" id="btn-bulk-restart" class="btn btn-secondary" title="Bulk Restart Processing" data-action-url="{% url 'bulk_action' %}">
             <i data-lucide="refresh-cw" aria-hidden="true"></i> Bulk Restart
         </button>

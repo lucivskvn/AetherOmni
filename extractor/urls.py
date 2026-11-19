@@ -44,6 +44,7 @@ urlpatterns = [
     path("quiz-studio/", views.QuizStudioView.as_view(), name="quiz_studio"),
     path("api/v1/quiz/generate/", views.QuizGenerateAPIView.as_view(), name="quiz_generate"),
     path("api/v1/quiz/submit/", views.QuizSubmitAPIView.as_view(), name="quiz_submit"),
+    path("api/v1/quiz/rate/", views.QuizRateAPIView.as_view(), name="quiz_rate"),
     path("quiz-studio/export/", views.QuizExportMarkdownView.as_view(), name="quiz_export_markdown"),
     path("deployment-controller/", views.DeploymentControllerView.as_view(), name="deployment_controller"),
     path(

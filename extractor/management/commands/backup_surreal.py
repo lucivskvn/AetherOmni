@@ -26,9 +26,13 @@ class Command(BaseCommand):
         if not backup_bucket or not surreal_url:
             raise CommandError("BACKUP_BUCKET_NAME and SURREAL_URL are required.")
 
-        http_url = (
-            surreal_url.rstrip("/").replace("wss://", "https://").replace("ws://", "http://").removesuffix("/rpc")
-        )
+        normalized_url = surreal_url.rstrip("/").removesuffix("/rpc")
+        if normalized_url.startswith("wss://"):
+            http_url = "https://" + normalized_url.removeprefix("wss://")
+        elif normalized_url.startswith("https://"):
+            http_url = normalized_url
+        else:
+            raise CommandError("SURREAL_URL must use wss:// or https:// for off-host backup exports.")
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         blob_name = f"backups/{surreal_ns}/{surreal_db}/{stamp}.surql.gz"
 
@@ -36,6 +40,7 @@ class Command(BaseCommand):
             tmp_path = tmp.name
 
         try:
+            total_bytes = 0
             with (
                 httpx.stream(
                     "GET",
@@ -48,12 +53,19 @@ class Command(BaseCommand):
             ):
                 resp.raise_for_status()
                 for chunk in resp.iter_bytes(chunk_size=65536):
+                    total_bytes += len(chunk)
                     gz_out.write(chunk)
+            if total_bytes == 0:
+                raise CommandError("SurrealDB /export returned an empty snapshot; aborting backup upload.")
 
             client = storage.Client()
             blob = client.bucket(backup_bucket).blob(blob_name)
-            blob.upload_from_filename(tmp_path, content_type="application/gzip")
+            blob.upload_from_filename(tmp_path, content_type="application/gzip", timeout=300)
             self.stdout.write(f"Uploaded SurrealDB backup to gs://{backup_bucket}/{blob_name}")
+        except CommandError:
+            raise
+        except Exception as exc:
+            raise CommandError(f"SurrealDB backup failed: {exc}") from exc
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)

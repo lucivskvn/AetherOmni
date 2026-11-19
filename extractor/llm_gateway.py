@@ -251,7 +251,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                 }
                 for k, v in pricing_map.items()
             }
-    except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError, TypeError, KeyError, OSError) as exc:
         logger.exception("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
 
     return None
@@ -1610,8 +1610,37 @@ MODEL_TIER_PRO = os.getenv("GEMINI_MODEL_PRO", "gemini-2.5-flash")
 
 
 def _get_vertex_client():
-    client, _is_vertex = _init_ocr_client()
+    client, is_vertex = _init_ocr_client()
+    if not is_vertex:
+        return None
     return client
+
+
+def _parse_anchor_extraction_response(
+    response: Any,
+    model_name: str,
+    doc_slug: str,
+    gcs_uri: str,
+) -> dict[str, Any]:
+    try:
+        parsed = json.loads(response.text or "{}")
+    except json.JSONDecodeError as exc:
+        logger.warning("[VertexURI] Invalid JSON from %s for %s: %s", model_name, doc_slug or gcs_uri, exc)
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    raw_anchors = parsed.get("anchors")
+    anchors = (
+        [a for a in raw_anchors if isinstance(a, dict) and a.get("quote")] if isinstance(raw_anchors, list) else []
+    )
+    usage = getattr(response, "usage_metadata", None)
+    return {
+        "title": str(parsed.get("title") or doc_slug or "Untitled"),
+        "anchors": anchors,
+        "model_used": model_name,
+        "input_tokens": getattr(usage, "prompt_token_count", 0) or 0,
+        "output_tokens": getattr(usage, "candidates_token_count", 0) or 0,
+    }
 
 
 def extract_anchors_from_gcs_uri(
@@ -1646,26 +1675,14 @@ def extract_anchors_from_gcs_uri(
             thinking_level=thinking_val.MINIMAL if thinking_val else "MINIMAL"  # type: ignore[arg-type]
         )
 
-    response = client.models.generate_content(
-        model=model_name,
-        contents=[part, prompt],
-        config=types.GenerateContentConfig(**config_kwargs),
+    response = execute_with_backoff(
+        lambda: client.models.generate_content(
+            model=model_name,
+            contents=[part, prompt],
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
     )
-    try:
-        parsed = json.loads(response.text or "{}")
-    except json.JSONDecodeError as exc:
-        logger.warning("[VertexURI] Invalid JSON from %s for %s: %s", model_name, doc_slug or gcs_uri, exc)
-        parsed = {}
-    usage = getattr(response, "usage_metadata", None)
-    in_toks = getattr(usage, "prompt_token_count", 0) or 0
-    out_toks = getattr(usage, "candidates_token_count", 0) or 0
-    return {
-        "title": str(parsed.get("title") or doc_slug or "Untitled"),
-        "anchors": list(parsed.get("anchors") or []),
-        "model_used": model_name,
-        "input_tokens": in_toks,
-        "output_tokens": out_toks,
-    }
+    return _parse_anchor_extraction_response(response, model_name, doc_slug, gcs_uri)
 
 
 def generate_query_embedding(text: str) -> list[float]:
@@ -1674,7 +1691,7 @@ def generate_query_embedding(text: str) -> list[float]:
     if not clean:
         return []
     try:
-        client = _get_vertex_client()
+        client, _is_vertex = _init_ocr_client()
         if client is None:
             return []
         resp = client.models.embed_content(

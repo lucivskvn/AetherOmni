@@ -46,7 +46,7 @@ if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))'
 fi
 
 echo -e "${YELLOW}[Bytecode] Validating Python syntax & compilation across codebase...${NC}"
-$PYTHON_BIN -m compileall -q core extractor scripts manage.py
+$PYTHON_BIN -m compileall -q core extractor scripts infra/pulumi manage.py
 echo -e "${GREEN}✓ Python bytecode compiled cleanly with 0 syntax errors.${NC}"
 
 echo -e "${YELLOW}[Reliability Contracts] Verifying task, recovery, export, and polling controls...${NC}"
@@ -286,7 +286,7 @@ echo -e "\n${YELLOW}[Schema Audit] Verifying YAML & Configuration File Structure
 if command -v yamllint &> /dev/null; then
     yamllint bandit.yaml docker-compose.yml
     yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" \
-        docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml
+        docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml infra/pulumi/esc/korda-base.yaml
     echo -e "${GREEN}✓ Configuration schemas and YAML structures verified successfully.${NC}"
 else
     echo -e "${YELLOW}⚠ yamllint not found in PATH (skipping).${NC}"

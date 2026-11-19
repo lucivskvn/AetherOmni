@@ -3,6 +3,7 @@ import sys
 import types
 from pathlib import Path
 from unittest import TestCase
+from unittest.mock import patch
 
 
 def _load_policy_module():
@@ -25,13 +26,13 @@ def _load_policy_module():
     stub.ReportViolation = object
     stub.ResourceValidationArgs = object
     stub.ResourceValidationPolicy = _ResourceValidationPolicy
-    sys.modules["pulumi_policy"] = stub
 
     policy_path = Path(__file__).resolve().parents[2] / "infra" / "pulumi" / "policy" / "__main__.py"
     spec = importlib.util.spec_from_file_location("korda_pulumi_policy", policy_path)
     mod = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
-    spec.loader.exec_module(mod)
+    with patch.dict(sys.modules, {"pulumi_policy": stub}):
+        spec.loader.exec_module(mod)
     return mod
 
 

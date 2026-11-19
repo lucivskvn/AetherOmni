@@ -9,15 +9,14 @@
             <p class="text-muted" style="margin: 0.25rem 0 0;">Persistent FSRS exam bank with zero-LLM retakes and cited evidence review.</p>
         </div>
         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;">
-            {% if exam_session.questions %}
-            <span id="exam-timer" class="badge badge-pending" role="timer" aria-live="off" data-duration="{{ exam_session.duration_seconds|default:900 }}" aria-label="Remaining exam time">15:00</span>
-            {% endif %}
+            <span id="exam-timer" class="badge badge-pending" role="timer" aria-live="off" data-duration="{{ exam_session.duration_seconds|default:900 }}" aria-label="Remaining exam time" {% if not exam_session.questions %}style="display: none;"{% endif %}>15:00</span>
+            <span id="exam-timer-status" class="visually-hidden" aria-live="polite"></span>
             <a href="{% url 'quiz_export_markdown' %}?answers=1" class="btn btn-secondary">Export w/ Key (.md)</a>
             <a href="{% url 'quiz_export_markdown' %}?answers=0" class="btn btn-secondary">Export Exam Only (.md)</a>
         </div>
     </header>
 
-    <details class="glass-card" style="padding: 1.25rem; margin-bottom: 1.5rem;">
+    <details id="quiz-generator-details" class="glass-card" style="padding: 1.25rem; margin-bottom: 1.5rem;">
         <summary style="cursor: pointer; font-weight: 600;">Generate New Quiz from Verified Crystals</summary>
         <form id="quiz-generate-form" style="margin-top: 1rem; display: grid; gap: 0.75rem;">
             {% csrf_token %}
@@ -66,7 +65,7 @@
         </form>
     </details>
 
-    <div id="exam-container">
+    <div id="exam-container" data-submit-url="{% url 'quiz_submit' %}" data-rate-url="{% url 'quiz_rate' %}">
         {% if exam_session.questions %}
         <form id="mock-exam-form" method="post" data-session-id="{{ exam_session.session_id }}" data-submit-url="{% url 'quiz_submit' %}">
             {% csrf_token %}
@@ -76,7 +75,7 @@
                     <strong>Question {{ q.index }} &middot; {{ q.topic|default:"General" }}</strong>
                     <span class="text-muted">{{ q.difficulty }} &middot; {{ q.item_format }}</span>
                 </div>
-                <p style="margin-bottom: 0.75rem;">{{ q.stem }}</p>
+                <p id="stem-{{ q.item_id }}" style="margin-bottom: 0.75rem;">{{ q.stem }}</p>
                 {% if q.choices %}
                 <fieldset style="border: 0; padding: 0; margin: 0 0 0.75rem;">
                     <legend class="visually-hidden">Question {{ q.index }}: {{ q.stem }}</legend>
@@ -95,9 +94,12 @@
                         {% endfor %}
                     </ul>
                 </fieldset>
+                {% elif q.item_format == "Short Answer" %}
+                <label class="visually-hidden" for="input-{{ q.item_id }}">Answer for Question {{ q.index }}</label>
+                <textarea id="input-{{ q.item_id }}" name="q_{{ q.item_id }}" rows="3" aria-describedby="stem-{{ q.item_id }}" class="search-input" style="width: 100%; margin-bottom: 0.75rem;" placeholder="Type your concise answer..."></textarea>
                 {% else %}
                 <label class="visually-hidden" for="input-{{ q.item_id }}">Answer for Question {{ q.index }}</label>
-                <input id="input-{{ q.item_id }}" type="text" name="q_{{ q.item_id }}" class="search-input" style="width: 100%; margin-bottom: 0.75rem;" placeholder="Type your answer...">
+                <input id="input-{{ q.item_id }}" type="text" name="q_{{ q.item_id }}" aria-describedby="stem-{{ q.item_id }}" class="search-input" style="width: 100%; margin-bottom: 0.75rem;" placeholder="Type your answer...">
                 {% endif %}
                 {% if q.hint %}
                 <details style="margin-top: 0.5rem;">
@@ -109,7 +111,7 @@
             {% endfor %}
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <button type="submit" id="btn-submit-exam" class="btn btn-primary">Submit Mock Exam</button>
-                <span id="exam-submit-status" class="text-muted" role="alert" aria-live="polite"></span>
+                <span id="exam-submit-status" class="text-muted" role="status" aria-live="polite"></span>
             </div>
         </form>
         {% else %}
@@ -128,32 +130,44 @@
 <script>
 (function () {
     const timerEl = document.getElementById('exam-timer');
-    const examForm = document.getElementById('mock-exam-form');
+    const timerStatusEl = document.getElementById('exam-timer-status');
+    const examContainer = document.getElementById('exam-container');
     let timerInterval = null;
-    if (timerEl && examForm) {
-        let remaining = parseInt(timerEl.dataset.duration || '900', 10);
-        const renderTimer = () => {
-            const mins = String(Math.floor(Math.max(0, remaining) / 60)).padStart(2, '0');
-            const secs = String(Math.max(0, remaining) % 60).padStart(2, '0');
-            timerEl.textContent = mins + ':' + secs;
-        };
-        renderTimer();
-        timerInterval = setInterval(() => {
-            remaining -= 1;
-            renderTimer();
-            if (remaining <= 0) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-                examForm.requestSubmit();
-            }
-        }, 1000);
-        globalThis.addEventListener('pagehide', () => {
-            if (timerInterval) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-            }
-        });
+
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
     }
+
+    function startTimer(durationSeconds, onExpire) {
+        stopTimer();
+        if (!timerEl) return;
+        const duration = Math.max(60, parseInt(String(durationSeconds || 900), 10) || 900);
+        const endTime = Date.now() + duration * 1000;
+        let announcedOneMin = false;
+        timerEl.style.display = '';
+        const tick = () => {
+            const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+            const mins = String(Math.floor(remaining / 60)).padStart(2, '0');
+            const secs = String(remaining % 60).padStart(2, '0');
+            timerEl.textContent = mins + ':' + secs;
+            if (remaining <= 60 && remaining > 0 && !announcedOneMin) {
+                announcedOneMin = true;
+                if (timerStatusEl) timerStatusEl.textContent = '1 minute remaining.';
+            }
+            if (remaining <= 0) {
+                stopTimer();
+                if (timerStatusEl) timerStatusEl.textContent = 'Time expired. Submitting exam.';
+                if (typeof onExpire === 'function') onExpire();
+            }
+        };
+        tick();
+        timerInterval = setInterval(tick, 1000);
+    }
+
+    globalThis.addEventListener('pagehide', stopTimer);
 
     function getCsrfToken(root) {
         const input = (root || document).querySelector('input[name="csrfmiddlewaretoken"]');
@@ -176,6 +190,326 @@
         if (val === null || val === undefined || val === '') return '(Unanswered)';
         if (Array.isArray(val)) return val.length ? val.join(', ') : '(Unanswered)';
         return String(val);
+    }
+
+    function renderSessionQuestions(session) {
+        if (!examContainer || !session || !Array.isArray(session.questions) || !session.questions.length) return;
+        const submitUrl = examContainer.dataset.submitUrl || '';
+        const csrfVal = getCsrfToken(document);
+        const form = document.createElement('form');
+        form.id = 'mock-exam-form';
+        form.method = 'post';
+        form.dataset.sessionId = String(session.session_id || '');
+        form.dataset.submitUrl = submitUrl;
+
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = csrfVal;
+        form.appendChild(csrfInput);
+
+        session.questions.forEach((q) => {
+            const article = document.createElement('article');
+            article.className = 'glass-card quiz-question-card';
+            article.dataset.itemId = String(q.item_id || '');
+            article.dataset.format = String(q.item_format || 'MCQ');
+            article.style.cssText = 'padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-subtle);';
+
+            const top = document.createElement('div');
+            top.style.cssText = 'display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem;';
+            const strong = document.createElement('strong');
+            strong.textContent = 'Question ' + q.index + ' · ' + (q.topic || 'General');
+            const meta = document.createElement('span');
+            meta.className = 'text-muted';
+            meta.textContent = (q.difficulty || 'Medium') + ' · ' + (q.item_format || 'MCQ');
+            top.appendChild(strong);
+            top.appendChild(meta);
+            article.appendChild(top);
+
+            const stemP = document.createElement('p');
+            stemP.id = 'stem-' + q.item_id;
+            stemP.style.marginBottom = '0.75rem';
+            stemP.textContent = q.stem || '';
+            article.appendChild(stemP);
+
+            const choices = Array.isArray(q.choices) ? q.choices : [];
+            if (choices.length) {
+                const fs = document.createElement('fieldset');
+                fs.style.cssText = 'border: 0; padding: 0; margin: 0 0 0.75rem;';
+                const leg = document.createElement('legend');
+                leg.className = 'visually-hidden';
+                leg.textContent = 'Question ' + q.index + ': ' + (q.stem || '');
+                fs.appendChild(leg);
+                const ul = document.createElement('ul');
+                ul.style.cssText = 'list-style: none; padding: 0; margin: 0;';
+                choices.forEach((choice) => {
+                    const li = document.createElement('li');
+                    li.style.marginBottom = '0.4rem';
+                    const lbl = document.createElement('label');
+                    lbl.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; cursor: pointer;';
+                    const inp = document.createElement('input');
+                    inp.type = q.item_format === 'Multi-Select' ? 'checkbox' : 'radio';
+                    inp.name = 'q_' + q.item_id;
+                    inp.value = String(choice);
+                    const span = document.createElement('span');
+                    span.textContent = String(choice);
+                    lbl.appendChild(inp);
+                    lbl.appendChild(span);
+                    li.appendChild(lbl);
+                    ul.appendChild(li);
+                });
+                fs.appendChild(ul);
+                article.appendChild(fs);
+            } else {
+                const lbl = document.createElement('label');
+                lbl.className = 'visually-hidden';
+                lbl.htmlFor = 'input-' + q.item_id;
+                lbl.textContent = 'Answer for Question ' + q.index;
+                article.appendChild(lbl);
+                const inp = document.createElement(q.item_format === 'Short Answer' ? 'textarea' : 'input');
+                if (inp.tagName === 'INPUT') inp.type = 'text';
+                else inp.rows = 3;
+                inp.id = 'input-' + q.item_id;
+                inp.name = 'q_' + q.item_id;
+                inp.className = 'search-input';
+                inp.setAttribute('aria-describedby', 'stem-' + q.item_id);
+                inp.style.cssText = 'width: 100%; margin-bottom: 0.75rem;';
+                inp.placeholder = q.item_format === 'Short Answer' ? 'Type your concise answer...' : 'Type your answer...';
+                article.appendChild(inp);
+            }
+
+            if (q.hint) {
+                const det = document.createElement('details');
+                det.style.marginTop = '0.5rem';
+                const sum = document.createElement('summary');
+                sum.style.cursor = 'pointer';
+                sum.textContent = 'Show Zero-LLM Hint';
+                const hp = document.createElement('p');
+                hp.style.marginTop = '0.5rem';
+                hp.className = 'text-muted';
+                hp.textContent = q.hint;
+                det.appendChild(sum);
+                det.appendChild(hp);
+                article.appendChild(det);
+            }
+            form.appendChild(article);
+        });
+
+        const footer = document.createElement('div');
+        footer.style.cssText = 'display: flex; align-items: center; gap: 1rem;';
+        const btn = document.createElement('button');
+        btn.type = 'submit';
+        btn.id = 'btn-submit-exam';
+        btn.className = 'btn btn-primary';
+        btn.textContent = 'Submit Mock Exam';
+        const status = document.createElement('span');
+        status.id = 'exam-submit-status';
+        status.className = 'text-muted';
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        footer.appendChild(btn);
+        footer.appendChild(status);
+        form.appendChild(footer);
+
+        examContainer.replaceChildren(form);
+        const resultsSection = document.getElementById('exam-results-section');
+        if (resultsSection) resultsSection.style.display = 'none';
+        bindExamForm(form, session.duration_seconds || 900);
+    }
+
+    function buildFsrsRatingBar(sessionId, itemId, rateUrl) {
+        const bar = document.createElement('div');
+        bar.style.cssText = 'display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.65rem;';
+        const label = document.createElement('span');
+        label.className = 'text-muted';
+        label.style.fontSize = '0.85rem';
+        label.textContent = 'FSRS Confidence:';
+        bar.appendChild(label);
+        const status = document.createElement('span');
+        status.className = 'text-muted';
+        status.style.fontSize = '0.8rem';
+        status.setAttribute('aria-live', 'polite');
+
+        const ratings = [
+            { val: 1, text: '1 Again' },
+            { val: 2, text: '2 Hard' },
+            { val: 3, text: '3 Good' },
+            { val: 4, text: '4 Easy' },
+        ];
+        ratings.forEach((rt) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-secondary btn-sm';
+            btn.textContent = rt.text;
+            btn.addEventListener('click', async () => {
+                if (!rateUrl || !sessionId) return;
+                btn.disabled = true;
+                try {
+                    const resp = await fetch(rateUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(document) },
+                        body: JSON.stringify({ session_id: sessionId, item_id: itemId, rating: rt.val }),
+                    });
+                    if (!resp.ok) throw new Error('Rating failed');
+                    status.textContent = 'Scheduled (' + rt.text + ')';
+                } catch (_) {
+                    status.textContent = 'Could not update FSRS rating.';
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+            bar.appendChild(btn);
+        });
+        bar.appendChild(status);
+        return bar;
+    }
+
+    function bindExamForm(examForm, durationSeconds) {
+        if (!examForm) return;
+        let isSubmitting = false;
+        let isCompleted = false;
+
+        examForm.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT' && e.target.type === 'text') {
+                e.preventDefault();
+            }
+        });
+
+        startTimer(durationSeconds, () => {
+            if (!isSubmitting && !isCompleted) examForm.requestSubmit();
+        });
+
+        examForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (isSubmitting || isCompleted) return;
+            const submitBtn = document.getElementById('btn-submit-exam');
+            const submitStatus = document.getElementById('exam-submit-status');
+            isSubmitting = true;
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.setAttribute('aria-busy', 'true');
+            }
+            if (submitStatus) submitStatus.textContent = 'Grading submission...';
+
+            const cards = Array.from(examForm.querySelectorAll('.quiz-question-card'));
+            const itemIds = [];
+            const answers = {};
+            cards.forEach((card) => {
+                const itemId = card.dataset.itemId;
+                const fmt = card.dataset.format;
+                itemIds.push(itemId);
+                if (fmt === 'Multi-Select') {
+                    answers[itemId] = Array.from(card.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value);
+                } else {
+                    const radio = card.querySelector('input[type="radio"]:checked');
+                    const text = card.querySelector('input[type="text"], textarea');
+                    answers[itemId] = radio ? radio.value : (text ? text.value : '');
+                }
+            });
+
+            const sessionId = examForm.dataset.sessionId || '';
+            const rateUrl = examContainer?.dataset?.rateUrl || '';
+            try {
+                const resp = await fetch(examForm.dataset.submitUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(examForm) },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        item_ids: itemIds,
+                        answers: answers
+                    })
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    if (submitStatus) submitStatus.textContent = data.error || 'Exam submission failed. Please retry.';
+                    return;
+                }
+                isCompleted = true;
+                stopTimer();
+                if (submitStatus) submitStatus.textContent = 'Exam graded.';
+
+                const section = document.getElementById('exam-results-section');
+                const heading = document.getElementById('exam-score-heading');
+                const list = document.getElementById('exam-results-list');
+                if (!section || !heading || !list) return;
+
+                heading.textContent = 'Score: ' + (data.score ?? 0) + ' / ' + (data.total ?? 0);
+                list.replaceChildren();
+                (data.results || []).forEach((r) => {
+                    const card = document.createElement('div');
+                    card.style.padding = '1rem';
+                    card.style.border = '1px solid var(--border-subtle)';
+                    card.style.borderRadius = '8px';
+
+                    const title = document.createElement('strong');
+                    title.textContent = (r.is_correct ? 'PASS: ' : 'MISS: ') + (r.stem || '');
+                    card.appendChild(title);
+
+                    const ans = document.createElement('p');
+                    ans.textContent = 'Your answer: ' + formatAnswerDisplay(r.submitted) + ' | Expected: ' + formatAnswerDisplay(r.correct_answer);
+                    card.appendChild(ans);
+
+                    Object.entries(r.distractor_rationales || {}).forEach(([opt, reason]) => {
+                        const rp = document.createElement('p');
+                        rp.className = 'text-muted';
+                        rp.textContent = opt + ': ' + reason;
+                        card.appendChild(rp);
+                    });
+
+                    (r.evidence || []).forEach((ev) => {
+                        const evBox = document.createElement('blockquote');
+                        evBox.style.margin = '0.5rem 0';
+                        evBox.style.paddingLeft = '0.75rem';
+                        evBox.style.borderLeft = '3px solid var(--border-subtle)';
+                        evBox.textContent = '[' + (ev.coord || '') + '] ' + (ev.quote || '');
+                        if (ev.card_type === 'live_gcs' && ev.signed_url && isSafeSignedGcsUrl(ev.signed_url)) {
+                            const link = document.createElement('a');
+                            link.setAttribute('href', ev.signed_url);
+                            link.target = '_blank';
+                            link.rel = 'noopener noreferrer';
+                            link.textContent = ' (Open Live Asset';
+                            const sr = document.createElement('span');
+                            sr.className = 'visually-hidden';
+                            sr.textContent = ' (opens in new tab)';
+                            link.appendChild(sr);
+                            link.appendChild(document.createTextNode(')'));
+                            evBox.appendChild(link);
+                        } else if (ev.card_type === 'live_gcs') {
+                            const unavail = document.createElement('span');
+                            unavail.className = 'text-muted';
+                            unavail.textContent = ' [Live asset link unavailable]';
+                            evBox.appendChild(unavail);
+                        } else if (ev.card_type === 'tombstone') {
+                            const tomb = document.createElement('span');
+                            tomb.className = 'badge badge-secondary';
+                            tomb.style.marginLeft = '0.5rem';
+                            tomb.textContent = 'Tombstone · sha256: ' + (ev.sha256 || 'archived');
+                            evBox.appendChild(tomb);
+                        }
+                        card.appendChild(evBox);
+                    });
+
+                    card.appendChild(buildFsrsRatingBar(sessionId, r.item_id, rateUrl));
+                    list.appendChild(card);
+                });
+                section.style.display = 'block';
+                section.scrollIntoView({ behavior: 'smooth' });
+                heading.focus({ preventScroll: true });
+            } catch (_) {
+                if (submitStatus) submitStatus.textContent = 'Network error while submitting exam. Your answers are preserved; please retry.';
+            } finally {
+                isSubmitting = false;
+                if (submitBtn && !isCompleted) {
+                    submitBtn.disabled = false;
+                    submitBtn.removeAttribute('aria-busy');
+                }
+            }
+        });
+    }
+
+    const initialForm = document.getElementById('mock-exam-form');
+    if (initialForm) {
+        bindExamForm(initialForm, timerEl?.dataset?.duration || 900);
     }
 
     const genForm = document.getElementById('quiz-generate-form');
@@ -224,7 +558,14 @@
                     if (statusEl) statusEl.textContent = data.error || 'Generation failed. Please retry.';
                     return;
                 }
-                globalThis.location.reload();
+                if (data.session && Array.isArray(data.session.questions) && data.session.questions.length) {
+                    renderSessionQuestions(data.session);
+                    const genDetails = document.getElementById('quiz-generator-details');
+                    if (genDetails) genDetails.open = false;
+                    if (statusEl) statusEl.textContent = 'Generated ' + data.session.questions.length + ' items.';
+                } else {
+                    globalThis.location.reload();
+                }
             } catch (_) {
                 if (statusEl) statusEl.textContent = 'Network error while generating quiz. Please retry.';
             } finally {
@@ -232,125 +573,6 @@
                 if (genBtn) {
                     genBtn.disabled = false;
                     genBtn.removeAttribute('aria-busy');
-                }
-            }
-        });
-    }
-
-    if (examForm) {
-        let isSubmitting = false;
-        let isCompleted = false;
-        examForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (isSubmitting || isCompleted) return;
-            const submitBtn = document.getElementById('btn-submit-exam');
-            const submitStatus = document.getElementById('exam-submit-status');
-            isSubmitting = true;
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.setAttribute('aria-busy', 'true');
-            }
-            if (submitStatus) submitStatus.textContent = 'Grading submission...';
-
-            const cards = Array.from(examForm.querySelectorAll('.quiz-question-card'));
-            const itemIds = [];
-            const answers = {};
-            cards.forEach((card) => {
-                const itemId = card.dataset.itemId;
-                const fmt = card.dataset.format;
-                itemIds.push(itemId);
-                if (fmt === 'Multi-Select') {
-                    answers[itemId] = Array.from(card.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value);
-                } else {
-                    const radio = card.querySelector('input[type="radio"]:checked');
-                    const text = card.querySelector('input[type="text"]');
-                    answers[itemId] = radio ? radio.value : (text ? text.value : '');
-                }
-            });
-
-            try {
-                const resp = await fetch(examForm.dataset.submitUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(examForm) },
-                    body: JSON.stringify({
-                        session_id: examForm.dataset.sessionId || '',
-                        item_ids: itemIds,
-                        answers: answers
-                    })
-                });
-                const data = await resp.json().catch(() => ({}));
-                if (!resp.ok) {
-                    if (submitStatus) submitStatus.textContent = data.error || 'Exam submission failed. Please retry.';
-                    return;
-                }
-                isCompleted = true;
-                if (timerInterval) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
-                }
-                if (submitStatus) submitStatus.textContent = 'Exam graded.';
-
-                const section = document.getElementById('exam-results-section');
-                const heading = document.getElementById('exam-score-heading');
-                const list = document.getElementById('exam-results-list');
-                if (!section || !heading || !list) return;
-
-                heading.textContent = 'Score: ' + (data.score ?? 0) + ' / ' + (data.total ?? 0);
-                list.replaceChildren();
-                (data.results || []).forEach((r) => {
-                    const card = document.createElement('div');
-                    card.style.padding = '1rem';
-                    card.style.border = '1px solid var(--border-subtle)';
-                    card.style.borderRadius = '8px';
-
-                    const title = document.createElement('strong');
-                    title.textContent = (r.is_correct ? 'PASS: ' : 'MISS: ') + (r.stem || '');
-                    card.appendChild(title);
-
-                    const ans = document.createElement('p');
-                    ans.textContent = 'Your answer: ' + formatAnswerDisplay(r.submitted) + ' | Expected: ' + formatAnswerDisplay(r.correct_answer);
-                    card.appendChild(ans);
-
-                    Object.entries(r.distractor_rationales || {}).forEach(([opt, reason]) => {
-                        const rp = document.createElement('p');
-                        rp.className = 'text-muted';
-                        rp.textContent = opt + ': ' + reason;
-                        card.appendChild(rp);
-                    });
-
-                    (r.evidence || []).forEach((ev) => {
-                        const evBox = document.createElement('blockquote');
-                        evBox.style.margin = '0.5rem 0';
-                        evBox.style.paddingLeft = '0.75rem';
-                        evBox.style.borderLeft = '3px solid var(--border-subtle)';
-                        evBox.textContent = '[' + (ev.coord || '') + '] ' + (ev.quote || '');
-                        if (ev.card_type === 'live_gcs' && ev.signed_url && isSafeSignedGcsUrl(ev.signed_url)) {
-                            const link = document.createElement('a');
-                            link.setAttribute('href', ev.signed_url);
-                            link.target = '_blank';
-                            link.rel = 'noopener noreferrer';
-                            link.textContent = ' (Open Live Asset)';
-                            evBox.appendChild(link);
-                        } else if (ev.card_type === 'tombstone') {
-                            const tomb = document.createElement('span');
-                            tomb.className = 'text-muted';
-                            tomb.textContent = ' [Tombstone sha256: ' + (ev.sha256 || 'archived') + ']';
-                            evBox.appendChild(tomb);
-                        }
-                        card.appendChild(evBox);
-                    });
-                    list.appendChild(card);
-                });
-                section.style.display = 'block';
-                section.scrollIntoView({ behavior: 'smooth' });
-                heading.focus({ preventScroll: true });
-            } catch (_) {
-                if (submitStatus) submitStatus.textContent = 'Network error while submitting exam. Your answers are preserved; please retry.';
-            } finally {
-                isSubmitting = false;
-                if (submitBtn && !isCompleted) {
-                    submitBtn.disabled = false;
-                    submitBtn.removeAttribute('aria-busy');
                 }
             }
         });

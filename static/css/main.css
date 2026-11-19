@@ -230,6 +230,7 @@ header {
 .nav-actions {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 16px;
 }
 
@@ -1156,11 +1157,13 @@ tr:hover td {
     z-index: 999;
     transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     opacity: 0;
+    visibility: hidden;
 }
 
 .export-footer.visible {
     transform: translateX(-50%) translateY(0);
     opacity: 1;
+    visibility: visible;
 }
 
 @media (max-width: 720px) {

@@ -1081,6 +1081,7 @@ def strict_librarian_search(
     owner_id: str,
     query_embedding: list[float] | None = None,
     limit: int = 10,
+    doc_slug: str | None = None,
 ) -> dict[str, Any]:
     """Zero-LLM Strict Librarian Mode: returns verbatim evidence + deterministic coordinates."""
     from extractor import compiler, llm_gateway, surreal_db
@@ -1096,6 +1097,7 @@ def strict_librarian_search(
         owner_id=owner_id,
         query_embedding=query_embedding,
         limit=limit,
+        doc_slug=doc_slug,
     )
     evidence = [
         {

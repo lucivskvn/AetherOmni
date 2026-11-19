@@ -357,19 +357,21 @@ DEFINE FIELD IF NOT EXISTS rating          ON attempt TYPE int DEFAULT 3 ASSERT 
 DEFINE FIELD IF NOT EXISTS response_ms     ON attempt TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS submitted_at    ON attempt TYPE datetime DEFAULT time::now();
 
-DEFINE INDEX IF NOT EXISTS idx_attempt_id      ON attempt FIELDS attempt_id UNIQUE;
-DEFINE INDEX IF NOT EXISTS idx_attempt_session ON attempt FIELDS session_id, owner_id;
+DEFINE INDEX IF NOT EXISTS idx_attempt_id           ON attempt FIELDS attempt_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_attempt_session      ON attempt FIELDS session_id, owner_id;
+DEFINE INDEX IF NOT EXISTS idx_attempt_session_item ON attempt FIELDS session_id, item_id, owner_id UNIQUE;
 
--- Auto-update FSRS stability, difficulty, and next due date when an attempt is recorded.
-DEFINE EVENT IF NOT EXISTS evt_attempt_fsrs_update ON attempt WHEN $event = "CREATE" THEN {
+-- Auto-update FSRS stability, difficulty, and next due date when an attempt is recorded or self-rated.
+DEFINE EVENT IF NOT EXISTS evt_attempt_fsrs_update ON attempt WHEN $event IN ["CREATE", "UPDATE"] THEN {
     LET $item = (SELECT fsrs_stability, fsrs_difficulty FROM exam_item WHERE item_id = $after.item_id AND owner_id = $after.owner_id LIMIT 1)[0];
     IF $item != NONE {
-        LET $next_stability = IF $after.is_correct THEN
+        LET $passed = $after.is_correct AND $after.rating >= 2;
+        LET $next_stability = IF $passed THEN
             math::min([$item.fsrs_stability * (1.2 + ($after.rating * 0.35)), 365.0])
         ELSE
             math::max([$item.fsrs_stability * 0.5, 0.5])
         END;
-        LET $next_difficulty = IF $after.is_correct THEN
+        LET $next_difficulty = IF $passed THEN
             math::max([$item.fsrs_difficulty - 0.3, 1.0])
         ELSE
             math::min([$item.fsrs_difficulty + 0.8, 10.0])

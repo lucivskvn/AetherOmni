@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import random
+import re
 import uuid
 from typing import Any
 
 from extractor import compiler, llm_gateway, surreal_db
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_FORMATS = ("MCQ", "Multi-Select", "Short Answer", "Fill-in-the-Blank")
 SUPPORTED_DIFFICULTIES = ("Easy", "Medium", "Hard")
@@ -175,30 +179,54 @@ def build_mock_exam_session(
     }
 
 
+def _norm_answer_text(val: Any) -> str:
+    collapsed = re.sub(r"\s+", " ", str(val).strip().lower())
+    return collapsed.rstrip(".!?")
+
+
 def _answers_match(expected: Any, submitted: Any, item_format: str) -> bool:
     if item_format == "Multi-Select" and isinstance(expected, list) and isinstance(submitted, list):
-        return {str(x).strip().lower() for x in expected} == {str(x).strip().lower() for x in submitted}
+        return {_norm_answer_text(x) for x in expected} == {_norm_answer_text(x) for x in submitted}
     if expected is None or submitted is None:
         return False
-    return str(expected).strip().lower() == str(submitted).strip().lower()
+    return _norm_answer_text(expected) == _norm_answer_text(submitted)
+
+
+_STORAGE_CLIENT_CACHE: dict[str, Any] = {}
+
+
+def _get_storage_client():
+    if "client" not in _STORAGE_CLIENT_CACHE:
+        from google.cloud import storage  # type: ignore[attr-defined]
+
+        _STORAGE_CLIENT_CACHE["client"] = storage.Client()
+    return _STORAGE_CLIENT_CACHE["client"]
 
 
 def _generate_v4_signed_url(gcs_uri: str) -> str | None:
-    """Generate a 15-minute GCS V4 Signed URL for live Cited Review jumps."""
+    """Generate a 15-minute GCS V4 Signed URL for live Cited Review jumps (supports Cloud Run IAM signing)."""
     if not gcs_uri or not gcs_uri.startswith("gs://"):
         return None
     try:
         from datetime import timedelta
 
-        from google.cloud import storage  # type: ignore[attr-defined]
-
         bucket_name, _, blob_name = gcs_uri[5:].partition("/")
         if not bucket_name or not blob_name:
             return None
-        client = storage.Client()
+        client = _get_storage_client()
         blob = client.bucket(bucket_name).blob(blob_name)
-        return blob.generate_signed_url(version="v4", expiration=timedelta(minutes=15), method="GET")
-    except Exception:
+        kwargs: dict[str, Any] = {"version": "v4", "expiration": timedelta(minutes=15), "method": "GET"}
+        creds = getattr(client, "_credentials", None)
+        if creds is not None and not hasattr(creds, "signer"):
+            import google.auth.transport.requests
+
+            creds.refresh(google.auth.transport.requests.Request())
+            if getattr(creds, "service_account_email", None) and getattr(creds, "token", None):
+                kwargs["service_account_email"] = creds.service_account_email
+                kwargs["access_token"] = creds.token
+        return blob.generate_signed_url(**kwargs)
+    except Exception as exc:
+        logger.warning("[QuizStudio] Failed to sign V4 URL for %s: %s", gcs_uri, exc)
         return None
 
 
@@ -217,6 +245,43 @@ def _build_evidence_card(anchor: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _grade_single_item(
+    *,
+    owner_id: str,
+    session_id: str,
+    item: dict[str, Any],
+    answers: dict[str, Any],
+    rating_map: dict[str, int],
+    anchor_map: dict[str, dict[str, Any]],
+) -> tuple[bool, dict[str, Any]]:
+    item_id = str(item.get("item_id") or "")
+    submitted = answers.get(item_id)
+    expected = item.get("correct_answer")
+    is_correct = _answers_match(expected, submitted, str(item.get("item_format") or "MCQ"))
+
+    raw_rating = rating_map.get(item_id)
+    item_rating = raw_rating if isinstance(raw_rating, int) and 1 <= raw_rating <= 4 else (3 if is_correct else 1)
+    attempt_id = f"{owner_id}:{session_id}:{item_id}" if session_id else uuid.uuid4().hex[:16]
+    surreal_db.record_attempt(
+        attempt_id=attempt_id,
+        session_id=session_id,
+        item_id=item_id,
+        owner_id=owner_id,
+        is_correct=is_correct,
+        rating=item_rating,
+    )
+    evidence = [_build_evidence_card(anchor_map[aid]) for aid in (item.get("anchor_ids") or []) if aid in anchor_map]
+    return is_correct, {
+        "item_id": item_id,
+        "stem": item.get("stem", ""),
+        "submitted": submitted,
+        "correct_answer": expected,
+        "is_correct": is_correct,
+        KEY_DISTRACTOR_RATIONALES: item.get(KEY_DISTRACTOR_RATIONALES) or {},
+        "evidence": evidence,
+    }
+
+
 def grade_mock_exam_submission(
     *,
     owner_id: str,
@@ -224,43 +289,26 @@ def grade_mock_exam_submission(
     items: list[dict[str, Any]],
     answers: dict[str, Any],
     anchors_by_id: dict[str, dict[str, Any]] | None = None,
+    ratings: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Grade mock exam answers at zero LLM cost, record attempts, and attach Cited Review cards."""
+    """Grade mock exam answers at zero LLM cost, record attempts idempotently, and attach Cited Review cards."""
     anchor_map = anchors_by_id or {}
+    rating_map = ratings or {}
     results: list[dict[str, Any]] = []
     score = 0
 
     for item in items:
-        item_id = str(item.get("item_id") or "")
-        submitted = answers.get(item_id)
-        expected = item.get("correct_answer")
-        is_correct = _answers_match(expected, submitted, str(item.get("item_format") or "MCQ"))
+        is_correct, row = _grade_single_item(
+            owner_id=owner_id,
+            session_id=session_id,
+            item=item,
+            answers=answers,
+            rating_map=rating_map,
+            anchor_map=anchor_map,
+        )
         if is_correct:
             score += 1
-
-        surreal_db.record_attempt(
-            attempt_id=uuid.uuid4().hex[:16],
-            session_id=session_id,
-            item_id=item_id,
-            owner_id=owner_id,
-            is_correct=is_correct,
-            rating=3 if is_correct else 1,
-        )
-
-        evidence = [
-            _build_evidence_card(anchor_map[aid]) for aid in (item.get("anchor_ids") or []) if aid in anchor_map
-        ]
-        results.append(
-            {
-                "item_id": item_id,
-                "stem": item.get("stem", ""),
-                "submitted": submitted,
-                "correct_answer": expected,
-                "is_correct": is_correct,
-                KEY_DISTRACTOR_RATIONALES: item.get(KEY_DISTRACTOR_RATIONALES) or {},
-                "evidence": evidence,
-            }
-        )
+        results.append(row)
 
     return {
         "session_id": session_id,
