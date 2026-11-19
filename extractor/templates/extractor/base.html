@@ -5,7 +5,12 @@
 <head>
     <script>
         (function() {
-            const savedTheme = localStorage.getItem('theme');
+            let savedTheme = null;
+            try {
+                savedTheme = localStorage.getItem('theme');
+            } catch (err) {
+                console.warn('Theme storage unavailable:', err);
+            }
             if (savedTheme) {
                 document.documentElement.dataset.theme = savedTheme;
             } else {
@@ -185,7 +190,7 @@
                 
                 <div class="form-group">
                     <label for="selected_model">Default LLM & Intelligence Router</label>
-                    <select id="selected_model" name="selected_model" aria-describedby="model-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
+                    <select id="selected_model" name="selected_model" aria-describedby="model-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--surface-input); border: 1px solid var(--border-subtle); color: var(--text-main); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
                         <option value="auto" {% if system_settings.selected_model == "auto" %}selected{% endif %}>🤖 Auto-Intelligence Router (Stage & Complexity Aware — EU Primary)</option>
                         <option value="google/gemini-2.5-flash" {% if system_settings.selected_model == "google/gemini-2.5-flash" %}selected{% endif %}>✨ Google Gemini 2.5 Flash (Production Multimodal RAG — EU Primary)</option>
                         <option value="google/gemini-2.5-flash-lite" {% if system_settings.selected_model == "google/gemini-2.5-flash-lite" %}selected{% endif %}>⚡ Google Gemini 2.5 Flash-Lite (High-Throughput Ingestion — EU Primary)</option>
@@ -201,7 +206,7 @@
                 
                 <div class="form-group">
                     <label for="currency">Display Currency Override</label>
-                    <select id="currency" name="currency" aria-describedby="currency-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
+                    <select id="currency" name="currency" aria-describedby="currency-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--surface-input); border: 1px solid var(--border-subtle); color: var(--text-main); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
                         <option value="auto" {% if system_settings.currency == "auto" %}selected{% endif %}>🌐 Detected by Browser Locale (Default)</option>
                         <option value="USD" {% if system_settings.currency == "USD" %}selected{% endif %}>💵 USD ($)</option>
                         <option value="IDR" {% if system_settings.currency == "IDR" %}selected{% endif %}>🇮🇩 IDR (Rp)</option>
@@ -212,7 +217,7 @@
 
                 <div class="form-group">
                     <label for="csrf_trusted_origins">Custom Public Domains / CSRF Trusted Origins</label>
-                    <textarea id="csrf_trusted_origins" name="csrf_trusted_origins" aria-describedby="csrf-desc" style="width: 100%; min-height: 80px; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem; resize: vertical;">{{ system_settings.csrf_trusted_origins }}</textarea>
+                    <textarea id="csrf_trusted_origins" name="csrf_trusted_origins" aria-describedby="csrf-desc" style="width: 100%; min-height: 80px; padding: 0.65rem; border-radius: 8px; background-color: var(--surface-input); border: 1px solid var(--border-subtle); color: var(--text-main); font-size: 0.95rem; font-family: inherit; font-weight: 500; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem; resize: vertical;">{{ system_settings.csrf_trusted_origins }}</textarea>
                     <small id="csrf-desc">Comma-separated list of custom domains or tunnel/proxy URLs to whitelist for CSRF (e.g., <code>https://my-good-domain.com, https://another-tunnel.ngrok-free.app</code>).</small>
                 </div>
                 
@@ -379,7 +384,11 @@
                 themeToggleBtn.addEventListener('click', function() {
                     const newTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
                     document.documentElement.dataset.theme = newTheme;
-                    localStorage.setItem('theme', newTheme);
+                    try {
+                        localStorage.setItem('theme', newTheme);
+                    } catch (err) {
+                        console.warn('Theme storage unavailable:', err);
+                    }
                     updateThemeUI(newTheme);
                 });
             }

@@ -254,10 +254,10 @@ fi
 
 echo -e "\n${YELLOW}[Code Quality] Executing JavaScript ESLint & SonarQube JS Convention Check...${NC}"
 if [[ -x "./node_modules/.bin/eslint" ]]; then
-    ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+    ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 elif command -v npx &> /dev/null; then
-    npx --no-install eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+    npx --no-install eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js" || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 else
     echo -e "${RED}✗ eslint not found in local node_modules or PATH! Run 'npm ci' to install.${NC}" >&2

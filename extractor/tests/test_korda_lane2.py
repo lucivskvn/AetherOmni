@@ -321,4 +321,5 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
                 rate_resp = views.QuizRateAPIView.as_view()(rate_req)
                 self.assertEqual(rate_resp.status_code, 200)
                 self.assertEqual(json.loads(rate_resp.content)["rating"], 4)
-                self.assertEqual(surreal_db._test_korda_exam_items["item-8"]["fsrs_reps"], 2)
+                self.assertEqual(surreal_db._test_korda_exam_items["item-8"]["fsrs_reps"], 1)
+                self.assertAlmostEqual(surreal_db._test_korda_exam_items["item-8"]["fsrs_stability"], 2.6, places=2)

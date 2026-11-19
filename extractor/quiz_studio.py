@@ -218,9 +218,10 @@ def _generate_v4_signed_url(gcs_uri: str) -> str | None:
         kwargs: dict[str, Any] = {"version": "v4", "expiration": timedelta(minutes=15), "method": "GET"}
         creds = getattr(client, "_credentials", None)
         if creds is not None and not hasattr(creds, "signer"):
-            import google.auth.transport.requests
+            if not getattr(creds, "valid", False) or not getattr(creds, "token", None):
+                import google.auth.transport.requests
 
-            creds.refresh(google.auth.transport.requests.Request())
+                creds.refresh(google.auth.transport.requests.Request())
             if getattr(creds, "service_account_email", None) and getattr(creds, "token", None):
                 kwargs["service_account_email"] = creds.service_account_email
                 kwargs["access_token"] = creds.token
@@ -260,7 +261,10 @@ def _grade_single_item(
     is_correct = _answers_match(expected, submitted, str(item.get("item_format") or "MCQ"))
 
     raw_rating = rating_map.get(item_id)
-    item_rating = raw_rating if isinstance(raw_rating, int) and 1 <= raw_rating <= 4 else (3 if is_correct else 1)
+    if isinstance(raw_rating, int) and 1 <= raw_rating <= 4:
+        item_rating = raw_rating
+    else:
+        item_rating = 3 if is_correct else 1
     attempt_id = f"{owner_id}:{session_id}:{item_id}" if session_id else uuid.uuid4().hex[:16]
     surreal_db.record_attempt(
         attempt_id=attempt_id,

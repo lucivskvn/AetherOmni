@@ -384,7 +384,7 @@ def _parse_eventarc_payload(request) -> tuple[dict | None, str, JsonResponse | N
         return None, "", JsonResponse({"error": "Eventarc payload must be a JSON object"}, status=400)
     try:
         unwrapped, event_type = _unwrap_eventarc_envelope(request, payload)
-    except ValueError, UnicodeDecodeError:
+    except ValueError:
         return None, "", JsonResponse({"error": "Invalid Eventarc envelope"}, status=400)
     return unwrapped, event_type, None
 

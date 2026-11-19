@@ -1616,6 +1616,26 @@ def _get_vertex_client():
     return client
 
 
+def _coerce_optional_number(val: Any, caster: type[int] | type[float]) -> int | float | None:
+    if val is None:
+        return None
+    try:
+        return caster(val)
+    except TypeError, ValueError:
+        return None
+
+
+def _normalize_anchor_entry(raw_a: Any) -> dict[str, Any] | None:
+    if not isinstance(raw_a, dict) or not raw_a.get("quote"):
+        return None
+    anc = dict(raw_a)
+    anc["quote"] = str(anc["quote"])
+    anc["page_num"] = _coerce_optional_number(anc.get("page_num"), int)
+    anc["start_sec"] = _coerce_optional_number(anc.get("start_sec"), float)
+    anc["end_sec"] = _coerce_optional_number(anc.get("end_sec"), float)
+    return anc
+
+
 def _parse_anchor_extraction_response(
     response: Any,
     model_name: str,
@@ -1630,9 +1650,9 @@ def _parse_anchor_extraction_response(
     if not isinstance(parsed, dict):
         parsed = {}
     raw_anchors = parsed.get("anchors")
-    anchors = (
-        [a for a in raw_anchors if isinstance(a, dict) and a.get("quote")] if isinstance(raw_anchors, list) else []
-    )
+    anchors: list[dict[str, Any]] = []
+    if isinstance(raw_anchors, list):
+        anchors = [norm for raw_a in raw_anchors if (norm := _normalize_anchor_entry(raw_a)) is not None]
     usage = getattr(response, "usage_metadata", None)
     return {
         "title": str(parsed.get("title") or doc_slug or "Untitled"),

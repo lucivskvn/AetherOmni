@@ -121,7 +121,9 @@ async function executeRagStream(url, onEvent) {
     const processEvent = rawEvent => {
         const dataLine = rawEvent.split('\n').find(line => line.startsWith('data:'));
         if (!dataLine) return;
-        const payload = JSON.parse(dataLine.slice(5).trim());
+        const rawData = dataLine.slice(5).trim();
+        if (!rawData || rawData === '[DONE]') return;
+        const payload = JSON.parse(rawData);
         onEvent(payload);
     };
 
@@ -129,6 +131,7 @@ async function executeRagStream(url, onEvent) {
         while (true) {
             const { done, value } = await reader.read();
             buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            buffer = buffer.replaceAll('\r\n', '\n');
             const events = buffer.split('\n\n');
             buffer = events.pop();
             events.forEach(processEvent);
@@ -1119,6 +1122,8 @@ function initializeRAGSearch() {
     }
 
     function renderRagSources(sources) {
+        const ragSourcesWrap = document.getElementById('rag-sources');
+        if (ragSourcesWrap) ragSourcesWrap.style.display = '';
         ragSourcesList.innerHTML = '';
         if (!sources || sources.length === 0) {
             const li = document.createElement('li');
@@ -1275,37 +1280,39 @@ function initializeRAGSearch() {
         [closeCrystalBtn, cancelCrystalBtn].forEach(el => {
             if (el) el.addEventListener('click', () => crystalDialog.close());
         });
-        crystalForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        const _readCsvInput = id => (document.getElementById(id)?.value || '')
+            .split(',').map(s => s.trim()).filter(Boolean);
+
+        const _readTextInput = (id, fallback = '') => document.getElementById(id)?.value || fallback;
+
+        const _buildCrystalPayload = () => ({
+            title: _readTextInput('crystal-title'),
+            doc_slug: _readTextInput('crystal-doc-slug', 'general'),
+            summary: _readTextInput('crystal-summary'),
+            anchor_ids: _readCsvInput('crystal-anchor-ids'),
+            tags: _readCsvInput('crystal-tags'),
+        });
+
+        const _postCrystalSynthesis = async (synthUrl, payload) => {
+            const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+            const headers = { 'Content-Type': 'application/json' };
+            if (csrfToken) headers['X-CSRFToken'] = csrfToken;
+            const resp = await fetch(synthUrl, { method: 'POST', headers, body: JSON.stringify(payload) });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data?.error || 'Failed to save crystal.');
+            return data?.crystal?.status || 'ok';
+        };
+
+        const _submitCrystalSynthesis = async () => {
             const statusEl = document.getElementById('crystal-synth-status');
             const submitBtn = document.getElementById('btn-submit-crystal');
             const synthUrl = crystalForm.dataset.synthesizeUrl;
             if (!synthUrl) return;
-            const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
-            const anchorIds = (document.getElementById('crystal-anchor-ids')?.value || '')
-                .split(',').map(s => s.trim()).filter(Boolean);
-            const tags = (document.getElementById('crystal-tags')?.value || '')
-                .split(',').map(s => s.trim()).filter(Boolean);
             if (submitBtn) submitBtn.disabled = true;
             if (statusEl) statusEl.textContent = 'Saving verified crystal...';
             try {
-                const resp = await fetch(synthUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-                    },
-                    body: JSON.stringify({
-                        title: document.getElementById('crystal-title')?.value || '',
-                        doc_slug: document.getElementById('crystal-doc-slug')?.value || 'general',
-                        summary: document.getElementById('crystal-summary')?.value || '',
-                        anchor_ids: anchorIds,
-                        tags,
-                    }),
-                });
-                const data = await resp.json().catch(() => ({}));
-                if (!resp.ok) throw new Error(data?.error || 'Failed to save crystal.');
-                if (statusEl) statusEl.textContent = `Saved crystal (${data?.crystal?.status || 'ok'}).`;
+                const status = await _postCrystalSynthesis(synthUrl, _buildCrystalPayload());
+                if (statusEl) statusEl.textContent = `Saved crystal (${status}).`;
                 crystalForm.reset();
                 setTimeout(() => crystalDialog.close(), 500);
             } catch (err) {
@@ -1313,6 +1320,11 @@ function initializeRAGSearch() {
             } finally {
                 if (submitBtn) submitBtn.disabled = false;
             }
+        };
+
+        crystalForm.addEventListener('submit', e => {
+            e.preventDefault();
+            return _submitCrystalSynthesis();
         });
     }
 
@@ -1600,11 +1612,13 @@ function _updateBudgetCard(stats) {
 
     const budgetSub = document.querySelector('.metrics-row .metric-card:first-child .metric-sub');
     if (!budgetSub) return;
+    const pct = Math.min(100, Math.max(0, Number(stats.percent_spent) || 0));
     const fillBar = budgetSub.querySelector('.budget-bar-fill');
-    if (fillBar) fillBar.style.width = stats.percent_spent + '%';
-    const progressBar = budgetSub.querySelector('[role="progressbar"]');
+    if (fillBar) fillBar.style.width = `${pct}%`;
+    const progressBar = budgetSub.querySelector('[role="progressbar"], progress');
     if (progressBar) {
-        progressBar.setAttribute('aria-valuenow', String(Math.min(100, stats.percent_spent ?? 0)));
+        progressBar.setAttribute('aria-valuenow', String(pct));
+        if (progressBar.tagName === 'PROGRESS') progressBar.value = pct;
     }
 }
 
@@ -2020,7 +2034,9 @@ function initializeLocalTimezones() {
 
 function trapFocus(dialog, event) {
     if (event.key !== 'Tab' || !dialog) return;
-    const focusables = dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    const focusables = Array.from(
+        dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+    ).filter(el => !el.closest('[hidden]') && globalThis.getComputedStyle(el).display !== 'none' && !el.closest('[style*="display: none"]'));
     if (focusables.length === 0) return;
     const first = focusables[0];
     const last = focusables[focusables.length - 1];

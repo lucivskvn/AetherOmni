@@ -16,6 +16,9 @@ def _gunicorn_command() -> list[str]:
     workers = os.getenv("GUNICORN_WORKERS", "2")
     if workers not in {"1", "2", "3", "4"}:
         workers = "2"
+    raw_timeout = os.getenv("GUNICORN_TIMEOUT", "120").strip()
+    timeout_val = int(raw_timeout) if raw_timeout.isdigit() else 120
+    timeout_str = str(max(60, min(timeout_val, 3600)))
     command = [
         "gunicorn",
         "--bind",
@@ -25,7 +28,7 @@ def _gunicorn_command() -> list[str]:
         "--threads",
         "4",
         "--timeout",
-        "120",
+        timeout_str,
     ]
     if not _debug_enabled():
         command.extend(["--log-level", "warning"])
@@ -57,8 +60,9 @@ def main() -> NoReturn:
         if allowed is None:
             raise SystemExit(f"Unsupported entrypoint command: {key!r}")
         os.execv(sys.executable, allowed)  # noqa: S606 # nosec B606
-    _run_migrations()
-    _start_database_initialization()
+    if os.getenv("RUN_MIGRATIONS_ON_STARTUP", "True").lower() == "true":
+        _run_migrations()
+        _start_database_initialization()
     command = _gunicorn_command()
     # executable and arguments are constructed from fixed constants
     os.execvp(command[0], command)  # noqa: S606 # nosec B606

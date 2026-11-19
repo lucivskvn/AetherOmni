@@ -99,8 +99,6 @@ iam_roles = [
     "roles/cloudtasks.enqueuer",
     "roles/run.viewer",
     "roles/eventarc.eventReceiver",
-    "roles/iam.serviceAccountUser",
-    "roles/iam.serviceAccountTokenCreator",
 ]
 
 iam_members = []
@@ -113,6 +111,16 @@ for idx, role in enumerate(iam_roles):
         opts=pulumi.ResourceOptions(provider=gcp_provider),
     )
     iam_members.append(member)
+
+for sa_idx, sa_role in enumerate(["roles/iam.serviceAccountUser", "roles/iam.serviceAccountTokenCreator"]):
+    sa_member = gcp.serviceaccount.IAMMember(
+        f"korda-sa-self-iam-{sa_idx}",
+        service_account_id=service_account.name,
+        role=sa_role,
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+        opts=pulumi.ResourceOptions(provider=gcp_provider),
+    )
+    iam_members.append(sa_member)
 
 gcp.projects.IAMMember(
     "korda-gcs-pubsub-publisher",
@@ -185,6 +193,10 @@ common_env = [
         name="CLOUD_TASKS_SERVICE_ACCOUNT",
         value=service_account.email,
     ),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+        name="EVENTARC_SERVICE_ACCOUNT",
+        value=service_account.email,
+    ),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="CLOUD_TASKS_QUEUE", value=queue_name),
 ]
 
@@ -235,7 +247,11 @@ worker_component = ScaleToZeroWorker(
     service_account_email=service_account.email,
     envs=common_env
     + secret_envs
-    + [gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="1")],
+    + [
+        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="1"),
+        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_TIMEOUT", value="900"),
+        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="RUN_MIGRATIONS_ON_STARTUP", value="False"),
+    ],
     cpu="2000m",
     memory="2Gi",
     min_instances=worker_min_instances,

@@ -328,21 +328,25 @@ def _parse_excel_openpyxl(file_path: str) -> str | None:
         with zipfile.ZipFile(file_path, "r") as zf:
             _validate_xlsx_archive(zf)
         wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
-        sheets_md: list[str] = []
-        parsed_rows = [0]
-        rendered_bytes = [0]
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            rows: list[list[str]] = []
-            for row in ws.iter_rows(values_only=True):
-                str_row = _bounded_excel_row(row, parsed_rows)
-                if any(str_row):
-                    rows.append(str_row)
-            formatted = _format_markdown_table_sheet(sheet_name, rows, rendered_bytes)
-            if formatted:
-                sheets_md.append(formatted)
-        wb.close()
-        return "\n\n".join(sheets_md) if sheets_md else None
+        try:
+            sheets_md: list[str] = []
+            parsed_rows = [0]
+            rendered_bytes = [0]
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                rows: list[list[str]] = []
+                for row in ws.iter_rows(values_only=True):
+                    str_row = _bounded_excel_row(row, parsed_rows)
+                    if any(str_row):
+                        rows.append(str_row)
+                formatted = _format_markdown_table_sheet(sheet_name, rows, rendered_bytes)
+                if formatted:
+                    sheets_md.append(formatted)
+            return "\n\n".join(sheets_md) if sheets_md else None
+        finally:
+            wb.close()
+    except ValueError:
+        raise
     except Exception as exc:
         logger.debug("[Excel Parser] openpyxl extraction failed: %s", exc)
         return None
@@ -438,14 +442,16 @@ def process_pdf_local(file_path: str) -> tuple[str, int]:
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
-        pages_md: list[str] = []
-        page_count = len(doc)
-        for page_num in range(page_count):
-            page = doc[page_num]
-            text = page.get_text("text").strip()
-            if text:
-                pages_md.append(f"## Page {page_num + 1}\n\n{text}")
-        doc.close()
+        try:
+            pages_md: list[str] = []
+            page_count = len(doc)
+            for page_num in range(page_count):
+                page = doc[page_num]
+                text = page.get_text("text").strip()
+                if text:
+                    pages_md.append(f"## Page {page_num + 1}\n\n{text}")
+        finally:
+            doc.close()
         if pages_md and len("".join(pages_md).strip()) > 30:
             return "\n\n---\n\n".join(pages_md), page_count
         return "", page_count
@@ -1327,19 +1333,14 @@ def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: i
 
 
 def _is_internal_proxy_addr(addr: Any) -> bool:
-    import ipaddress
-
-    internal_nets = (
-        ipaddress.ip_network("10.0.0.0/8"),
-        ipaddress.ip_network("172.16.0.0/12"),
-        ipaddress.ip_network("192.168.0.0/16"),
-        ipaddress.ip_network("127.0.0.0/8"),
-        ipaddress.ip_network("169.254.0.0/16"),
-        ipaddress.ip_network("::1/128"),
-        ipaddress.ip_network("fc00::/7"),
-        ipaddress.ip_network("fe80::/10"),
-    )
-    return any(addr in net for net in internal_nets)
+    if addr.is_loopback or addr.is_link_local:
+        return True
+    packed = addr.packed
+    if addr.version == 4:
+        return (
+            packed[0] == 10 or (packed[0] == 172 and 16 <= packed[1] <= 31) or (packed[0] == 192 and packed[1] == 168)
+        )
+    return (packed[0] & 0xFE) == 0xFC
 
 
 def _is_trusted_proxy_ip(ip_str: str) -> bool:

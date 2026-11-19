@@ -825,6 +825,7 @@ def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
             "input_tokens": 0,
             "output_tokens": 0,
             "error_message": "",
+            "cancel_requested": False,
             "retry_count": retry_cnt + 1,
         },
     )
@@ -3280,7 +3281,7 @@ class QuizSubmitAPIView(LoginRequiredMixin, View):
         if not _enforce_distributed_rate_limit(rl_key, rl_key, max_requests=30, window_seconds=60):
             return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
 
-        session_id = str(body.get("session_id") or "").strip()[:64]
+        session_id = str(body.get("session_id") or "").strip()[:64] or uuid.uuid4().hex[:16]
         answers = body["answers"]
         raw_item_ids = body.get("item_ids")
         target_ids = (
@@ -3298,6 +3299,8 @@ class QuizSubmitAPIView(LoginRequiredMixin, View):
         )
         try:
             items = surreal_db.get_exam_items_by_ids(actor_id, target_ids)
+            if not items:
+                return JsonResponse({"error": "No matching exam items found."}, status=404)
             anchor_ids = list({aid for item in items for aid in (item.get("anchor_ids") or []) if aid})
             anchors = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
             graded = quiz_studio.grade_mock_exam_submission(

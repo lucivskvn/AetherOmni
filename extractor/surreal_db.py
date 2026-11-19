@@ -1152,7 +1152,7 @@ def save_system_settings(data: dict) -> dict:
     payload = {k: v for k, v in data.items() if v is not None and k in ALLOWED_SETTINGS_KEYS}
     if "monthly_budget_usd" in payload:
         payload["monthly_budget_usd"] = float(payload["monthly_budget_usd"])
-    sql = "UPSERT system_settings:1 CONTENT $data;"
+    sql = "UPSERT system_settings:1 MERGE $data;"
     rows = _first_result(_run(sql, {"data": payload}))
     return rows[0] if rows else {}
 
@@ -1622,8 +1622,7 @@ def upsert_rag_cache(
         "  query_embedding: $query_embedding,"
         "  answer_text: $answer_text,"
         "  sources: $sources,"
-        "  expires_at: $expires_at,"
-        "  updated_at: time::now()"
+        "  expires_at: $expires_at"
         "};"
     )
     _run(
@@ -1909,8 +1908,13 @@ def context_cache_set(
         "hit_count": 0,
         "expires_at": tz.now() + timedelta(hours=ttl_hours),
     }
-    sql = "INSERT INTO context_cache $payload;"
-    _run(sql, {"payload": payload})
+    sql = (
+        "BEGIN TRANSACTION;"
+        "DELETE FROM context_cache WHERE context_hash = $context_hash;"
+        "INSERT INTO context_cache $payload;"
+        "COMMIT TRANSACTION;"
+    )
+    _run(sql, {"context_hash": context_hash, "payload": payload})
 
 
 def check_rate_limit_atomic(key: str, max_requests: int, window_seconds: int = 3600) -> bool:
@@ -1930,6 +1934,7 @@ def check_rate_limit_atomic(key: str, max_requests: int, window_seconds: int = 3
         expires_at = tz.now() + timedelta(seconds=window_sec)
         sql = (
             "BEGIN TRANSACTION;"
+            "DELETE FROM rate_limits WHERE key = $key AND expires_at <= time::now();"
             "LET $existing = (SELECT * FROM rate_limits WHERE key = $key AND expires_at > time::now() LIMIT 1);"
             "IF array::len($existing) = 0 {"
             "  INSERT INTO rate_limits { key: $key, request_count: 1, window_start: time::now(), expires_at: $expires_at };"
@@ -2607,18 +2612,27 @@ def get_exam_items_by_ids(owner_id: str, item_ids: list[str]) -> list[dict[str, 
     return _first_result(_run(sql, {"owner_id": str(owner_id), "item_ids": list(wanted)}))
 
 
-def _apply_offline_fsrs(item: dict[str, Any], *, is_correct: bool, rating: int) -> None:
+def _apply_offline_fsrs(
+    item: dict[str, Any],
+    *,
+    is_correct: bool,
+    rating: int,
+    base_stability: float | None = None,
+    base_difficulty: float | None = None,
+    increment_reps: bool = True,
+) -> None:
     from datetime import timedelta
 
-    stability = float(item.get("fsrs_stability") or 1.0)
-    difficulty = float(item.get(FIELD_FSRS_DIFFICULTY) or 5.0)
+    stability = float(base_stability if base_stability is not None else (item.get("fsrs_stability") or 1.0))
+    difficulty = float(base_difficulty if base_difficulty is not None else (item.get(FIELD_FSRS_DIFFICULTY) or 5.0))
     passed = bool(is_correct) and rating >= 2
     next_stability = min(stability * (1.2 + (rating * 0.35)), 365.0) if passed else max(stability * 0.5, 0.5)
     next_difficulty = max(difficulty - 0.3, 1.0) if passed else min(difficulty + 0.8, 10.0)
     interval_days = max(round(next_stability), 1)
     item["fsrs_stability"] = next_stability
     item[FIELD_FSRS_DIFFICULTY] = next_difficulty
-    item["fsrs_reps"] = int(item.get("fsrs_reps") or 0) + 1
+    if increment_reps:
+        item["fsrs_reps"] = int(item.get("fsrs_reps") or 0) + 1
     item["fsrs_due_at"] = datetime.now(UTC) + timedelta(days=interval_days)
 
 
@@ -2641,6 +2655,9 @@ def record_attempt(
             for a in _test_korda_attempts
         ):
             return False
+        item = _test_korda_exam_items.get(str(item_id))
+        pre_stab = float(item.get("fsrs_stability") or 1.0) if item else 1.0
+        pre_diff = float(item.get(FIELD_FSRS_DIFFICULTY) or 5.0) if item else 5.0
         _test_korda_attempts.append(
             {
                 "attempt_id": attempt_id,
@@ -2650,15 +2667,16 @@ def record_attempt(
                 "is_correct": bool(is_correct),
                 "rating": safe_rating,
                 "response_ms": safe_ms,
+                "pre_stability": pre_stab,
+                "pre_difficulty": pre_diff,
             }
         )
-        item = _test_korda_exam_items.get(str(item_id))
         if item and item.get("owner_id") == str(owner_id):
             _apply_offline_fsrs(item, is_correct=bool(is_correct), rating=safe_rating)
         return True
     sql = """
     BEGIN TRANSACTION;
-    LET $owned_item = (SELECT VALUE item_id FROM exam_item WHERE item_id = $item_id AND owner_id = $owner_id LIMIT 1)[0];
+    LET $owned_item = (SELECT fsrs_stability, fsrs_difficulty FROM exam_item WHERE item_id = $item_id AND owner_id = $owner_id LIMIT 1)[0];
     LET $existing = (SELECT VALUE attempt_id FROM attempt WHERE session_id = $session_id AND item_id = $item_id AND owner_id = $owner_id LIMIT 1)[0];
     IF $owned_item != NONE AND $existing == NONE {
         CREATE type::record("attempt", $attempt_id) CONTENT {
@@ -2668,7 +2686,9 @@ def record_attempt(
             owner_id: $owner_id,
             is_correct: $is_correct,
             rating: $rating,
-            response_ms: $response_ms
+            response_ms: $response_ms,
+            pre_stability: $owned_item.fsrs_stability,
+            pre_difficulty: $owned_item.fsrs_difficulty
         };
         LET $a = type::record("attempt", $attempt_id);
         LET $e = type::record("exam_item", $item_id);
@@ -2706,7 +2726,14 @@ def update_attempt_rating(*, session_id: str, item_id: str, owner_id: str, ratin
                 att["rating"] = safe_rating
                 item = _test_korda_exam_items.get(str(item_id))
                 if item and item.get("owner_id") == str(owner_id):
-                    _apply_offline_fsrs(item, is_correct=bool(att.get("is_correct")), rating=safe_rating)
+                    _apply_offline_fsrs(
+                        item,
+                        is_correct=bool(att.get("is_correct")),
+                        rating=safe_rating,
+                        base_stability=att.get("pre_stability"),
+                        base_difficulty=att.get("pre_difficulty"),
+                        increment_reps=False,
+                    )
                 return True
         return False
     sql = """

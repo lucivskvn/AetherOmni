@@ -63,7 +63,7 @@ DEFINE FIELD IF NOT EXISTS language        ON chunks TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS page_number     ON chunks TYPE option<int> DEFAULT 1;
 DEFINE FIELD IF NOT EXISTS chapter_title   ON chunks TYPE option<string> DEFAULT "";
 DEFINE FIELD IF NOT EXISTS anchor_id       ON chunks TYPE option<string> DEFAULT "";
-DEFINE FIELD IF NOT EXISTS embedding       ON chunks TYPE array<float>;
+DEFINE FIELD IF NOT EXISTS embedding       ON chunks TYPE option<array<float>>;
 DEFINE FIELD IF NOT EXISTS created_at      ON chunks TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX IF NOT EXISTS idx_chunks_doc  ON chunks FIELDS doc_uuid;
@@ -355,6 +355,8 @@ DEFINE FIELD IF NOT EXISTS owner_id        ON attempt TYPE string;
 DEFINE FIELD IF NOT EXISTS is_correct      ON attempt TYPE bool;
 DEFINE FIELD IF NOT EXISTS rating          ON attempt TYPE int DEFAULT 3 ASSERT $value >= 1 AND $value <= 4; -- 1=Again, 2=Hard, 3=Good, 4=Easy
 DEFINE FIELD IF NOT EXISTS response_ms     ON attempt TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS pre_stability   ON attempt TYPE option<float>;
+DEFINE FIELD IF NOT EXISTS pre_difficulty  ON attempt TYPE option<float>;
 DEFINE FIELD IF NOT EXISTS submitted_at    ON attempt TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX IF NOT EXISTS idx_attempt_id           ON attempt FIELDS attempt_id UNIQUE;
@@ -362,19 +364,22 @@ DEFINE INDEX IF NOT EXISTS idx_attempt_session      ON attempt FIELDS session_id
 DEFINE INDEX IF NOT EXISTS idx_attempt_session_item ON attempt FIELDS session_id, item_id, owner_id UNIQUE;
 
 -- Auto-update FSRS stability, difficulty, and next due date when an attempt is recorded or self-rated.
+-- Computes from pre_stability / pre_difficulty when present so UPDATE self-ratings remain idempotent.
 DEFINE EVENT IF NOT EXISTS evt_attempt_fsrs_update ON attempt WHEN $event IN ["CREATE", "UPDATE"] THEN {
     LET $item = (SELECT fsrs_stability, fsrs_difficulty FROM exam_item WHERE item_id = $after.item_id AND owner_id = $after.owner_id LIMIT 1)[0];
     IF $item != NONE {
+        LET $base_stability = $after.pre_stability ?? $item.fsrs_stability;
+        LET $base_difficulty = $after.pre_difficulty ?? $item.fsrs_difficulty;
         LET $passed = $after.is_correct AND $after.rating >= 2;
         LET $next_stability = IF $passed THEN
-            math::min([$item.fsrs_stability * (1.2 + ($after.rating * 0.35)), 365.0])
+            math::min([$base_stability * (1.2 + ($after.rating * 0.35)), 365.0])
         ELSE
-            math::max([$item.fsrs_stability * 0.5, 0.5])
+            math::max([$base_stability * 0.5, 0.5])
         END;
         LET $next_difficulty = IF $passed THEN
-            math::max([$item.fsrs_difficulty - 0.3, 1.0])
+            math::max([$base_difficulty - 0.3, 1.0])
         ELSE
-            math::min([$item.fsrs_difficulty + 0.8, 10.0])
+            math::min([$base_difficulty + 0.8, 10.0])
         END;
         LET $interval_days = math::max([<int> math::round($next_stability), 1]);
         UPDATE exam_item SET

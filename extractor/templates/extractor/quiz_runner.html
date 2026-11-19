@@ -111,7 +111,7 @@
             {% endfor %}
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <button type="submit" id="btn-submit-exam" class="btn btn-primary">Submit Mock Exam</button>
-                <span id="exam-submit-status" class="text-muted" role="status" aria-live="polite"></span>
+                <output id="exam-submit-status" class="text-muted" for="mock-exam-form"></output>
             </div>
         </form>
         {% else %}
@@ -121,7 +121,7 @@
         {% endif %}
     </div>
 
-    <section id="exam-results-section" class="glass-card" style="display: none; padding: 1.5rem; margin-top: 1.5rem;" aria-live="polite">
+    <section id="exam-results-section" class="glass-card" style="display: none; padding: 1.5rem; margin-top: 1.5rem;">
         <h2 id="exam-score-heading" tabindex="-1" style="margin-top: 0;">Exam Results</h2>
         <div id="exam-results-list" style="display: grid; gap: 1rem;"></div>
     </section>
@@ -144,7 +144,7 @@
     function startTimer(durationSeconds, onExpire) {
         stopTimer();
         if (!timerEl) return;
-        const duration = Math.max(60, parseInt(String(durationSeconds || 900), 10) || 900);
+        const duration = Math.max(60, Number.parseInt(String(durationSeconds || 900), 10) || 900);
         const endTime = Date.now() + duration * 1000;
         let announcedOneMin = false;
         timerEl.style.display = '';
@@ -320,6 +320,8 @@
 
     function buildFsrsRatingBar(sessionId, itemId, rateUrl) {
         const bar = document.createElement('div');
+        bar.setAttribute('role', 'group');
+        bar.setAttribute('aria-label', 'FSRS confidence rating');
         bar.style.cssText = 'display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.65rem;';
         const label = document.createElement('span');
         label.className = 'text-muted';
@@ -337,11 +339,14 @@
             { val: 3, text: '3 Good' },
             { val: 4, text: '4 Easy' },
         ];
+        const ratingBtns = [];
         ratings.forEach((rt) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'btn btn-secondary btn-sm';
             btn.textContent = rt.text;
+            btn.setAttribute('aria-pressed', 'false');
+            ratingBtns.push(btn);
             btn.addEventListener('click', async () => {
                 if (!rateUrl || !sessionId) return;
                 btn.disabled = true;
@@ -352,8 +357,10 @@
                         body: JSON.stringify({ session_id: sessionId, item_id: itemId, rating: rt.val }),
                     });
                     if (!resp.ok) throw new Error('Rating failed');
+                    ratingBtns.forEach((b) => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
                     status.textContent = 'Scheduled (' + rt.text + ')';
-                } catch (_) {
+                } catch (err) {
+                    console.error('Failed to update FSRS rating:', err);
                     status.textContent = 'Could not update FSRS rating.';
                 } finally {
                     btn.disabled = false;
@@ -507,9 +514,9 @@
                 if (submitStatus) submitStatus.textContent = 'Network error while submitting exam. Your answers are preserved; please retry.';
             } finally {
                 isSubmitting = false;
-                if (submitBtn && !isCompleted) {
-                    submitBtn.disabled = false;
+                if (submitBtn) {
                     submitBtn.removeAttribute('aria-busy');
+                    if (!isCompleted) submitBtn.disabled = false;
                 }
             }
         });

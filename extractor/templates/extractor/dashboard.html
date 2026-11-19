@@ -114,7 +114,7 @@
                     <div class="flex-gap-sm" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
                         <div class="table-filter-wrapper" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); position: relative;">
                             <label for="table-filter" class="visually-hidden">Filter knowledge documents</label>
-                            <input type="search" id="table-filter" class="table-filter-input" placeholder="Filter knowledge…">
+                            <input type="search" id="table-filter" class="table-filter-input" placeholder="Filter knowledge…" onkeydown="if(event.key==='Enter'){event.preventDefault();}">
                             <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted);"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                         </div>
                         <div class="sort-select-wrapper" style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted);">
@@ -298,10 +298,10 @@
             </div>
 
             <!-- Loader -->
-            <div id="rag-loader" class="search-loader" role="status" aria-live="polite">
+            <output id="rag-loader" class="search-loader" for="rag-query">
                 <i data-lucide="loader" class="spinner" aria-hidden="true"></i>
                 <div class="search-loader-text">Running vector search &amp; generating response...</div>
-            </div>
+            </output>
 
             <!-- Display box -->
             <div id="rag-results-container" class="search-results" aria-live="polite">
@@ -316,7 +316,7 @@
 </div>
 
 <!-- Crystal Synthesis Modal -->
-<dialog id="crystal-synth-dialog" aria-labelledby="crystal-dialog-title" style="max-width: 540px; width: 92%; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-main); padding: 1.25rem;">
+<dialog id="crystal-synth-dialog" aria-labelledby="crystal-dialog-title" style="max-width: 540px; width: 92%; margin: auto; border-radius: 12px; border: 1px solid var(--border-subtle); background: var(--dialog-bg); color: var(--text-main); padding: 1.25rem;">
     <form id="crystal-synth-form" data-synthesize-url="{% url 'crystal_synthesize' %}">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <h3 id="crystal-dialog-title" style="margin: 0; font-size: 1.05rem;">Synthesize Verified Crystal</h3>
@@ -343,7 +343,7 @@
                 <label for="crystal-tags" class="text-sm font-medium">Tags (comma-separated)</label>
                 <input type="text" id="crystal-tags" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="fsrs, core-concept">
             </div>
-            <p id="crystal-synth-status" role="status" aria-live="polite" style="margin: 0; font-size: 0.85rem;"></p>
+            <output id="crystal-synth-status" for="crystal-title" style="display: block; margin: 0; font-size: 0.85rem;"></output>
             <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
                 <button type="button" id="btn-cancel-crystal-dialog" class="btn btn-secondary btn-sm">Cancel</button>
                 <button type="submit" id="btn-submit-crystal" class="btn btn-primary btn-sm">Save Verified Crystal</button>
@@ -353,7 +353,7 @@
 </dialog>
 
 <!-- Floating Actions bottom bar (positioned relative to viewport for correct float/sticky behavior) -->
-<div id="export-actions-bar" class="export-footer" role="region" aria-label="Selected source actions">
+<section id="export-actions-bar" class="export-footer" aria-label="Selected source actions">
     <span>
         <span id="selected-count">0</span> sources selected
     </span>
@@ -380,5 +380,5 @@
             <i data-lucide="trash-2" aria-hidden="true"></i> Bulk Delete
         </button>
     </div>
-</div>
+</section>
 {% endblock %}
