@@ -229,3 +229,162 @@ DEFINE FIELD IF NOT EXISTS tenant_id       ON entity_relations TYPE string;
 DEFINE FIELD IF NOT EXISTS created_at      ON entity_relations TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX IF NOT EXISTS idx_rel_tenant  ON entity_relations FIELDS tenant_id;
+
+
+-- ============================================================
+-- KORDA Lane 1: Knowledge Refinery Provenance Graph
+-- ============================================================
+
+-- ── 13. source (Canonical Multimodal Asset & Tombstone) ───────
+DEFINE TABLE IF NOT EXISTS source SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS source_id       ON source TYPE string;
+DEFINE FIELD IF NOT EXISTS doc_slug        ON source TYPE string;
+DEFINE FIELD IF NOT EXISTS owner_id        ON source TYPE string;
+DEFINE FIELD IF NOT EXISTS title           ON source TYPE string DEFAULT "Untitled";
+DEFINE FIELD IF NOT EXISTS mime_type       ON source TYPE string DEFAULT "application/pdf";
+DEFINE FIELD IF NOT EXISTS gcs_uri         ON source TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS gcs_status      ON source TYPE string DEFAULT "active"; -- active | purged
+DEFINE FIELD IF NOT EXISTS sha256          ON source TYPE string;
+DEFINE FIELD IF NOT EXISTS version         ON source TYPE int    DEFAULT 1;
+DEFINE FIELD IF NOT EXISTS status          ON source TYPE string DEFAULT "active"; -- active | superseded | erased
+DEFINE FIELD IF NOT EXISTS custom_time     ON source TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS created_at      ON source TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at      ON source TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_source_id     ON source FIELDS source_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_source_slug   ON source FIELDS doc_slug, owner_id;
+DEFINE INDEX IF NOT EXISTS idx_source_sha256 ON source FIELDS sha256, owner_id;
+
+-- ── 14. anchor (Deterministic Verbatim Evidence Coordinates) ──
+DEFINE ANALYZER IF NOT EXISTS korda_bm25 TOKENIZERS class, blank FILTERS lowercase, snowball(english);
+
+DEFINE TABLE IF NOT EXISTS anchor SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS anchor_id       ON anchor TYPE string;
+DEFINE FIELD IF NOT EXISTS source_id       ON anchor TYPE string;
+DEFINE FIELD IF NOT EXISTS doc_slug        ON anchor TYPE string;
+DEFINE FIELD IF NOT EXISTS owner_id        ON anchor TYPE string;
+DEFINE FIELD IF NOT EXISTS version         ON anchor TYPE int    DEFAULT 1;
+DEFINE FIELD IF NOT EXISTS status          ON anchor TYPE string DEFAULT "active"; -- active | superseded
+DEFINE FIELD IF NOT EXISTS quote           ON anchor TYPE string;
+DEFINE FIELD IF NOT EXISTS page_num        ON anchor TYPE option<int>;
+DEFINE FIELD IF NOT EXISTS section_heading ON anchor TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS start_sec       ON anchor TYPE option<float>;
+DEFINE FIELD IF NOT EXISTS end_sec         ON anchor TYPE option<float>;
+DEFINE FIELD IF NOT EXISTS figure_id       ON anchor TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS embedding       ON anchor TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS created_at      ON anchor TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_anchor_id     ON anchor FIELDS anchor_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_anchor_active ON anchor FIELDS doc_slug, owner_id WHERE status = "active";
+DEFINE INDEX IF NOT EXISTS idx_anchor_hnsw   ON anchor FIELDS embedding HNSW DIMENSION 768 TYPE F16 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS idx_anchor_bm25   ON anchor FIELDS quote SEARCH ANALYZER korda_bm25 BM25 HIGHLIGHTS;
+
+-- Auto-supersede prior anchor versions when a newer version of the same doc_slug & owner commits.
+DEFINE EVENT IF NOT EXISTS evt_anchor_supersede_v1 ON anchor WHEN $event = "CREATE" AND $after.version > 1 THEN {
+    UPDATE anchor SET status = "superseded"
+    WHERE doc_slug = $after.doc_slug
+      AND owner_id = $after.owner_id
+      AND version < $after.version
+      AND status = "active";
+};
+
+-- ── 15. crystal (Verified Distilled Concept) ──────────────────
+DEFINE TABLE IF NOT EXISTS crystal SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS crystal_id      ON crystal TYPE string;
+DEFINE FIELD IF NOT EXISTS owner_id        ON crystal TYPE string;
+DEFINE FIELD IF NOT EXISTS doc_slug        ON crystal TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS title           ON crystal TYPE string;
+DEFINE FIELD IF NOT EXISTS summary         ON crystal TYPE string;
+DEFINE FIELD IF NOT EXISTS status          ON crystal TYPE string DEFAULT "draft"; -- draft | verified | archived
+DEFINE FIELD IF NOT EXISTS tags            ON crystal TYPE array<string> DEFAULT [];
+DEFINE FIELD IF NOT EXISTS embedding       ON crystal TYPE option<array<float>>;
+DEFINE FIELD IF NOT EXISTS created_at      ON crystal TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS updated_at      ON crystal TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_crystal_id       ON crystal FIELDS crystal_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_crystal_verified ON crystal FIELDS owner_id, doc_slug WHERE status = "verified";
+DEFINE INDEX IF NOT EXISTS idx_crystal_hnsw     ON crystal FIELDS embedding HNSW DIMENSION 768 TYPE F16 DIST COSINE;
+DEFINE INDEX IF NOT EXISTS idx_crystal_bm25     ON crystal FIELDS summary SEARCH ANALYZER korda_bm25 BM25 HIGHLIGHTS;
+
+-- Provenance Graph Edges
+DEFINE TABLE IF NOT EXISTS anchored_in SCHEMAFULL TYPE RELATION FROM anchor TO source;
+DEFINE FIELD IF NOT EXISTS created_at ON anchored_in TYPE datetime DEFAULT time::now();
+
+DEFINE TABLE IF NOT EXISTS grounded_in SCHEMAFULL TYPE RELATION FROM crystal TO anchor;
+DEFINE FIELD IF NOT EXISTS confidence ON grounded_in TYPE float DEFAULT 1.0;
+DEFINE FIELD IF NOT EXISTS created_at ON grounded_in TYPE datetime DEFAULT time::now();
+
+
+-- ============================================================
+-- KORDA Lane 2: Persistent Quiz Studio & FSRS Mastery Engine
+-- ============================================================
+
+-- ── 16. exam_item (Persistent Question + Distractor Rationales)
+DEFINE TABLE IF NOT EXISTS exam_item SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS item_id               ON exam_item TYPE string;
+DEFINE FIELD IF NOT EXISTS owner_id              ON exam_item TYPE string;
+DEFINE FIELD IF NOT EXISTS topic                 ON exam_item TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS difficulty            ON exam_item TYPE string DEFAULT "Medium"; -- Easy | Medium | Hard
+DEFINE FIELD IF NOT EXISTS item_format           ON exam_item TYPE string DEFAULT "MCQ";    -- MCQ | Multi-Select | Short Answer | Fill-in-the-Blank
+DEFINE FIELD IF NOT EXISTS stem                  ON exam_item TYPE string;
+DEFINE FIELD IF NOT EXISTS choices               ON exam_item TYPE array<string> DEFAULT [];
+DEFINE FIELD IF NOT EXISTS correct_answer        ON exam_item TYPE any;
+DEFINE FIELD IF NOT EXISTS hint                  ON exam_item TYPE string DEFAULT "";
+DEFINE FIELD IF NOT EXISTS distractor_rationales ON exam_item TYPE any DEFAULT {};
+DEFINE FIELD IF NOT EXISTS anchor_ids            ON exam_item TYPE array<string> DEFAULT [];
+DEFINE FIELD IF NOT EXISTS fsrs_stability        ON exam_item TYPE float DEFAULT 1.0;
+DEFINE FIELD IF NOT EXISTS fsrs_difficulty       ON exam_item TYPE float DEFAULT 5.0;
+DEFINE FIELD IF NOT EXISTS fsrs_due_at           ON exam_item TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS created_at            ON exam_item TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_exam_item_id    ON exam_item FIELDS item_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_exam_item_owner ON exam_item FIELDS owner_id, difficulty;
+DEFINE INDEX IF NOT EXISTS idx_exam_item_due   ON exam_item FIELDS owner_id, fsrs_due_at;
+
+-- ── 17. attempt (Mock Exam Submission & FSRS Trigger) ─────────
+DEFINE TABLE IF NOT EXISTS attempt SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS attempt_id      ON attempt TYPE string;
+DEFINE FIELD IF NOT EXISTS session_id      ON attempt TYPE string;
+DEFINE FIELD IF NOT EXISTS item_id         ON attempt TYPE string;
+DEFINE FIELD IF NOT EXISTS owner_id        ON attempt TYPE string;
+DEFINE FIELD IF NOT EXISTS is_correct      ON attempt TYPE bool;
+DEFINE FIELD IF NOT EXISTS rating          ON attempt TYPE int DEFAULT 3; -- 1=Again, 2=Hard, 3=Good, 4=Easy
+DEFINE FIELD IF NOT EXISTS response_ms     ON attempt TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS submitted_at    ON attempt TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_attempt_id      ON attempt FIELDS attempt_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_attempt_session ON attempt FIELDS session_id, owner_id;
+
+-- Auto-update FSRS stability, difficulty, and next due date when an attempt is recorded.
+DEFINE EVENT IF NOT EXISTS evt_attempt_fsrs_update ON attempt WHEN $event = "CREATE" THEN {
+    UPDATE exam_item SET
+        fsrs_stability = IF $after.is_correct THEN
+            math::min([fsrs_stability * (1.2 + ($after.rating * 0.35)), 365.0])
+        ELSE
+            math::max([fsrs_stability * 0.5, 0.5])
+        END,
+        fsrs_difficulty = IF $after.is_correct THEN
+            math::max([fsrs_difficulty - 0.3, 1.0])
+        ELSE
+            math::min([fsrs_difficulty + 0.8, 10.0])
+        END,
+        fsrs_due_at = time::now() + type::duration(string::concat(
+            <string> math::round(
+                IF $after.is_correct THEN math::max([fsrs_stability * 1.5, 1.0]) ELSE 1.0 END
+            ),
+            "d"
+        ))
+    WHERE item_id = $after.item_id AND owner_id = $after.owner_id;
+};
+
+DEFINE TABLE IF NOT EXISTS tests SCHEMAFULL TYPE RELATION FROM exam_item TO crystal;
+DEFINE FIELD IF NOT EXISTS created_at ON tests TYPE datetime DEFAULT time::now();
+
+DEFINE TABLE IF NOT EXISTS attempted_on SCHEMAFULL TYPE RELATION FROM attempt TO exam_item;
+DEFINE FIELD IF NOT EXISTS created_at ON attempted_on TYPE datetime DEFAULT time::now();
+

@@ -1603,3 +1603,61 @@ def generate_multimodal_vision_ocr(
     except Exception as exc:
         logger.warning("[Vision OCR] Multi-Modal Diagram OCR failed: %s", exc)
     return ""
+
+
+MODEL_TIER_LITE = os.getenv("GEMINI_MODEL_LITE", "gemini-3.1-flash-lite")
+MODEL_TIER_PRO = os.getenv("GEMINI_MODEL_PRO", "gemini-3-flash")
+
+
+def _get_vertex_client():
+    client, _is_vertex = _init_ocr_client()
+    return client
+
+
+def extract_anchors_from_gcs_uri(
+    gcs_uri: str,
+    mime_type: str = MIME_PDF,
+    *,
+    dense_mode: bool = False,
+) -> dict[str, Any]:
+    """Zero-copy GCS URI extraction returning verbatim anchors with deterministic coordinates."""
+    if not str(gcs_uri).startswith("gs://"):
+        raise ValueError("gcs_uri must be a valid gs:// URI.")
+
+    client = _get_vertex_client()
+    if client is None:
+        raise RuntimeError(VAL_ERROR_UNAVAILABLE)
+
+    model_name = MODEL_TIER_PRO if dense_mode else MODEL_TIER_LITE
+    prompt = (
+        "Extract verbatim factual quotes from this asset. For every anchor return JSON: "
+        '{"title": str, "anchors": [{"quote": str, "page_num": int|null, '
+        '"section_heading": str|null, "start_sec": float|null, "end_sec": float|null, "figure_id": str|null}]}.'
+    )
+    part = types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
+    config_kwargs: dict[str, Any] = {
+        "temperature": 0.1,
+        "response_mime_type": APPLICATION_JSON,
+    }
+    if not dense_mode and hasattr(types, "ThinkingConfig"):
+        thinking_val = getattr(types, "ThinkingLevel", None)
+        config_kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_level=thinking_val.MINIMAL if thinking_val else "MINIMAL"  # type: ignore[arg-type]
+        )
+
+    response = client.models.generate_content(
+        model=model_name,
+        contents=[part, prompt],
+        config=types.GenerateContentConfig(**config_kwargs),
+    )
+    parsed = json.loads(response.text or "{}")
+    usage = getattr(response, "usage_metadata", None)
+    in_toks = getattr(usage, "prompt_token_count", 0) or 0
+    out_toks = getattr(usage, "candidates_token_count", 0) or 0
+    return {
+        "title": str(parsed.get("title") or "Untitled"),
+        "anchors": list(parsed.get("anchors") or []),
+        "model_used": model_name,
+        "input_tokens": in_toks,
+        "output_tokens": out_toks,
+    }

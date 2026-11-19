@@ -1015,6 +1015,42 @@ def list_documents(user_id: str | None = None, limit: int | None = None) -> list
     return _first_result(_run("SELECT * FROM documents ORDER BY created_at DESC;"))
 
 
+def get_user_total_spend(user_id: str | None = None, since: datetime | None = None):
+    """Aggregate monthly/live document spend in SurrealDB without loading document blobs."""
+    from decimal import Decimal
+
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from django.db.models import Sum
+
+        from extractor.models import SourceDocument
+
+        qs = SourceDocument.objects.all()
+        if user_id:
+            qs = qs.filter(uploaded_by_id=user_id)
+        if since is not None:
+            qs = qs.filter(created_at__gte=since)
+        agg = qs.aggregate(total=Sum("cost_usd"))["total"]
+        return Decimal(str(agg or 0))
+
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+    if user_id:
+        clauses.append("(uploaded_by_id = $user_id OR uploaded_by_id = NONE)")
+        params["user_id"] = str(user_id)
+    if since is not None:
+        clauses.append("created_at >= type::datetime($since)")
+        params["since"] = since.isoformat()
+
+    where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"SELECT math::sum(cost_usd) AS total FROM documents{where_sql} GROUP ALL;"  # nosec B608 # noqa: S608 -- static clauses only, values parameterized
+    rows = _first_result(_run(sql, params))
+    if rows and isinstance(rows[0], dict):
+        return Decimal(str(rows[0].get("total") or 0))
+    return Decimal(0)
+
+
 def get_document_by_hash(file_hash: str, user_id: str | None = None) -> dict | None:
     """Find document by file_hash (optionally for a specific user)."""
     from django.conf import settings
@@ -2007,3 +2043,302 @@ def query_knowledge_graph(
     if rows and isinstance(rows, list) and len(rows) > 0:
         return rows[0]
     return {"entity": entity_name, "connected_documents": [], "related_concepts": []}
+
+
+# ── KORDA Lane 1: Provenance Graph & Hybrid Anchor Retrieval ─────────────────
+
+
+def upsert_source(
+    *,
+    source_id: str,
+    doc_slug: str,
+    owner_id: str,
+    title: str,
+    mime_type: str,
+    gcs_uri: str,
+    sha256: str,
+    version: int = 1,
+    custom_time: str | None = None,
+) -> dict[str, Any]:
+    """Create or update a canonical source node in SurrealDB."""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return {"source_id": source_id, "doc_slug": doc_slug, "owner_id": owner_id, "version": version}
+
+    sql = """
+    UPSERT type::thing("source", $source_id) CONTENT {
+        source_id: $source_id,
+        doc_slug: $doc_slug,
+        owner_id: $owner_id,
+        title: $title,
+        mime_type: $mime_type,
+        gcs_uri: $gcs_uri,
+        gcs_status: "active",
+        sha256: $sha256,
+        version: $version,
+        status: "active",
+        custom_time: IF $custom_time != NONE THEN type::datetime($custom_time) ELSE NONE END,
+        updated_at: time::now()
+    };
+    """
+    rows = _first_result(
+        _run(
+            sql,
+            {
+                "source_id": source_id,
+                "doc_slug": doc_slug,
+                "owner_id": str(owner_id),
+                "title": title,
+                "mime_type": mime_type,
+                "gcs_uri": gcs_uri,
+                "sha256": sha256,
+                "version": int(version),
+                "custom_time": custom_time,
+            },
+        )
+    )
+    return rows[0] if rows else {"source_id": source_id}
+
+
+def create_anchors_with_provenance(
+    *,
+    source_id: str,
+    doc_slug: str,
+    owner_id: str,
+    version: int,
+    anchors: list[dict[str, Any]],
+) -> int:
+    """Persist verbatim anchors and RELATE anchored_in edges inside a SurrealDB transaction."""
+    if getattr(settings, "SURREALDB_OFFLINE", False) or not anchors:
+        return len(anchors)
+
+    created = 0
+    for idx, anc in enumerate(anchors):
+        anchor_id = str(anc.get("anchor_id") or f"{source_id}-{idx}")
+        sql = """
+        BEGIN TRANSACTION;
+        CREATE type::thing("anchor", $anchor_id) CONTENT {
+            anchor_id: $anchor_id,
+            source_id: $source_id,
+            doc_slug: $doc_slug,
+            owner_id: $owner_id,
+            version: $version,
+            status: "active",
+            quote: $quote,
+            page_num: $page_num,
+            section_heading: $section_heading,
+            start_sec: $start_sec,
+            end_sec: $end_sec,
+            figure_id: $figure_id,
+            embedding: $embedding
+        };
+        LET $a = type::thing("anchor", $anchor_id);
+        LET $s = type::thing("source", $source_id);
+        RELATE $a->anchored_in->$s;
+        COMMIT TRANSACTION;
+        """
+        _run(
+            sql,
+            {
+                "anchor_id": anchor_id,
+                "source_id": source_id,
+                "doc_slug": doc_slug,
+                "owner_id": str(owner_id),
+                "version": int(version),
+                "quote": str(anc.get("quote") or ""),
+                "page_num": anc.get("page_num"),
+                "section_heading": anc.get("section_" + "heading"),
+                "start_sec": anc.get("start_sec"),
+                "end_sec": anc.get("end_sec"),
+                "figure_id": anc.get("figure_id"),
+                "embedding": anc.get("embedding"),
+            },
+        )
+        created += 1
+    return created
+
+
+def search_anchors_hybrid(
+    query_text: str,
+    *,
+    owner_id: str,
+    query_embedding: list[float] | None = None,
+    limit: int = 12,
+) -> list[dict[str, Any]]:
+    """Run BM25 + F16 HNSW search on active anchors and fuse via Reciprocal Rank Fusion (RRF)."""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return []
+
+    k_limit = max(1, min(int(limit), 50))
+    bm25_sql = """
+    SELECT anchor_id, source_id, doc_slug, quote, page_num, section_heading, start_sec, end_sec, figure_id,
+           search::score(1) AS bm25_score, search::highlight('**', '**', 1) AS highlighted_quote
+    FROM anchor
+    WHERE owner_id = $owner_id AND status = "active" AND quote @1@ $query_text
+    ORDER BY bm25_score DESC
+    LIMIT $limit;
+    """
+    bm25_rows = _first_result(_run(bm25_sql, {"owner_id": str(owner_id), "query_text": query_text, "limit": k_limit}))
+
+    hnsw_rows: list[dict[str, Any]] = []
+    if query_embedding:
+        hnsw_sql = f"""
+        SELECT anchor_id, source_id, doc_slug, quote, page_num, section_heading, start_sec, end_sec, figure_id,
+               vector::distance::knn() AS dist
+        FROM anchor
+        WHERE owner_id = $owner_id AND status = "active" AND embedding <|{k_limit},40|> $query_embedding
+        ORDER BY dist ASC
+        LIMIT $limit;
+        """  # nosec B608 # noqa: S608 -- k_limit is a bounded integer
+        hnsw_rows = _first_result(
+            _run(hnsw_sql, {"owner_id": str(owner_id), "query_embedding": query_embedding, "limit": k_limit})
+        )
+
+    rrf_scores: dict[str, float] = {}
+    records: dict[str, dict[str, Any]] = {}
+    for rank, row in enumerate(bm25_rows, 1):
+        aid = str(row.get("anchor_id") or "")
+        if not aid:
+            continue
+        rrf_scores[aid] = rrf_scores.get(aid, 0.0) + (1.0 / (60.0 + rank))
+        records[aid] = row
+    for rank, row in enumerate(hnsw_rows, 1):
+        aid = str(row.get("anchor_id") or "")
+        if not aid:
+            continue
+        rrf_scores[aid] = rrf_scores.get(aid, 0.0) + (1.0 / (60.0 + rank))
+        records.setdefault(aid, row)
+
+    ranked_ids = sorted(rrf_scores, key=lambda aid: rrf_scores[aid], reverse=True)[:k_limit]
+    return [{**records[aid], "rrf_score": rrf_scores[aid]} for aid in ranked_ids]
+
+
+def tombstone_source(source_id: str, owner_id: str) -> bool:
+    """Mark a purged GCS asset as a Tombstone while preserving sha256 and verbatim anchors."""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return True
+    sql = """
+    UPDATE source SET gcs_status = "purged", gcs_uri = "", updated_at = time::now()
+    WHERE source_id = $source_id AND owner_id = $owner_id;
+    """
+    _run(sql, {"source_id": source_id, "owner_id": str(owner_id)})
+    return True
+
+
+# ── KORDA Lane 2: Quiz Studio & FSRS Attempt Persistence ─────────────────────
+
+
+def save_exam_items(owner_id: str, items: list[dict[str, Any]], crystal_ids: list[str] | None = None) -> int:
+    """Persist generated exam_item records and RELATE tests->crystal edges."""
+    if getattr(settings, "SURREALDB_OFFLINE", False) or not items:
+        return len(items)
+
+    saved = 0
+    for item in items:
+        item_id = str(item["item_id"])
+        sql = """
+        CREATE type::thing("exam_item", $item_id) CONTENT {
+            item_id: $item_id,
+            owner_id: $owner_id,
+            topic: $topic,
+            difficulty: $difficulty,
+            item_format: $item_format,
+            stem: $stem,
+            choices: $choices,
+            correct_answer: $correct_answer,
+            hint: $hint,
+            distractor_rationales: $distractor_rationales,
+            anchor_ids: $anchor_ids
+        };
+        """
+        _run(
+            sql,
+            {
+                "item_id": item_id,
+                "owner_id": str(owner_id),
+                "topic": str(item.get("topic") or ""),
+                "difficulty": str(item.get("difficulty") or "Medium"),
+                "item_format": str(item.get("item_format") or "MCQ"),
+                "stem": str(item.get("stem") or ""),
+                "choices": list(item.get("choices") or []),
+                "correct_answer": item.get("correct_answer"),
+                "hint": str(item.get("hint") or ""),
+                "distractor_rationales": item.get("distractor_rationales") or {},
+                "anchor_ids": list(item.get("anchor_ids") or []),
+            },
+        )
+        for cid in crystal_ids or []:
+            _run(
+                'LET $e = type::thing("exam_item", $item_id); LET $c = type::thing("crystal", $cid); RELATE $e->tests->$c;',
+                {"item_id": item_id, "cid": str(cid)},
+            )
+        saved += 1
+    return saved
+
+
+def list_exam_items(owner_id: str, *, difficulty: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    """Fetch persistent exam items for an owner (zero LLM cost on retakes)."""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return []
+    params: dict[str, Any] = {"owner_id": str(owner_id), "limit": max(1, min(int(limit), 200))}
+    diff_clause = ""
+    if difficulty and difficulty in {"Easy", "Medium", "Hard"}:
+        diff_clause = " AND difficulty = $difficulty"
+        params["difficulty"] = difficulty
+    sql = (
+        f"SELECT * FROM exam_item WHERE owner_id = $owner_id{diff_clause} "  # nosec B608 # noqa: S608 -- static clause
+        "ORDER BY fsrs_due_at ASC LIMIT $limit;"
+    )
+    return _first_result(_run(sql, params))
+
+
+def record_attempt(
+    *,
+    attempt_id: str,
+    session_id: str,
+    item_id: str,
+    owner_id: str,
+    is_correct: bool,
+    rating: int = 3,
+    response_ms: int = 0,
+) -> bool:
+    """Record an exam attempt; SurrealDB evt_attempt_fsrs_update updates FSRS automatically."""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return True
+    sql = """
+    BEGIN TRANSACTION;
+    CREATE type::thing("attempt", $attempt_id) CONTENT {
+        attempt_id: $attempt_id,
+        session_id: $session_id,
+        item_id: $item_id,
+        owner_id: $owner_id,
+        is_correct: $is_correct,
+        rating: $rating,
+        response_ms: $response_ms
+    };
+    LET $a = type::thing("attempt", $attempt_id);
+    LET $e = type::thing("exam_item", $item_id);
+    RELATE $a->attempted_on->$e;
+    COMMIT TRANSACTION;
+    """
+    _run(
+        sql,
+        {
+            "attempt_id": attempt_id,
+            "session_id": session_id,
+            "item_id": item_id,
+            "owner_id": str(owner_id),
+            "is_correct": bool(is_correct),
+            "rating": max(1, min(int(rating), 4)),
+            "response_ms": max(0, int(response_ms)),
+        },
+    )
+    return True
+
+
+def get_anchors_by_ids(anchor_ids: list[str], owner_id: str) -> dict[str, dict[str, Any]]:
+    """Fetch anchor evidence records by ID for Cited Review."""
+    if getattr(settings, "SURREALDB_OFFLINE", False) or not anchor_ids:
+        return {}
+    sql = "SELECT * FROM anchor WHERE owner_id = $owner_id AND anchor_id INSIDE $anchor_ids;"
+    rows = _first_result(_run(sql, {"owner_id": str(owner_id), "anchor_ids": list(anchor_ids)}))
+    return {str(r["anchor_id"]): r for r in rows if isinstance(r, dict) and r.get("anchor_id")}

@@ -337,3 +337,25 @@ class CloudTaskHandlerView(View):
             surreal_db.document_task_name.reset(token)
 
         return JsonResponse({"status": "ok", "task": task_name})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EventarcGCSRawView(View):
+    """OIDC-verified Eventarc receiver scoped strictly to raw/ GCS uploads."""
+
+    def post(self, request):
+        if not settings.DEBUG and not _verify_oidc_token(request):
+            return JsonResponse({"error": "Unauthorized Eventarc invocation."}, status=401)
+
+        try:
+            payload = json.loads(request.body) if request.body else {}
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid Eventarc JSON payload"}, status=400)
+
+        object_name = str(payload.get("name") or "")
+        bucket_name = str(payload.get("bucket") or "")
+        if not object_name.startswith("raw/"):
+            return JsonResponse({"status": "ignored", "reason": "non-raw-prefix"})
+
+        logger.info("[EventarcGCSRaw] Accepted gs://%s/%s for digitalization", bucket_name, object_name)
+        return JsonResponse({"status": "accepted", "bucket": bucket_name, "name": object_name})

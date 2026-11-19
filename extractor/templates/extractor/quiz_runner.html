@@ -1,0 +1,58 @@
+{% extends "extractor/base.html" %}
+
+{% block title %}Quiz Studio & Mock Exam Runner — KORDA{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 900px; margin: 24px auto; padding: 0 16px;">
+    <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+            <h1 style="margin: 0; font-size: 1.5rem;">Quiz Studio &amp; Mock Exam Runner</h1>
+            <p style="margin: 4px 0 0; color: var(--text-muted); font-size: 0.9rem;">
+                Persistent FSRS-scheduled exam items grounded in verbatim anchors ({{ item_count }} ready).
+            </p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <span id="exam-timer" class="badge" aria-live="polite">15:00</span>
+            <a href="{% url 'quiz_export_markdown' %}?answers=1" class="btn btn-secondary">Export Pack (.md)</a>
+        </div>
+    </header>
+
+    <section id="mock-exam-runner" class="card" style="padding: 20px;">
+        {% if exam_session.questions %}
+            <form id="mock-exam-form" data-session-id="{{ exam_session.session_id }}">
+                {% for q in exam_session.questions %}
+                <fieldset style="border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <legend style="font-weight: 600; padding: 0 6px;">
+                        Q{{ q.index }} · {{ q.difficulty }} · {{ q.item_format }}
+                    </legend>
+                    <p style="margin-top: 4px;">{{ q.stem }}</p>
+                    {% if q.choices %}
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            {% for choice in q.choices %}
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="q_{{ q.item_id }}" value="{{ choice }}">
+                                <span>{{ choice }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <input type="text" name="q_{{ q.item_id }}" class="form-control" placeholder="Type your answer..." style="width: 100%; padding: 8px;">
+                    {% endif %}
+                    {% if q.hint %}
+                    <details style="margin-top: 10px;">
+                        <summary style="cursor: pointer; color: var(--text-muted); font-size: 0.85rem;">Show Hint (0 LLM cost)</summary>
+                        <p style="margin: 6px 0 0; font-size: 0.9rem;">{{ q.hint }}</p>
+                    </details>
+                    {% endif %}
+                </fieldset>
+                {% endfor %}
+                <button type="submit" class="btn btn-primary">Submit Mock Exam</button>
+            </form>
+        {% else %}
+            <p style="color: var(--text-muted); margin: 0;">
+                No persisted exam items yet. Generate a quiz from verified Lane 1 crystals via <code>/api/v1/quiz/generate/</code>.
+            </p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

@@ -359,21 +359,12 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
         # Add live spend from active SurrealDB documents if available
         monthly_live = Decimal(0)
         try:
-            from extractor import surreal_db as _sdb
-
-            raw_docs = _sdb.list_documents(actor_id or str(user.id))
             from datetime import datetime
 
+            from extractor import surreal_db as _sdb
+
             first_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
-            monthly_live = Decimal(
-                str(
-                    sum(
-                        float(d.get("cost_usd") or 0)
-                        for d in raw_docs
-                        if _parse_dt(d.get("created_at")) and _parse_dt(d.get("created_at")) >= first_of_month
-                    )
-                )
-            )
+            monthly_live = _sdb.get_user_total_spend(actor_id or str(user.id), since=first_of_month)
         except Exception as err:
             logger.debug("[Budget Check] SurrealDB query bypassed, relying on MonthlySpendLog: %s", err)
 
@@ -384,6 +375,57 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
             return False
         logger.exception("[Budget Check] Budget evaluation failed; denying production request")
         return True
+
+
+def _enforce_distributed_rate_limit(
+    surreal_key: str,
+    cache_key: str,
+    max_requests: int,
+    window_seconds: int = 60,
+) -> bool:
+    """Enforce rate limit via SurrealDB in production, or local cache in debug/offline mode."""
+    if not getattr(settings, "DEBUG", False) and not getattr(settings, "SURREALDB_OFFLINE", False):
+        try:
+            from extractor import surreal_db
+
+            return bool(
+                surreal_db.check_rate_limit_atomic(
+                    surreal_key,
+                    max_requests=max_requests,
+                    window_seconds=window_seconds,
+                )
+            )
+        except Exception as surreal_err:
+            logger.warning("[RateLimit] SurrealDB distributed rate limit error for %s: %s", surreal_key, surreal_err)
+            return False
+
+    from django.core.cache import cache
+
+    try:
+        if cache.add(cache_key, 1, window_seconds):
+            rl_count = 1
+        else:
+            try:
+                rl_count = cache.incr(cache_key)
+            except ValueError:
+                cache.set(cache_key, 1, window_seconds)
+                rl_count = 1
+        return rl_count <= max_requests
+    except Exception as exc:
+        logger.debug("[RateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
+        try:
+            from extractor import surreal_db
+
+            return bool(
+                surreal_db.check_rate_limit_atomic(
+                    surreal_key,
+                    max_requests=max_requests,
+                    window_seconds=window_seconds,
+                )
+            )
+        except Exception as surreal_err:
+            logger.warning("[RateLimit] SurrealDB fallback error for %s: %s", surreal_key, surreal_err)
+            return False
 
 
 def _parse_dt(value):
@@ -1339,37 +1381,9 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
     """
 
     def _check_rag_limits(self, request):
-        from django.core.cache import cache
-
         rl_key = f"rag_ratelimit_{get_request_actor_id(request)}"
-        try:
-            if cache.add(rl_key, 1, 60):
-                rl_count = 1
-            else:
-                try:
-                    rl_count = cache.incr(rl_key)
-                except ValueError:
-                    cache.set(rl_key, 1, 60)
-                    rl_count = 1
-        except Exception as exc:
-            logger.debug("[RAGRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
-            try:
-                from extractor import surreal_db
-
-                if not surreal_db.check_rate_limit_atomic(f"rag:{rl_key}", max_requests=10, window_seconds=60):
-                    return JsonResponse(
-                        {"error": RAG_RATE_LIMIT_MSG},
-                        status=429,
-                    )
-                rl_count = 1
-            except Exception as surreal_err:
-                logger.warning("[RAGRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
-                return JsonResponse(
-                    {"error": RAG_RATE_LIMIT_MSG},
-                    status=429,
-                )
-
-        if rl_count > 10:
+        if not _enforce_distributed_rate_limit(f"rag:{rl_key}", rl_key, max_requests=10, window_seconds=60):
+            logger.warning("[RAGRateLimit] SurrealDB rate limit fallback error or limit exceeded for %s", rl_key)
             return JsonResponse(
                 {"error": RAG_RATE_LIMIT_MSG},
                 status=429,
@@ -1438,10 +1452,15 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
 def _reserve_export_rate_limit(request) -> bool:
     """Atomically reserves a 60-second export rate limit for both actor and IP keys.
     Returns True if reservation succeeded, or False if rate limit is active."""
-    from django.core.cache import cache
-
     user_key = f"export_ratelimit_{get_request_actor_id(request)}"
     ip_key = f"export_ratelimit_{get_client_ip(request)}"
+
+    if not getattr(settings, "DEBUG", False) and not getattr(settings, "SURREALDB_OFFLINE", False):
+        return _enforce_distributed_rate_limit(
+            f"export:{user_key}", user_key, max_requests=1, window_seconds=60
+        ) and _enforce_distributed_rate_limit(f"export:{ip_key}", ip_key, max_requests=1, window_seconds=60)
+
+    from django.core.cache import cache
 
     try:
         # cache.add sets key only if it does not exist (atomic in Redis/Memcached/LocMem)
@@ -1508,32 +1527,10 @@ class ExportZipView(LoginRequiredMixin, View):
 
 
 def _check_sft_preview_rate_limit(actor_id: str) -> JsonResponse | None:
-    """Check cache and SurrealDB atomic sliding window for SFT preview endpoint."""
-    from django.core.cache import cache
-
+    """Check SurrealDB (prod) or cache atomic sliding window for SFT preview endpoint."""
     rl_key = f"sft_preview_ratelimit_{actor_id}"
-    try:
-        if cache.add(rl_key, 1, 60):
-            rl_count = 1
-        else:
-            try:
-                rl_count = cache.incr(rl_key)
-            except ValueError:
-                cache.set(rl_key, 1, 60)
-                rl_count = 1
-    except Exception as exc:
-        logger.debug("[SFTPreviewRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
-        try:
-            from extractor import surreal_db
-
-            if not surreal_db.check_rate_limit_atomic(f"sft:{rl_key}", max_requests=10, window_seconds=60):
-                return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
-            rl_count = 1
-        except Exception as surreal_err:
-            logger.warning("[SFTPreviewRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
-            return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
-
-    if rl_count > 10:
+    if not _enforce_distributed_rate_limit(f"sft:{rl_key}", rl_key, max_requests=10, window_seconds=60):
+        logger.warning("[SFTPreviewRateLimit] SurrealDB rate limit fallback error or limit exceeded for %s", rl_key)
         return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
     return None
 
@@ -2948,22 +2945,8 @@ class SupabaseSessionExchangeView(View):
 
     def _rate_limited(self, request) -> bool:
         """Throttle anonymous token exchanges by source IP, failing closed in production."""
-        from django.core.cache import cache
-
         key = f"supabase_session_exchange:{get_client_ip(request)}"
-        try:
-            if cache.add(key, 1, 60):
-                return False
-            return cache.incr(key) > 10
-        except Exception as exc:
-            logger.debug("[AuthRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
-            try:
-                from extractor import surreal_db
-
-                return not surreal_db.check_rate_limit_atomic(key, max_requests=10, window_seconds=60)
-            except Exception as surreal_exc:
-                logger.warning("[AuthRateLimit] Distributed fallback failed: %s", surreal_exc)
-                return not getattr(settings, "SURREALDB_OFFLINE", False)
+        return not _enforce_distributed_rate_limit(key, key, max_requests=10, window_seconds=60)
 
     def post(self, request):
         import json
@@ -3036,37 +3019,9 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
     """
 
     def _check_stream_limits(self, request, actor_id: str):
-        from django.core.cache import cache
-
         rl_key = f"rag_ratelimit_{actor_id}"
-        try:
-            if cache.add(rl_key, 1, 60):
-                rl_count = 1
-            else:
-                try:
-                    rl_count = cache.incr(rl_key)
-                except ValueError:
-                    cache.set(rl_key, 1, 60)
-                    rl_count = 1
-        except Exception as exc:
-            logger.debug("[RAGStreamRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
-            try:
-                from extractor import surreal_db
-
-                if not surreal_db.check_rate_limit_atomic(f"stream:{rl_key}", max_requests=10, window_seconds=60):
-                    return JsonResponse(
-                        {"error": RAG_RATE_LIMIT_MSG},
-                        status=429,
-                    )
-                rl_count = 1
-            except Exception as surreal_err:
-                logger.warning("[RAGStreamRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
-                return JsonResponse(
-                    {"error": RAG_RATE_LIMIT_MSG},
-                    status=429,
-                )
-
-        if rl_count > 10:
+        if not _enforce_distributed_rate_limit(f"stream:{rl_key}", rl_key, max_requests=10, window_seconds=60):
+            logger.warning("[RAGStreamRateLimit] SurrealDB rate limit fallback error or limit exceeded for %s", rl_key)
             return JsonResponse(
                 {"error": RAG_RATE_LIMIT_MSG},
                 status=429,
@@ -3132,3 +3087,116 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
         response["Connection"] = "keep-alive"
         response["Content-Encoding"] = "none"
         return response
+
+
+class StrictLibrarianAPIView(LoginRequiredMixin, View):
+    """Zero-LLM Strict Librarian Mode returning verbatim anchors + deterministic coordinates."""
+
+    def post(self, request):
+        import json
+
+        from extractor import rag
+
+        try:
+            body = json.loads(request.body) if request.body else {}
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+        query = str(body.get("query") or "").strip() if isinstance(body, dict) else ""
+        if not query:
+            return JsonResponse({"error": "Query is required."}, status=400)
+
+        actor_id = get_request_actor_id(request)
+        return JsonResponse(rag.strict_librarian_search(query, owner_id=actor_id))
+
+
+from django.views.generic import TemplateView as _TemplateView
+
+
+class QuizStudioView(LoginRequiredMixin, _TemplateView):
+    """Distraction-free Quiz Studio & Timed Mock Exam Runner."""
+
+    template_name = "extractor/quiz_runner.html"
+
+    def get_context_data(self, **kwargs):
+        from extractor import quiz_studio, surreal_db
+
+        ctx = super().get_context_data(**kwargs)
+        actor_id = get_request_actor_id(self.request)
+        items = surreal_db.list_exam_items(actor_id, limit=30)
+        ctx["exam_session"] = quiz_studio.build_mock_exam_session(items)
+        ctx["item_count"] = len(items)
+        return ctx
+
+
+class QuizGenerateAPIView(LoginRequiredMixin, View):
+    """Generate and persist Quiz Studio items grounded in verified crystals."""
+
+    def post(self, request):
+        import json
+
+        from extractor import quiz_studio
+
+        try:
+            body = json.loads(request.body) if request.body else {}
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+        actor_id = get_request_actor_id(request)
+        crystals = list(body.get("crystals") or []) if isinstance(body, dict) else []
+        items = quiz_studio.generate_and_persist_quiz(
+            owner_id=actor_id,
+            crystals=crystals,
+            difficulty=str(body.get("difficulty") or "Medium"),
+            count=int(body.get("count") or 5),
+            formats=list(body.get("formats") or ["MCQ"]),
+            focus_prompt=str(body.get("focus_prompt") or ""),
+            blueprint_weights=body.get("blueprint_weights"),
+        )
+        return JsonResponse(
+            {"status": "ok", "count": len(items), "session": quiz_studio.build_mock_exam_session(items)}
+        )
+
+
+class QuizSubmitAPIView(LoginRequiredMixin, View):
+    """Grade Mock Exam submission at zero LLM cost and return Cited Review + Tombstone cards."""
+
+    def post(self, request):
+        import json
+
+        from extractor import quiz_studio, surreal_db
+
+        try:
+            body = json.loads(request.body) if request.body else {}
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+        actor_id = get_request_actor_id(request)
+        session_id = str(body.get("session_id") or "")
+        answers = dict(body.get("answers") or {})
+        items = surreal_db.list_exam_items(actor_id, limit=100)
+        anchor_ids = [aid for item in items for aid in (item.get("anchor_ids") or [])]
+        anchors = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
+        graded = quiz_studio.grade_mock_exam_submission(
+            owner_id=actor_id,
+            session_id=session_id,
+            items=items,
+            answers=answers,
+            anchors_by_id=anchors,
+        )
+        return JsonResponse(graded)
+
+
+class QuizExportMarkdownView(LoginRequiredMixin, View):
+    """Export persistent exam items as a Markdown Exam Pack with toggleable Answer Key."""
+
+    def get(self, request):
+        from extractor import quiz_studio, surreal_db
+
+        actor_id = get_request_actor_id(request)
+        include_answers = request.GET.get("answers", "1") != "0"
+        items = surreal_db.list_exam_items(actor_id, limit=100)
+        md = quiz_studio.export_exam_markdown(items, include_answers=include_answers)
+        resp = HttpResponse(md, content_type="text/markdown; charset=utf-8")
+        resp["Content-Disposition"] = 'attachment; filename="korda_exam_pack.md"'
+        return resp

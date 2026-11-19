@@ -1,0 +1,7 @@
+imports:
+  - korda/base
+values:
+  pulumiConfig:
+    korda-infra:environment: dev
+    korda-infra:web_max_instances: "2"
+    korda-infra:worker_max_instances: "2"

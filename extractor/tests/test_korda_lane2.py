@@ -1,0 +1,144 @@
+import json
+from unittest.mock import MagicMock, patch
+
+from django.test import SimpleTestCase
+
+from extractor import quiz_studio
+
+
+class KordaLane2QuizStudioTests(SimpleTestCase):
+    def test_generate_quiz_items_persists_hints_rationales_and_mandatory_anchors(self):
+        fake_crystals = [
+            {
+                "crystal_id": "cry-1",
+                "title": "Cloud Run Scaling",
+                "summary": "Cloud Run scales to zero when minInstanceCount is 0.",
+                "anchor_ids": ["anc-1"],
+            }
+        ]
+        llm_payload = {
+            "items": [
+                {
+                    "topic": "Cloud Run Scaling",
+                    "difficulty": "Hard",
+                    "item_format": "MCQ",
+                    "stem": "Which setting guarantees $0 idle compute on Cloud Run?",
+                    "choices": ["minInstanceCount: 0", "minInstanceCount: 1", "maxInstanceCount: 0", "cpu: 4"],
+                    "correct_answer": "minInstanceCount: 0",
+                    "hint": "Look at the lower scaling bound.",
+                    "distractor_rationales": {
+                        "minInstanceCount: 1": "Keeps 1 warm container billed 24/7.",
+                        "maxInstanceCount: 0": "Invalid upper bound.",
+                        "cpu: 4": "Controls vCPU allocation, not idle scaling.",
+                    },
+                    "anchor_ids": ["anc-1"],
+                }
+            ]
+        }
+        mock_response = MagicMock(text=json.dumps(llm_payload))
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with (
+            patch("extractor.llm_gateway._get_vertex_client", return_value=mock_client),
+            patch("extractor.surreal_db.save_exam_items", return_value=1) as mock_save,
+        ):
+            items = quiz_studio.generate_and_persist_quiz(
+                owner_id="u1",
+                crystals=fake_crystals,
+                difficulty="Hard",
+                count=1,
+                formats=["MCQ"],
+                focus_prompt="Focus on serverless cost",
+            )
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["hint"], "Look at the lower scaling bound.")
+        self.assertEqual(items[0]["anchor_ids"], ["anc-1"])
+        mock_save.assert_called_once()
+
+    def test_mock_exam_session_shuffles_and_hides_answers_until_submit(self):
+        stored_items = [
+            {
+                "item_id": "item-1",
+                "stem": "Q1",
+                "item_format": "MCQ",
+                "choices": ["A", "B", "C", "D"],
+                "correct_answer": "A",
+                "hint": "Hint 1",
+                "distractor_rationales": {"B": "Why not B"},
+                "anchor_ids": ["anc-1"],
+            },
+            {
+                "item_id": "item-2",
+                "stem": "Q2",
+                "item_format": "Short Answer",
+                "choices": [],
+                "correct_answer": "SurrealDB",
+                "hint": "Hint 2",
+                "distractor_rationales": {},
+                "anchor_ids": ["anc-2"],
+            },
+        ]
+        session_payload = quiz_studio.build_mock_exam_session(stored_items, seed=42)
+        self.assertEqual(len(session_payload["questions"]), 2)
+        for q in session_payload["questions"]:
+            self.assertNotIn("correct_answer", q)
+            self.assertNotIn("distractor_rationales", q)
+            self.assertIn("hint", q)
+
+    def test_grade_mock_exam_returns_cited_review_with_tombstone_fallback(self):
+        stored_items = [
+            {
+                "item_id": "item-1",
+                "stem": "Q1",
+                "item_format": "MCQ",
+                "choices": ["A", "B"],
+                "correct_answer": "A",
+                "hint": "Hint 1",
+                "distractor_rationales": {"B": "Wrong"},
+                "anchor_ids": ["anc-1"],
+            }
+        ]
+        anchors_by_id = {
+            "anc-1": {
+                "anchor_id": "anc-1",
+                "source_id": "src-1",
+                "quote": "Verbatim proof quote.",
+                "page_num": 2,
+                "gcs_status": "purged",
+                "sha256": "deadbeef",
+            }
+        }
+        with patch("extractor.surreal_db.record_attempt") as mock_attempt:
+            graded = quiz_studio.grade_mock_exam_submission(
+                owner_id="u1",
+                session_id="sess-1",
+                items=stored_items,
+                answers={"item-1": "B"},
+                anchors_by_id=anchors_by_id,
+            )
+
+        self.assertEqual(graded["score"], 0)
+        self.assertEqual(graded["total"], 1)
+        self.assertFalse(graded["results"][0]["is_correct"])
+        self.assertEqual(graded["results"][0]["evidence"][0]["card_type"], "tombstone")
+        mock_attempt.assert_called_once()
+
+    def test_export_exam_markdown_toggleable_answer_key(self):
+        items = [
+            {
+                "item_id": "item-1",
+                "stem": "What is KORDA?",
+                "item_format": "MCQ",
+                "choices": ["Refinery", "Podcast"],
+                "correct_answer": "Refinery",
+                "hint": "Think knowledge.",
+                "anchor_ids": ["anc-1"],
+            }
+        ]
+        no_key = quiz_studio.export_exam_markdown(items, include_answers=False)
+        with_key = quiz_studio.export_exam_markdown(items, include_answers=True)
+        self.assertNotIn("## Answer Key", no_key)
+        self.assertIn("## Answer Key", with_key)
+        self.assertIn("Refinery", with_key)

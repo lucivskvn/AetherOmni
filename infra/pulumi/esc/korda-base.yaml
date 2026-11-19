@@ -1,0 +1,20 @@
+# Pulumi ESC Environment: korda/base
+# Keyless GCP OIDC authentication + Secret Manager bridge for Coolify/SurrealDB.
+values:
+  gcp:
+    login:
+      fn::open::gcp-login:
+        project: ${gcp.projectId}
+        oidc:
+          workloadPoolId: ${gcp.workloadPoolId}
+          providerId: ${gcp.oidcProviderId}
+          serviceAccount: ${gcp.deployerServiceAccount}
+  environmentVariables:
+    GOOGLE_OAUTH_ACCESS_TOKEN: ${gcp.login.accessToken}
+    CLOUDSDK_AUTH_ACCESS_TOKEN: ${gcp.login.accessToken}
+  pulumiConfig:
+    gcp:region: asia-southeast1
+    korda-infra:web_min_instances: "0"
+    korda-infra:web_max_instances: "5"
+    korda-infra:worker_min_instances: "0"
+    korda-infra:worker_max_instances: "5"

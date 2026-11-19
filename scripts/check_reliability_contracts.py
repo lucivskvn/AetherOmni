@@ -159,12 +159,13 @@ def main() -> int:
         ("memory: 1024Mi",),
         "Worker Cloud Run manifest must retain the post-incident memory floor.",
     )
+    pulumi_components = _read("infra/pulumi/components.py") if (ROOT / "infra/pulumi/components.py").exists() else ""
     _require(
         errors,
-        pulumi,
+        pulumi + "\n" + pulumi_components,
         (
-            '"memory": "1Gi"',
-            '"memory": "2Gi"',
+            'memory="1Gi"',
+            'memory="2Gi"',
             "korda-worker-cloud-tasks-invoker",
             "roles/run.invoker",
             "roles/run.viewer",

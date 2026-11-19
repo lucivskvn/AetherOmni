@@ -57,13 +57,19 @@ def apply_schema(client: httpx.Client) -> None:
     with open(schema_path, encoding="utf-8") as f:
         schema_sql = f.read()
 
+    import re
+
+    ident_re = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$")
+    if not ident_re.match(SURREAL_NS) or not ident_re.match(SURREAL_DB):
+        raise ValueError("Invalid SURREAL_NS or SURREAL_DB identifier.")
+
     # Pre-define namespace and database for SurrealDB 3.x compatibility
     logger.info("Ensuring namespace '%s' and database '%s' exist...", SURREAL_NS, SURREAL_DB)
     try:
-        client.post("/sql", content=f"DEFINE NAMESPACE {SURREAL_NS};".encode(), headers={"Accept": APPLICATION_JSON})
+        client.post("/sql", content=f"DEFINE NAMESPACE `{SURREAL_NS}`;".encode(), headers={"Accept": APPLICATION_JSON})
         client.post(
             "/sql",
-            content=f"DEFINE DATABASE {SURREAL_DB};".encode(),
+            content=f"DEFINE DATABASE `{SURREAL_DB}`;".encode(),
             headers={"surreal-ns": SURREAL_NS, "Accept": APPLICATION_JSON},
         )
     except Exception as exc:
