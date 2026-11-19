@@ -153,12 +153,8 @@ def main() -> int:
         ("memory: 1024Mi",),
         "Web Cloud Run manifest must retain the post-incident memory floor.",
     )
-    _require(
-        errors,
-        worker_manifest,
-        ("memory: 1024Mi",),
-        "Worker Cloud Run manifest must retain the post-incident memory floor.",
-    )
+    if not any(mem in worker_manifest for mem in ("memory: 1024Mi", "memory: 2048Mi", "memory: 2Gi")):
+        errors.append("Worker Cloud Run manifest must retain the post-incident memory floor.")
     pulumi_components = _read("infra/pulumi/components.py") if (ROOT / "infra/pulumi/components.py").exists() else ""
     _require(
         errors,

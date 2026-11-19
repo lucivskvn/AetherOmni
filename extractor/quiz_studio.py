@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 import uuid
 from typing import Any
@@ -39,7 +40,7 @@ def _normalize_generated_item(
 
 
 def _sanitize_blueprint_weights(blueprint_weights: dict[str, float] | None) -> dict[str, float]:
-    """Filter blueprint_weights to positive float entries keyed by string."""
+    """Filter blueprint_weights to positive finite float entries keyed by string."""
     clean_weights: dict[str, float] = {}
     if not isinstance(blueprint_weights, dict):
         return clean_weights
@@ -48,9 +49,24 @@ def _sanitize_blueprint_weights(blueprint_weights: dict[str, float] | None) -> d
             w = float(v)
         except TypeError, ValueError:
             continue
-        if w > 0:
+        if math.isfinite(w) and w > 0:
             clean_weights[str(k)] = w
     return clean_weights
+
+
+def _project_crystals_for_prompt(crystals: list[dict[str, Any]]) -> str:
+    projected = [
+        {
+            "crystal_id": str(c.get("crystal_id") or ""),
+            "doc_slug": str(c.get("doc_slug") or ""),
+            "title": str(c.get("title") or ""),
+            "summary": str(c.get("summary") or ""),
+            "tags": list(c.get("tags") or []),
+            "anchor_ids": list(c.get("anchor_ids") or []),
+        }
+        for c in crystals[:20]
+    ]
+    return json.dumps(projected, ensure_ascii=False)
 
 
 def generate_and_persist_quiz(
@@ -76,7 +92,7 @@ def generate_and_persist_quiz(
         raise RuntimeError(llm_gateway.VAL_ERROR_UNAVAILABLE)
 
     model_name = llm_gateway.MODEL_TIER_PRO if diff == "Hard" else llm_gateway.MODEL_TIER_LITE
-    context_json = json.dumps(crystals[:20], ensure_ascii=False)
+    context_json = _project_crystals_for_prompt(crystals)
     clean_weights = _sanitize_blueprint_weights(blueprint_weights)
     weights_note = f" Blueprint weights: {json.dumps(clean_weights)}." if clean_weights else ""
     focus_note = f" Focus: {focus_prompt[:500]}." if focus_prompt else ""
@@ -102,7 +118,8 @@ def generate_and_persist_quiz(
         parsed = json.loads(response.text or "{}")
     except json.JSONDecodeError:
         parsed = {}
-    raw_items = list(parsed.get("items") or [])
+    items_field = parsed.get("items") if isinstance(parsed, dict) else []
+    raw_items = [it for it in items_field if isinstance(it, dict)] if isinstance(items_field, list) else []
 
     fallback_anchor_ids = [aid for c in crystals for aid in (c.get("anchor_ids") or [])]
     persisted = [

@@ -139,24 +139,24 @@ def check_budget_and_api_limit() -> None:
         transaction_sql = """
         BEGIN TRANSACTION;
         LET $live = (SELECT math::sum(cost_usd) AS total FROM documents WHERE created_at >= <datetime> $first_of_month GROUP ALL);
-        LET $spent = IF array::len($live) > 0 THEN $live[0].total ELSE 0.0 END;
+        LET $spent = IF array::len($live) > 0 AND $live[0].total != NONE THEN $live[0].total ELSE 0.0 END;
         LET $deleted = (SELECT math::sum(cost_usd) AS total FROM document_spend_reconciliations WHERE year = $year AND month = $month GROUP ALL);
-        LET $deleted_spent = IF array::len($deleted) > 0 THEN $deleted[0].total ELSE 0.0 END;
+        LET $deleted_spent = IF array::len($deleted) > 0 AND $deleted[0].total != NONE THEN $deleted[0].total ELSE 0.0 END;
         LET $settings = (SELECT monthly_budget_usd FROM system_settings:1);
-        LET $cap = IF array::len($settings) > 0 THEN $settings[0].monthly_budget_usd ELSE 10.0 END;
+        LET $cap = IF array::len($settings) > 0 AND $settings[0].monthly_budget_usd != NONE THEN $settings[0].monthly_budget_usd ELSE 10.0 END;
         RETURN { live_spent: $spent, deleted_spent: $deleted_spent, cap: $cap };
         COMMIT TRANSACTION;
         """
-        res = surreal_db._first_result(
+        res = surreal_db._last_non_null_result(
             surreal_db._run(
                 transaction_sql,
                 {"first_of_month": format_datetime(first_of_month), "year": now.year, "month": now.month},
             )
         )
         if res and isinstance(res, dict):
-            live_spent = Decimal(str(res.get("live_spent", 0.0)))
-            deleted_spent = Decimal(str(res.get("deleted_spent", 0.0)))
-            monthly_cap = Decimal(str(res.get("cap", 10.0)))
+            live_spent = Decimal(str(res.get("live_spent") or 0.0))
+            deleted_spent = Decimal(str(res.get("deleted_spent") or 0.0))
+            monthly_cap = Decimal(str(res.get("cap") or 10.0))
         else:
             live_spent = Decimal("0.0")
             deleted_spent = Decimal("0.0")
@@ -1666,3 +1666,24 @@ def extract_anchors_from_gcs_uri(
         "input_tokens": in_toks,
         "output_tokens": out_toks,
     }
+
+
+def generate_query_embedding(text: str) -> list[float]:
+    """Generate a 768-dim embedding for Strict Librarian HNSW queries and anchor indexing."""
+    clean = (text or "").strip()
+    if not clean:
+        return []
+    try:
+        client = _get_vertex_client()
+        if client is None:
+            return []
+        resp = client.models.embed_content(
+            model=os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004"),
+            contents=[clean[:4000]],
+        )
+        embeddings = getattr(resp, "embeddings", None) or []
+        if embeddings and getattr(embeddings[0], "values", None):
+            return [float(x) for x in embeddings[0].values]
+    except Exception as exc:
+        logger.warning("[Embedding] Falling back to BM25-only (embedding unavailable): %s", exc)
+    return []

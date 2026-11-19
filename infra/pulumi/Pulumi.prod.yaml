@@ -1,4 +1,4 @@
-environments:
+environment:
   - korda/prod
 config:
   gcp:region: asia-southeast1

@@ -235,10 +235,10 @@ if [[ "$AUTOFIX" = true ]]; then
         $PYTHON_BIN -m ruff format . || true
     fi
     if command -v markdownlint &> /dev/null; then
-        markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md .kiro/steering/*.md 2>/dev/null || true
+        markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md 2>/dev/null || true
     fi
     if command -v yamllint &> /dev/null; then
-        yamllint service.yaml service-worker.yaml cloudbuild.yaml bandit.yaml .coderabbit.yaml .github/workflows/*.yml .github/dependabot.yml 2>/dev/null || true
+        yamllint infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml bandit.yaml .coderabbit.yaml .github/workflows/*.yml .github/dependabot.yml 2>/dev/null || true
     fi
     echo -e "${GREEN}✓ Automated code formatting and lint fixes applied across entire codebase.${NC}"
 fi

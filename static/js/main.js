@@ -1487,17 +1487,24 @@ function _updateTokenMetricCard(stats) {
     }
 }
 
-function updateDashboardStats(stats) {
-    if (!stats) return;
-
+function _updateBudgetCard(stats) {
     const spendVal = document.querySelector('.metrics-row .metric-card:first-child .metric-value');
     if (spendVal) spendVal.textContent = stats.formatted_monthly_spent;
 
     const budgetSub = document.querySelector('.metrics-row .metric-card:first-child .metric-sub');
-    if (budgetSub) {
-        const fillBar = budgetSub.querySelector('.budget-bar-fill');
-        if (fillBar) fillBar.style.width = stats.percent_spent + '%';
+    if (!budgetSub) return;
+    const fillBar = budgetSub.querySelector('.budget-bar-fill');
+    if (fillBar) fillBar.style.width = stats.percent_spent + '%';
+    const progressBar = budgetSub.querySelector('[role="progressbar"]');
+    if (progressBar) {
+        progressBar.setAttribute('aria-valuenow', String(Math.min(100, stats.percent_spent ?? 0)));
     }
+}
+
+function updateDashboardStats(stats) {
+    if (!stats) return;
+
+    _updateBudgetCard(stats);
 
     const pagesVal = document.querySelector('.metrics-row .metric-card:nth-child(2) .metric-value');
     if (pagesVal) pagesVal.textContent = stats.total_pages;
@@ -1513,11 +1520,9 @@ function updateDashboardStats(stats) {
     const isBillingBanner = billingAlert?.textContent.includes('Monthly API Billing Cap Triggered');
     if (isBillingBanner) {
         if (!stats.budget_exceeded) billingAlert.remove();
-    } else if (stats.budget_exceeded && !isBillingBanner) {
-        if (!globalThis._reloadTriggered) {
-            globalThis._reloadTriggered = true;
-            globalThis.location.reload();
-        }
+    } else if (stats.budget_exceeded && !globalThis._reloadTriggered) {
+        globalThis._reloadTriggered = true;
+        globalThis.location.reload();
     }
 }
 
@@ -1530,7 +1535,8 @@ function _findTableRowForDoc(tbody, doc) {
     if (chk) return chk.closest('tr');
 
     const hrefKey = doc.uuid ? `/document/${doc.uuid}/` : `/document/${doc.id}/`;
-    const link = tbody.querySelector(`a[href*="${hrefKey}"]`);
+    const escapedKey = typeof globalThis.CSS?.escape === 'function' ? globalThis.CSS.escape(hrefKey) : hrefKey;
+    const link = tbody.querySelector(`a[href*="${escapedKey}"]`);
     return link ? link.closest('tr') : null;
 }
 

@@ -81,7 +81,7 @@
     <i data-lucide="shield-alert"></i>
     <div>
         <strong class="alert-card-title">Monthly API Billing Cap Triggered</strong>
-        <span class="alert-card-desc">The platform has safely paused out-of-boundary AI API calls since cumulative expenses reached your customized limit. All fresh uploads will queue as 'PENDING'. Adjust your monthly budget in the <a href="#" id="error-settings-trigger">Console Settings</a> to resume processing.</span>
+        <span class="alert-card-desc">The platform has safely paused out-of-boundary AI API calls since cumulative expenses reached your customized limit. All fresh uploads will queue as 'PENDING'. Adjust your monthly budget in the <button type="button" id="error-settings-trigger" class="btn-link" aria-haspopup="dialog" aria-controls="settings-modal">Console Settings</button> to resume processing.</span>
     </div>
 </div>
 {% endif %}
@@ -111,7 +111,7 @@
                     <div class="panel-title">
                         <i data-lucide="archive"></i> Curated knowledge library
                     </div>
-                    <div class="flex-gap-sm" style="display: flex; gap: 12px; align-items: center;">
+                    <div class="flex-gap-sm" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
                         <div class="table-filter-wrapper" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); position: relative;">
                             <label for="table-filter" class="visually-hidden">Filter knowledge documents</label>
                             <input type="search" id="table-filter" class="table-filter-input" placeholder="Filter knowledge…">

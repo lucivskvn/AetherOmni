@@ -198,7 +198,7 @@ As an AI coding assistant, execute the requested task following these strict rep
 6. Dynamic Documentation: Avoid static version/score numbers in Markdown text or tables;
    use dynamic scorecard images (scorecard.png) and badges.
    Release versions must be computed as MAJOR.MINOR.PATCH before SonarCloud analysis and deployment.
-7. Standardized Model & Auth Naming: Use configurable two-tier Vertex routing (`GEMINI_MODEL_LITE` defaulting to Gemini 3.1 Flash-Lite with `thinking_level: minimal`, `GEMINI_MODEL_PRO` defaulting to Gemini 3 Flash for dense diagrams/hard distractors; Gemini 2.5 Flash / 2.5 Flash-Lite fallback). Refer to Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
+7. Standardized Model & Auth Naming: Use configurable two-tier Vertex routing (`GEMINI_MODEL_LITE` / `GEMINI_MODEL_PRO`, configured canonically in `extractor/llm_gateway.py` and `infra/gcp/` manifests). Refer to Vertex AI Vision, GCP Secret Manager, and Supabase Auth Platform (Supabase Cloud).
 ```
 
 <!-- sonar:begin:codex-secrets-on-read -->

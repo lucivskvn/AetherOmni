@@ -31,7 +31,7 @@ class ComplianceBucket(pulumi.ComponentResource):
                     action=gcp.storage.BucketLifecycleRuleActionArgs(type="Delete"),
                     condition=gcp.storage.BucketLifecycleRuleConditionArgs(
                         matches_prefixes=["raw/ephemeral/"],
-                        days_since_custom_time=1,
+                        age=1,
                     ),
                 ),
                 gcp.storage.BucketLifecycleRuleArgs(

@@ -138,9 +138,9 @@ gcp.storage.BucketIAMMember(
 )
 
 gcp.storage.BucketIAMMember(
-    "korda-backup-bucket-object-admin",
+    "korda-backup-bucket-object-creator",
     bucket=backup_bucket.name,
-    role="roles/storage.objectAdmin",
+    role="roles/storage.objectCreator",
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
@@ -178,7 +178,7 @@ common_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_PRO", value="gemini-2.5-flash"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
         name="CLOUD_TASKS_SERVICE_ACCOUNT",
-        value=f"{project_info.number}-compute@developer.gserviceaccount.com",
+        value=service_account.email,
     ),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="CLOUD_TASKS_QUEUE", value=queue_name),
 ]

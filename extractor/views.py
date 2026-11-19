@@ -3092,34 +3092,60 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
 ERR_INVALID_JSON_PAYLOAD = "Invalid JSON payload."
 
 
+ERR_SERVICE_UNAVAILABLE = "Service temporarily unavailable."
+ERR_RATE_LIMIT = "Rate limit exceeded."
+
+
 def _parse_json_dict_body(request) -> tuple[dict | None, JsonResponse | None]:
     import json
 
     try:
         body = json.loads(request.body) if request.body else {}
-    except json.JSONDecodeError:
+    except UnicodeDecodeError, json.JSONDecodeError:
         return None, JsonResponse({"error": ERR_INVALID_JSON_PAYLOAD}, status=400)
     if not isinstance(body, dict):
         return None, JsonResponse({"error": "JSON object required."}, status=400)
     return body, None
 
 
+def _parse_positive_int(raw: Any, *, default: int = 5, min_val: int = 1, max_val: int = 30) -> int | None:
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return None
+    try:
+        val = int(raw)
+    except TypeError, ValueError, OverflowError:
+        return None
+    return max(min_val, min(val, max_val))
+
+
+CONTENT_DISPOSITION_ATTACHMENT = "attachment"
+
+
+def _apply_markdown_download_headers(resp: HttpResponse, filename: str) -> HttpResponse:
+    resp["Content-Disposition"] = f'{CONTENT_DISPOSITION_ATTACHMENT}; filename="{filename}"'
+    resp["X-Content-Type-Options"] = "nosniff"
+    resp["Cache-Control"] = "private, no-store, no-transform"
+    return resp
+
+
 def _load_quiz_crystals(actor_id: str, body: dict) -> list[dict]:
     from extractor import surreal_db
 
-    doc_slug = str(body.get("doc_slug") or "").strip() or None
+    doc_slug = str(body.get("doc_slug") or "").strip()[:120] or None
     crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=20)
     if crystals or not isinstance(body.get("crystals"), list):
         return crystals
     return [
         {
-            "crystal_id": str(c.get("crystal_id") or ""),
+            "crystal_id": "",
             "title": str(c.get("title") or "")[:200],
             "summary": str(c.get("summary") or "")[:2000],
-            "anchor_ids": [str(a) for a in (c.get("anchor_ids") or []) if a][:10],
+            "anchor_ids": [],
         }
         for c in body["crystals"][:10]
-        if isinstance(c, dict)
+        if isinstance(c, dict) and (c.get("title") or c.get("summary"))
     ]
 
 
@@ -3133,15 +3159,19 @@ class StrictLibrarianAPIView(LoginRequiredMixin, View):
         if err is not None or body is None:
             return err
 
-        query = str(body.get("query") or "").strip()
+        query = str(body.get("query") or "").strip()[:1000]
         if not query:
             return JsonResponse({"error": "Query is required."}, status=400)
 
         actor_id = get_request_actor_id(request)
         if not _enforce_distributed_rate_limit(f"librarian:{actor_id}", actor_id, max_requests=30, window_seconds=60):
-            return JsonResponse({"error": "Rate limit exceeded."}, status=429)
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
 
-        return JsonResponse(rag.strict_librarian_search(query, owner_id=actor_id))
+        try:
+            return JsonResponse(rag.strict_librarian_search(query, owner_id=actor_id))
+        except Exception as exc:
+            logger.exception("[StrictLibrarian] Search failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
 
 
 from django.views.generic import TemplateView as _TemplateView
@@ -3168,7 +3198,7 @@ class QuizGenerateAPIView(LoginRequiredMixin, View):
     """Generate and persist Quiz Studio items grounded in verified crystals."""
 
     def post(self, request):
-        from extractor import quiz_studio
+        from extractor import llm_gateway, quiz_studio
 
         body, err = _parse_json_dict_body(request)
         if err is not None or body is None:
@@ -3178,11 +3208,10 @@ class QuizGenerateAPIView(LoginRequiredMixin, View):
         if _is_budget_exceeded(request.user, actor_id):
             return JsonResponse({"error": "Monthly spend budget exceeded."}, status=402)
         if not _enforce_distributed_rate_limit(f"quiz_gen:{actor_id}", actor_id, max_requests=10, window_seconds=60):
-            return JsonResponse({"error": "Rate limit exceeded."}, status=429)
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
 
-        try:
-            count = int(body.get("count") or 5)
-        except TypeError, ValueError:
+        count = _parse_positive_int(body.get("count"), default=5, min_val=1, max_val=30)
+        if count is None:
             return JsonResponse({"error": "Invalid count."}, status=400)
 
         raw_formats = body.get("formats") or ["MCQ"]
@@ -3194,15 +3223,20 @@ class QuizGenerateAPIView(LoginRequiredMixin, View):
             return JsonResponse({"error": "No verified crystals available for quiz generation."}, status=400)
 
         weights = body.get("blueprint_weights")
-        items = quiz_studio.generate_and_persist_quiz(
-            owner_id=actor_id,
-            crystals=crystals,
-            difficulty=str(body.get("difficulty") or "Medium"),
-            count=count,
-            formats=[str(f) for f in raw_formats],
-            focus_prompt=str(body.get("focus_prompt") or ""),
-            blueprint_weights=weights if isinstance(weights, dict) else None,
-        )
+        try:
+            items = quiz_studio.generate_and_persist_quiz(
+                owner_id=actor_id,
+                crystals=crystals,
+                difficulty=str(body.get("difficulty") or "Medium"),
+                count=count,
+                formats=[str(f) for f in raw_formats[:4]],
+                focus_prompt=str(body.get("focus_prompt") or "")[:500],
+                blueprint_weights=weights if isinstance(weights, dict) else None,
+            )
+        except (ValueError, RuntimeError, llm_gateway.APIError) as exc:
+            logger.warning("[QuizGenerate] Generation unavailable for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": "Quiz generation service temporarily unavailable."}, status=503)
+
         return JsonResponse(
             {"status": "ok", "count": len(items), "session": quiz_studio.build_mock_exam_session(items)}
         )
@@ -3221,22 +3255,31 @@ class QuizSubmitAPIView(LoginRequiredMixin, View):
             return JsonResponse({"error": "Invalid answers payload."}, status=400)
 
         actor_id = get_request_actor_id(request)
-        session_id = str(body.get("session_id") or "")
+        if not _enforce_distributed_rate_limit(f"quiz_submit:{actor_id}", actor_id, max_requests=30, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        session_id = str(body.get("session_id") or "")[:64]
         answers = body["answers"]
         raw_item_ids = body.get("item_ids")
         target_ids = (
-            [str(i) for i in raw_item_ids if i] if isinstance(raw_item_ids, list) else [str(k) for k in answers]
+            [str(i) for i in raw_item_ids if i][:50]
+            if isinstance(raw_item_ids, list)
+            else [str(k) for k in answers][:50]
         )
-        items = surreal_db.get_exam_items_by_ids(actor_id, target_ids)
-        anchor_ids = [aid for item in items for aid in (item.get("anchor_ids") or [])]
-        anchors = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
-        graded = quiz_studio.grade_mock_exam_submission(
-            owner_id=actor_id,
-            session_id=session_id,
-            items=items,
-            answers=answers,
-            anchors_by_id=anchors,
-        )
+        try:
+            items = surreal_db.get_exam_items_by_ids(actor_id, target_ids)
+            anchor_ids = [aid for item in items for aid in (item.get("anchor_ids") or [])]
+            anchors = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
+            graded = quiz_studio.grade_mock_exam_submission(
+                owner_id=actor_id,
+                session_id=session_id,
+                items=items,
+                answers=answers,
+                anchors_by_id=anchors,
+            )
+        except Exception as exc:
+            logger.exception("[QuizSubmit] Grading failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
         return JsonResponse(graded)
 
 
@@ -3247,12 +3290,18 @@ class QuizExportMarkdownView(LoginRequiredMixin, View):
         from extractor import quiz_studio, surreal_db
 
         actor_id = get_request_actor_id(request)
+        if not _enforce_distributed_rate_limit(f"quiz_export:{actor_id}", actor_id, max_requests=20, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
         include_answers = request.GET.get("answers", "1") != "0"
-        items = surreal_db.list_exam_items(actor_id, due_only=False, limit=100)
+        try:
+            items = surreal_db.list_exam_items(actor_id, due_only=False, limit=100)
+        except Exception as exc:
+            logger.exception("[QuizExport] Failed to list exam items for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
         md = quiz_studio.export_exam_markdown(items, include_answers=include_answers)
         resp = HttpResponse(md, content_type="text/markdown; charset=utf-8")
-        resp["Content-Disposition"] = 'attachment; filename="korda_exam_pack.md"'
-        return resp
+        return _apply_markdown_download_headers(resp, "korda_exam_pack.md")
 
 
 class CrystalSynthesizeAPIView(LoginRequiredMixin, View):
@@ -3267,25 +3316,37 @@ class CrystalSynthesizeAPIView(LoginRequiredMixin, View):
         if err is not None or body is None:
             return err
 
-        title = str(body.get("title") or "").strip()
-        summary = str(body.get("summary") or "").strip()
-        doc_slug = str(body.get("doc_slug") or "general").strip()
-        anchor_ids = [str(a) for a in (body.get("anchor_ids") or []) if a]
+        actor_id = get_request_actor_id(request)
+        if not _enforce_distributed_rate_limit(
+            f"crystal_synth:{actor_id}", actor_id, max_requests=20, window_seconds=60
+        ):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        title = str(body.get("title") or "").strip()[:200]
+        summary = str(body.get("summary") or "").strip()[:5000]
+        doc_slug = str(body.get("doc_slug") or "general").strip()[:120] or "general"
+        raw_aids = body.get("anchor_ids")
+        anchor_ids = [str(a) for a in raw_aids if a][:50] if isinstance(raw_aids, list) else []
+        raw_tags = body.get("tags")
+        tags = [str(t)[:60] for t in raw_tags if t][:20] if isinstance(raw_tags, list) else []
         if not title or not summary:
             return JsonResponse({"error": "title and summary are required."}, status=400)
 
-        actor_id = get_request_actor_id(request)
         crystal_id = uuid.uuid4().hex[:16]
-        crystal = surreal_db.create_crystal_with_provenance(
-            crystal_id=crystal_id,
-            owner_id=actor_id,
-            doc_slug=doc_slug,
-            title=title,
-            summary=summary,
-            anchor_ids=anchor_ids,
-            status="verified",
-            tags=[str(t) for t in (body.get("tags") or []) if t],
-        )
+        try:
+            crystal = surreal_db.create_crystal_with_provenance(
+                crystal_id=crystal_id,
+                owner_id=actor_id,
+                doc_slug=doc_slug,
+                title=title,
+                summary=summary,
+                anchor_ids=anchor_ids,
+                status="verified",
+                tags=tags,
+            )
+        except Exception as exc:
+            logger.exception("[CrystalSynthesize] Failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
         return JsonResponse({"status": "ok", "crystal": crystal})
 
 
@@ -3296,17 +3357,28 @@ class MarkdownCompileAPIView(LoginRequiredMixin, View):
         from extractor import compiler, surreal_db
 
         actor_id = get_request_actor_id(request)
-        doc_slug = request.GET.get("doc_slug") or None
-        crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=200)
-        anchor_ids = [aid for c in crystals for aid in (c.get("anchor_ids") or [])]
-        anchors_by_id = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
+        if not _enforce_distributed_rate_limit(f"compile_md:{actor_id}", actor_id, max_requests=20, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        doc_slug = (request.GET.get("doc_slug") or "").strip()[:120] or None
+        try:
+            crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=200)
+            anchor_ids = [aid for c in crystals for aid in (c.get("anchor_ids") or [])]
+            anchors_by_id = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
+        except Exception as exc:
+            logger.exception("[MarkdownCompile] Failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
+
         for crystal in crystals:
             crystal["anchors"] = [
                 anchors_by_id[aid] for aid in (crystal.get("anchor_ids") or []) if aid in anchors_by_id
             ]
         bundles = compiler.compile_markdown_bundles(crystals)
-        if request.GET.get("download") == "1" and bundles:
-            resp = HttpResponse(bundles[0], content_type="text/markdown; charset=utf-8")
-            resp["Content-Disposition"] = 'attachment; filename="korda_kb_part_1.md"'
-            return resp
+        if request.GET.get("download") == "1":
+            if not bundles:
+                return JsonResponse({"error": "No verified crystals available to compile."}, status=404)
+            part_num = _parse_positive_int(request.GET.get("part"), default=1, min_val=1, max_val=len(bundles)) or 1
+            part_idx = part_num - 1
+            resp = HttpResponse(bundles[part_idx], content_type="text/markdown; charset=utf-8")
+            return _apply_markdown_download_headers(resp, f"korda_kb_part_{part_num}.md")
         return JsonResponse({"status": "ok", "bundle_count": len(bundles), "bundles": bundles})

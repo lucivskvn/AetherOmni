@@ -1163,6 +1163,18 @@ tr:hover td {
     opacity: 1;
 }
 
+@media (max-width: 720px) {
+    .export-footer {
+        width: calc(100% - 24px);
+        bottom: 12px;
+        border-radius: 16px;
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+    }
+}
+
 .chart-container {
     position: relative;
     height: 180px;

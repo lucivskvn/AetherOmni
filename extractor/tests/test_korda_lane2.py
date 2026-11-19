@@ -178,3 +178,83 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
         ):
             resp2 = views.QuizGenerateAPIView.as_view()(req)
         self.assertEqual(resp2.status_code, 429)
+
+    def test_quiz_generate_api_returns_503_when_vertex_unavailable_and_400_on_bad_count(self):
+        import json
+        from types import SimpleNamespace
+
+        from django.test import RequestFactory
+
+        from extractor import views
+
+        rf = RequestFactory()
+        user = SimpleNamespace(is_authenticated=True, id=1, username="u1")
+
+        bad_req = rf.post(
+            "/api/v1/quiz/generate/",
+            data=json.dumps({"difficulty": "Medium", "count": True}),
+            content_type="application/json",
+        )
+        bad_req.user = user
+        with (
+            patch.object(views, "_is_budget_exceeded", return_value=False),
+            patch.object(views, "_enforce_distributed_rate_limit", return_value=True),
+        ):
+            bad_resp = views.QuizGenerateAPIView.as_view()(bad_req)
+        self.assertEqual(bad_resp.status_code, 400)
+
+        unavail_req = rf.post(
+            "/api/v1/quiz/generate/",
+            data=json.dumps({"difficulty": "Medium", "count": 2, "crystals": [{"title": "T", "summary": "S"}]}),
+            content_type="application/json",
+        )
+        unavail_req.user = user
+        with (
+            patch.object(views, "_is_budget_exceeded", return_value=False),
+            patch.object(views, "_enforce_distributed_rate_limit", return_value=True),
+            patch("extractor.quiz_studio.generate_and_persist_quiz", side_effect=ValueError("Vertex unavailable")),
+        ):
+            unavail_resp = views.QuizGenerateAPIView.as_view()(unavail_req)
+        self.assertEqual(unavail_resp.status_code, 503)
+
+    def test_quiz_submit_api_offline_roundtrip(self):
+        import json
+        from types import SimpleNamespace
+
+        from django.test import RequestFactory, override_settings
+
+        from extractor import surreal_db, views
+
+        surreal_db._test_korda_exam_items.clear()
+        rf = RequestFactory()
+        user = SimpleNamespace(is_authenticated=True, id=7, username="u7")
+        with override_settings(SURREALDB_OFFLINE=True):
+            surreal_db.save_exam_items(
+                "7",
+                [
+                    {
+                        "item_id": "item-1",
+                        "topic": "Security",
+                        "difficulty": "Medium",
+                        "item_format": "MCQ",
+                        "stem": "Which role?",
+                        "choices": ["A", "B"],
+                        "correct_answer": "A",
+                        "hint": "Least privilege",
+                        "distractor_rationales": {"B": "Too broad"},
+                        "anchor_ids": [],
+                    }
+                ],
+            )
+            req = rf.post(
+                "/api/v1/quiz/submit/",
+                data=json.dumps({"session_id": "s1", "item_ids": ["item-1"], "answers": {"item-1": "A"}}),
+                content_type="application/json",
+            )
+            req.user = user
+            with patch.object(views, "_enforce_distributed_rate_limit", return_value=True):
+                resp = views.QuizSubmitAPIView.as_view()(req)
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["score"], 1)
+        self.assertEqual(data["total"], 1)

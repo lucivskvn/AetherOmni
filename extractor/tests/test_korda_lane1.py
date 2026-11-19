@@ -164,3 +164,114 @@ class KordaLane1Tests(SimpleTestCase):
         mock_upsert.assert_called_once()
         mock_extract.assert_called_once()
         mock_create.assert_called_once()
+
+    def test_eventarc_gcs_raw_view_unwraps_cloudevent_and_pubsub_envelopes(self):
+        import base64
+        import json
+
+        from django.test import RequestFactory, override_settings
+
+        from extractor import task_handlers
+
+        rf = RequestFactory()
+        inner = {
+            "bucket": "test-bucket",
+            "name": "raw/ephemeral/user1/slug1/doc.pdf",
+            "contentType": "application/pdf",
+        }
+        ce_payload = {"type": "google.cloud.storage.object.v1.finalized", "data": inner}
+        pubsub_payload = {"message": {"data": base64.b64encode(json.dumps(inner).encode("utf-8")).decode("ascii")}}
+
+        with (
+            override_settings(DEBUG=True, GS_BUCKET_NAME="test-bucket"),
+            patch("extractor.llm_gateway.extract_anchors_from_gcs_uri", return_value={"anchors": []}),
+            patch("extractor.surreal_db.upsert_source", return_value={"source_id": "user1:slug1"}),
+        ):
+            r1 = task_handlers.EventarcGCSRawView.as_view()(
+                rf.post("/internal/events/gcs-raw/", data=json.dumps(ce_payload), content_type="application/json")
+            )
+            r2 = task_handlers.EventarcGCSRawView.as_view()(
+                rf.post("/internal/events/gcs-raw/", data=json.dumps(pubsub_payload), content_type="application/json")
+            )
+        self.assertEqual(r1.status_code, 200)
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(json.loads(r1.content)["status"], "accepted")
+        self.assertEqual(json.loads(r2.content)["status"], "accepted")
+
+    def test_surreal_check_error_and_last_non_null_result(self):
+        from extractor import surreal_db
+
+        with self.assertRaises(RuntimeError):
+            surreal_db._check_surreal_error([{"status": "OK", "result": None}, {"status": "ERR", "detail": "boom"}])
+
+        res = surreal_db._last_non_null_result(
+            [
+                {"status": "OK", "result": None},
+                {"status": "OK", "result": {"live_spent": 1.5, "cap": 10.0}},
+            ]
+        )
+        self.assertEqual(res, {"live_spent": 1.5, "cap": 10.0})
+
+    def test_strict_librarian_and_crystal_and_compile_views_offline_roundtrip(self):
+        import json
+        from types import SimpleNamespace
+
+        from django.test import RequestFactory, override_settings
+
+        from extractor import surreal_db, views
+
+        surreal_db._test_korda_sources.clear()
+        surreal_db._test_korda_anchors.clear()
+        surreal_db._test_korda_crystals.clear()
+
+        rf = RequestFactory()
+        user = SimpleNamespace(is_authenticated=True, id=42, username="u42")
+        with override_settings(SURREALDB_OFFLINE=True):
+            surreal_db.upsert_source(
+                source_id="42:guide",
+                doc_slug="guide",
+                owner_id="42",
+                title="Guide",
+                mime_type="application/pdf",
+                gcs_uri="gs://b/raw/latest/42/guide/g.pdf",
+                sha256="abc",
+            )
+            surreal_db.create_anchors_with_provenance(
+                source_id="42:guide",
+                doc_slug="guide",
+                owner_id="42",
+                anchors=[{"anchor_id": "a1", "quote": "Zero-copy GCS URI extraction", "page_num": 2}],
+            )
+            with patch.object(views, "_enforce_distributed_rate_limit", return_value=True):
+                req_lib = rf.post(
+                    "/api/v1/librarian/",
+                    data=json.dumps({"query": "Zero-copy GCS"}),
+                    content_type="application/json",
+                )
+                req_lib.user = user
+                lib_resp = views.StrictLibrarianAPIView.as_view()(req_lib)
+                self.assertEqual(lib_resp.status_code, 200)
+                self.assertGreaterEqual(len(json.loads(lib_resp.content)["evidence"]), 1)
+
+                req_crys = rf.post(
+                    "/api/v1/crystals/synthesize/",
+                    data=json.dumps(
+                        {
+                            "title": "GCS Zero Copy",
+                            "summary": "Avoids bytes copy.",
+                            "doc_slug": "guide",
+                            "anchor_ids": ["a1"],
+                        }
+                    ),
+                    content_type="application/json",
+                )
+                req_crys.user = user
+                crys_resp = views.CrystalSynthesizeAPIView.as_view()(req_crys)
+                self.assertEqual(crys_resp.status_code, 200)
+
+                req_comp = rf.get("/api/v1/compile-markdown/?download=1")
+                req_comp.user = user
+                comp_resp = views.MarkdownCompileAPIView.as_view()(req_comp)
+                self.assertEqual(comp_resp.status_code, 200)
+                self.assertEqual(comp_resp["X-Content-Type-Options"], "nosniff")
+                self.assertIn("GCS Zero Copy", comp_resp.content.decode("utf-8"))

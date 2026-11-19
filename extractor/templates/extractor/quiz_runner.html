@@ -9,7 +9,9 @@
             <p class="text-muted" style="margin: 0.25rem 0 0;">Persistent FSRS exam bank with zero-LLM retakes and cited evidence review.</p>
         </div>
         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;">
-            <span id="exam-timer" class="badge badge-pending" role="timer" data-duration="{{ exam_session.duration_seconds|default:900 }}" aria-label="Remaining exam time">15:00</span>
+            {% if exam_session.questions %}
+            <span id="exam-timer" class="badge badge-pending" role="timer" aria-live="off" data-duration="{{ exam_session.duration_seconds|default:900 }}" aria-label="Remaining exam time">15:00</span>
+            {% endif %}
             <a href="{% url 'quiz_export_markdown' %}?answers=1" class="btn btn-secondary">Export w/ Key (.md)</a>
             <a href="{% url 'quiz_export_markdown' %}?answers=0" class="btn btn-secondary">Export Exam Only (.md)</a>
         </div>
@@ -34,7 +36,12 @@
                 </label>
                 <label style="flex: 2; min-width: 200px;">
                     Topic / Doc Slug Scope (optional)
-                    <input id="gen-doc-slug" type="text" placeholder="e.g. cloud-run-guide" class="search-input" style="width: 100%; margin-top: 0.25rem;">
+                    <input id="gen-doc-slug" type="text" list="doc-slug-options" placeholder="e.g. cloud-run-guide" class="search-input" style="width: 100%; margin-top: 0.25rem;">
+                    <datalist id="doc-slug-options">
+                        {% for c in crystals %}
+                        {% if c.doc_slug %}<option value="{{ c.doc_slug }}">{{ c.title|default:c.doc_slug }}</option>{% endif %}
+                        {% endfor %}
+                    </datalist>
                 </label>
             </div>
             <fieldset style="border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.75rem;">
@@ -71,20 +78,23 @@
                 </div>
                 <p style="margin-bottom: 0.75rem;">{{ q.stem }}</p>
                 {% if q.choices %}
-                <ul style="list-style: none; padding: 0; margin: 0 0 0.75rem;">
-                    {% for choice in q.choices %}
-                    <li style="margin-bottom: 0.4rem;">
-                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                            {% if q.item_format == "Multi-Select" %}
-                            <input type="checkbox" name="q_{{ q.item_id }}" value="{{ choice }}">
-                            {% else %}
-                            <input type="radio" name="q_{{ q.item_id }}" value="{{ choice }}">
-                            {% endif %}
-                            <span>{{ choice }}</span>
-                        </label>
-                    </li>
-                    {% endfor %}
-                </ul>
+                <fieldset style="border: 0; padding: 0; margin: 0 0 0.75rem;">
+                    <legend class="visually-hidden">Question {{ q.index }}: {{ q.stem }}</legend>
+                    <ul style="list-style: none; padding: 0; margin: 0;">
+                        {% for choice in q.choices %}
+                        <li style="margin-bottom: 0.4rem;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                {% if q.item_format == "Multi-Select" %}
+                                <input type="checkbox" name="q_{{ q.item_id }}" value="{{ choice }}">
+                                {% else %}
+                                <input type="radio" name="q_{{ q.item_id }}" value="{{ choice }}">
+                                {% endif %}
+                                <span>{{ choice }}</span>
+                            </label>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </fieldset>
                 {% else %}
                 <label class="visually-hidden" for="input-{{ q.item_id }}">Answer for Question {{ q.index }}</label>
                 <input id="input-{{ q.item_id }}" type="text" name="q_{{ q.item_id }}" class="search-input" style="width: 100%; margin-bottom: 0.75rem;" placeholder="Type your answer...">
@@ -97,7 +107,10 @@
                 {% endif %}
             </article>
             {% endfor %}
-            <button type="submit" id="btn-submit-exam" class="btn btn-primary">Submit Mock Exam</button>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <button type="submit" id="btn-submit-exam" class="btn btn-primary">Submit Mock Exam</button>
+                <span id="exam-submit-status" class="text-muted" role="alert" aria-live="polite"></span>
+            </div>
         </form>
         {% else %}
         <div class="glass-card" style="padding: 2rem; text-align: center;">
@@ -107,7 +120,7 @@
     </div>
 
     <section id="exam-results-section" class="glass-card" style="display: none; padding: 1.5rem; margin-top: 1.5rem;" aria-live="polite">
-        <h2 id="exam-score-heading" style="margin-top: 0;">Exam Results</h2>
+        <h2 id="exam-score-heading" tabindex="-1" style="margin-top: 0;">Exam Results</h2>
         <div id="exam-results-list" style="display: grid; gap: 1rem;"></div>
     </section>
 </section>
@@ -115,7 +128,9 @@
 <script>
 (function () {
     const timerEl = document.getElementById('exam-timer');
-    if (timerEl) {
+    const examForm = document.getElementById('mock-exam-form');
+    let timerInterval = null;
+    if (timerEl && examForm) {
         let remaining = parseInt(timerEl.dataset.duration || '900', 10);
         const renderTimer = () => {
             const mins = String(Math.floor(Math.max(0, remaining) / 60)).padStart(2, '0');
@@ -123,15 +138,21 @@
             timerEl.textContent = mins + ':' + secs;
         };
         renderTimer();
-        const interval = setInterval(() => {
+        timerInterval = setInterval(() => {
             remaining -= 1;
             renderTimer();
             if (remaining <= 0) {
-                clearInterval(interval);
-                const form = document.getElementById('mock-exam-form');
-                if (form) form.requestSubmit();
+                clearInterval(timerInterval);
+                timerInterval = null;
+                examForm.requestSubmit();
             }
         }, 1000);
+        globalThis.addEventListener('pagehide', () => {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        });
     }
 
     function getCsrfToken(root) {
@@ -139,46 +160,98 @@
         return input ? input.value : '';
     }
 
+    function isSafeSignedGcsUrl(rawUrl) {
+        try {
+            const parsed = new URL(String(rawUrl));
+            return parsed.protocol === 'https:' && (
+                parsed.hostname === 'storage.googleapis.com' ||
+                parsed.hostname.endsWith('.storage.googleapis.com')
+            );
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function formatAnswerDisplay(val) {
+        if (val === null || val === undefined || val === '') return '(Unanswered)';
+        if (Array.isArray(val)) return val.length ? val.join(', ') : '(Unanswered)';
+        return String(val);
+    }
+
     const genForm = document.getElementById('quiz-generate-form');
     if (genForm) {
+        let isGenerating = false;
         genForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isGenerating) return;
             const statusEl = document.getElementById('gen-status');
-            if (statusEl) statusEl.textContent = 'Generating persistent exam items...';
+            const genBtn = document.getElementById('btn-generate-quiz');
             const formats = Array.from(genForm.querySelectorAll('input[name="gen_format"]:checked')).map((el) => el.value);
             let weights = null;
             const rawWeights = (document.getElementById('gen-weights')?.value || '').trim();
             if (rawWeights) {
-                try { weights = JSON.parse(rawWeights); } catch (_) {
-                    if (statusEl) statusEl.textContent = 'Invalid Blueprint Weighting JSON.';
+                try {
+                    weights = JSON.parse(rawWeights);
+                    if (!weights || typeof weights !== 'object' || Array.isArray(weights)) {
+                        throw new Error('Must be a JSON object');
+                    }
+                } catch (_) {
+                    if (statusEl) statusEl.textContent = 'Invalid Blueprint Weighting JSON (expected an object).';
                     return;
                 }
             }
-            const resp = await fetch('{% url "quiz_generate" %}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(genForm) },
-                body: JSON.stringify({
-                    difficulty: document.getElementById('gen-difficulty')?.value || 'Medium',
-                    count: parseInt(document.getElementById('gen-count')?.value || '5', 10),
-                    doc_slug: (document.getElementById('gen-doc-slug')?.value || '').trim(),
-                    formats: formats.length ? formats : ['MCQ'],
-                    focus_prompt: (document.getElementById('gen-focus')?.value || '').trim(),
-                    blueprint_weights: weights
-                })
-            });
-            const data = await resp.json();
-            if (!resp.ok) {
-                if (statusEl) statusEl.textContent = data.error || 'Generation failed.';
-                return;
+            isGenerating = true;
+            if (genBtn) {
+                genBtn.disabled = true;
+                genBtn.setAttribute('aria-busy', 'true');
             }
-            globalThis.location.reload();
+            if (statusEl) statusEl.textContent = 'Generating persistent exam items...';
+            try {
+                const resp = await fetch('{% url "quiz_generate" %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(genForm) },
+                    body: JSON.stringify({
+                        difficulty: document.getElementById('gen-difficulty')?.value || 'Medium',
+                        count: parseInt(document.getElementById('gen-count')?.value || '5', 10),
+                        doc_slug: (document.getElementById('gen-doc-slug')?.value || '').trim(),
+                        formats: formats.length ? formats : ['MCQ'],
+                        focus_prompt: (document.getElementById('gen-focus')?.value || '').trim(),
+                        blueprint_weights: weights
+                    })
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    if (statusEl) statusEl.textContent = data.error || 'Generation failed. Please retry.';
+                    return;
+                }
+                globalThis.location.reload();
+            } catch (_) {
+                if (statusEl) statusEl.textContent = 'Network error while generating quiz. Please retry.';
+            } finally {
+                isGenerating = false;
+                if (genBtn) {
+                    genBtn.disabled = false;
+                    genBtn.removeAttribute('aria-busy');
+                }
+            }
         });
     }
 
-    const examForm = document.getElementById('mock-exam-form');
     if (examForm) {
+        let isSubmitting = false;
+        let isCompleted = false;
         examForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isSubmitting || isCompleted) return;
+            const submitBtn = document.getElementById('btn-submit-exam');
+            const submitStatus = document.getElementById('exam-submit-status');
+            isSubmitting = true;
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.setAttribute('aria-busy', 'true');
+            }
+            if (submitStatus) submitStatus.textContent = 'Grading submission...';
+
             const cards = Array.from(examForm.querySelectorAll('.quiz-question-card'));
             const itemIds = [];
             const answers = {};
@@ -195,69 +268,91 @@
                 }
             });
 
-            const resp = await fetch(examForm.dataset.submitUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(examForm) },
-                body: JSON.stringify({
-                    session_id: examForm.dataset.sessionId || '',
-                    item_ids: itemIds,
-                    answers: answers
-                })
-            });
-            const data = await resp.json();
-            const section = document.getElementById('exam-results-section');
-            const heading = document.getElementById('exam-score-heading');
-            const list = document.getElementById('exam-results-list');
-            if (!section || !heading || !list) return;
-
-            heading.textContent = 'Score: ' + (data.score ?? 0) + ' / ' + (data.total ?? 0);
-            list.replaceChildren();
-            (data.results || []).forEach((r) => {
-                const card = document.createElement('div');
-                card.style.padding = '1rem';
-                card.style.border = '1px solid var(--border-subtle)';
-                card.style.borderRadius = '8px';
-
-                const title = document.createElement('strong');
-                title.textContent = (r.is_correct ? 'PASS: ' : 'MISS: ') + (r.stem || '');
-                card.appendChild(title);
-
-                const ans = document.createElement('p');
-                ans.textContent = 'Your answer: ' + JSON.stringify(r.submitted) + ' | Expected: ' + JSON.stringify(r.correct_answer);
-                card.appendChild(ans);
-
-                Object.entries(r.distractor_rationales || {}).forEach(([opt, reason]) => {
-                    const rp = document.createElement('p');
-                    rp.className = 'text-muted';
-                    rp.textContent = opt + ': ' + reason;
-                    card.appendChild(rp);
+            try {
+                const resp = await fetch(examForm.dataset.submitUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(examForm) },
+                    body: JSON.stringify({
+                        session_id: examForm.dataset.sessionId || '',
+                        item_ids: itemIds,
+                        answers: answers
+                    })
                 });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    if (submitStatus) submitStatus.textContent = data.error || 'Exam submission failed. Please retry.';
+                    return;
+                }
+                isCompleted = true;
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+                if (submitStatus) submitStatus.textContent = 'Exam graded.';
 
-                (r.evidence || []).forEach((ev) => {
-                    const evBox = document.createElement('blockquote');
-                    evBox.style.margin = '0.5rem 0';
-                    evBox.style.paddingLeft = '0.75rem';
-                    evBox.style.borderLeft = '3px solid var(--border-subtle)';
-                    evBox.textContent = '[' + (ev.coord || '') + '] ' + (ev.quote || '');
-                    if (ev.card_type === 'live_gcs' && ev.signed_url) {
-                        const link = document.createElement('a');
-                        link.href = ev.signed_url;
-                        link.target = '_blank';
-                        link.rel = 'noopener noreferrer';
-                        link.textContent = ' (Open Live Asset)';
-                        evBox.appendChild(link);
-                    } else if (ev.card_type === 'tombstone') {
-                        const tomb = document.createElement('span');
-                        tomb.className = 'text-muted';
-                        tomb.textContent = ' [Tombstone sha256: ' + (ev.sha256 || 'archived') + ']';
-                        evBox.appendChild(tomb);
-                    }
-                    card.appendChild(evBox);
+                const section = document.getElementById('exam-results-section');
+                const heading = document.getElementById('exam-score-heading');
+                const list = document.getElementById('exam-results-list');
+                if (!section || !heading || !list) return;
+
+                heading.textContent = 'Score: ' + (data.score ?? 0) + ' / ' + (data.total ?? 0);
+                list.replaceChildren();
+                (data.results || []).forEach((r) => {
+                    const card = document.createElement('div');
+                    card.style.padding = '1rem';
+                    card.style.border = '1px solid var(--border-subtle)';
+                    card.style.borderRadius = '8px';
+
+                    const title = document.createElement('strong');
+                    title.textContent = (r.is_correct ? 'PASS: ' : 'MISS: ') + (r.stem || '');
+                    card.appendChild(title);
+
+                    const ans = document.createElement('p');
+                    ans.textContent = 'Your answer: ' + formatAnswerDisplay(r.submitted) + ' | Expected: ' + formatAnswerDisplay(r.correct_answer);
+                    card.appendChild(ans);
+
+                    Object.entries(r.distractor_rationales || {}).forEach(([opt, reason]) => {
+                        const rp = document.createElement('p');
+                        rp.className = 'text-muted';
+                        rp.textContent = opt + ': ' + reason;
+                        card.appendChild(rp);
+                    });
+
+                    (r.evidence || []).forEach((ev) => {
+                        const evBox = document.createElement('blockquote');
+                        evBox.style.margin = '0.5rem 0';
+                        evBox.style.paddingLeft = '0.75rem';
+                        evBox.style.borderLeft = '3px solid var(--border-subtle)';
+                        evBox.textContent = '[' + (ev.coord || '') + '] ' + (ev.quote || '');
+                        if (ev.card_type === 'live_gcs' && ev.signed_url && isSafeSignedGcsUrl(ev.signed_url)) {
+                            const link = document.createElement('a');
+                            link.setAttribute('href', ev.signed_url);
+                            link.target = '_blank';
+                            link.rel = 'noopener noreferrer';
+                            link.textContent = ' (Open Live Asset)';
+                            evBox.appendChild(link);
+                        } else if (ev.card_type === 'tombstone') {
+                            const tomb = document.createElement('span');
+                            tomb.className = 'text-muted';
+                            tomb.textContent = ' [Tombstone sha256: ' + (ev.sha256 || 'archived') + ']';
+                            evBox.appendChild(tomb);
+                        }
+                        card.appendChild(evBox);
+                    });
+                    list.appendChild(card);
                 });
-                list.appendChild(card);
-            });
-            section.style.display = 'block';
-            section.scrollIntoView({ behavior: 'smooth' });
+                section.style.display = 'block';
+                section.scrollIntoView({ behavior: 'smooth' });
+                heading.focus({ preventScroll: true });
+            } catch (_) {
+                if (submitStatus) submitStatus.textContent = 'Network error while submitting exam. Your answers are preserved; please retry.';
+            } finally {
+                isSubmitting = false;
+                if (submitBtn && !isCompleted) {
+                    submitBtn.disabled = false;
+                    submitBtn.removeAttribute('aria-busy');
+                }
+            }
         });
     }
 })();
