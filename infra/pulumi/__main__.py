@@ -111,6 +111,14 @@ for idx, role in enumerate(iam_roles):
     )
     iam_members.append(member)
 
+gcp.projects.IAMMember(
+    "korda-gcs-pubsub-publisher",
+    project=project,
+    role="roles/pubsub.publisher",
+    member=f"serviceAccount:service-{project_info.number}@gs-project-accounts.iam.gserviceaccount.com",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
 gcp.cloudtasks.QueueIamMember(
     "korda-queue-task-deleter",
     name=tasks_queue.name,
@@ -164,8 +172,10 @@ common_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="SURREAL_NS", value="korda"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="SURREAL_DB", value="extractor"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="SURREALDB_OFFLINE", value="False"),
-    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_LITE", value="gemini-3.1-flash-lite"),
-    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_PRO", value="gemini-3-flash"),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL", value="gemini-2.5-flash"),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_BATCH", value="gemini-2.5-flash-lite"),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_LITE", value="gemini-2.5-flash-lite"),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_PRO", value="gemini-2.5-flash"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
         name="CLOUD_TASKS_SERVICE_ACCOUNT",
         value=f"{project_info.number}-compute@developer.gserviceaccount.com",
@@ -298,11 +308,37 @@ if custom_domain:
         opts=pulumi.ResourceOptions(provider=gcp_provider),
     )
 
+# 7. Cloud Run Job for Scheduled Off-Host SurrealDB Backups
+backup_job = gcp.cloudrunv2.Job(
+    "korda-backup-job",
+    name="korda-backup-job",
+    location=region,
+    project=project,
+    template=gcp.cloudrunv2.JobTemplateArgs(
+        template=gcp.cloudrunv2.JobTemplateTemplateArgs(
+            service_account=service_account.email,
+            max_retries=1,
+            containers=[
+                gcp.cloudrunv2.JobTemplateTemplateContainerArgs(
+                    image=container_image,
+                    args=["manage.py", "backup_surreal"],
+                    envs=common_env + secret_envs,
+                    resources=gcp.cloudrunv2.JobTemplateTemplateContainerResourcesArgs(
+                        limits={"cpu": "1000m", "memory": "1Gi"}
+                    ),
+                )
+            ],
+        )
+    ),
+    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
+)
+
 # Stack Outputs
 pulumi.export("web_url", web_service.uri)
 pulumi.export("worker_url", worker_service.uri)
 pulumi.export("bucket_name", media_bucket.name)
 pulumi.export("backup_bucket_name", backup_bucket.name)
+pulumi.export("backup_job_name", backup_job.name)
 pulumi.export("service_account_email", service_account.email)
 pulumi.export("queue_name", tasks_queue.name)
 pulumi.export("artifact_registry_name", artifact_repo.name)

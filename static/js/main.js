@@ -1159,7 +1159,7 @@ function initializeRAGSearch() {
         const docIds = getSelectedDocIds();
         let url = `${streaming ? '/api/v1/stream-query/' : '/rag-search/'}?q=${encodeURIComponent(query)}`;
         if (docIds.length > 0) {
-            url += `&document_ids=${docIds.join(',')}`;
+            url += `&document_ids=${docIds.map(encodeURIComponent).join(',')}`;
         }
         return url;
     }
@@ -1180,6 +1180,55 @@ function initializeRAGSearch() {
         renderRagSources(data?.sources);
     }
 
+    async function runStrictLibrarianSearch(query, librarianUrl) {
+        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+        const resp = await fetch(librarianUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+            },
+            body: JSON.stringify({ query }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data?.error || 'Strict Librarian search failed.');
+        const evidence = Array.isArray(data?.evidence) ? data.evidence : [];
+        ragAnswer.textContent = evidence.length
+            ? `Strict Librarian (${evidence.length} verbatim matches, zero LLM):`
+            : 'No verbatim anchor matches found.';
+        ragSourcesList.replaceChildren();
+        evidence.forEach(ev => {
+            const li = document.createElement('li');
+            li.textContent = `[${ev.doc_slug || ev.source_id || 'source'} | ${ev.coord || ''}] ${ev.quote || ''}`;
+            ragSourcesList.appendChild(li);
+        });
+        if (evidence.length === 0) {
+            const li = document.createElement('li');
+            li.textContent = 'No verbatim anchor matches found.';
+            ragSourcesList.appendChild(li);
+        }
+    }
+
+    async function _executeStreamingOrFallbackRag(query) {
+        let streamedSources = [];
+        ragAnswer.textContent = '';
+        ragResults.style.display = 'block';
+        try {
+            await executeRagStream(buildRagUrl(query, true), event => {
+                if (event.error) throw new Error(event.error);
+                if (event.sources) {
+                    streamedSources = event.sources;
+                    renderRagSources(streamedSources);
+                }
+                if (event.token) ragAnswer.textContent += event.token;
+            });
+        } catch (streamError) {
+            if (!(streamError instanceof RagStreamUnavailableError)) throw streamError;
+            const data = await executeRagFetch(buildRagUrl(query));
+            _renderFallbackRagAnswer(data);
+        }
+    }
+
     async function runSemanticRAG() {
         if (!ragQuery || !ragBtn || !ragLoader || !ragResults || !ragAnswer || !ragSourcesList) return;
         const query = ragQuery.value.trim();
@@ -1194,22 +1243,11 @@ function initializeRAGSearch() {
         _setRagSearchBusy(true);
 
         try {
-            let streamedSources = [];
-            ragAnswer.textContent = '';
-            ragResults.style.display = 'block';
-            try {
-                await executeRagStream(buildRagUrl(query, true), event => {
-                    if (event.error) throw new Error(event.error);
-                    if (event.sources) {
-                        streamedSources = event.sources;
-                        renderRagSources(streamedSources);
-                    }
-                    if (event.token) ragAnswer.textContent += event.token;
-                });
-            } catch (streamError) {
-                if (!(streamError instanceof RagStreamUnavailableError)) throw streamError;
-                const data = await executeRagFetch(buildRagUrl(query));
-                _renderFallbackRagAnswer(data);
+            const strictToggle = document.getElementById('strict-librarian-toggle');
+            if (strictToggle?.checked && strictToggle.dataset.librarianUrl) {
+                await runStrictLibrarianSearch(query, strictToggle.dataset.librarianUrl);
+            } else {
+                await _executeStreamingOrFallbackRag(query);
             }
             _setRagSearchBusy(false);
             ragResults.style.display = 'block';

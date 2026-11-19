@@ -25,7 +25,7 @@
         <div class="metric-value">{{ formatted_monthly_spent }}</div>
         <div class="metric-sub">
             Cap: {{ formatted_budget_cap }}
-            <div class="budget-bar-container">
+            <div class="budget-bar-container" role="progressbar" aria-label="Monthly AI compute budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{% if budget_exceeded %}100{% else %}{{ stats.percent_spent|default:0 }}{% endif %}">
                 <!-- Calc percent in template -->
                 <div class="budget-bar-fill" style="width: {% if budget_exceeded %}100%{% else %}{{ stats.percent_spent }}%{% endif %};"></div>
             </div>
@@ -141,7 +141,7 @@
                     <table>
                         <thead>
                             <tr>
-                                <th class="checkbox-col"></th>
+                                <th class="checkbox-col"><span class="visually-hidden">Select</span></th>
                                 <th>
                                     <a href="?sort_by={% if sort_by == 'name' %}-name{% else %}name{% endif %}" class="sort-link" style="display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none;">
                                         Name / Source
@@ -279,14 +279,20 @@
                     <kbd class="search-shortcut-hint" id="search-hint" aria-label="Shortcut: forward slash">/</kbd>
                 </div>
                 <button type="submit" id="rag-btn" class="btn btn-primary" aria-label="Submit search" title="Submit search">
-                    <i data-lucide="search"></i>
+                    <i data-lucide="search" aria-hidden="true"></i>
                 </button>
             </form>
+            <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 13px;">
+                <label style="display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                    <input type="checkbox" id="strict-librarian-toggle" data-librarian-url="{% url 'strict_librarian_search' %}">
+                    <span>Strict Librarian Mode (Zero-LLM Verbatim + Coordinates)</span>
+                </label>
+            </div>
 
             <!-- Loader -->
             <div id="rag-loader" class="search-loader">
-                <i data-lucide="loader" class="spinner"></i>
-                <div class="search-loader-text">Running vector search & generating response...</div>
+                <i data-lucide="loader" class="spinner" aria-hidden="true"></i>
+                <div class="search-loader-text">Running vector search &amp; generating response...</div>
             </div>
 
             <!-- Display box -->
@@ -306,7 +312,7 @@
     <span>
         <span id="selected-count">0</span> sources selected
     </span>
-    <div class="flex-gap-sm" style="display: flex; gap: 8px; align-items: center;">
+    <div class="flex-gap-sm" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
         <div class="export-format-selector" style="display: flex; align-items: center; gap: 6px;">
             <label for="export-format" class="visually-hidden">Export Format</label>
             <select id="export-format" name="export_format" class="btn btn-secondary" style="padding: 6px 10px; font-size: 13px; cursor: pointer; border-radius: var(--border-radius-sm); height: auto;">
@@ -319,6 +325,9 @@
         <button type="submit" form="export-form" id="btn-export-submit" class="btn btn-primary" title="Export Selected Documents">
             <i data-lucide="download-cloud" aria-hidden="true"></i> Export Selected
         </button>
+        <a href="{% url 'compile_markdown' %}?download=1" class="btn btn-secondary" title="Compile Verified Crystals into NotebookLM Markdown">
+            <i data-lucide="book-marked" aria-hidden="true"></i> Compile KB (.md)
+        </a>
         <button type="button" id="btn-bulk-restart" class="btn btn-secondary" title="Bulk Restart Processing" data-action-url="{% url 'bulk_action' %}">
             <i data-lucide="refresh-cw" aria-hidden="true"></i> Bulk Restart
         </button>

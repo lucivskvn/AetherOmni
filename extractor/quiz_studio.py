@@ -38,6 +38,21 @@ def _normalize_generated_item(
     }
 
 
+def _sanitize_blueprint_weights(blueprint_weights: dict[str, float] | None) -> dict[str, float]:
+    """Filter blueprint_weights to positive float entries keyed by string."""
+    clean_weights: dict[str, float] = {}
+    if not isinstance(blueprint_weights, dict):
+        return clean_weights
+    for k, v in blueprint_weights.items():
+        try:
+            w = float(v)
+        except TypeError, ValueError:
+            continue
+        if w > 0:
+            clean_weights[str(k)] = w
+    return clean_weights
+
+
 def generate_and_persist_quiz(
     *,
     owner_id: str,
@@ -62,8 +77,9 @@ def generate_and_persist_quiz(
 
     model_name = llm_gateway.MODEL_TIER_PRO if diff == "Hard" else llm_gateway.MODEL_TIER_LITE
     context_json = json.dumps(crystals[:20], ensure_ascii=False)
-    weights_note = f" Blueprint weights: {json.dumps(blueprint_weights)}." if blueprint_weights else ""
-    focus_note = f" Focus: {focus_prompt}." if focus_prompt else ""
+    clean_weights = _sanitize_blueprint_weights(blueprint_weights)
+    weights_note = f" Blueprint weights: {json.dumps(clean_weights)}." if clean_weights else ""
+    focus_note = f" Focus: {focus_prompt[:500]}." if focus_prompt else ""
 
     prompt = (
         f"Generate {n_items} exam items at difficulty '{diff}' using formats {fmt_list}.{weights_note}{focus_note} "
@@ -82,7 +98,10 @@ def generate_and_persist_quiz(
             response_mime_type=llm_gateway.APPLICATION_JSON,
         ),
     )
-    parsed = json.loads(response.text or "{}")
+    try:
+        parsed = json.loads(response.text or "{}")
+    except json.JSONDecodeError:
+        parsed = {}
     raw_items = list(parsed.get("items") or [])
 
     fallback_anchor_ids = [aid for c in crystals for aid in (c.get("anchor_ids") or [])]
@@ -134,6 +153,7 @@ def build_mock_exam_session(
     return {
         "session_id": uuid.uuid4().hex[:16],
         "duration_seconds": max(60, int(duration_seconds)),
+        "item_ids": [q["item_id"] for q in questions if q.get("item_id")],
         "questions": questions,
     }
 
@@ -146,8 +166,29 @@ def _answers_match(expected: Any, submitted: Any, item_format: str) -> bool:
     return str(expected).strip().lower() == str(submitted).strip().lower()
 
 
+def _generate_v4_signed_url(gcs_uri: str) -> str | None:
+    """Generate a 15-minute GCS V4 Signed URL for live Cited Review jumps."""
+    if not gcs_uri or not gcs_uri.startswith("gs://"):
+        return None
+    try:
+        from datetime import timedelta
+
+        from google.cloud import storage  # type: ignore[attr-defined]
+
+        bucket_name, _, blob_name = gcs_uri[5:].partition("/")
+        if not bucket_name or not blob_name:
+            return None
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(blob_name)
+        return blob.generate_signed_url(version="v4", expiration=timedelta(minutes=15), method="GET")
+    except Exception:
+        return None
+
+
 def _build_evidence_card(anchor: dict[str, Any]) -> dict[str, Any]:
-    is_purged = anchor.get("gcs_status") == "purged" or not anchor.get("gcs_uri")
+    gcs_uri = str(anchor.get("gcs_uri") or "")
+    is_purged = anchor.get("gcs_status") == "purged" or not gcs_uri
+    signed_url = None if is_purged else (anchor.get("signed_url") or _generate_v4_signed_url(gcs_uri))
     return {
         "anchor_id": anchor.get("anchor_id"),
         "source_id": anchor.get("source_id"),
@@ -155,7 +196,7 @@ def _build_evidence_card(anchor: dict[str, Any]) -> dict[str, Any]:
         "quote": anchor.get("quote", ""),
         "card_type": "tombstone" if is_purged else "live_gcs",
         "sha256": anchor.get("sha256", ""),
-        "signed_url": None if is_purged else anchor.get("signed_url"),
+        "signed_url": signed_url,
     }
 
 

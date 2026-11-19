@@ -142,3 +142,39 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
         self.assertNotIn("## Answer Key", no_key)
         self.assertIn("## Answer Key", with_key)
         self.assertIn("Refinery", with_key)
+
+    def test_backup_surreal_raises_command_error_when_env_missing(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with (
+            patch.dict("os.environ", {"BACKUP_BUCKET_NAME": "", "SURREAL_URL": ""}, clear=False),
+            self.assertRaises(CommandError),
+        ):
+            call_command("backup_surreal")
+
+    def test_quiz_generate_api_enforces_budget_and_rate_limit(self):
+        import json
+        from types import SimpleNamespace
+
+        from django.test import RequestFactory
+
+        from extractor import views
+
+        rf = RequestFactory()
+        req = rf.post(
+            "/api/v1/quiz/generate/",
+            data=json.dumps({"difficulty": "Medium", "count": 3}),
+            content_type="application/json",
+        )
+        req.user = SimpleNamespace(is_authenticated=True, id=1, username="u1")
+        with patch.object(views, "_is_budget_exceeded", return_value=True):
+            resp = views.QuizGenerateAPIView.as_view()(req)
+        self.assertEqual(resp.status_code, 402)
+
+        with (
+            patch.object(views, "_is_budget_exceeded", return_value=False),
+            patch.object(views, "_enforce_distributed_rate_limit", return_value=False),
+        ):
+            resp2 = views.QuizGenerateAPIView.as_view()(req)
+        self.assertEqual(resp2.status_code, 429)

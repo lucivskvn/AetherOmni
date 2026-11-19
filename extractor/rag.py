@@ -1083,7 +1083,13 @@ def strict_librarian_search(
     limit: int = 10,
 ) -> dict[str, Any]:
     """Zero-LLM Strict Librarian Mode: returns verbatim evidence + deterministic coordinates."""
-    from extractor import compiler, surreal_db
+    from extractor import compiler, llm_gateway, surreal_db
+
+    if query_embedding is None and hasattr(llm_gateway, "generate_query_embedding"):
+        try:
+            query_embedding = llm_gateway.generate_query_embedding(query_text)
+        except Exception:
+            query_embedding = None
 
     anchors = surreal_db.search_anchors_hybrid(
         query_text,

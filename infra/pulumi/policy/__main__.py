@@ -14,21 +14,27 @@ from pulumi_policy import (
 def validate_ephemeral_bucket(args: ResourceValidationArgs, report_violation: ReportViolation) -> None:
     if args.resource_type != "gcp:storage/bucket:Bucket":
         return
-    name = str(args.props.get("name", ""))
-    if "backup" in name:
-        return
-
-    soft_delete = args.props.get("softDeletePolicy") or {}
-    retention = soft_delete.get("retentionDurationSeconds")
-    if retention is None or int(retention) > 0:
-        report_violation(f"Ephemeral GCS bucket '{name}' must disable Soft Delete (retentionDurationSeconds=0).")
-
-    versioning = args.props.get("versioning") or {}
-    if versioning.get("enabled") is not False:
-        report_violation(f"Ephemeral GCS bucket '{name}' must disable object versioning.")
+    name = str(args.props.get("name") or args.name)
 
     if args.props.get("uniformBucketLevelAccess") is not True:
         report_violation(f"GCS bucket '{name}' must enable uniformBucketLevelAccess.")
+
+    soft_delete = args.props.get("softDeletePolicy") or {}
+    retention = soft_delete.get("retentionDurationSeconds")
+    versioning = args.props.get("versioning") or {}
+
+    if "backup" in name:
+        if retention is None or int(retention) <= 0:
+            report_violation(f"Backup GCS bucket '{name}' must enable Soft Delete (retentionDurationSeconds > 0).")
+        if versioning.get("enabled") is not True:
+            report_violation(f"Backup GCS bucket '{name}' must enable object versioning.")
+        return
+
+    if retention is None or int(retention) > 0:
+        report_violation(f"Ephemeral GCS bucket '{name}' must disable Soft Delete (retentionDurationSeconds=0).")
+
+    if versioning.get("enabled") is not False:
+        report_violation(f"Ephemeral GCS bucket '{name}' must disable object versioning.")
 
 
 def validate_scale_to_zero_cloud_run(args: ResourceValidationArgs, report_violation: ReportViolation) -> None:
@@ -44,12 +50,27 @@ def validate_scale_to_zero_cloud_run(args: ResourceValidationArgs, report_violat
 
 
 def validate_private_worker_iam(args: ResourceValidationArgs, report_violation: ReportViolation) -> None:
-    if args.resource_type != "gcp:cloudrunv2/serviceIamMember:ServiceIamMember":
+    iam_types = {
+        "gcp:cloudrunv2/serviceIamMember:ServiceIamMember",
+        "gcp:cloudrunv2/serviceIamBinding:ServiceIamBinding",
+        "gcp:cloudrunv2/serviceIamPolicy:ServiceIamPolicy",
+    }
+    if args.resource_type not in iam_types:
         return
-    service_name = str(args.props.get("name", ""))
+    service_name = str(args.props.get("name") or args.name)
+    if "worker" not in service_name:
+        return
+
+    forbidden = {"allUsers", "allAuthenticatedUsers"}
     member = str(args.props.get("member", ""))
-    if "worker" in service_name and member in {"allUsers", "allAuthenticatedUsers"}:
+    if member in forbidden:
         report_violation(f"Worker service '{service_name}' must remain private; '{member}' is forbidden.")
+    for m in args.props.get("members") or []:
+        if str(m) in forbidden:
+            report_violation(f"Worker service '{service_name}' must remain private; '{m}' is forbidden.")
+    policy_data = str(args.props.get("policyData") or "")
+    if any(f in policy_data for f in forbidden):
+        report_violation(f"Worker service '{service_name}' IAM policyData must not grant public access.")
 
 
 PolicyPack(

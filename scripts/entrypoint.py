@@ -43,6 +43,9 @@ def _start_database_initialization() -> None:
 
 
 def main() -> NoReturn:
+    if len(sys.argv) > 1:
+        cmd = [sys.executable, *sys.argv[1:]]
+        os.execvp(cmd[0], cmd)  # noqa: S606 # nosec B606
     _run_migrations()
     _start_database_initialization()
     command = _gunicorn_command()

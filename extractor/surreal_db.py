@@ -2065,7 +2065,7 @@ def upsert_source(
         return {"source_id": source_id, "doc_slug": doc_slug, "owner_id": owner_id, "version": version}
 
     sql = """
-    UPSERT type::thing("source", $source_id) CONTENT {
+    UPSERT type::record("source", $source_id) CONTENT {
         source_id: $source_id,
         doc_slug: $doc_slug,
         owner_id: $owner_id,
@@ -2076,26 +2076,26 @@ def upsert_source(
         sha256: $sha256,
         version: $version,
         status: "active",
-        custom_time: IF $custom_time != NONE THEN type::datetime($custom_time) ELSE NONE END,
+        custom_time: IF $custom_time != NONE AND $custom_time != NULL THEN type::datetime($custom_time) ELSE NONE END,
         updated_at: time::now()
     };
     """
-    rows = _first_result(
-        _run(
-            sql,
-            {
-                "source_id": source_id,
-                "doc_slug": doc_slug,
-                "owner_id": str(owner_id),
-                "title": title,
-                "mime_type": mime_type,
-                "gcs_uri": gcs_uri,
-                "sha256": sha256,
-                "version": int(version),
-                "custom_time": custom_time,
-            },
-        )
+    res = _run(
+        sql,
+        {
+            "source_id": source_id,
+            "doc_slug": doc_slug,
+            "owner_id": str(owner_id),
+            "title": title,
+            "mime_type": mime_type,
+            "gcs_uri": gcs_uri,
+            "sha256": sha256,
+            "version": int(version),
+            "custom_time": custom_time,
+        },
     )
+    _check_surreal_error(res)
+    rows = _first_result(res)
     return rows[0] if rows else {"source_id": source_id}
 
 
@@ -2104,57 +2104,60 @@ def create_anchors_with_provenance(
     source_id: str,
     doc_slug: str,
     owner_id: str,
-    version: int,
+    version: int = 1,
     anchors: list[dict[str, Any]],
 ) -> int:
-    """Persist verbatim anchors and RELATE anchored_in edges inside a SurrealDB transaction."""
+    """Persist verbatim anchors and RELATE anchored_in edges inside a batched SurrealDB transaction."""
     if getattr(settings, "SURREALDB_OFFLINE", False) or not anchors:
         return len(anchors)
 
-    created = 0
+    payload_anchors = []
     for idx, anc in enumerate(anchors):
-        anchor_id = str(anc.get("anchor_id") or f"{source_id}-{idx}")
-        sql = """
-        BEGIN TRANSACTION;
-        CREATE type::thing("anchor", $anchor_id) CONTENT {
-            anchor_id: $anchor_id,
+        item: dict[str, Any] = {
+            "anchor_id": str(anc.get("anchor_id") or f"{source_id}-{idx}"),
+            "quote": str(anc.get("quote") or ""),
+        }
+        for opt_key in ("page_num", "section_" + "heading", "start_sec", "end_sec", "figure_id", "embedding"):
+            if anc.get(opt_key) is not None:
+                item[opt_key] = anc[opt_key]
+        payload_anchors.append(item)
+
+    sql = """
+    BEGIN TRANSACTION;
+    LET $s = type::record("source", $source_id);
+    FOR $anc IN $anchors {
+        LET $a = type::record("anchor", $anc.anchor_id);
+        CREATE $a CONTENT {
+            anchor_id: $anc.anchor_id,
             source_id: $source_id,
             doc_slug: $doc_slug,
             owner_id: $owner_id,
             version: $version,
             status: "active",
-            quote: $quote,
-            page_num: $page_num,
-            section_heading: $section_heading,
-            start_sec: $start_sec,
-            end_sec: $end_sec,
-            figure_id: $figure_id,
-            embedding: $embedding
+            quote: $anc.quote,
+            page_num: IF $anc.page_num != NULL THEN $anc.page_num ELSE NONE END,
+            section_heading: IF $anc.section_heading != NULL THEN $anc.section_heading ELSE NONE END,
+            start_sec: IF $anc.start_sec != NULL THEN $anc.start_sec ELSE NONE END,
+            end_sec: IF $anc.end_sec != NULL THEN $anc.end_sec ELSE NONE END,
+            figure_id: IF $anc.figure_id != NULL THEN $anc.figure_id ELSE NONE END,
+            embedding: IF $anc.embedding != NULL THEN $anc.embedding ELSE NONE END
         };
-        LET $a = type::thing("anchor", $anchor_id);
-        LET $s = type::thing("source", $source_id);
         RELATE $a->anchored_in->$s;
-        COMMIT TRANSACTION;
-        """
-        _run(
-            sql,
-            {
-                "anchor_id": anchor_id,
-                "source_id": source_id,
-                "doc_slug": doc_slug,
-                "owner_id": str(owner_id),
-                "version": int(version),
-                "quote": str(anc.get("quote") or ""),
-                "page_num": anc.get("page_num"),
-                "section_heading": anc.get("section_" + "heading"),
-                "start_sec": anc.get("start_sec"),
-                "end_sec": anc.get("end_sec"),
-                "figure_id": anc.get("figure_id"),
-                "embedding": anc.get("embedding"),
-            },
-        )
-        created += 1
-    return created
+    };
+    COMMIT TRANSACTION;
+    """
+    res = _run(
+        sql,
+        {
+            "source_id": source_id,
+            "doc_slug": doc_slug,
+            "owner_id": str(owner_id),
+            "version": int(version),
+            "anchors": payload_anchors,
+        },
+    )
+    _check_surreal_error(res)
+    return len(payload_anchors)
 
 
 def search_anchors_hybrid(
@@ -2181,14 +2184,15 @@ def search_anchors_hybrid(
 
     hnsw_rows: list[dict[str, Any]] = []
     if query_embedding:
+        hnsw_k = min(k_limit * 3, 100)
         hnsw_sql = f"""
         SELECT anchor_id, source_id, doc_slug, quote, page_num, section_heading, start_sec, end_sec, figure_id,
                vector::distance::knn() AS dist
         FROM anchor
-        WHERE owner_id = $owner_id AND status = "active" AND embedding <|{k_limit},40|> $query_embedding
+        WHERE owner_id = $owner_id AND status = "active" AND embedding <|{hnsw_k},40|> $query_embedding
         ORDER BY dist ASC
         LIMIT $limit;
-        """  # nosec B608 # noqa: S608 -- k_limit is a bounded integer
+        """  # nosec B608 # noqa: S608 -- hnsw_k is a bounded integer
         hnsw_rows = _first_result(
             _run(hnsw_sql, {"owner_id": str(owner_id), "query_embedding": query_embedding, "limit": k_limit})
         )
@@ -2220,8 +2224,93 @@ def tombstone_source(source_id: str, owner_id: str) -> bool:
     UPDATE source SET gcs_status = "purged", gcs_uri = "", updated_at = time::now()
     WHERE source_id = $source_id AND owner_id = $owner_id;
     """
-    _run(sql, {"source_id": source_id, "owner_id": str(owner_id)})
+    res = _run(sql, {"source_id": source_id, "owner_id": str(owner_id)})
+    _check_surreal_error(res)
     return True
+
+
+def create_crystal_with_provenance(
+    *,
+    crystal_id: str,
+    owner_id: str,
+    doc_slug: str,
+    title: str,
+    summary: str,
+    anchor_ids: list[str],
+    status: str = "verified",
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Create a crystal record and RELATE grounded_in edges to supporting anchors."""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return {
+            "crystal_id": crystal_id,
+            "owner_id": owner_id,
+            "doc_slug": doc_slug,
+            "title": title,
+            "summary": summary,
+        }
+    sql = """
+    BEGIN TRANSACTION;
+    LET $c = type::record("crystal", $crystal_id);
+    UPSERT $c CONTENT {
+        crystal_id: $crystal_id,
+        owner_id: $owner_id,
+        doc_slug: $doc_slug,
+        title: $title,
+        summary: $summary,
+        status: $status,
+        tags: $tags,
+        updated_at: time::now()
+    };
+    FOR $aid IN $anchor_ids {
+        LET $a = type::record("anchor", $aid);
+        RELATE $c->grounded_in->$a;
+    };
+    COMMIT TRANSACTION;
+    """
+    res = _run(
+        sql,
+        {
+            "crystal_id": crystal_id,
+            "owner_id": str(owner_id),
+            "doc_slug": doc_slug,
+            "title": title,
+            "summary": summary,
+            "status": status if status in {"draft", "verified", "archived"} else "draft",
+            "tags": list(tags or []),
+            "anchor_ids": list(anchor_ids or []),
+        },
+    )
+    _check_surreal_error(res)
+    rows = _first_result(res)
+    return rows[0] if rows else {"crystal_id": crystal_id}
+
+
+def list_crystals_for_user(
+    owner_id: str,
+    *,
+    doc_slug: str | None = None,
+    status: str = "verified",
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Fetch user-owned crystals along with their grounded anchor_ids."""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return []
+    params: dict[str, Any] = {
+        "owner_id": str(owner_id),
+        "status": status,
+        "limit": max(1, min(int(limit), 500)),
+    }
+    slug_clause = ""
+    if doc_slug:
+        slug_clause = " AND doc_slug = $doc_slug"
+        params["doc_slug"] = doc_slug
+    sql = (
+        f"SELECT *, ->grounded_in->anchor.anchor_id AS anchor_ids "  # nosec B608 # noqa: S608 -- static clause
+        f"FROM crystal WHERE owner_id = $owner_id AND status = $status{slug_clause} "
+        "ORDER BY updated_at DESC LIMIT $limit;"
+    )
+    return _first_result(_run(sql, params))
 
 
 # ── KORDA Lane 2: Quiz Studio & FSRS Attempt Persistence ─────────────────────
@@ -2236,7 +2325,7 @@ def save_exam_items(owner_id: str, items: list[dict[str, Any]], crystal_ids: lis
     for item in items:
         item_id = str(item["item_id"])
         sql = """
-        CREATE type::thing("exam_item", $item_id) CONTENT {
+        CREATE type::record("exam_item", $item_id) CONTENT {
             item_id: $item_id,
             owner_id: $owner_id,
             topic: $topic,
@@ -2250,7 +2339,7 @@ def save_exam_items(owner_id: str, items: list[dict[str, Any]], crystal_ids: lis
             anchor_ids: $anchor_ids
         };
         """
-        _run(
+        res = _run(
             sql,
             {
                 "item_id": item_id,
@@ -2266,17 +2355,25 @@ def save_exam_items(owner_id: str, items: list[dict[str, Any]], crystal_ids: lis
                 "anchor_ids": list(item.get("anchor_ids") or []),
             },
         )
+        _check_surreal_error(res)
         for cid in crystal_ids or []:
-            _run(
-                'LET $e = type::thing("exam_item", $item_id); LET $c = type::thing("crystal", $cid); RELATE $e->tests->$c;',
+            rel_res = _run(
+                'LET $e = type::record("exam_item", $item_id); LET $c = type::record("crystal", $cid); RELATE $e->tests->$c;',
                 {"item_id": item_id, "cid": str(cid)},
             )
+            _check_surreal_error(rel_res)
         saved += 1
     return saved
 
 
-def list_exam_items(owner_id: str, *, difficulty: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-    """Fetch persistent exam items for an owner (zero LLM cost on retakes)."""
+def list_exam_items(
+    owner_id: str,
+    *,
+    difficulty: str | None = None,
+    due_only: bool = True,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Fetch persistent exam items for an owner (zero LLM cost on retakes), prioritizing FSRS due items."""
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return []
     params: dict[str, Any] = {"owner_id": str(owner_id), "limit": max(1, min(int(limit), 200))}
@@ -2284,11 +2381,27 @@ def list_exam_items(owner_id: str, *, difficulty: str | None = None, limit: int 
     if difficulty and difficulty in {"Easy", "Medium", "Hard"}:
         diff_clause = " AND difficulty = $difficulty"
         params["difficulty"] = difficulty
+    due_clause = " AND (fsrs_due_at == NONE OR fsrs_due_at <= time::now())" if due_only else ""
     sql = (
-        f"SELECT * FROM exam_item WHERE owner_id = $owner_id{diff_clause} "  # nosec B608 # noqa: S608 -- static clause
+        f"SELECT * FROM exam_item WHERE owner_id = $owner_id{diff_clause}{due_clause} "  # nosec B608 # noqa: S608 -- static clauses
         "ORDER BY fsrs_due_at ASC LIMIT $limit;"
     )
-    return _first_result(_run(sql, params))
+    rows = _first_result(_run(sql, params))
+    if not rows and due_only:
+        fallback_sql = (
+            f"SELECT * FROM exam_item WHERE owner_id = $owner_id{diff_clause} "  # nosec B608 # noqa: S608 -- static clause
+            "ORDER BY fsrs_due_at ASC LIMIT $limit;"
+        )
+        rows = _first_result(_run(fallback_sql, params))
+    return rows
+
+
+def get_exam_items_by_ids(owner_id: str, item_ids: list[str]) -> list[dict[str, Any]]:
+    """Fetch specific owner-scoped exam items by ID for session-accurate grading."""
+    if getattr(settings, "SURREALDB_OFFLINE", False) or not item_ids:
+        return []
+    sql = "SELECT * FROM exam_item WHERE owner_id = $owner_id AND item_id INSIDE $item_ids;"
+    return _first_result(_run(sql, {"owner_id": str(owner_id), "item_ids": [str(i) for i in item_ids]}))
 
 
 def record_attempt(
@@ -2306,7 +2419,7 @@ def record_attempt(
         return True
     sql = """
     BEGIN TRANSACTION;
-    CREATE type::thing("attempt", $attempt_id) CONTENT {
+    CREATE type::record("attempt", $attempt_id) CONTENT {
         attempt_id: $attempt_id,
         session_id: $session_id,
         item_id: $item_id,
@@ -2315,12 +2428,12 @@ def record_attempt(
         rating: $rating,
         response_ms: $response_ms
     };
-    LET $a = type::thing("attempt", $attempt_id);
-    LET $e = type::thing("exam_item", $item_id);
+    LET $a = type::record("attempt", $attempt_id);
+    LET $e = type::record("exam_item", $item_id);
     RELATE $a->attempted_on->$e;
     COMMIT TRANSACTION;
     """
-    _run(
+    res = _run(
         sql,
         {
             "attempt_id": attempt_id,
@@ -2332,13 +2445,30 @@ def record_attempt(
             "response_ms": max(0, int(response_ms)),
         },
     )
+    _check_surreal_error(res)
     return True
 
 
 def get_anchors_by_ids(anchor_ids: list[str], owner_id: str) -> dict[str, dict[str, Any]]:
-    """Fetch anchor evidence records by ID for Cited Review."""
+    """Fetch anchor evidence records enriched with parent source GCS/Tombstone metadata."""
     if getattr(settings, "SURREALDB_OFFLINE", False) or not anchor_ids:
         return {}
     sql = "SELECT * FROM anchor WHERE owner_id = $owner_id AND anchor_id INSIDE $anchor_ids;"
     rows = _first_result(_run(sql, {"owner_id": str(owner_id), "anchor_ids": list(anchor_ids)}))
-    return {str(r["anchor_id"]): r for r in rows if isinstance(r, dict) and r.get("anchor_id")}
+    anchors_map = {str(r["anchor_id"]): r for r in rows if isinstance(r, dict) and r.get("anchor_id")}
+    source_ids = list({str(r.get("source_id")) for r in anchors_map.values() if r.get("source_id")})
+    if source_ids:
+        src_sql = (
+            "SELECT source_id, gcs_uri, gcs_status, sha256, title AS source_title "
+            "FROM source WHERE owner_id = $owner_id AND source_id INSIDE $source_ids;"
+        )
+        src_rows = _first_result(_run(src_sql, {"owner_id": str(owner_id), "source_ids": source_ids}))
+        src_map = {str(s["source_id"]): s for s in src_rows if isinstance(s, dict) and s.get("source_id")}
+        for anc in anchors_map.values():
+            src = src_map.get(str(anc.get("source_id") or ""))
+            if src:
+                anc.setdefault("gcs_uri", src.get("gcs_uri", ""))
+                anc.setdefault("gcs_status", src.get("gcs_status", "active"))
+                anc.setdefault("sha256", src.get("sha256", ""))
+                anc.setdefault("source_title", src.get("source_title", ""))
+    return anchors_map

@@ -1,58 +1,265 @@
 {% extends "extractor/base.html" %}
-
-{% block title %}Quiz Studio & Mock Exam Runner — KORDA{% endblock %}
-
+{% block title %}KORDA Quiz Studio &amp; Mock Exam Runner{% endblock %}
 {% block content %}
-<div class="container" style="max-width: 900px; margin: 24px auto; padding: 0 16px;">
-    <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+<section class="quiz-studio-shell" style="max-width: 960px; margin: 1.5rem auto; padding: 0 1rem;">
+    <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
         <div>
-            <h1 style="margin: 0; font-size: 1.5rem;">Quiz Studio &amp; Mock Exam Runner</h1>
-            <p style="margin: 4px 0 0; color: var(--text-muted); font-size: 0.9rem;">
-                Persistent FSRS-scheduled exam items grounded in verbatim anchors ({{ item_count }} ready).
-            </p>
+            <p class="eyebrow">Lane 2 &middot; Active Mastery Engine</p>
+            <h1 style="margin: 0;">Quiz Studio &amp; Mock Exam Runner</h1>
+            <p class="text-muted" style="margin: 0.25rem 0 0;">Persistent FSRS exam bank with zero-LLM retakes and cited evidence review.</p>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
-            <span id="exam-timer" class="badge" aria-live="polite">15:00</span>
-            <a href="{% url 'quiz_export_markdown' %}?answers=1" class="btn btn-secondary">Export Pack (.md)</a>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;">
+            <span id="exam-timer" class="badge badge-pending" role="timer" data-duration="{{ exam_session.duration_seconds|default:900 }}" aria-label="Remaining exam time">15:00</span>
+            <a href="{% url 'quiz_export_markdown' %}?answers=1" class="btn btn-secondary">Export w/ Key (.md)</a>
+            <a href="{% url 'quiz_export_markdown' %}?answers=0" class="btn btn-secondary">Export Exam Only (.md)</a>
         </div>
     </header>
 
-    <section id="mock-exam-runner" class="card" style="padding: 20px;">
+    <details class="glass-card" style="padding: 1.25rem; margin-bottom: 1.5rem;">
+        <summary style="cursor: pointer; font-weight: 600;">Generate New Quiz from Verified Crystals</summary>
+        <form id="quiz-generate-form" style="margin-top: 1rem; display: grid; gap: 0.75rem;">
+            {% csrf_token %}
+            <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
+                <label style="flex: 1; min-width: 160px;">
+                    Difficulty
+                    <select id="gen-difficulty" name="difficulty" class="search-input" style="width: 100%; margin-top: 0.25rem;">
+                        <option value="Easy">Easy</option>
+                        <option value="Medium" selected>Medium</option>
+                        <option value="Hard">Hard</option>
+                    </select>
+                </label>
+                <label style="flex: 1; min-width: 120px;">
+                    Count
+                    <input id="gen-count" type="number" min="1" max="30" value="5" class="search-input" style="width: 100%; margin-top: 0.25rem;">
+                </label>
+                <label style="flex: 2; min-width: 200px;">
+                    Topic / Doc Slug Scope (optional)
+                    <input id="gen-doc-slug" type="text" placeholder="e.g. cloud-run-guide" class="search-input" style="width: 100%; margin-top: 0.25rem;">
+                </label>
+            </div>
+            <fieldset style="border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.75rem;">
+                <legend>Formats</legend>
+                <label style="margin-right: 1rem;"><input type="checkbox" name="gen_format" value="MCQ" checked> MCQ</label>
+                <label style="margin-right: 1rem;"><input type="checkbox" name="gen_format" value="Multi-Select"> Multi-Select</label>
+                <label style="margin-right: 1rem;"><input type="checkbox" name="gen_format" value="Short Answer"> Short Answer</label>
+                <label><input type="checkbox" name="gen_format" value="Fill-in-the-Blank"> Fill-in-the-Blank</label>
+            </fieldset>
+            <label>
+                Focus Prompt (optional)
+                <input id="gen-focus" type="text" placeholder="e.g. Focus on IAM least privilege and failure modes" class="search-input" style="width: 100%; margin-top: 0.25rem;">
+            </label>
+            <label>
+                Blueprint Weighting JSON (optional)
+                <input id="gen-weights" type="text" placeholder='{"Security": 0.6, "Storage": 0.4}' class="search-input" style="width: 100%; margin-top: 0.25rem;">
+            </label>
+            <div>
+                <button type="submit" id="btn-generate-quiz" class="btn btn-primary">Generate &amp; Start Quiz</button>
+                <span id="gen-status" class="text-muted" style="margin-left: 0.75rem;" aria-live="polite"></span>
+            </div>
+        </form>
+    </details>
+
+    <div id="exam-container">
         {% if exam_session.questions %}
-            <form id="mock-exam-form" data-session-id="{{ exam_session.session_id }}">
-                {% for q in exam_session.questions %}
-                <fieldset style="border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                    <legend style="font-weight: 600; padding: 0 6px;">
-                        Q{{ q.index }} · {{ q.difficulty }} · {{ q.item_format }}
-                    </legend>
-                    <p style="margin-top: 4px;">{{ q.stem }}</p>
-                    {% if q.choices %}
-                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                            {% for choice in q.choices %}
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="radio" name="q_{{ q.item_id }}" value="{{ choice }}">
-                                <span>{{ choice }}</span>
-                            </label>
-                            {% endfor %}
-                        </div>
-                    {% else %}
-                        <input type="text" name="q_{{ q.item_id }}" class="form-control" placeholder="Type your answer..." style="width: 100%; padding: 8px;">
-                    {% endif %}
-                    {% if q.hint %}
-                    <details style="margin-top: 10px;">
-                        <summary style="cursor: pointer; color: var(--text-muted); font-size: 0.85rem;">Show Hint (0 LLM cost)</summary>
-                        <p style="margin: 6px 0 0; font-size: 0.9rem;">{{ q.hint }}</p>
-                    </details>
-                    {% endif %}
-                </fieldset>
-                {% endfor %}
-                <button type="submit" class="btn btn-primary">Submit Mock Exam</button>
-            </form>
+        <form id="mock-exam-form" method="post" data-session-id="{{ exam_session.session_id }}" data-submit-url="{% url 'quiz_submit' %}">
+            {% csrf_token %}
+            {% for q in exam_session.questions %}
+            <article class="glass-card quiz-question-card" data-item-id="{{ q.item_id }}" data-format="{{ q.item_format }}" style="padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-subtle);">
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <strong>Question {{ q.index }} &middot; {{ q.topic|default:"General" }}</strong>
+                    <span class="text-muted">{{ q.difficulty }} &middot; {{ q.item_format }}</span>
+                </div>
+                <p style="margin-bottom: 0.75rem;">{{ q.stem }}</p>
+                {% if q.choices %}
+                <ul style="list-style: none; padding: 0; margin: 0 0 0.75rem;">
+                    {% for choice in q.choices %}
+                    <li style="margin-bottom: 0.4rem;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            {% if q.item_format == "Multi-Select" %}
+                            <input type="checkbox" name="q_{{ q.item_id }}" value="{{ choice }}">
+                            {% else %}
+                            <input type="radio" name="q_{{ q.item_id }}" value="{{ choice }}">
+                            {% endif %}
+                            <span>{{ choice }}</span>
+                        </label>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <label class="visually-hidden" for="input-{{ q.item_id }}">Answer for Question {{ q.index }}</label>
+                <input id="input-{{ q.item_id }}" type="text" name="q_{{ q.item_id }}" class="search-input" style="width: 100%; margin-bottom: 0.75rem;" placeholder="Type your answer...">
+                {% endif %}
+                {% if q.hint %}
+                <details style="margin-top: 0.5rem;">
+                    <summary style="cursor: pointer;">Show Zero-LLM Hint</summary>
+                    <p style="margin-top: 0.5rem;" class="text-muted">{{ q.hint }}</p>
+                </details>
+                {% endif %}
+            </article>
+            {% endfor %}
+            <button type="submit" id="btn-submit-exam" class="btn btn-primary">Submit Mock Exam</button>
+        </form>
         {% else %}
-            <p style="color: var(--text-muted); margin: 0;">
-                No persisted exam items yet. Generate a quiz from verified Lane 1 crystals via <code>/api/v1/quiz/generate/</code>.
-            </p>
+        <div class="glass-card" style="padding: 2rem; text-align: center;">
+            <p>No due exam items found yet. Expand <strong>Generate New Quiz from Verified Crystals</strong> above to create a persistent quiz.</p>
+        </div>
         {% endif %}
+    </div>
+
+    <section id="exam-results-section" class="glass-card" style="display: none; padding: 1.5rem; margin-top: 1.5rem;" aria-live="polite">
+        <h2 id="exam-score-heading" style="margin-top: 0;">Exam Results</h2>
+        <div id="exam-results-list" style="display: grid; gap: 1rem;"></div>
     </section>
-</div>
+</section>
+
+<script>
+(function () {
+    const timerEl = document.getElementById('exam-timer');
+    if (timerEl) {
+        let remaining = parseInt(timerEl.dataset.duration || '900', 10);
+        const renderTimer = () => {
+            const mins = String(Math.floor(Math.max(0, remaining) / 60)).padStart(2, '0');
+            const secs = String(Math.max(0, remaining) % 60).padStart(2, '0');
+            timerEl.textContent = mins + ':' + secs;
+        };
+        renderTimer();
+        const interval = setInterval(() => {
+            remaining -= 1;
+            renderTimer();
+            if (remaining <= 0) {
+                clearInterval(interval);
+                const form = document.getElementById('mock-exam-form');
+                if (form) form.requestSubmit();
+            }
+        }, 1000);
+    }
+
+    function getCsrfToken(root) {
+        const input = (root || document).querySelector('input[name="csrfmiddlewaretoken"]');
+        return input ? input.value : '';
+    }
+
+    const genForm = document.getElementById('quiz-generate-form');
+    if (genForm) {
+        genForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const statusEl = document.getElementById('gen-status');
+            if (statusEl) statusEl.textContent = 'Generating persistent exam items...';
+            const formats = Array.from(genForm.querySelectorAll('input[name="gen_format"]:checked')).map((el) => el.value);
+            let weights = null;
+            const rawWeights = (document.getElementById('gen-weights')?.value || '').trim();
+            if (rawWeights) {
+                try { weights = JSON.parse(rawWeights); } catch (_) {
+                    if (statusEl) statusEl.textContent = 'Invalid Blueprint Weighting JSON.';
+                    return;
+                }
+            }
+            const resp = await fetch('{% url "quiz_generate" %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(genForm) },
+                body: JSON.stringify({
+                    difficulty: document.getElementById('gen-difficulty')?.value || 'Medium',
+                    count: parseInt(document.getElementById('gen-count')?.value || '5', 10),
+                    doc_slug: (document.getElementById('gen-doc-slug')?.value || '').trim(),
+                    formats: formats.length ? formats : ['MCQ'],
+                    focus_prompt: (document.getElementById('gen-focus')?.value || '').trim(),
+                    blueprint_weights: weights
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                if (statusEl) statusEl.textContent = data.error || 'Generation failed.';
+                return;
+            }
+            globalThis.location.reload();
+        });
+    }
+
+    const examForm = document.getElementById('mock-exam-form');
+    if (examForm) {
+        examForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const cards = Array.from(examForm.querySelectorAll('.quiz-question-card'));
+            const itemIds = [];
+            const answers = {};
+            cards.forEach((card) => {
+                const itemId = card.dataset.itemId;
+                const fmt = card.dataset.format;
+                itemIds.push(itemId);
+                if (fmt === 'Multi-Select') {
+                    answers[itemId] = Array.from(card.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value);
+                } else {
+                    const radio = card.querySelector('input[type="radio"]:checked');
+                    const text = card.querySelector('input[type="text"]');
+                    answers[itemId] = radio ? radio.value : (text ? text.value : '');
+                }
+            });
+
+            const resp = await fetch(examForm.dataset.submitUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(examForm) },
+                body: JSON.stringify({
+                    session_id: examForm.dataset.sessionId || '',
+                    item_ids: itemIds,
+                    answers: answers
+                })
+            });
+            const data = await resp.json();
+            const section = document.getElementById('exam-results-section');
+            const heading = document.getElementById('exam-score-heading');
+            const list = document.getElementById('exam-results-list');
+            if (!section || !heading || !list) return;
+
+            heading.textContent = 'Score: ' + (data.score ?? 0) + ' / ' + (data.total ?? 0);
+            list.replaceChildren();
+            (data.results || []).forEach((r) => {
+                const card = document.createElement('div');
+                card.style.padding = '1rem';
+                card.style.border = '1px solid var(--border-subtle)';
+                card.style.borderRadius = '8px';
+
+                const title = document.createElement('strong');
+                title.textContent = (r.is_correct ? 'PASS: ' : 'MISS: ') + (r.stem || '');
+                card.appendChild(title);
+
+                const ans = document.createElement('p');
+                ans.textContent = 'Your answer: ' + JSON.stringify(r.submitted) + ' | Expected: ' + JSON.stringify(r.correct_answer);
+                card.appendChild(ans);
+
+                Object.entries(r.distractor_rationales || {}).forEach(([opt, reason]) => {
+                    const rp = document.createElement('p');
+                    rp.className = 'text-muted';
+                    rp.textContent = opt + ': ' + reason;
+                    card.appendChild(rp);
+                });
+
+                (r.evidence || []).forEach((ev) => {
+                    const evBox = document.createElement('blockquote');
+                    evBox.style.margin = '0.5rem 0';
+                    evBox.style.paddingLeft = '0.75rem';
+                    evBox.style.borderLeft = '3px solid var(--border-subtle)';
+                    evBox.textContent = '[' + (ev.coord || '') + '] ' + (ev.quote || '');
+                    if (ev.card_type === 'live_gcs' && ev.signed_url) {
+                        const link = document.createElement('a');
+                        link.href = ev.signed_url;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.textContent = ' (Open Live Asset)';
+                        evBox.appendChild(link);
+                    } else if (ev.card_type === 'tombstone') {
+                        const tomb = document.createElement('span');
+                        tomb.className = 'text-muted';
+                        tomb.textContent = ' [Tombstone sha256: ' + (ev.sha256 || 'archived') + ']';
+                        evBox.appendChild(tomb);
+                    }
+                    card.appendChild(evBox);
+                });
+                list.appendChild(card);
+            });
+            section.style.display = 'block';
+            section.scrollIntoView({ behavior: 'smooth' });
+        });
+    }
+})();
+</script>
 {% endblock %}

@@ -1,4 +1,4 @@
-"""Off-host encrypted/compressed SurrealDB backup Cloud Run Job command."""
+"""Off-host gzip-compressed SurrealDB backup Cloud Run Job command (stored in encrypted GCS)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import os
 from datetime import UTC, datetime
 
 import httpx
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from google.cloud import storage
 
 
@@ -23,10 +23,11 @@ class Command(BaseCommand):
         surreal_db = os.getenv("SURREAL_DB", "extractor").strip()
 
         if not backup_bucket or not surreal_url:
-            self.stderr.write("BACKUP_BUCKET_NAME and SURREAL_URL are required.")
-            return
+            raise CommandError("BACKUP_BUCKET_NAME and SURREAL_URL are required.")
 
-        http_url = surreal_url.replace("wss://", "https://").replace("ws://", "http://").removesuffix("/rpc")
+        http_url = (
+            surreal_url.rstrip("/").replace("wss://", "https://").replace("ws://", "http://").removesuffix("/rpc")
+        )
         resp = httpx.get(
             f"{http_url}/export",
             auth=(surreal_user, surreal_pass) if surreal_user else None,

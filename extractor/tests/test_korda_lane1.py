@@ -134,3 +134,33 @@ class KordaLane1Tests(SimpleTestCase):
             resp = view.post(request)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(json.loads(resp.content)["status"], "ignored")
+
+    @override_settings(DEBUG=False, WORKER_URL="https://worker.example.run.app")
+    def test_eventarc_gcs_raw_view_verifies_audience_and_digitalizes(self):
+        payload = json.dumps(
+            {
+                "bucket": "korda-media",
+                "name": "raw/ephemeral/user-1/arch-spec/doc.pdf",
+                "contentType": "application/pdf",
+            }
+        ).encode("utf-8")
+        request = self.factory.post("/internal/events/gcs-raw/", data=payload, content_type="application/json")
+        view = task_handlers.EventarcGCSRawView()
+        with (
+            patch.object(task_handlers, "_verify_oidc_token", return_value=True) as mock_oidc,
+            patch("extractor.surreal_db.upsert_source") as mock_upsert,
+            patch(
+                "extractor.llm_gateway.extract_anchors_from_gcs_uri",
+                return_value={"title": "Arch Spec", "anchors": [{"quote": "Zero-copy URI."}]},
+            ) as mock_extract,
+            patch("extractor.surreal_db.create_anchors_with_provenance", return_value=1) as mock_create,
+        ):
+            resp = view.post(request)
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertEqual(data["status"], "accepted")
+        self.assertEqual(data["anchors_created"], 1)
+        self.assertEqual(len(mock_oidc.call_args[0]), 2)
+        mock_upsert.assert_called_once()
+        mock_extract.assert_called_once()
+        mock_create.assert_called_once()

@@ -103,29 +103,32 @@
                 </button>
                 {% if user.is_authenticated %}
                 <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
-                    <i data-lucide="layout-dashboard"></i> Dashboard
+                    <i data-lucide="layout-dashboard" aria-hidden="true"></i> Dashboard
+                </a>
+                <a href="{% url 'quiz_studio' %}" class="nav-link {% if request.resolver_match.url_name == 'quiz_studio' %}active{% endif %}">
+                    <i data-lucide="graduation-cap" aria-hidden="true"></i> Quiz Studio
                 </a>
                 <a href="{% url 'audit_logs' %}" class="nav-link {% if request.resolver_match.url_name == 'audit_logs' %}active{% endif %}">
-                    <i data-lucide="shield-alert"></i> Audit Logs
+                    <i data-lucide="shield-alert" aria-hidden="true"></i> Audit Logs
                 </a>
                 {% if user.is_superuser or user.is_staff %}
                 <a href="{% url 'deployment_controller' %}" class="nav-link {% if request.resolver_match.url_name == 'deployment_controller' %}active{% endif %}">
-                    <i data-lucide="cpu"></i> Deployment
+                    <i data-lucide="cpu" aria-hidden="true"></i> Deployment
                 </a>
-                <a href="/admin/" target="_blank" class="nav-link">
-                    <i data-lucide="shield"></i> Admin Panel
+                <a href="/admin/" target="_blank" rel="noopener noreferrer" class="nav-link">
+                    <i data-lucide="shield" aria-hidden="true"></i> Admin Panel<span class="visually-hidden"> (opens in new tab)</span>
                 </a>
                 {% endif %}
 
                 {% if user.is_superuser or user.is_staff %}
                 <button type="button" id="settings-trigger-btn" class="nav-link" aria-haspopup="dialog" aria-controls="settings-modal" aria-label="Open Settings" title="Open Settings">
-                    <i data-lucide="settings"></i> Settings
+                    <i data-lucide="settings" aria-hidden="true"></i> Settings
                 </button>
                 {% endif %}
                 <form action="{% url 'logout' %}" method="post" style="display: inline-block; margin: 0;">
                     {% csrf_token %}
                     <button type="submit" class="nav-link logout-btn" aria-label="Sign out of Console">
-                        <i data-lucide="log-out"></i> Logout
+                        <i data-lucide="log-out" aria-hidden="true"></i> Logout
                     </button>
                 </form>
                 {% endif %}
@@ -137,10 +140,10 @@
     <div class="alert-container">
         {% for message in messages %}
         <div class="alert-card {% if message.tags == 'success' %}alert-success{% else %}alert-error{% endif %}" id="msg-{{ forloop.counter }}" role="alert">
-            <i data-lucide="{% if message.tags == 'success' %}check-circle{% else %}alert-triangle{% endif %}"></i>
+            <i data-lucide="{% if message.tags == 'success' %}check-circle{% else %}alert-triangle{% endif %}" aria-hidden="true"></i>
             <span>{{ message }}</span>
             <button type="button" class="alert-close-btn" aria-label="Dismiss message" title="Dismiss message" data-dismiss="msg-{{ forloop.counter }}">
-                <i data-lucide="x"></i>
+                <i data-lucide="x" aria-hidden="true"></i>
             </button>
         </div>
         {% endfor %}
@@ -161,8 +164,8 @@
         <div class="dialog-header" style="flex-direction: column; align-items: flex-start; gap: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <h3 id="settings-modal-title" style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text-main);">System Configuration Settings</h3>
-                <button id="settings-close-btn" class="close-btn" aria-label="Close Settings" title="Close Settings">
-                    <i data-lucide="x"></i>
+                <button type="button" id="settings-close-btn" class="close-btn" aria-label="Close Settings" title="Close Settings">
+                    <i data-lucide="x" aria-hidden="true"></i>
                 </button>
             </div>
             <p id="settings-modal-desc" style="margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.4;">Configure monthly budgets, default Gemini models, and trusted CORS/CSRF proxy hosts.</p>
@@ -378,80 +381,6 @@
                     document.documentElement.dataset.theme = newTheme;
                     localStorage.setItem('theme', newTheme);
                     updateThemeUI(newTheme);
-                });
-            }
-
-            // Settings Modal Control
-            const settingsModal = document.getElementById('settings-modal');
-            const settingsTrigger = document.getElementById('settings-trigger-btn');
-            const settingsClose = document.getElementById('settings-close-btn');
-
-            if (settingsModal && settingsTrigger) {
-                settingsTrigger.addEventListener('click', function() {
-                    settingsModal.showModal();
-                });
-            }
-            if (settingsModal && settingsClose) {
-                settingsClose.addEventListener('click', function() {
-                    settingsModal.close();
-                });
-            }
-
-            // Global click handler to catch the dashboard settings trigger
-            document.addEventListener('click', function(e) {
-                if (e.target && e.target.id === 'error-settings-trigger') {
-                    e.preventDefault();
-                    if (settingsModal) {
-                        settingsModal.showModal();
-                    }
-                }
-            });
-
-            // Danger Zone Reset Flow
-            const resetTrigger = document.getElementById('reset-trigger-btn');
-            const resetCancel = document.getElementById('reset-cancel-btn');
-            const initialState = document.getElementById('reset-initial-state');
-            const confirmState = document.getElementById('reset-confirm-state');
-            const confirmInput = document.getElementById('reset_confirm_input');
-            const finalResetBtn = document.getElementById('final-reset-btn');
-
-            if (confirmState) {
-                confirmState.style.display = 'none';
-            }
-
-            if (resetTrigger && initialState && confirmState) {
-                resetTrigger.addEventListener('click', function() {
-                    initialState.style.display = 'none';
-                    confirmState.style.display = 'block';
-                    if (confirmInput) {
-                        confirmInput.value = '';
-                        confirmInput.focus();
-                    }
-                    if (finalResetBtn) {
-                        finalResetBtn.disabled = true;
-                        finalResetBtn.setAttribute('aria-disabled', 'true');
-                    }
-                });
-            }
-
-            if (resetCancel && initialState && confirmState) {
-                resetCancel.addEventListener('click', function() {
-                    initialState.style.display = 'block';
-                    confirmState.style.display = 'none';
-                });
-            }
-
-            if (confirmInput && finalResetBtn) {
-                confirmInput.addEventListener('input', function() {
-                    if (confirmInput.value.trim() === 'RESET') {
-                        finalResetBtn.disabled = false;
-                        finalResetBtn.removeAttribute('aria-disabled');
-                        finalResetBtn.removeAttribute('title');
-                    } else {
-                        finalResetBtn.disabled = true;
-                        finalResetBtn.setAttribute('aria-disabled', 'true');
-                        finalResetBtn.setAttribute('title', 'Type RESET to enable');
-                    }
                 });
             }
         });

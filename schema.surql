@@ -277,9 +277,9 @@ DEFINE FIELD IF NOT EXISTS embedding       ON anchor TYPE option<array<float>>;
 DEFINE FIELD IF NOT EXISTS created_at      ON anchor TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX IF NOT EXISTS idx_anchor_id     ON anchor FIELDS anchor_id UNIQUE;
-DEFINE INDEX IF NOT EXISTS idx_anchor_active ON anchor FIELDS doc_slug, owner_id WHERE status = "active";
+DEFINE INDEX IF NOT EXISTS idx_anchor_active ON anchor FIELDS owner_id, status, doc_slug;
 DEFINE INDEX IF NOT EXISTS idx_anchor_hnsw   ON anchor FIELDS embedding HNSW DIMENSION 768 TYPE F16 DIST COSINE;
-DEFINE INDEX IF NOT EXISTS idx_anchor_bm25   ON anchor FIELDS quote SEARCH ANALYZER korda_bm25 BM25 HIGHLIGHTS;
+DEFINE INDEX IF NOT EXISTS idx_anchor_bm25   ON anchor FIELDS quote FULLTEXT ANALYZER korda_bm25 BM25 HIGHLIGHTS;
 
 -- Auto-supersede prior anchor versions when a newer version of the same doc_slug & owner commits.
 DEFINE EVENT IF NOT EXISTS evt_anchor_supersede_v1 ON anchor WHEN $event = "CREATE" AND $after.version > 1 THEN {
@@ -298,16 +298,16 @@ DEFINE FIELD IF NOT EXISTS owner_id        ON crystal TYPE string;
 DEFINE FIELD IF NOT EXISTS doc_slug        ON crystal TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS title           ON crystal TYPE string;
 DEFINE FIELD IF NOT EXISTS summary         ON crystal TYPE string;
-DEFINE FIELD IF NOT EXISTS status          ON crystal TYPE string DEFAULT "draft"; -- draft | verified | archived
+DEFINE FIELD IF NOT EXISTS status          ON crystal TYPE string DEFAULT "draft" ASSERT $value IN ["draft", "verified", "archived"];
 DEFINE FIELD IF NOT EXISTS tags            ON crystal TYPE array<string> DEFAULT [];
 DEFINE FIELD IF NOT EXISTS embedding       ON crystal TYPE option<array<float>>;
 DEFINE FIELD IF NOT EXISTS created_at      ON crystal TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS updated_at      ON crystal TYPE datetime DEFAULT time::now();
 
 DEFINE INDEX IF NOT EXISTS idx_crystal_id       ON crystal FIELDS crystal_id UNIQUE;
-DEFINE INDEX IF NOT EXISTS idx_crystal_verified ON crystal FIELDS owner_id, doc_slug WHERE status = "verified";
+DEFINE INDEX IF NOT EXISTS idx_crystal_verified ON crystal FIELDS owner_id, status, doc_slug;
 DEFINE INDEX IF NOT EXISTS idx_crystal_hnsw     ON crystal FIELDS embedding HNSW DIMENSION 768 TYPE F16 DIST COSINE;
-DEFINE INDEX IF NOT EXISTS idx_crystal_bm25     ON crystal FIELDS summary SEARCH ANALYZER korda_bm25 BM25 HIGHLIGHTS;
+DEFINE INDEX IF NOT EXISTS idx_crystal_bm25     ON crystal FIELDS summary FULLTEXT ANALYZER korda_bm25 BM25 HIGHLIGHTS;
 
 -- Provenance Graph Edges
 DEFINE TABLE IF NOT EXISTS anchored_in SCHEMAFULL TYPE RELATION FROM anchor TO source;
@@ -328,13 +328,13 @@ DEFINE TABLE IF NOT EXISTS exam_item SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS item_id               ON exam_item TYPE string;
 DEFINE FIELD IF NOT EXISTS owner_id              ON exam_item TYPE string;
 DEFINE FIELD IF NOT EXISTS topic                 ON exam_item TYPE string DEFAULT "";
-DEFINE FIELD IF NOT EXISTS difficulty            ON exam_item TYPE string DEFAULT "Medium"; -- Easy | Medium | Hard
-DEFINE FIELD IF NOT EXISTS item_format           ON exam_item TYPE string DEFAULT "MCQ";    -- MCQ | Multi-Select | Short Answer | Fill-in-the-Blank
+DEFINE FIELD IF NOT EXISTS difficulty            ON exam_item TYPE string DEFAULT "Medium" ASSERT $value IN ["Easy", "Medium", "Hard"];
+DEFINE FIELD IF NOT EXISTS item_format           ON exam_item TYPE string DEFAULT "MCQ" ASSERT $value IN ["MCQ", "Multi-Select", "Short Answer", "Fill-in-the-Blank"];
 DEFINE FIELD IF NOT EXISTS stem                  ON exam_item TYPE string;
 DEFINE FIELD IF NOT EXISTS choices               ON exam_item TYPE array<string> DEFAULT [];
-DEFINE FIELD IF NOT EXISTS correct_answer        ON exam_item TYPE any;
+DEFINE FIELD IF NOT EXISTS correct_answer        ON exam_item TYPE string | array<string>;
 DEFINE FIELD IF NOT EXISTS hint                  ON exam_item TYPE string DEFAULT "";
-DEFINE FIELD IF NOT EXISTS distractor_rationales ON exam_item TYPE any DEFAULT {};
+DEFINE FIELD IF NOT EXISTS distractor_rationales ON exam_item TYPE option<object> FLEXIBLE DEFAULT {};
 DEFINE FIELD IF NOT EXISTS anchor_ids            ON exam_item TYPE array<string> DEFAULT [];
 DEFINE FIELD IF NOT EXISTS fsrs_stability        ON exam_item TYPE float DEFAULT 1.0;
 DEFINE FIELD IF NOT EXISTS fsrs_difficulty       ON exam_item TYPE float DEFAULT 5.0;
@@ -353,7 +353,7 @@ DEFINE FIELD IF NOT EXISTS session_id      ON attempt TYPE string;
 DEFINE FIELD IF NOT EXISTS item_id         ON attempt TYPE string;
 DEFINE FIELD IF NOT EXISTS owner_id        ON attempt TYPE string;
 DEFINE FIELD IF NOT EXISTS is_correct      ON attempt TYPE bool;
-DEFINE FIELD IF NOT EXISTS rating          ON attempt TYPE int DEFAULT 3; -- 1=Again, 2=Hard, 3=Good, 4=Easy
+DEFINE FIELD IF NOT EXISTS rating          ON attempt TYPE int DEFAULT 3 ASSERT $value >= 1 AND $value <= 4; -- 1=Again, 2=Hard, 3=Good, 4=Easy
 DEFINE FIELD IF NOT EXISTS response_ms     ON attempt TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS submitted_at    ON attempt TYPE datetime DEFAULT time::now();
 
@@ -362,24 +362,25 @@ DEFINE INDEX IF NOT EXISTS idx_attempt_session ON attempt FIELDS session_id, own
 
 -- Auto-update FSRS stability, difficulty, and next due date when an attempt is recorded.
 DEFINE EVENT IF NOT EXISTS evt_attempt_fsrs_update ON attempt WHEN $event = "CREATE" THEN {
-    UPDATE exam_item SET
-        fsrs_stability = IF $after.is_correct THEN
-            math::min([fsrs_stability * (1.2 + ($after.rating * 0.35)), 365.0])
+    LET $item = (SELECT fsrs_stability, fsrs_difficulty FROM exam_item WHERE item_id = $after.item_id AND owner_id = $after.owner_id LIMIT 1)[0];
+    IF $item != NONE {
+        LET $next_stability = IF $after.is_correct THEN
+            math::min([$item.fsrs_stability * (1.2 + ($after.rating * 0.35)), 365.0])
         ELSE
-            math::max([fsrs_stability * 0.5, 0.5])
-        END,
-        fsrs_difficulty = IF $after.is_correct THEN
-            math::max([fsrs_difficulty - 0.3, 1.0])
+            math::max([$item.fsrs_stability * 0.5, 0.5])
+        END;
+        LET $next_difficulty = IF $after.is_correct THEN
+            math::max([$item.fsrs_difficulty - 0.3, 1.0])
         ELSE
-            math::min([fsrs_difficulty + 0.8, 10.0])
-        END,
-        fsrs_due_at = time::now() + type::duration(string::concat(
-            <string> math::round(
-                IF $after.is_correct THEN math::max([fsrs_stability * 1.5, 1.0]) ELSE 1.0 END
-            ),
-            "d"
-        ))
-    WHERE item_id = $after.item_id AND owner_id = $after.owner_id;
+            math::min([$item.fsrs_difficulty + 0.8, 10.0])
+        END;
+        LET $interval_days = math::max([<int> math::round($next_stability), 1]);
+        UPDATE exam_item SET
+            fsrs_stability = $next_stability,
+            fsrs_difficulty = $next_difficulty,
+            fsrs_due_at = time::now() + type::duration(string::concat(<string> $interval_days, "d"))
+        WHERE item_id = $after.item_id AND owner_id = $after.owner_id;
+    };
 };
 
 DEFINE TABLE IF NOT EXISTS tests SCHEMAFULL TYPE RELATION FROM exam_item TO crystal;

@@ -3089,24 +3089,58 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
         return response
 
 
+ERR_INVALID_JSON_PAYLOAD = "Invalid JSON payload."
+
+
+def _parse_json_dict_body(request) -> tuple[dict | None, JsonResponse | None]:
+    import json
+
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return None, JsonResponse({"error": ERR_INVALID_JSON_PAYLOAD}, status=400)
+    if not isinstance(body, dict):
+        return None, JsonResponse({"error": "JSON object required."}, status=400)
+    return body, None
+
+
+def _load_quiz_crystals(actor_id: str, body: dict) -> list[dict]:
+    from extractor import surreal_db
+
+    doc_slug = str(body.get("doc_slug") or "").strip() or None
+    crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=20)
+    if crystals or not isinstance(body.get("crystals"), list):
+        return crystals
+    return [
+        {
+            "crystal_id": str(c.get("crystal_id") or ""),
+            "title": str(c.get("title") or "")[:200],
+            "summary": str(c.get("summary") or "")[:2000],
+            "anchor_ids": [str(a) for a in (c.get("anchor_ids") or []) if a][:10],
+        }
+        for c in body["crystals"][:10]
+        if isinstance(c, dict)
+    ]
+
+
 class StrictLibrarianAPIView(LoginRequiredMixin, View):
     """Zero-LLM Strict Librarian Mode returning verbatim anchors + deterministic coordinates."""
 
     def post(self, request):
-        import json
-
         from extractor import rag
 
-        try:
-            body = json.loads(request.body) if request.body else {}
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
 
-        query = str(body.get("query") or "").strip() if isinstance(body, dict) else ""
+        query = str(body.get("query") or "").strip()
         if not query:
             return JsonResponse({"error": "Query is required."}, status=400)
 
         actor_id = get_request_actor_id(request)
+        if not _enforce_distributed_rate_limit(f"librarian:{actor_id}", actor_id, max_requests=30, window_seconds=60):
+            return JsonResponse({"error": "Rate limit exceeded."}, status=429)
+
         return JsonResponse(rag.strict_librarian_search(query, owner_id=actor_id))
 
 
@@ -3123,9 +3157,10 @@ class QuizStudioView(LoginRequiredMixin, _TemplateView):
 
         ctx = super().get_context_data(**kwargs)
         actor_id = get_request_actor_id(self.request)
-        items = surreal_db.list_exam_items(actor_id, limit=30)
+        items = surreal_db.list_exam_items(actor_id, due_only=True, limit=30)
         ctx["exam_session"] = quiz_studio.build_mock_exam_session(items)
         ctx["item_count"] = len(items)
+        ctx["crystals"] = surreal_db.list_crystals_for_user(actor_id, limit=50)
         return ctx
 
 
@@ -3133,25 +3168,40 @@ class QuizGenerateAPIView(LoginRequiredMixin, View):
     """Generate and persist Quiz Studio items grounded in verified crystals."""
 
     def post(self, request):
-        import json
-
         from extractor import quiz_studio
 
-        try:
-            body = json.loads(request.body) if request.body else {}
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
 
         actor_id = get_request_actor_id(request)
-        crystals = list(body.get("crystals") or []) if isinstance(body, dict) else []
+        if _is_budget_exceeded(request.user, actor_id):
+            return JsonResponse({"error": "Monthly spend budget exceeded."}, status=402)
+        if not _enforce_distributed_rate_limit(f"quiz_gen:{actor_id}", actor_id, max_requests=10, window_seconds=60):
+            return JsonResponse({"error": "Rate limit exceeded."}, status=429)
+
+        try:
+            count = int(body.get("count") or 5)
+        except TypeError, ValueError:
+            return JsonResponse({"error": "Invalid count."}, status=400)
+
+        raw_formats = body.get("formats") or ["MCQ"]
+        if not isinstance(raw_formats, list):
+            return JsonResponse({"error": "formats must be a list."}, status=400)
+
+        crystals = _load_quiz_crystals(actor_id, body)
+        if not crystals:
+            return JsonResponse({"error": "No verified crystals available for quiz generation."}, status=400)
+
+        weights = body.get("blueprint_weights")
         items = quiz_studio.generate_and_persist_quiz(
             owner_id=actor_id,
             crystals=crystals,
             difficulty=str(body.get("difficulty") or "Medium"),
-            count=int(body.get("count") or 5),
-            formats=list(body.get("formats") or ["MCQ"]),
+            count=count,
+            formats=[str(f) for f in raw_formats],
             focus_prompt=str(body.get("focus_prompt") or ""),
-            blueprint_weights=body.get("blueprint_weights"),
+            blueprint_weights=weights if isinstance(weights, dict) else None,
         )
         return JsonResponse(
             {"status": "ok", "count": len(items), "session": quiz_studio.build_mock_exam_session(items)}
@@ -3162,19 +3212,22 @@ class QuizSubmitAPIView(LoginRequiredMixin, View):
     """Grade Mock Exam submission at zero LLM cost and return Cited Review + Tombstone cards."""
 
     def post(self, request):
-        import json
-
         from extractor import quiz_studio, surreal_db
 
-        try:
-            body = json.loads(request.body) if request.body else {}
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
+        if not isinstance(body.get("answers"), dict):
+            return JsonResponse({"error": "Invalid answers payload."}, status=400)
 
         actor_id = get_request_actor_id(request)
         session_id = str(body.get("session_id") or "")
-        answers = dict(body.get("answers") or {})
-        items = surreal_db.list_exam_items(actor_id, limit=100)
+        answers = body["answers"]
+        raw_item_ids = body.get("item_ids")
+        target_ids = (
+            [str(i) for i in raw_item_ids if i] if isinstance(raw_item_ids, list) else [str(k) for k in answers]
+        )
+        items = surreal_db.get_exam_items_by_ids(actor_id, target_ids)
         anchor_ids = [aid for item in items for aid in (item.get("anchor_ids") or [])]
         anchors = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
         graded = quiz_studio.grade_mock_exam_submission(
@@ -3195,8 +3248,65 @@ class QuizExportMarkdownView(LoginRequiredMixin, View):
 
         actor_id = get_request_actor_id(request)
         include_answers = request.GET.get("answers", "1") != "0"
-        items = surreal_db.list_exam_items(actor_id, limit=100)
+        items = surreal_db.list_exam_items(actor_id, due_only=False, limit=100)
         md = quiz_studio.export_exam_markdown(items, include_answers=include_answers)
         resp = HttpResponse(md, content_type="text/markdown; charset=utf-8")
         resp["Content-Disposition"] = 'attachment; filename="korda_exam_pack.md"'
         return resp
+
+
+class CrystalSynthesizeAPIView(LoginRequiredMixin, View):
+    """Synthesize and persist a verified Crystal grounded in existing Anchors."""
+
+    def post(self, request):
+        import uuid
+
+        from extractor import surreal_db
+
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
+
+        title = str(body.get("title") or "").strip()
+        summary = str(body.get("summary") or "").strip()
+        doc_slug = str(body.get("doc_slug") or "general").strip()
+        anchor_ids = [str(a) for a in (body.get("anchor_ids") or []) if a]
+        if not title or not summary:
+            return JsonResponse({"error": "title and summary are required."}, status=400)
+
+        actor_id = get_request_actor_id(request)
+        crystal_id = uuid.uuid4().hex[:16]
+        crystal = surreal_db.create_crystal_with_provenance(
+            crystal_id=crystal_id,
+            owner_id=actor_id,
+            doc_slug=doc_slug,
+            title=title,
+            summary=summary,
+            anchor_ids=anchor_ids,
+            status="verified",
+            tags=[str(t) for t in (body.get("tags") or []) if t],
+        )
+        return JsonResponse({"status": "ok", "crystal": crystal})
+
+
+class MarkdownCompileAPIView(LoginRequiredMixin, View):
+    """Compile verified crystals & verbatim anchors into NotebookLM-optimized Markdown bundles."""
+
+    def get(self, request):
+        from extractor import compiler, surreal_db
+
+        actor_id = get_request_actor_id(request)
+        doc_slug = request.GET.get("doc_slug") or None
+        crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=200)
+        anchor_ids = [aid for c in crystals for aid in (c.get("anchor_ids") or [])]
+        anchors_by_id = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
+        for crystal in crystals:
+            crystal["anchors"] = [
+                anchors_by_id[aid] for aid in (crystal.get("anchor_ids") or []) if aid in anchors_by_id
+            ]
+        bundles = compiler.compile_markdown_bundles(crystals)
+        if request.GET.get("download") == "1" and bundles:
+            resp = HttpResponse(bundles[0], content_type="text/markdown; charset=utf-8")
+            resp["Content-Disposition"] = 'attachment; filename="korda_kb_part_1.md"'
+            return resp
+        return JsonResponse({"status": "ok", "bundle_count": len(bundles), "bundles": bundles})

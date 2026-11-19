@@ -1605,8 +1605,8 @@ def generate_multimodal_vision_ocr(
     return ""
 
 
-MODEL_TIER_LITE = os.getenv("GEMINI_MODEL_LITE", "gemini-3.1-flash-lite")
-MODEL_TIER_PRO = os.getenv("GEMINI_MODEL_PRO", "gemini-3-flash")
+MODEL_TIER_LITE = os.getenv("GEMINI_MODEL_LITE", "gemini-2.5-flash-lite")
+MODEL_TIER_PRO = os.getenv("GEMINI_MODEL_PRO", "gemini-2.5-flash")
 
 
 def _get_vertex_client():
@@ -1619,6 +1619,7 @@ def extract_anchors_from_gcs_uri(
     mime_type: str = MIME_PDF,
     *,
     dense_mode: bool = False,
+    doc_slug: str = "",
 ) -> dict[str, Any]:
     """Zero-copy GCS URI extraction returning verbatim anchors with deterministic coordinates."""
     if not str(gcs_uri).startswith("gs://"):
@@ -1639,7 +1640,7 @@ def extract_anchors_from_gcs_uri(
         "temperature": 0.1,
         "response_mime_type": APPLICATION_JSON,
     }
-    if not dense_mode and hasattr(types, "ThinkingConfig"):
+    if not dense_mode and "gemini-3" in model_name and hasattr(types, "ThinkingConfig"):
         thinking_val = getattr(types, "ThinkingLevel", None)
         config_kwargs["thinking_config"] = types.ThinkingConfig(
             thinking_level=thinking_val.MINIMAL if thinking_val else "MINIMAL"  # type: ignore[arg-type]
@@ -1650,12 +1651,16 @@ def extract_anchors_from_gcs_uri(
         contents=[part, prompt],
         config=types.GenerateContentConfig(**config_kwargs),
     )
-    parsed = json.loads(response.text or "{}")
+    try:
+        parsed = json.loads(response.text or "{}")
+    except json.JSONDecodeError as exc:
+        logger.warning("[VertexURI] Invalid JSON from %s for %s: %s", model_name, doc_slug or gcs_uri, exc)
+        parsed = {}
     usage = getattr(response, "usage_metadata", None)
     in_toks = getattr(usage, "prompt_token_count", 0) or 0
     out_toks = getattr(usage, "candidates_token_count", 0) or 0
     return {
-        "title": str(parsed.get("title") or "Untitled"),
+        "title": str(parsed.get("title") or doc_slug or "Untitled"),
         "anchors": list(parsed.get("anchors") or []),
         "model_used": model_name,
         "input_tokens": in_toks,
