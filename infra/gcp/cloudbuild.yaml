@@ -119,7 +119,6 @@ steps:
           --dockerfile=/workspace/Dockerfile \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$SHORT_SHA \
           --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
-          --destination=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:latest \
           --cache=true \
           --cache-repo=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda-cache \
           --cache-ttl=24h \
@@ -210,7 +209,7 @@ steps:
         import urllib.request
 
         repository, commit_sha = sys.argv[1:]
-        endpoint = f"https://api.github.com/repos/{repository}/commits/{commit_sha}/check-runs"
+        endpoint = f"https://api.github.com/repos/{repository}/commits/{commit_sha}/check-runs?per_page=100"
         request = urllib.request.Request(
             endpoint,
             headers={
@@ -328,24 +327,24 @@ steps:
           echo "Missing computed release version metadata" >&2
           exit 1
         fi
-        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
-        IMAGE_TAG="$${IMAGE_TAG//+/-}"
+        IMAGE_REF="$$(cat /workspace/korda.image.reference)"
+        DEPLOY_IMAGE="$${IMAGE_REF#registry:}"
         WEB_URL="$$(gcloud run services describe korda-web --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         WORKER_URL="$$(gcloud run services describe korda-worker --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         APP_URL='${_APP_URL}'
         APP_URL="$${APP_URL:-$${WEB_URL}}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},BUILD_SHA=$${BUILD_SHA},SHORT_SHA=$${BUILD_SHA}"
-        ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=1"
+        ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=1,GUNICORN_TIMEOUT=900,RUN_MIGRATIONS_ON_STARTUP=False"
         # Keep the deploy contract aligned with the Pulumi-managed media bucket
         # and its least-privilege runtime identity.
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda,BACKUP_BUCKET_NAME=${PROJECT_ID}-backup-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
         ENV_VARS="$${ENV_VARS},SURREAL_NS=korda,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
         ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-2.5-flash,GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
-        ENV_VARS="$${ENV_VARS},CLOUD_TASKS_SERVICE_ACCOUNT=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+        ENV_VARS="$${ENV_VARS},CLOUD_TASKS_SERVICE_ACCOUNT=$${RUNTIME_SERVICE_ACCOUNT},EVENTARC_SERVICE_ACCOUNT=$${RUNTIME_SERVICE_ACCOUNT}"
         SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
         SECRETS="$${SECRETS},SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest"
         SECRETS="$${SECRETS},SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
@@ -358,7 +357,7 @@ steps:
           SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
         fi
         gcloud run deploy korda-worker \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
+          --image="$${DEPLOY_IMAGE}" \
           --region=${_REGION} \
           --platform=managed \
           --no-allow-unauthenticated \
@@ -383,8 +382,8 @@ steps:
           echo "Missing computed release version metadata" >&2
           exit 1
         fi
-        IMAGE_TAG="${IMAGE_TAG:-$${RELEASE_VERSION}}"
-        IMAGE_TAG="$${IMAGE_TAG//+/-}"
+        IMAGE_REF="$$(cat /workspace/korda.image.reference)"
+        DEPLOY_IMAGE="$${IMAGE_REF#registry:}"
         WEB_URL="$$(gcloud run services describe korda-web --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         WORKER_URL="$$(gcloud run services describe korda-worker --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         CUSTOM_DOMAINS="$$(gcloud beta run domain-mappings list --region=${_REGION} --format='value(DOMAIN)' 2>/dev/null | tr '\n' ',' | sed 's/,$$//')"
@@ -399,13 +398,13 @@ steps:
         # Keep the deploy contract aligned with the Pulumi-managed media bucket
         # and its least-privilege runtime identity.
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda"
+        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda,BACKUP_BUCKET_NAME=${PROJECT_ID}-backup-korda"
         ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
         ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL},EXTRA_ALLOWED_HOSTS=$${CUSTOM_DOMAINS}"
         ENV_VARS="$${ENV_VARS},SURREAL_NS=korda,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
         ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-2.5-flash,GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
-        ENV_VARS="$${ENV_VARS},CLOUD_TASKS_SERVICE_ACCOUNT=${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+        ENV_VARS="$${ENV_VARS},CLOUD_TASKS_SERVICE_ACCOUNT=$${RUNTIME_SERVICE_ACCOUNT},EVENTARC_SERVICE_ACCOUNT=$${RUNTIME_SERVICE_ACCOUNT}"
         SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
         SECRETS="$${SECRETS},SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest"
         SECRETS="$${SECRETS},SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
@@ -418,7 +417,7 @@ steps:
           SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
         fi
         gcloud run deploy korda-web \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/korda:$${IMAGE_TAG} \
+          --image="$${DEPLOY_IMAGE}" \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \

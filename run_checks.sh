@@ -46,7 +46,7 @@ if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))'
 fi
 
 echo -e "${YELLOW}[Bytecode] Validating Python syntax & compilation across codebase...${NC}"
-$PYTHON_BIN -m compileall -q core extractor scripts manage.py
+$PYTHON_BIN -m compileall -q core extractor scripts infra/pulumi manage.py
 echo -e "${GREEN}✓ Python bytecode compiled cleanly with 0 syntax errors.${NC}"
 
 echo -e "${YELLOW}[Reliability Contracts] Verifying task, recovery, export, and polling controls...${NC}"
@@ -235,10 +235,10 @@ if [[ "$AUTOFIX" = true ]]; then
         $PYTHON_BIN -m ruff format . || true
     fi
     if command -v markdownlint &> /dev/null; then
-        markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md .kiro/steering/*.md 2>/dev/null || true
+        markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md 2>/dev/null || true
     fi
     if command -v yamllint &> /dev/null; then
-        yamllint service.yaml service-worker.yaml cloudbuild.yaml bandit.yaml .coderabbit.yaml .github/workflows/*.yml .github/dependabot.yml 2>/dev/null || true
+        yamllint infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml bandit.yaml .coderabbit.yaml .github/workflows/*.yml .github/dependabot.yml 2>/dev/null || true
     fi
     echo -e "${GREEN}✓ Automated code formatting and lint fixes applied across entire codebase.${NC}"
 fi
@@ -254,10 +254,10 @@ fi
 
 echo -e "\n${YELLOW}[Code Quality] Executing JavaScript ESLint & SonarQube JS Convention Check...${NC}"
 if [[ -x "./node_modules/.bin/eslint" ]]; then
-    ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+    ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 elif command -v npx &> /dev/null; then
-    npx --no-install eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+    npx --no-install eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js" || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 else
     echo -e "${RED}✗ eslint not found in local node_modules or PATH! Run 'npm ci' to install.${NC}" >&2
@@ -286,7 +286,7 @@ echo -e "\n${YELLOW}[Schema Audit] Verifying YAML & Configuration File Structure
 if command -v yamllint &> /dev/null; then
     yamllint bandit.yaml docker-compose.yml
     yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" \
-        docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml
+        docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml infra/pulumi/esc/korda-base.yaml
     echo -e "${GREEN}✓ Configuration schemas and YAML structures verified successfully.${NC}"
 else
     echo -e "${YELLOW}⚠ yamllint not found in PATH (skipping).${NC}"

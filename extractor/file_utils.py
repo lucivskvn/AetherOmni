@@ -328,21 +328,25 @@ def _parse_excel_openpyxl(file_path: str) -> str | None:
         with zipfile.ZipFile(file_path, "r") as zf:
             _validate_xlsx_archive(zf)
         wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
-        sheets_md: list[str] = []
-        parsed_rows = [0]
-        rendered_bytes = [0]
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            rows: list[list[str]] = []
-            for row in ws.iter_rows(values_only=True):
-                str_row = _bounded_excel_row(row, parsed_rows)
-                if any(str_row):
-                    rows.append(str_row)
-            formatted = _format_markdown_table_sheet(sheet_name, rows, rendered_bytes)
-            if formatted:
-                sheets_md.append(formatted)
-        wb.close()
-        return "\n\n".join(sheets_md) if sheets_md else None
+        try:
+            sheets_md: list[str] = []
+            parsed_rows = [0]
+            rendered_bytes = [0]
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                rows: list[list[str]] = []
+                for row in ws.iter_rows(values_only=True):
+                    str_row = _bounded_excel_row(row, parsed_rows)
+                    if any(str_row):
+                        rows.append(str_row)
+                formatted = _format_markdown_table_sheet(sheet_name, rows, rendered_bytes)
+                if formatted:
+                    sheets_md.append(formatted)
+            return "\n\n".join(sheets_md) if sheets_md else None
+        finally:
+            wb.close()
+    except ValueError:
+        raise
     except Exception as exc:
         logger.debug("[Excel Parser] openpyxl extraction failed: %s", exc)
         return None
@@ -372,11 +376,11 @@ def _extract_sheet_rows_from_xml(sheet_tree, shared_strings: list[str], parsed_r
 
 
 def _load_zipxml_shared_strings(zf: Any) -> list[str]:
-    import xml.etree.ElementTree as ET  # nosec B405
+    import defusedxml.ElementTree as ET  # type: ignore[import-untyped]
 
     shared_strings: list[str] = []
     if "xl/sharedStrings.xml" in zf.namelist():
-        ss_tree = ET.fromstring(zf.read("xl/sharedStrings.xml"))  # nosec B314 # noqa: S314
+        ss_tree = ET.fromstring(zf.read("xl/sharedStrings.xml"))
         for si in ss_tree.findall(".//{*}si"):
             t_el = si.find(".//{*}t")
             shared_strings.append(t_el.text if t_el is not None and t_el.text else "")
@@ -384,14 +388,14 @@ def _load_zipxml_shared_strings(zf: Any) -> list[str]:
 
 
 def _parse_zipxml_sheets(zf: Any, shared_strings: list[str]) -> list[str]:
-    import xml.etree.ElementTree as ET  # nosec B405
+    import defusedxml.ElementTree as ET  # type: ignore[import-untyped]
 
     sheet_files = [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
     sheets_md: list[str] = []
     parsed_rows = [0]
     rendered_bytes = [0]
     for s_idx, s_file in enumerate(sheet_files, 1):
-        sheet_tree = ET.fromstring(zf.read(s_file))  # nosec B314 # noqa: S314
+        sheet_tree = ET.fromstring(zf.read(s_file))
         rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings, parsed_rows)
         formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows, rendered_bytes)
         if formatted:
@@ -438,14 +442,16 @@ def process_pdf_local(file_path: str) -> tuple[str, int]:
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
-        pages_md: list[str] = []
-        page_count = len(doc)
-        for page_num in range(page_count):
-            page = doc[page_num]
-            text = page.get_text("text").strip()
-            if text:
-                pages_md.append(f"## Page {page_num + 1}\n\n{text}")
-        doc.close()
+        try:
+            pages_md: list[str] = []
+            page_count = len(doc)
+            for page_num in range(page_count):
+                page = doc[page_num]
+                text = page.get_text("text").strip()
+                if text:
+                    pages_md.append(f"## Page {page_num + 1}\n\n{text}")
+        finally:
+            doc.close()
         if pages_md and len("".join(pages_md).strip()) > 30:
             return "\n\n---\n\n".join(pages_md), page_count
         return "", page_count
@@ -1326,12 +1332,69 @@ def cleanup_stale_temp_artifacts(temp_dir: str | None = None, max_age_seconds: i
     return removed_count
 
 
+def _is_internal_proxy_addr(addr: Any) -> bool:
+    if addr.is_loopback or addr.is_link_local:
+        return True
+    packed = addr.packed
+    if addr.version == 4:
+        return (
+            packed[0] == 10 or (packed[0] == 172 and 16 <= packed[1] <= 31) or (packed[0] == 192 and packed[1] == 168)
+        )
+    return (packed[0] & 0xFE) == 0xFC
+
+
+def _is_trusted_proxy_ip(ip_str: str) -> bool:
+    import ipaddress
+
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return _is_internal_proxy_addr(addr)
+
+
+def _parse_valid_ip(raw_token: str) -> tuple[str, bool] | None:
+    import ipaddress
+
+    candidate = raw_token.strip()
+    if not candidate:
+        return None
+    try:
+        addr = ipaddress.ip_address(candidate)
+    except ValueError:
+        return None
+    return str(addr), _is_internal_proxy_addr(addr)
+
+
 def get_client_ip(request: Any) -> str:
-    """Extract the true client IP from Django request headers."""
+    """Extract the true client IP, ignoring spoofed X-Forwarded-For from untrusted peers."""
+    remote_addr = str(request.META.get("REMOTE_ADDR", "127.0.0.1")).strip() or "127.0.0.1"
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        return str(x_forwarded_for.split(",")[0].strip())
-    return str(request.META.get("REMOTE_ADDR", "127.0.0.1"))
+    if not x_forwarded_for or not _is_trusted_proxy_ip(remote_addr):
+        return remote_addr
+
+    parsed = [res for part in str(x_forwarded_for).split(",") if (res := _parse_valid_ip(part)) is not None]
+    if not parsed:
+        return remote_addr
+
+    for ip_str, is_internal in reversed(parsed):
+        if not is_internal:
+            return ip_str
+    return parsed[-1][0]
+
+
+def build_gcs_prefix_path(user_id: str, doc_slug: str, filename: str, *, ephemeral: bool = True) -> str:
+    """Build deterministic GCS prefix key under raw/ephemeral/ or raw/latest/."""
+    import os
+    import uuid
+
+    safe_user = slugify(str(user_id)) or "anon"
+    safe_slug = slugify(str(doc_slug)) or "document"
+    base, ext = os.path.splitext(str(filename or "upload.bin"))
+    safe_name = f"{slugify(base) or 'file'}{ext.lower()}"
+    if ephemeral:
+        return f"raw/ephemeral/{safe_user}/{safe_slug}/{uuid.uuid4().hex[:12]}-{safe_name}"
+    return f"raw/latest/{safe_user}/{safe_slug}/{safe_name}"
 
 
 def _resolve_currency_and_symbol(accept_language: str) -> tuple[str, str]:

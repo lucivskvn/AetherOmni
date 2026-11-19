@@ -452,3 +452,17 @@ describe('copyTextToClipboard', () => {
     expect(execCommandCalled).toBe(true);
   });
 });
+
+describe('compileMarkdown security regressions', () => {
+  it('sanitizes fenced code language tag to prevent attribute-breakout XSS', () => {
+    const out = compileMarkdown('```js" onclick="alert(1)\nconsole.log(1)\n```');
+    expect(out).not.toContain('onclick=');
+    expect(out).toContain('class="language-jsonclickalert1"');
+  });
+
+  it('keeps safe HTML tags escaped inside fenced code blocks', () => {
+    const out = compileMarkdown('```html\n<div class="x">hello</div>\n```');
+    expect(out).toContain('&lt;div class="x"&gt;hello&lt;/div&gt;');
+    expect(out).not.toContain('<div class="x">');
+  });
+});

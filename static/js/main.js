@@ -121,7 +121,9 @@ async function executeRagStream(url, onEvent) {
     const processEvent = rawEvent => {
         const dataLine = rawEvent.split('\n').find(line => line.startsWith('data:'));
         if (!dataLine) return;
-        const payload = JSON.parse(dataLine.slice(5).trim());
+        const rawData = dataLine.slice(5).trim();
+        if (!rawData || rawData === '[DONE]') return;
+        const payload = JSON.parse(rawData);
         onEvent(payload);
     };
 
@@ -129,6 +131,7 @@ async function executeRagStream(url, onEvent) {
         while (true) {
             const { done, value } = await reader.read();
             buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            buffer = buffer.replaceAll('\r\n', '\n');
             const events = buffer.split('\n\n');
             buffer = events.pop();
             events.forEach(processEvent);
@@ -152,7 +155,7 @@ function initializeAuditSearch() {
     clearBtn.className = 'search-clear-btn';
     clearBtn.setAttribute('aria-label', 'Clear search input');
     clearBtn.title = 'Clear search';
-    clearBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    clearBtn.innerHTML = `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 
 
     const hint = document.getElementById('audit-search-hint');
@@ -185,8 +188,8 @@ function initializeAuditSearch() {
 }
 
 const PASSWORD_MATCH_SVGS = {
-    match: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
-    mismatch: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
+    match: `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+    mismatch: `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
 };
 
 function createPasswordFeedbackElement(confirmInput) {
@@ -305,7 +308,7 @@ function initializeSearchShortcuts() {
     clearBtn.className = 'search-clear-btn';
     clearBtn.setAttribute('aria-label', 'Clear search query');
     clearBtn.title = 'Clear search';
-    clearBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    clearBtn.innerHTML = `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
 
 
     const container = ragQuery.closest('.search-input-container');
@@ -388,8 +391,8 @@ function initializeSearchShortcuts() {
  */
 function initializePasswordToggles() {
     const SVGS = {
-        show: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`,
-        hide: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`
+        show: `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`,
+        hide: `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`
     };
     document.querySelectorAll('input[type="password"]').forEach((input, index) => {
         if (input.dataset.hasToggle) return;
@@ -435,7 +438,7 @@ function initializeCapsLockDetector() {
         warning.setAttribute('role', 'status');
         warning.setAttribute('aria-live', 'polite');
         warning.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; display: inline-block; vertical-align: middle;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; display: inline-block; vertical-align: middle;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <span style="vertical-align: middle;">Caps Lock is active</span>
         `;
 
@@ -496,7 +499,7 @@ function setFormSubmitLoadingState(form) {
 
     btn.dataset.originalHtml = btn.innerHTML;
     btn.dataset.originalDisabled = btn.disabled ? 'true' : 'false';
-    const spinnerSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spinner" style="margin-right: 8px;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
+    const spinnerSvg = `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spinner" style="margin-right: 8px;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
 
     btn.innerHTML = `${spinnerSvg} ${text}`;
     btn.setAttribute('aria-disabled', 'true');
@@ -1119,6 +1122,8 @@ function initializeRAGSearch() {
     }
 
     function renderRagSources(sources) {
+        const ragSourcesWrap = document.getElementById('rag-sources');
+        if (ragSourcesWrap) ragSourcesWrap.style.display = '';
         ragSourcesList.innerHTML = '';
         if (!sources || sources.length === 0) {
             const li = document.createElement('li');
@@ -1159,7 +1164,7 @@ function initializeRAGSearch() {
         const docIds = getSelectedDocIds();
         let url = `${streaming ? '/api/v1/stream-query/' : '/rag-search/'}?q=${encodeURIComponent(query)}`;
         if (docIds.length > 0) {
-            url += `&document_ids=${docIds.join(',')}`;
+            url += `&document_ids=${docIds.map(encodeURIComponent).join(',')}`;
         }
         return url;
     }
@@ -1180,6 +1185,169 @@ function initializeRAGSearch() {
         renderRagSources(data?.sources);
     }
 
+    async function runStrictLibrarianSearch(query, librarianUrl) {
+        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+        const resp = await fetch(librarianUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+            },
+            body: JSON.stringify({ query }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data?.error || 'Strict Librarian search failed.');
+        const evidence = Array.isArray(data?.evidence) ? data.evidence : [];
+        const ragSourcesWrap = document.getElementById('rag-sources');
+        ragAnswer.textContent = evidence.length
+            ? `Strict Librarian (${evidence.length} verbatim matches, zero LLM):`
+            : 'No verbatim anchor matches found.';
+        ragSourcesList.replaceChildren();
+        if (ragSourcesWrap) ragSourcesWrap.style.display = evidence.length ? 'block' : 'none';
+        evidence.forEach(ev => {
+            const li = document.createElement('li');
+            const label = document.createElement('label');
+            label.style.cssText = 'display: flex; align-items: flex-start; gap: 0.45rem; cursor: pointer;';
+            if (ev.anchor_id) {
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'korda-anchor-select';
+                cb.value = String(ev.anchor_id);
+                cb.dataset.docSlug = String(ev.doc_slug || '');
+                label.appendChild(cb);
+            }
+            const textSpan = document.createElement('span');
+            textSpan.textContent = `[${ev.doc_slug || ev.source_id || 'source'} | ${ev.coord || ''}] ${ev.quote || ''}`;
+            label.appendChild(textSpan);
+            li.appendChild(label);
+            ragSourcesList.appendChild(li);
+        });
+    }
+
+    document.querySelectorAll('.btn-compile-kb').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const rawCompileUrl = btn.dataset.compileUrl;
+            if (!rawCompileUrl) return;
+            const baseUrl = new URL(rawCompileUrl, globalThis.location.origin);
+            if (baseUrl.origin !== globalThis.location.origin) return;
+            btn.disabled = true;
+            try {
+                const resp = await fetch(baseUrl.pathname + baseUrl.search);
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data?.error || 'Failed to compile knowledge base.');
+                const count = Number(data?.bundle_count || 0);
+                if (count < 1) {
+                    showClientSideAlert('No verified crystals available to compile yet. Synthesize a crystal first.', 'warning');
+                    return;
+                }
+                for (let part = 1; part <= count; part += 1) {
+                    const dlUrl = new URL(baseUrl.pathname, globalThis.location.origin);
+                    dlUrl.searchParams.set('download', '1');
+                    dlUrl.searchParams.set('part', String(part));
+                    const link = document.createElement('a');
+                    link.href = dlUrl.pathname + dlUrl.search;
+                    link.download = `korda_kb_part_${part}.md`;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                }
+            } catch (err) {
+                showClientSideAlert(err.message || 'Markdown compilation failed.', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    });
+
+    const crystalDialog = document.getElementById('crystal-synth-dialog');
+    const crystalForm = document.getElementById('crystal-synth-form');
+    const openCrystalBtn = document.getElementById('btn-open-crystal-dialog');
+    const closeCrystalBtn = document.getElementById('btn-close-crystal-dialog');
+    const cancelCrystalBtn = document.getElementById('btn-cancel-crystal-dialog');
+    if (crystalDialog && crystalForm && openCrystalBtn) {
+        openCrystalBtn.addEventListener('click', () => {
+            const checkedAnchors = Array.from(document.querySelectorAll('.korda-anchor-select:checked'));
+            const anchorInput = document.getElementById('crystal-anchor-ids');
+            const slugInput = document.getElementById('crystal-doc-slug');
+            if (anchorInput && checkedAnchors.length) {
+                anchorInput.value = checkedAnchors.map(el => el.value).join(', ');
+            }
+            if (slugInput && !slugInput.value && checkedAnchors[0]?.dataset?.docSlug) {
+                slugInput.value = checkedAnchors[0].dataset.docSlug;
+            }
+            if (typeof crystalDialog.showModal === 'function') crystalDialog.showModal();
+        });
+        [closeCrystalBtn, cancelCrystalBtn].forEach(el => {
+            if (el) el.addEventListener('click', () => crystalDialog.close());
+        });
+        const _readCsvInput = id => (document.getElementById(id)?.value || '')
+            .split(',').map(s => s.trim()).filter(Boolean);
+
+        const _readTextInput = (id, fallback = '') => document.getElementById(id)?.value || fallback;
+
+        const _buildCrystalPayload = () => ({
+            title: _readTextInput('crystal-title'),
+            doc_slug: _readTextInput('crystal-doc-slug', 'general'),
+            summary: _readTextInput('crystal-summary'),
+            anchor_ids: _readCsvInput('crystal-anchor-ids'),
+            tags: _readCsvInput('crystal-tags'),
+        });
+
+        const _postCrystalSynthesis = async (synthUrl, payload) => {
+            const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+            const headers = { 'Content-Type': 'application/json' };
+            if (csrfToken) headers['X-CSRFToken'] = csrfToken;
+            const resp = await fetch(synthUrl, { method: 'POST', headers, body: JSON.stringify(payload) });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data?.error || 'Failed to save crystal.');
+            return data?.crystal?.status || 'ok';
+        };
+
+        const _submitCrystalSynthesis = async () => {
+            const statusEl = document.getElementById('crystal-synth-status');
+            const submitBtn = document.getElementById('btn-submit-crystal');
+            const synthUrl = crystalForm.dataset.synthesizeUrl;
+            if (!synthUrl) return;
+            if (submitBtn) submitBtn.disabled = true;
+            if (statusEl) statusEl.textContent = 'Saving verified crystal...';
+            try {
+                const status = await _postCrystalSynthesis(synthUrl, _buildCrystalPayload());
+                if (statusEl) statusEl.textContent = `Saved crystal (${status}).`;
+                crystalForm.reset();
+                setTimeout(() => crystalDialog.close(), 500);
+            } catch (err) {
+                if (statusEl) statusEl.textContent = err.message || 'Crystal synthesis failed.';
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        };
+
+        crystalForm.addEventListener('submit', e => {
+            e.preventDefault();
+            return _submitCrystalSynthesis();
+        });
+    }
+
+    async function _executeStreamingOrFallbackRag(query) {
+        let streamedSources = [];
+        ragAnswer.textContent = '';
+        ragResults.style.display = 'block';
+        try {
+            await executeRagStream(buildRagUrl(query, true), event => {
+                if (event.error) throw new Error(event.error);
+                if (event.sources) {
+                    streamedSources = event.sources;
+                    renderRagSources(streamedSources);
+                }
+                if (event.token) ragAnswer.textContent += event.token;
+            });
+        } catch (streamError) {
+            if (!(streamError instanceof RagStreamUnavailableError)) throw streamError;
+            const data = await executeRagFetch(buildRagUrl(query));
+            _renderFallbackRagAnswer(data);
+        }
+    }
+
     async function runSemanticRAG() {
         if (!ragQuery || !ragBtn || !ragLoader || !ragResults || !ragAnswer || !ragSourcesList) return;
         const query = ragQuery.value.trim();
@@ -1194,22 +1362,11 @@ function initializeRAGSearch() {
         _setRagSearchBusy(true);
 
         try {
-            let streamedSources = [];
-            ragAnswer.textContent = '';
-            ragResults.style.display = 'block';
-            try {
-                await executeRagStream(buildRagUrl(query, true), event => {
-                    if (event.error) throw new Error(event.error);
-                    if (event.sources) {
-                        streamedSources = event.sources;
-                        renderRagSources(streamedSources);
-                    }
-                    if (event.token) ragAnswer.textContent += event.token;
-                });
-            } catch (streamError) {
-                if (!(streamError instanceof RagStreamUnavailableError)) throw streamError;
-                const data = await executeRagFetch(buildRagUrl(query));
-                _renderFallbackRagAnswer(data);
+            const strictToggle = document.getElementById('strict-librarian-toggle');
+            if (strictToggle?.checked && strictToggle.dataset.librarianUrl) {
+                await runStrictLibrarianSearch(query, strictToggle.dataset.librarianUrl);
+            } else {
+                await _executeStreamingOrFallbackRag(query);
             }
             _setRagSearchBusy(false);
             ragResults.style.display = 'block';
@@ -1449,17 +1606,26 @@ function _updateTokenMetricCard(stats) {
     }
 }
 
-function updateDashboardStats(stats) {
-    if (!stats) return;
-
+function _updateBudgetCard(stats) {
     const spendVal = document.querySelector('.metrics-row .metric-card:first-child .metric-value');
     if (spendVal) spendVal.textContent = stats.formatted_monthly_spent;
 
     const budgetSub = document.querySelector('.metrics-row .metric-card:first-child .metric-sub');
-    if (budgetSub) {
-        const fillBar = budgetSub.querySelector('.budget-bar-fill');
-        if (fillBar) fillBar.style.width = stats.percent_spent + '%';
+    if (!budgetSub) return;
+    const pct = Math.min(100, Math.max(0, Number(stats.percent_spent) || 0));
+    const fillBar = budgetSub.querySelector('.budget-bar-fill');
+    if (fillBar) fillBar.style.width = `${pct}%`;
+    const progressBar = budgetSub.querySelector('[role="progressbar"], progress');
+    if (progressBar) {
+        progressBar.setAttribute('aria-valuenow', String(pct));
+        if (progressBar.tagName === 'PROGRESS') progressBar.value = pct;
     }
+}
+
+function updateDashboardStats(stats) {
+    if (!stats) return;
+
+    _updateBudgetCard(stats);
 
     const pagesVal = document.querySelector('.metrics-row .metric-card:nth-child(2) .metric-value');
     if (pagesVal) pagesVal.textContent = stats.total_pages;
@@ -1475,11 +1641,9 @@ function updateDashboardStats(stats) {
     const isBillingBanner = billingAlert?.textContent.includes('Monthly API Billing Cap Triggered');
     if (isBillingBanner) {
         if (!stats.budget_exceeded) billingAlert.remove();
-    } else if (stats.budget_exceeded && !isBillingBanner) {
-        if (!globalThis._reloadTriggered) {
-            globalThis._reloadTriggered = true;
-            globalThis.location.reload();
-        }
+    } else if (stats.budget_exceeded && !globalThis._reloadTriggered) {
+        globalThis._reloadTriggered = true;
+        globalThis.location.reload();
     }
 }
 
@@ -1492,7 +1656,8 @@ function _findTableRowForDoc(tbody, doc) {
     if (chk) return chk.closest('tr');
 
     const hrefKey = doc.uuid ? `/document/${doc.uuid}/` : `/document/${doc.id}/`;
-    const link = tbody.querySelector(`a[href*="${hrefKey}"]`);
+    const escapedKey = typeof globalThis.CSS?.escape === 'function' ? globalThis.CSS.escape(hrefKey) : hrefKey;
+    const link = tbody.querySelector(`a[href*="${escapedKey}"]`);
     return link ? link.closest('tr') : null;
 }
 
@@ -1869,7 +2034,9 @@ function initializeLocalTimezones() {
 
 function trapFocus(dialog, event) {
     if (event.key !== 'Tab' || !dialog) return;
-    const focusables = dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    const focusables = Array.from(
+        dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+    ).filter(el => !el.closest('[hidden]') && globalThis.getComputedStyle(el).display !== 'none' && !el.closest('[style*="display: none"]'));
     if (focusables.length === 0) return;
     const first = focusables[0];
     const last = focusables[focusables.length - 1];

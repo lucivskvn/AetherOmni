@@ -122,16 +122,23 @@ def _confirm_document_outcome(task_name: str, payload: dict) -> None:
 # ── OIDC Bearer token verification ───────────────────────────────────────────
 
 
-def _validate_oidc_claims(id_info: dict) -> bool:
+ENV_CLOUD_TASKS_SA = "CLOUD_TASKS_SERVICE_ACCOUNT"
+
+
+def _validate_oidc_claims(id_info: dict, expected_service_accounts: tuple[str, ...] | None = None) -> bool:
     """Helper to validate issuer and email claims on verified OIDC token."""
     if id_info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
         logger.warning("[CloudTasksHandler] OIDC issuer unexpected: %s", id_info.get("iss"))
         return False
 
-    expected_service_account = getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "").strip()
-    if expected_service_account:
-        if id_info.get("email") != expected_service_account or not id_info.get("email_verified"):
-            logger.warning("[CloudTasksHandler] OIDC caller is not the configured Cloud Tasks service account.")
+    allowed = tuple(sa.strip() for sa in (expected_service_accounts or ()) if sa and sa.strip())
+    if not allowed:
+        default_sa = getattr(settings, ENV_CLOUD_TASKS_SA, "").strip()
+        allowed = (default_sa,) if default_sa else ()
+
+    if allowed:
+        if id_info.get("email") not in allowed or not id_info.get("email_verified"):
+            logger.warning("[CloudTasksHandler] OIDC caller is not an authorized service account.")
             return False
     elif not settings.DEBUG:
         logger.warning("[CloudTasksHandler] CLOUD_TASKS_SERVICE_ACCOUNT must be configured in production.")
@@ -155,7 +162,9 @@ def _expand_audiences(audience: str | list[str]) -> list[str]:
     return audiences
 
 
-def _verify_token_candidates(token: str, audiences: list[str]) -> bool:
+def _verify_token_candidates(
+    token: str, audiences: list[str], expected_service_accounts: tuple[str, ...] | None = None
+) -> bool:
     try:
         import google.auth.transport.requests
         import google.oauth2.id_token
@@ -164,7 +173,7 @@ def _verify_token_candidates(token: str, audiences: list[str]) -> bool:
         for aud in audiences:
             try:
                 id_info = google.oauth2.id_token.verify_oauth2_token(token, request_obj, aud)
-                if _validate_oidc_claims(id_info):
+                if _validate_oidc_claims(id_info, expected_service_accounts=expected_service_accounts):
                     return True
             except Exception as aud_err:
                 logger.debug("[CloudTasksHandler] Candidate audience '%s' rejected: %s", aud, aud_err)
@@ -176,7 +185,12 @@ def _verify_token_candidates(token: str, audiences: list[str]) -> bool:
         return False
 
 
-def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
+def _verify_oidc_token(
+    request: HttpRequest,
+    audience: str | list[str],
+    *,
+    expected_service_accounts: tuple[str, ...] | None = None,
+) -> bool:
     """
     Verify the Google OIDC Bearer token in the Authorization header.
     Returns True if valid against any accepted audience URL, False otherwise.
@@ -192,7 +206,7 @@ def _verify_oidc_token(request: HttpRequest, audience: str | list[str]) -> bool:
 
     token = auth_header.split(" ", 1)[1]
     audiences = _expand_audiences(audience)
-    return _verify_token_candidates(token, audiences)
+    return _verify_token_candidates(token, audiences, expected_service_accounts=expected_service_accounts)
 
 
 def _is_ip_in_google_cidrs(ip_str: str) -> bool:
@@ -337,3 +351,203 @@ class CloudTaskHandlerView(View):
             surreal_db.document_task_name.reset(token)
 
         return JsonResponse({"status": "ok", "task": task_name})
+
+
+def _unwrap_eventarc_envelope(request, payload: dict) -> tuple[dict | None, str]:
+    """Unwrap direct GCS object, Structured CloudEvent (`data`), or Pub/Sub (`message.data`) envelopes."""
+    import base64
+
+    event_type = str(request.headers.get("ce-type") or payload.get("type") or "")
+    if isinstance(payload.get("data"), dict):
+        return payload["data"], event_type
+    message = payload.get("message")
+    if isinstance(message, dict) and isinstance(message.get("data"), str):
+        raw_bytes = base64.b64decode(message["data"], validate=True)
+        if len(raw_bytes) > 1024 * 1024:
+            raise ValueError("Decoded Pub/Sub Eventarc payload exceeds 1MB limit")
+        unwrapped = json.loads(raw_bytes.decode("utf-8"))
+        if not isinstance(unwrapped, dict):
+            raise ValueError("Decoded Pub/Sub Eventarc payload must be a JSON object")
+        return unwrapped, event_type
+    return payload, event_type
+
+
+def _parse_eventarc_payload(request) -> tuple[dict | None, str, JsonResponse | None]:
+    """Validate Eventarc request size, parse JSON, and unwrap CloudEvent/PubSub envelopes."""
+    if request.body and len(request.body) > 1024 * 1024:
+        return None, "", JsonResponse({"error": "Eventarc payload exceeds 1MB limit"}, status=413)
+    try:
+        payload = json.loads(request.body) if request.body else {}
+    except UnicodeDecodeError, json.JSONDecodeError:
+        return None, "", JsonResponse({"error": "Invalid Eventarc JSON payload"}, status=400)
+    if not isinstance(payload, dict):
+        return None, "", JsonResponse({"error": "Eventarc payload must be a JSON object"}, status=400)
+    try:
+        unwrapped, event_type = _unwrap_eventarc_envelope(request, payload)
+    except ValueError:
+        return None, "", JsonResponse({"error": "Invalid Eventarc envelope"}, status=400)
+    return unwrapped, event_type, None
+
+
+def _attach_anchor_embeddings(anchors: list[dict], llm_gateway) -> None:
+    for anc in anchors:
+        if isinstance(anc, dict) and not anc.get("embedding") and anc.get("quote"):
+            emb = llm_gateway.generate_query_embedding(str(anc["quote"]))
+            if emb:
+                anc["embedding"] = emb
+
+
+def _record_korda_spend(model_used: str, input_tokens: int, output_tokens: int) -> None:
+    if not input_tokens and not output_tokens:
+        return
+    try:
+        from datetime import UTC, datetime
+
+        from . import llm_gateway
+        from .models import MonthlySpendLog
+
+        cost = llm_gateway.calculate_gemini_cost(model_used, input_tokens, output_tokens)
+        MonthlySpendLog.add_cost(
+            datetime.now(UTC),
+            cost,
+            in_tok=int(input_tokens),
+            out_tok=int(output_tokens),
+        )
+    except Exception as exc:
+        logger.warning("[KORDA Spend] Failed to record spend: %s", exc)
+
+
+def _parse_gcs_event_fields(payload: dict, bucket_name: str, object_name: str) -> dict[str, str]:
+    parts = [p for p in object_name.split("/") if p]
+    raw_metadata = payload.get("metadata")
+    metadata: dict = raw_metadata if isinstance(raw_metadata, dict) else {}
+    owner_id = str(metadata.get("owner_id") or (parts[2] if len(parts) >= 5 else "system")).strip() or "system"
+    doc_slug = str(metadata.get("doc_slug") or (parts[3] if len(parts) >= 5 else object_name)).strip() or object_name
+    return {
+        "owner_id": owner_id,
+        "doc_slug": doc_slug,
+        "gcs_uri": f"gs://{bucket_name}/{object_name}",
+        "mime_type": str(payload.get("contentType") or "application/pdf"),
+        "sha256": str(metadata.get("sha256") or ""),
+        "source_id": str(metadata.get("source_id") or f"{owner_id}:{doc_slug}"),
+        "title": str(metadata.get("title") or (parts[-1] if parts else "") or doc_slug),
+    }
+
+
+def _digitalize_gcs_object(payload: dict, bucket_name: str, object_name: str) -> dict:
+    """Upsert source metadata and extract verbatim anchors from a raw/ GCS object."""
+    from . import llm_gateway, surreal_db
+
+    meta = _parse_gcs_event_fields(payload, bucket_name, object_name)
+    try:
+        llm_gateway.check_budget_and_api_limit()
+    except llm_gateway.GeminiProcessingError as exc:
+        raise ValueError(str(exc)) from exc
+
+    extracted = llm_gateway.extract_anchors_from_gcs_uri(
+        gcs_uri=meta["gcs_uri"], mime_type=meta["mime_type"], doc_slug=meta["doc_slug"]
+    )
+    _record_korda_spend(
+        str(extracted.get("model_used") or llm_gateway.MODEL_TIER_LITE),
+        int(extracted.get("input_tokens") or 0),
+        int(extracted.get("output_tokens") or 0),
+    )
+    anchors = extracted.get("anchors") or []
+    _attach_anchor_embeddings(anchors, llm_gateway)
+    version = surreal_db.get_next_source_version(meta["owner_id"], meta["doc_slug"])
+
+    surreal_db.upsert_source(
+        source_id=meta["source_id"],
+        doc_slug=meta["doc_slug"],
+        owner_id=meta["owner_id"],
+        title=meta["title"],
+        mime_type=meta["mime_type"],
+        gcs_uri=meta["gcs_uri"],
+        sha256=meta["sha256"],
+        version=version,
+    )
+    if anchors:
+        surreal_db.create_anchors_with_provenance(
+            source_id=meta["source_id"],
+            doc_slug=meta["doc_slug"],
+            owner_id=meta["owner_id"],
+            version=version,
+            anchors=anchors,
+        )
+
+    logger.info(
+        "[EventarcGCSRaw] Digitalized %s v%d (%d anchors) for owner=%s",
+        meta["gcs_uri"],
+        version,
+        len(anchors),
+        meta["owner_id"],
+    )
+    return {
+        "status": "accepted",
+        "bucket": bucket_name,
+        "name": object_name,
+        "source_id": meta["source_id"],
+        "version": version,
+        "anchors_created": len(anchors),
+    }
+
+
+def _build_eventarc_audiences(request) -> list[str]:
+    worker_url = (getattr(settings, "WORKER_URL", "") or "").strip()
+    candidates = [
+        worker_url,
+        f"{worker_url.rstrip('/')}{request.path}" if worker_url else "",
+        request.build_absolute_uri(request.path),
+    ]
+    return [url for url in candidates if url]
+
+
+def _eventarc_service_accounts() -> tuple[str, ...]:
+    import os
+
+    candidates = (
+        getattr(settings, "EVENTARC_SERVICE_ACCOUNT", "") or os.getenv("EVENTARC_SERVICE_ACCOUNT", ""),
+        getattr(settings, ENV_CLOUD_TASKS_SA, "") or os.getenv(ENV_CLOUD_TASKS_SA, ""),
+    )
+    return tuple(sa.strip() for sa in candidates if sa and sa.strip())
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class EventarcGCSRawView(View):
+    """OIDC-verified Eventarc receiver scoped strictly to raw/ GCS uploads."""
+
+    http_method_names = ["post"]
+
+    def post(self, request):
+        if not settings.DEBUG and not _verify_oidc_token(
+            request,
+            _build_eventarc_audiences(request),
+            expected_service_accounts=_eventarc_service_accounts(),
+        ):
+            return JsonResponse({"error": "Unauthorized Eventarc invocation."}, status=401)
+
+        payload, event_type, error_response = _parse_eventarc_payload(request)
+        if error_response is not None or payload is None:
+            return error_response
+
+        if event_type and event_type != "google.cloud.storage.object.v1.finalized":
+            return JsonResponse({"status": "ignored", "reason": "non-finalized-event"})
+
+        object_name = str(payload.get("name") or "")
+        bucket_name = str(payload.get("bucket") or "")
+        configured_bucket = (getattr(settings, "GS_BUCKET_NAME", "") or "").strip()
+        if not object_name.startswith("raw/") or ".." in object_name.split("/") or not bucket_name:
+            return JsonResponse({"status": "ignored", "reason": "non-raw-prefix"})
+        if configured_bucket and bucket_name != configured_bucket:
+            return JsonResponse({"status": "ignored", "reason": "unrecognized-bucket"})
+
+        try:
+            result = _digitalize_gcs_object(payload, bucket_name, object_name)
+        except ValueError as exc:
+            logger.warning("[EventarcGCSRaw] Permanent failure for gs://%s/%s: %s", bucket_name, object_name, exc)
+            return JsonResponse({"error": "Invalid Eventarc digitalization request."}, status=400)
+        except Exception as exc:
+            logger.exception("[EventarcGCSRaw] Digitalization failed for gs://%s/%s: %s", bucket_name, object_name, exc)
+            return JsonResponse({"error": "Eventarc digitalization failed; retryable."}, status=503)
+
+        return JsonResponse(result)

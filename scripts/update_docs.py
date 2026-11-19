@@ -45,7 +45,6 @@ import argparse
 import os
 import re
 import subprocess  # nosec B404
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -302,13 +301,13 @@ def update_readme(v: dict, test_count: str, scores: dict) -> bool:
     # We still update any inline score text references if they exist in the README.
     if scores.get("objective"):
         text = re.sub(
-            r"(Current Objective/Mechanical Score:\s+\*\*)[\\d.]+?(/100\*\*)",
+            r"(Current Objective/Mechanical Score:\s+\*\*)[\d.]+?(/100\*\*)",
             rf"\g<1>{scores['objective']}\g<2>",
             text,
         )
     if scores.get("strict"):
         text = re.sub(
-            r"(Current Strict Code Health Score:\s+\*\*)[\\d.]+?(/100\*\*)",
+            r"(Current Strict Code Health Score:\s+\*\*)[\d.]+?(/100\*\*)",
             rf"\g<1>{scores['strict']}\g<2>",
             text,
         )
@@ -364,7 +363,7 @@ def update_service_yamls(_v: dict) -> bool:
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 
-def main() -> int:
+def main() -> None:
     parser = argparse.ArgumentParser(description="KORDA auto documentation updater.")
     parser.add_argument("--ci", action="store_true", help="CI mode: compact output.")
     parser.add_argument("--dry-run", action="store_true", help="Show changes without writing.")
@@ -376,11 +375,11 @@ def main() -> int:
 
     if args.print_version:
         print(v["semver"])
-        return 0
+        return
 
     if args.print_release:
         print(v["release_ver"])
-        return 0
+        return
 
     print("KORDA Doc Updater")
     print(f"  Semver        : {v['semver']}")
@@ -400,18 +399,15 @@ def main() -> int:
 
     if args.dry_run:
         print("[DRY RUN] No files will be written.")
-        return 0
+        return
 
     changed = []
     if update_readme(v, test_count, scores):
         changed.append("README.md")
-    if update_service_yamls(v):
-        changed.extend(["service.yaml", "service-worker.yaml"])
+    update_service_yamls(v)
     if args.ci:
         print(f"\nChanged: {', '.join(changed) if changed else 'none'}")
 
-    return 0 if changed or not args.ci else 1
-
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

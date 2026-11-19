@@ -532,8 +532,8 @@ const SAFE_HTML_TAGS = new Set([
 ]);
 const SAFE_HTML_ATTRIBUTES = new Set(['colspan', 'rowspan', 'class', 'dir']);
 
-function _restoreSafeHtml(html) {
-    return html
+function _restoreSafeHtmlSegment(segment) {
+    return segment
         .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
         .replace(/&lt;hr\s*\/?&gt;/gi, '<hr>')
         .replace(/&lt;(\/)?([a-z]+)\b([^&]*)&gt;/gi, (match, closeSlash, tagName, attrs) => {
@@ -553,13 +553,20 @@ function _restoreSafeHtml(html) {
         });
 }
 
+function _restoreSafeHtml(html) {
+    return html
+        .split(/(<pre>[\s\S]*?<\/pre>)/g)
+        .map((part, idx) => (idx % 2 === 1 ? part : _restoreSafeHtmlSegment(part)))
+        .join('');
+}
+
 function _processLine(line, state, htmlBuilder) {
     if (line.trim().startsWith('```')) {
         if (state.inCodeBlock) {
             state.inCodeBlock = false;
             return '</code></pre>\n';
         }
-        state.codeLang = line.trim().slice(3).trim();
+        state.codeLang = line.trim().slice(3).trim().replace(/[^a-zA-Z0-9_+-]/g, '');
         const langAttr = state.codeLang ? ` class="language-${state.codeLang}"` : '';
         const langLabel = state.codeLang ? `<span class="code-lang-label">${state.codeLang}</span>` : '';
         state.inCodeBlock = true;

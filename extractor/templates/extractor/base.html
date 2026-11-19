@@ -5,7 +5,12 @@
 <head>
     <script>
         (function() {
-            const savedTheme = localStorage.getItem('theme');
+            let savedTheme = null;
+            try {
+                savedTheme = localStorage.getItem('theme');
+            } catch (err) {
+                console.warn('Theme storage unavailable:', err);
+            }
             if (savedTheme) {
                 document.documentElement.dataset.theme = savedTheme;
             } else {
@@ -98,34 +103,37 @@
             </a>
             <div class="nav-actions">
                 <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" aria-label="Switch to light theme" title="Toggle Theme" aria-pressed="true">
-                    <svg id="theme-sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-                    <svg id="theme-moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    <svg id="theme-sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                    <svg id="theme-moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 </button>
                 {% if user.is_authenticated %}
                 <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
-                    <i data-lucide="layout-dashboard"></i> Dashboard
+                    <i data-lucide="layout-dashboard" aria-hidden="true"></i> Dashboard
+                </a>
+                <a href="{% url 'quiz_studio' %}" class="nav-link {% if request.resolver_match.url_name == 'quiz_studio' %}active{% endif %}">
+                    <i data-lucide="graduation-cap" aria-hidden="true"></i> Quiz Studio
                 </a>
                 <a href="{% url 'audit_logs' %}" class="nav-link {% if request.resolver_match.url_name == 'audit_logs' %}active{% endif %}">
-                    <i data-lucide="shield-alert"></i> Audit Logs
+                    <i data-lucide="shield-alert" aria-hidden="true"></i> Audit Logs
                 </a>
                 {% if user.is_superuser or user.is_staff %}
                 <a href="{% url 'deployment_controller' %}" class="nav-link {% if request.resolver_match.url_name == 'deployment_controller' %}active{% endif %}">
-                    <i data-lucide="cpu"></i> Deployment
+                    <i data-lucide="cpu" aria-hidden="true"></i> Deployment
                 </a>
-                <a href="/admin/" target="_blank" class="nav-link">
-                    <i data-lucide="shield"></i> Admin Panel
+                <a href="/admin/" target="_blank" rel="noopener noreferrer" class="nav-link">
+                    <i data-lucide="shield" aria-hidden="true"></i> Admin Panel<span class="visually-hidden"> (opens in new tab)</span>
                 </a>
                 {% endif %}
 
                 {% if user.is_superuser or user.is_staff %}
                 <button type="button" id="settings-trigger-btn" class="nav-link" aria-haspopup="dialog" aria-controls="settings-modal" aria-label="Open Settings" title="Open Settings">
-                    <i data-lucide="settings"></i> Settings
+                    <i data-lucide="settings" aria-hidden="true"></i> Settings
                 </button>
                 {% endif %}
                 <form action="{% url 'logout' %}" method="post" style="display: inline-block; margin: 0;">
                     {% csrf_token %}
                     <button type="submit" class="nav-link logout-btn" aria-label="Sign out of Console">
-                        <i data-lucide="log-out"></i> Logout
+                        <i data-lucide="log-out" aria-hidden="true"></i> Logout
                     </button>
                 </form>
                 {% endif %}
@@ -137,10 +145,10 @@
     <div class="alert-container">
         {% for message in messages %}
         <div class="alert-card {% if message.tags == 'success' %}alert-success{% else %}alert-error{% endif %}" id="msg-{{ forloop.counter }}" role="alert">
-            <i data-lucide="{% if message.tags == 'success' %}check-circle{% else %}alert-triangle{% endif %}"></i>
+            <i data-lucide="{% if message.tags == 'success' %}check-circle{% else %}alert-triangle{% endif %}" aria-hidden="true"></i>
             <span>{{ message }}</span>
             <button type="button" class="alert-close-btn" aria-label="Dismiss message" title="Dismiss message" data-dismiss="msg-{{ forloop.counter }}">
-                <i data-lucide="x"></i>
+                <i data-lucide="x" aria-hidden="true"></i>
             </button>
         </div>
         {% endfor %}
@@ -161,8 +169,8 @@
         <div class="dialog-header" style="flex-direction: column; align-items: flex-start; gap: 4px;">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <h3 id="settings-modal-title" style="margin: 0; font-size: 20px; font-weight: 700; color: var(--text-main);">System Configuration Settings</h3>
-                <button id="settings-close-btn" class="close-btn" aria-label="Close Settings" title="Close Settings">
-                    <i data-lucide="x"></i>
+                <button type="button" id="settings-close-btn" class="close-btn" aria-label="Close Settings" title="Close Settings">
+                    <i data-lucide="x" aria-hidden="true"></i>
                 </button>
             </div>
             <p id="settings-modal-desc" style="margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.4;">Configure monthly budgets, default Gemini models, and trusted CORS/CSRF proxy hosts.</p>
@@ -182,7 +190,7 @@
                 
                 <div class="form-group">
                     <label for="selected_model">Default LLM & Intelligence Router</label>
-                    <select id="selected_model" name="selected_model" aria-describedby="model-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
+                    <select id="selected_model" name="selected_model" aria-describedby="model-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--surface-input); border: 1px solid var(--border-subtle); color: var(--text-main); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
                         <option value="auto" {% if system_settings.selected_model == "auto" %}selected{% endif %}>🤖 Auto-Intelligence Router (Stage & Complexity Aware — EU Primary)</option>
                         <option value="google/gemini-2.5-flash" {% if system_settings.selected_model == "google/gemini-2.5-flash" %}selected{% endif %}>✨ Google Gemini 2.5 Flash (Production Multimodal RAG — EU Primary)</option>
                         <option value="google/gemini-2.5-flash-lite" {% if system_settings.selected_model == "google/gemini-2.5-flash-lite" %}selected{% endif %}>⚡ Google Gemini 2.5 Flash-Lite (High-Throughput Ingestion — EU Primary)</option>
@@ -198,7 +206,7 @@
                 
                 <div class="form-group">
                     <label for="currency">Display Currency Override</label>
-                    <select id="currency" name="currency" aria-describedby="currency-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
+                    <select id="currency" name="currency" aria-describedby="currency-desc" style="width: 100%; padding: 0.65rem; border-radius: 8px; background-color: var(--surface-input); border: 1px solid var(--border-subtle); color: var(--text-main); font-size: 0.95rem; font-family: inherit; font-weight: 500; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem;">
                         <option value="auto" {% if system_settings.currency == "auto" %}selected{% endif %}>🌐 Detected by Browser Locale (Default)</option>
                         <option value="USD" {% if system_settings.currency == "USD" %}selected{% endif %}>💵 USD ($)</option>
                         <option value="IDR" {% if system_settings.currency == "IDR" %}selected{% endif %}>🇮🇩 IDR (Rp)</option>
@@ -209,7 +217,7 @@
 
                 <div class="form-group">
                     <label for="csrf_trusted_origins">Custom Public Domains / CSRF Trusted Origins</label>
-                    <textarea id="csrf_trusted_origins" name="csrf_trusted_origins" aria-describedby="csrf-desc" style="width: 100%; min-height: 80px; padding: 0.65rem; border-radius: 8px; background-color: var(--input-bg, #ffffff); border: 1px solid var(--border-color, #cbd5e1); color: var(--text-color, #1e293b); font-size: 0.95rem; font-family: inherit; font-weight: 500; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem; resize: vertical;">{{ system_settings.csrf_trusted_origins }}</textarea>
+                    <textarea id="csrf_trusted_origins" name="csrf_trusted_origins" aria-describedby="csrf-desc" style="width: 100%; min-height: 80px; padding: 0.65rem; border-radius: 8px; background-color: var(--surface-input); border: 1px solid var(--border-subtle); color: var(--text-main); font-size: 0.95rem; font-family: inherit; font-weight: 500; transition: border-color 0.2s ease, box-shadow 0.2s ease; outline: none; margin-top: 0.25rem; resize: vertical;">{{ system_settings.csrf_trusted_origins }}</textarea>
                     <small id="csrf-desc">Comma-separated list of custom domains or tunnel/proxy URLs to whitelist for CSRF (e.g., <code>https://my-good-domain.com, https://another-tunnel.ngrok-free.app</code>).</small>
                 </div>
                 
@@ -376,82 +384,12 @@
                 themeToggleBtn.addEventListener('click', function() {
                     const newTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
                     document.documentElement.dataset.theme = newTheme;
-                    localStorage.setItem('theme', newTheme);
+                    try {
+                        localStorage.setItem('theme', newTheme);
+                    } catch (err) {
+                        console.warn('Theme storage unavailable:', err);
+                    }
                     updateThemeUI(newTheme);
-                });
-            }
-
-            // Settings Modal Control
-            const settingsModal = document.getElementById('settings-modal');
-            const settingsTrigger = document.getElementById('settings-trigger-btn');
-            const settingsClose = document.getElementById('settings-close-btn');
-
-            if (settingsModal && settingsTrigger) {
-                settingsTrigger.addEventListener('click', function() {
-                    settingsModal.showModal();
-                });
-            }
-            if (settingsModal && settingsClose) {
-                settingsClose.addEventListener('click', function() {
-                    settingsModal.close();
-                });
-            }
-
-            // Global click handler to catch the dashboard settings trigger
-            document.addEventListener('click', function(e) {
-                if (e.target && e.target.id === 'error-settings-trigger') {
-                    e.preventDefault();
-                    if (settingsModal) {
-                        settingsModal.showModal();
-                    }
-                }
-            });
-
-            // Danger Zone Reset Flow
-            const resetTrigger = document.getElementById('reset-trigger-btn');
-            const resetCancel = document.getElementById('reset-cancel-btn');
-            const initialState = document.getElementById('reset-initial-state');
-            const confirmState = document.getElementById('reset-confirm-state');
-            const confirmInput = document.getElementById('reset_confirm_input');
-            const finalResetBtn = document.getElementById('final-reset-btn');
-
-            if (confirmState) {
-                confirmState.style.display = 'none';
-            }
-
-            if (resetTrigger && initialState && confirmState) {
-                resetTrigger.addEventListener('click', function() {
-                    initialState.style.display = 'none';
-                    confirmState.style.display = 'block';
-                    if (confirmInput) {
-                        confirmInput.value = '';
-                        confirmInput.focus();
-                    }
-                    if (finalResetBtn) {
-                        finalResetBtn.disabled = true;
-                        finalResetBtn.setAttribute('aria-disabled', 'true');
-                    }
-                });
-            }
-
-            if (resetCancel && initialState && confirmState) {
-                resetCancel.addEventListener('click', function() {
-                    initialState.style.display = 'block';
-                    confirmState.style.display = 'none';
-                });
-            }
-
-            if (confirmInput && finalResetBtn) {
-                confirmInput.addEventListener('input', function() {
-                    if (confirmInput.value.trim() === 'RESET') {
-                        finalResetBtn.disabled = false;
-                        finalResetBtn.removeAttribute('aria-disabled');
-                        finalResetBtn.removeAttribute('title');
-                    } else {
-                        finalResetBtn.disabled = true;
-                        finalResetBtn.setAttribute('aria-disabled', 'true');
-                        finalResetBtn.setAttribute('title', 'Type RESET to enable');
-                    }
                 });
             }
         });

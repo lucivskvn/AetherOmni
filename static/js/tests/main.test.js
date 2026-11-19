@@ -1522,7 +1522,7 @@ describe('initializeAlerts & initializeSupabaseRealtime', () => {
 describe('trapFocus', () => {
   it('cycles focus from last element to first on forward Tab', () => {
     document.body.innerHTML = `
-      <dialog id="test-dialog">
+      <dialog id="test-dialog" open>
         <button id="first-btn">First</button>
         <button id="last-btn">Last</button>
       </dialog>
@@ -1540,7 +1540,7 @@ describe('trapFocus', () => {
 
   it('cycles focus from first element to last on reverse Shift+Tab', () => {
     document.body.innerHTML = `
-      <dialog id="test-dialog">
+      <dialog id="test-dialog" open>
         <button id="first-btn">First</button>
         <button id="last-btn">Last</button>
       </dialog>

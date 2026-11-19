@@ -1,3 +1,5 @@
+environment:
+  - korda/prod
 config:
   gcp:region: asia-southeast1
   korda-infra:web_min_instances: "0"
