@@ -384,7 +384,7 @@ def _parse_eventarc_payload(request) -> tuple[dict | None, str, JsonResponse | N
         return None, "", JsonResponse({"error": "Eventarc payload must be a JSON object"}, status=400)
     try:
         unwrapped, event_type = _unwrap_eventarc_envelope(request, payload)
-    except ValueError, UnicodeDecodeError, json.JSONDecodeError:
+    except ValueError, UnicodeDecodeError:
         return None, "", JsonResponse({"error": "Invalid Eventarc envelope"}, status=400)
     return unwrapped, event_type, None
 
@@ -545,7 +545,7 @@ class EventarcGCSRawView(View):
             result = _digitalize_gcs_object(payload, bucket_name, object_name)
         except ValueError as exc:
             logger.warning("[EventarcGCSRaw] Permanent failure for gs://%s/%s: %s", bucket_name, object_name, exc)
-            return JsonResponse({"error": str(exc)}, status=400)
+            return JsonResponse({"error": "Invalid Eventarc digitalization request."}, status=400)
         except Exception as exc:
             logger.exception("[EventarcGCSRaw] Digitalization failed for gs://%s/%s: %s", bucket_name, object_name, exc)
             return JsonResponse({"error": "Eventarc digitalization failed; retryable."}, status=503)

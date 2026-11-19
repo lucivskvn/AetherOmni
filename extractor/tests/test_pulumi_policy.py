@@ -30,7 +30,8 @@ def _load_policy_module():
     policy_path = Path(__file__).resolve().parents[2] / "infra" / "pulumi" / "policy" / "__main__.py"
     spec = importlib.util.spec_from_file_location("korda_pulumi_policy", policy_path)
     mod = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
+    assert spec is not None
+    assert spec.loader is not None
     with patch.dict(sys.modules, {"pulumi_policy": stub}):
         spec.loader.exec_module(mod)
     return mod

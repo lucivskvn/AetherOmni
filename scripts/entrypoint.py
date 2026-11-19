@@ -32,9 +32,12 @@ def _gunicorn_command() -> list[str]:
     return [*command, "core.wsgi:application"]
 
 
+MANAGE_PY = "manage.py"
+
+
 def _run_migrations() -> None:
     # interpreter, script, and arguments are fixed constants
-    subprocess.run([sys.executable, "manage.py", "migrate", "--noinput"], check=True, timeout=120)  # nosec B603
+    subprocess.run([sys.executable, MANAGE_PY, "migrate", "--noinput"], check=True, timeout=120)  # nosec B603
 
 
 def _start_database_initialization() -> None:
@@ -43,7 +46,7 @@ def _start_database_initialization() -> None:
 
 
 ALLOWED_COMMANDS: dict[tuple[str, ...], list[str]] = {
-    ("manage.py", "backup_surreal"): [sys.executable, "manage.py", "backup_surreal"],
+    (MANAGE_PY, "backup_surreal"): [sys.executable, MANAGE_PY, "backup_surreal"],
 }
 
 

@@ -11,21 +11,15 @@ from pulumi_policy import (
 )
 
 
-def validate_ephemeral_bucket(args: ResourceValidationArgs, report_violation: ReportViolation) -> None:
-    if args.resource_type != "gcp:storage/bucket:Bucket":
-        return
-    name = str(args.props.get("name") or args.name)
-
-    if args.props.get("uniformBucketLevelAccess") is not True:
-        report_violation(f"GCS bucket '{name}' must enable uniformBucketLevelAccess.")
-
-    soft_delete = args.props.get("softDeletePolicy") or {}
-    retention = soft_delete.get("retentionDurationSeconds")
-    versioning = args.props.get("versioning") or {}
-
-    labels = args.props.get("labels") or {}
-    tier = str(labels.get("korda-tier") or "")
-    if tier == "backup" or (not tier and "backup" in name):
+def _validate_bucket_tier_rules(
+    name: str,
+    tier: str,
+    retention: int | str | None,
+    versioning: dict,
+    report_violation: ReportViolation,
+) -> None:
+    is_backup = tier == "backup" or (not tier and "backup" in name)
+    if is_backup:
         if retention is None or int(retention) <= 0:
             report_violation(f"Backup GCS bucket '{name}' must enable Soft Delete (retentionDurationSeconds > 0).")
         if versioning.get("enabled") is not True:
@@ -34,9 +28,27 @@ def validate_ephemeral_bucket(args: ResourceValidationArgs, report_violation: Re
 
     if retention is None or int(retention) > 0:
         report_violation(f"Ephemeral GCS bucket '{name}' must disable Soft Delete (retentionDurationSeconds=0).")
-
     if versioning.get("enabled") is not False:
         report_violation(f"Ephemeral GCS bucket '{name}' must disable object versioning.")
+
+
+def validate_ephemeral_bucket(args: ResourceValidationArgs, report_violation: ReportViolation) -> None:
+    if args.resource_type != "gcp:storage/bucket:Bucket":
+        return
+    name = str(args.props.get("name") or args.name)
+    if args.props.get("uniformBucketLevelAccess") is not True:
+        report_violation(f"GCS bucket '{name}' must enable uniformBucketLevelAccess.")
+
+    soft_delete = args.props.get("softDeletePolicy") or {}
+    versioning = args.props.get("versioning") or {}
+    labels = args.props.get("labels") or {}
+    _validate_bucket_tier_rules(
+        name,
+        str(labels.get("korda-tier") or ""),
+        soft_delete.get("retentionDurationSeconds"),
+        versioning,
+        report_violation,
+    )
 
 
 def validate_scale_to_zero_cloud_run(args: ResourceValidationArgs, report_violation: ReportViolation) -> None:

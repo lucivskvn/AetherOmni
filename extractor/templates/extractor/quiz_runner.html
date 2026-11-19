@@ -181,7 +181,8 @@
                 parsed.hostname === 'storage.googleapis.com' ||
                 parsed.hostname.endsWith('.storage.googleapis.com')
             );
-        } catch (_) {
+        } catch (err) {
+            console.warn('Ignored malformed signed URL:', err);
             return false;
         }
     }
@@ -403,7 +404,13 @@
                 } else {
                     const radio = card.querySelector('input[type="radio"]:checked');
                     const text = card.querySelector('input[type="text"], textarea');
-                    answers[itemId] = radio ? radio.value : (text ? text.value : '');
+                    let answerVal = '';
+                    if (radio) {
+                        answerVal = radio.value;
+                    } else if (text) {
+                        answerVal = text.value;
+                    }
+                    answers[itemId] = answerVal;
                 }
             });
 
@@ -495,7 +502,8 @@
                 section.style.display = 'block';
                 section.scrollIntoView({ behavior: 'smooth' });
                 heading.focus({ preventScroll: true });
-            } catch (_) {
+            } catch (err) {
+                console.error('Failed to submit exam:', err);
                 if (submitStatus) submitStatus.textContent = 'Network error while submitting exam. Your answers are preserved; please retry.';
             } finally {
                 isSubmitting = false;
@@ -512,6 +520,52 @@
         bindExamForm(initialForm, timerEl?.dataset?.duration || 900);
     }
 
+    function parseBlueprintWeights(rawWeights) {
+        if (!rawWeights) {
+            return { ok: true, weights: null };
+        }
+        try {
+            const parsed = JSON.parse(rawWeights);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('Must be a JSON object');
+            }
+            return { ok: true, weights: parsed };
+        } catch (err) {
+            console.warn('Invalid blueprint weights JSON:', err);
+            return { ok: false, weights: null };
+        }
+    }
+
+    async function submitQuizGeneration(genForm, weights, statusEl) {
+        const formats = Array.from(genForm.querySelectorAll('input[name="gen_format"]:checked')).map((el) => el.value);
+        const rawCount = document.getElementById('gen-count')?.value || '5';
+        const resp = await fetch('{% url "quiz_generate" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(genForm) },
+            body: JSON.stringify({
+                difficulty: document.getElementById('gen-difficulty')?.value || 'Medium',
+                count: Number.parseInt(rawCount, 10),
+                doc_slug: (document.getElementById('gen-doc-slug')?.value || '').trim(),
+                formats: formats.length ? formats : ['MCQ'],
+                focus_prompt: (document.getElementById('gen-focus')?.value || '').trim(),
+                blueprint_weights: weights
+            })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            if (statusEl) statusEl.textContent = data.error || 'Generation failed. Please retry.';
+            return;
+        }
+        if (data.session && Array.isArray(data.session.questions) && data.session.questions.length) {
+            renderSessionQuestions(data.session);
+            const genDetails = document.getElementById('quiz-generator-details');
+            if (genDetails) genDetails.open = false;
+            if (statusEl) statusEl.textContent = 'Generated ' + data.session.questions.length + ' items.';
+        } else {
+            globalThis.location.reload();
+        }
+    }
+
     const genForm = document.getElementById('quiz-generate-form');
     if (genForm) {
         let isGenerating = false;
@@ -520,19 +574,11 @@
             if (isGenerating) return;
             const statusEl = document.getElementById('gen-status');
             const genBtn = document.getElementById('btn-generate-quiz');
-            const formats = Array.from(genForm.querySelectorAll('input[name="gen_format"]:checked')).map((el) => el.value);
-            let weights = null;
             const rawWeights = (document.getElementById('gen-weights')?.value || '').trim();
-            if (rawWeights) {
-                try {
-                    weights = JSON.parse(rawWeights);
-                    if (!weights || typeof weights !== 'object' || Array.isArray(weights)) {
-                        throw new Error('Must be a JSON object');
-                    }
-                } catch (_) {
-                    if (statusEl) statusEl.textContent = 'Invalid Blueprint Weighting JSON (expected an object).';
-                    return;
-                }
+            const parsedWeights = parseBlueprintWeights(rawWeights);
+            if (!parsedWeights.ok) {
+                if (statusEl) statusEl.textContent = 'Invalid Blueprint Weighting JSON (expected an object).';
+                return;
             }
             isGenerating = true;
             if (genBtn) {
@@ -541,32 +587,9 @@
             }
             if (statusEl) statusEl.textContent = 'Generating persistent exam items...';
             try {
-                const resp = await fetch('{% url "quiz_generate" %}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken(genForm) },
-                    body: JSON.stringify({
-                        difficulty: document.getElementById('gen-difficulty')?.value || 'Medium',
-                        count: parseInt(document.getElementById('gen-count')?.value || '5', 10),
-                        doc_slug: (document.getElementById('gen-doc-slug')?.value || '').trim(),
-                        formats: formats.length ? formats : ['MCQ'],
-                        focus_prompt: (document.getElementById('gen-focus')?.value || '').trim(),
-                        blueprint_weights: weights
-                    })
-                });
-                const data = await resp.json().catch(() => ({}));
-                if (!resp.ok) {
-                    if (statusEl) statusEl.textContent = data.error || 'Generation failed. Please retry.';
-                    return;
-                }
-                if (data.session && Array.isArray(data.session.questions) && data.session.questions.length) {
-                    renderSessionQuestions(data.session);
-                    const genDetails = document.getElementById('quiz-generator-details');
-                    if (genDetails) genDetails.open = false;
-                    if (statusEl) statusEl.textContent = 'Generated ' + data.session.questions.length + ' items.';
-                } else {
-                    globalThis.location.reload();
-                }
-            } catch (_) {
+                await submitQuizGeneration(genForm, parsedWeights.weights, statusEl);
+            } catch (err) {
+                console.error('Failed to generate quiz:', err);
                 if (statusEl) statusEl.textContent = 'Network error while generating quiz. Please retry.';
             } finally {
                 isGenerating = false;

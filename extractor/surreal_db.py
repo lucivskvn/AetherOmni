@@ -1069,7 +1069,7 @@ def get_user_total_spend(user_id: str | None = None, since: datetime | None = No
         params["since"] = since.isoformat()
 
     where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-    sql = f"SELECT math::sum(cost_usd) AS total FROM documents{where_sql} GROUP ALL;"  # nosec B608 # noqa: S608 -- static clauses only, values parameterized
+    sql = f"SELECT math::sum(cost_usd) AS total FROM documents{where_sql} GROUP ALL;"  # nosec B608 # noqa: S608
     rows = _first_result(_run(sql, params))
     if rows and isinstance(rows[0], dict):
         return Decimal(str(rows[0].get("total") or 0))

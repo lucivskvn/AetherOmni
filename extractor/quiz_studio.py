@@ -324,10 +324,14 @@ def export_exam_markdown(
     """Export exam items as a portable Markdown Exam Pack with toggleable Answer Key."""
     lines: list[str] = [f"# {title}", ""]
     for idx, item in enumerate(items, 1):
-        lines.append(f"## Question {idx} ({item.get('difficulty', 'Medium')} · {item.get('item_format', 'MCQ')})")
-        lines.append("")
-        lines.append(str(item.get("stem") or ""))
-        lines.append("")
+        lines.extend(
+            [
+                f"## Question {idx} ({item.get('difficulty', 'Medium')} · {item.get('item_format', 'MCQ')})",
+                "",
+                str(item.get("stem") or ""),
+                "",
+            ]
+        )
         for opt_idx, choice in enumerate(item.get("choices") or [], 65):
             lines.append(f"- **{chr(opt_idx)}.** {choice}")
         if item.get("choices"):

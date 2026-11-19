@@ -1221,11 +1221,13 @@ function initializeRAGSearch() {
 
     document.querySelectorAll('.btn-compile-kb').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const compileUrl = btn.getAttribute('data-compile-url');
-            if (!compileUrl) return;
+            const rawCompileUrl = btn.dataset.compileUrl;
+            if (!rawCompileUrl) return;
+            const baseUrl = new URL(rawCompileUrl, globalThis.location.origin);
+            if (baseUrl.origin !== globalThis.location.origin) return;
             btn.disabled = true;
             try {
-                const resp = await fetch(compileUrl);
+                const resp = await fetch(baseUrl.pathname + baseUrl.search);
                 const data = await resp.json().catch(() => ({}));
                 if (!resp.ok) throw new Error(data?.error || 'Failed to compile knowledge base.');
                 const count = Number(data?.bundle_count || 0);
@@ -1234,8 +1236,11 @@ function initializeRAGSearch() {
                     return;
                 }
                 for (let part = 1; part <= count; part += 1) {
+                    const dlUrl = new URL(baseUrl.pathname, globalThis.location.origin);
+                    dlUrl.searchParams.set('download', '1');
+                    dlUrl.searchParams.set('part', String(part));
                     const link = document.createElement('a');
-                    link.href = `${compileUrl}?download=1&part=${part}`;
+                    link.href = dlUrl.pathname + dlUrl.search;
                     link.download = `korda_kb_part_${part}.md`;
                     document.body.appendChild(link);
                     link.click();
@@ -1274,7 +1279,7 @@ function initializeRAGSearch() {
             e.preventDefault();
             const statusEl = document.getElementById('crystal-synth-status');
             const submitBtn = document.getElementById('btn-submit-crystal');
-            const synthUrl = crystalForm.getAttribute('data-synthesize-url');
+            const synthUrl = crystalForm.dataset.synthesizeUrl;
             if (!synthUrl) return;
             const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
             const anchorIds = (document.getElementById('crystal-anchor-ids')?.value || '')
