@@ -48,8 +48,12 @@ def _metadata(project: str, *arguments: str) -> Metadata:
     arguments = tuple(safe_arguments[1:])
     command = [executable, *arguments, f"--project={project}", "--format=json"]
     try:
-        result = subprocess.run(  # nosec B603 # Resolved gcloud executable; identifiers remain separate arguments.
-            command, capture_output=True, text=True, timeout=30, check=False
+        result = subprocess.run(  # nosec B603 # Resolved gcloud executable; identifiers remain separate arguments. NOSONAR pythonsecurity:S8705 -- arguments allowlisted by _safe_argument
+            command,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
         )
     except OSError as exc:
         raise PreflightError("gcloud could not be executed.") from exc

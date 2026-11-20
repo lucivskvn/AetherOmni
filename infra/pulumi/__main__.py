@@ -32,6 +32,7 @@ region = config.get("resource_region") or os.getenv("GCP_REGION") or "asia-south
 provider_region = gcp_config.get("region") or region
 queue_region = config.get("queue_region") or provider_region
 
+
 def _is_semver(value: str) -> bool:
     parts = value.split(".")
     return len(parts) == 3 and all(part.isascii() and part.isdigit() for part in parts)

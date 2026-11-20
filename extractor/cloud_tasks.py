@@ -25,6 +25,7 @@ from django.conf import settings
 from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME
 
 logger = logging.getLogger(__name__)
+_LOG_FORMAT = "[CloudTasks] %s"
 
 from extractor.deployment import get_gcp_project_details
 
@@ -135,7 +136,7 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
     details = get_gcp_project_details()
     if not details or not details.get("project_id"):
         message = "Cloud Tasks project details are unavailable; refusing to run a production task on the web service."
-        logger.error("[CloudTasks] %s", message)
+        logger.error(_LOG_FORMAT, message)
         raise RuntimeError(message)
 
     project = details.get("project_id")
@@ -149,13 +150,13 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
 
     if not project or not service_url:
         message = f"Cloud Tasks worker URL is not configured; task '{task_name}' was not dispatched."
-        logger.error("[CloudTasks] %s", message)
+        logger.error(_LOG_FORMAT, message)
         raise RuntimeError(message)
 
     service_account = (getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "") or "").strip()
     if not service_account:
         message = "Cloud Tasks OIDC service account is not configured; dispatch was not attempted."
-        logger.error("[CloudTasks] %s", message)
+        logger.error(_LOG_FORMAT, message)
         raise RuntimeError(message)
 
     handler_url = f"{service_url.rstrip('/')}/internal/tasks/{task_name}/"
