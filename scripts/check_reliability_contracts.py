@@ -74,6 +74,65 @@ def _check_infra_contracts(
     )
 
 
+def _check_deployment_identity(errors: list[str], manifests: tuple[str, ...], cloudbuild: str) -> None:
+    _check_task_authentication(errors, cloudbuild)
+    for manifest in manifests:
+        _require(
+            errors,
+            manifest,
+            (
+                "cloud-run-source-deploy/korda:${RELEASE_VERSION}",
+                'value: "${GCP_QUEUE_LOCATION}"',
+                'value: "extractor-tasks-v2"',
+                "name: DATABASE_URL",
+                "name: SUPABASE_DATABASE_URL",
+            ),
+            "Cloud Run manifests must use the computed release, independent queue region, and Supabase database secret.",
+        )
+    _require(
+        errors,
+        cloudbuild,
+        (
+            "Submitted source does not match the approved deployment commit",
+            'test "$$(git rev-parse --is-shallow-repository)" = "false"',
+            'BUILD_SHA="$${SOURCE_SHA:0:7}"',
+            "--digest-file=/workspace/korda.image.digest",
+            'test "$${REMOTE_DIGEST}" = "$${DIGEST}"',
+            "for service in korda-web korda-worker; do",
+            'if [ "$${ACTUAL_IMAGE}" != "$${EXPECTED_IMAGE}" ]; then',
+        ),
+        "Cloud Build must bind source identity, require full version history, and verify both deployed images.",
+    )
+    if cloudbuild.count('--image="$${IMAGE_REFERENCE}"') != 2:
+        errors.append("Both Cloud Run deploys must use the resolved SBOM image digest.")
+
+
+def _check_task_authentication(errors: list[str], cloudbuild: str) -> None:
+    _require(
+        errors,
+        _read("extractor/cloud_tasks.py"),
+        ('"audience": service_url.rstrip("/")', "Cloud Tasks OIDC service account is not configured"),
+        "Cloud Tasks requires an explicit signing identity and service-root audience.",
+    )
+    _require(
+        errors,
+        _read("infra/pulumi/__main__.py"),
+        (
+            "korda-task-invoker-account",
+            "korda-task-creator-act-as",
+            "korda-task-agent-act-as",
+            'value=f"https://korda-worker-{project_info.number}.{region}.run.app"',
+        ),
+        "Pulumi must provision scoped task identities and bootstrap the worker self URL.",
+    )
+    _require(
+        errors,
+        cloudbuild,
+        ("require_enabled_secret", "scripts/verify_gcp_prerequisites.py", "korda-tasks-invoker@${PROJECT_ID}"),
+        "Deployment must verify enabled secrets and task invocation prerequisites.",
+    )
+
+
 def main() -> int:
     """Verify task, tenant, auth, export, and deployment controls before remote checks."""
     errors: list[str] = []
@@ -213,6 +272,7 @@ def main() -> int:
         "System-settings normalization must remain dry-run by default and verify retired-field removal explicitly.",
     )
     _check_infra_contracts(errors, service_manifest, worker_manifest, cloudbuild, pulumi, sonar_autoscan)
+    _check_deployment_identity(errors, (service_manifest, worker_manifest), cloudbuild)
 
     if errors:
         print("FAILED: Reliability contract violation(s):", file=sys.stderr)
