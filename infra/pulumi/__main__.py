@@ -12,7 +12,7 @@ import os
 
 import pulumi
 import pulumi_gcp as gcp
-from components import ComplianceBucket, EventarcRawTrigger, ScaleToZeroWorker
+from components import ComplianceBucket, EventarcRawTrigger, ScaleToZeroWorker, WorkerSizing
 
 config = pulumi.Config()
 gcp_config = pulumi.Config("gcp")
@@ -329,10 +329,12 @@ worker_component = ScaleToZeroWorker(
         gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_TIMEOUT", value="900"),
         gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="RUN_MIGRATIONS_ON_STARTUP", value="False"),
     ],
-    cpu="2000m",
-    memory="2Gi",
-    min_instances=worker_min_instances,
-    max_instances=worker_max_instances,
+    sizing=WorkerSizing(
+        cpu="2000m",
+        memory="2Gi",
+        min_instances=worker_min_instances,
+        max_instances=worker_max_instances,
+    ),
     is_public=False,
     legacy_name="korda-worker",
     opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
@@ -387,10 +389,12 @@ web_component = ScaleToZeroWorker(
     image=container_image,
     service_account_email=service_account.email,
     envs=common_env + secret_envs + web_env,
-    cpu="1000m",
-    memory="1Gi",
-    min_instances=web_min_instances,
-    max_instances=web_max_instances,
+    sizing=WorkerSizing(
+        cpu="1000m",
+        memory="1Gi",
+        min_instances=web_min_instances,
+        max_instances=web_max_instances,
+    ),
     is_public=True,
     legacy_name="korda-web",
     opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=[*iam_members, worker_invoker_binding]),

@@ -1109,7 +1109,7 @@ function initializeRAGSearch() {
     if (ragSearchForm) {
         ragSearchForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            runSemanticRAG();
+            runSemanticRAG().catch((err) => console.error('RAG search error:', err));
         });
     }
 
@@ -2039,7 +2039,7 @@ function trapFocus(dialog, event) {
     ).filter(el => !el.closest('[hidden]') && globalThis.getComputedStyle(el).display !== 'none' && !el.closest('[style*="display: none"]'));
     if (focusables.length === 0) return;
     const first = focusables[0];
-    const last = focusables[focusables.length - 1];
+    const last = focusables.at(-1);
     if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();

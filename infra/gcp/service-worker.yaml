@@ -50,7 +50,7 @@ spec:
         - name: BACKUP_BUCKET_NAME
           value: "${BACKUP_BUCKET_NAME}"
         - name: EVENTARC_SERVICE_ACCOUNT
-          value: "${CLOUD_TASKS_SERVICE_ACCOUNT}"
+          value: "${EVENTARC_SERVICE_ACCOUNT}"
         - name: GUNICORN_TIMEOUT
           value: "900"
         - name: RUN_MIGRATIONS_ON_STARTUP

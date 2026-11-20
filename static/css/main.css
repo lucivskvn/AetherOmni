@@ -338,7 +338,7 @@ header {
     animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     font-size: 14px;
     font-weight: 500;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
     box-sizing: border-box;
     max-height: 120px;
@@ -668,12 +668,32 @@ dialog.settings-dialog .dialog-footer {
 }
 
 .budget-bar-container {
+    appearance: none;
+    -webkit-appearance: none;
+    display: block;
     width: 100%;
     height: 6px;
     background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-subtle);
     border-radius: 3px;
     margin-top: 8px;
     overflow: hidden;
+}
+
+.budget-bar-container::-webkit-progress-bar {
+    background: var(--surface-input, rgba(255, 255, 255, 0.05));
+    border-radius: 3px;
+}
+
+.budget-bar-container::-webkit-progress-value {
+    background: linear-gradient(90deg, var(--primary), var(--secondary));
+    border-radius: 3px;
+    transition: width 0.5s ease-out;
+}
+
+.budget-bar-container::-moz-progress-bar {
+    background: linear-gradient(90deg, var(--primary), var(--secondary));
+    border-radius: 3px;
 }
 
 .budget-bar-fill {
@@ -1152,10 +1172,13 @@ tr:hover td {
     padding: 16px 28px;
     border-radius: 50px;
     display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     align-items: center;
     gap: 20px;
+    max-width: calc(100vw - 32px);
     z-index: 999;
-    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.5s ease, visibility 0.5s ease;
     opacity: 0;
     visibility: hidden;
 }
@@ -1337,7 +1360,7 @@ tr:hover td {
     min-height: 600px;
     height: calc(100vh - 340px);
     max-height: 1600px;
-    transition: all 0.3s ease;
+    transition: height 0.3s ease, min-height 0.3s ease;
 }
 
 .editor-grid.fullscreen {
@@ -1365,7 +1388,7 @@ tr:hover td {
 }
 
 .tb-btn {
-    transition: all 0.2s ease-in-out;
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out;
 }
 
 .tb-btn:focus-visible {
@@ -1556,6 +1579,7 @@ tr:hover td {
 
 /* Code blocks */
 .preview-window pre {
+    position: relative;
     background: var(--surface-code);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 10px;
@@ -2610,12 +2634,9 @@ header, footer { background: var(--surface-raised); }
 .doc-title-cell a, .sort-link:hover, .result-answer a { color: var(--text-link); }
 .btn-sm { font-size: 0.82rem; padding: 6px 12px; }
 .badge-secondary { background: var(--surface-hover); border: 1px solid var(--border-subtle); border-radius: 999px; color: var(--text-muted); display: inline-flex; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; }
-.alert-warning { background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.45); color: #fcd34d; }
-[data-theme="light"] .alert-warning { background: rgba(245, 158, 11, 0.12); border-color: rgba(217, 119, 6, 0.4); color: #92400e; }
+.alert-warning { background: #241a07; border: 1px solid #b45309; color: #fde68a; }
+[data-theme="light"] .alert-warning { background: #fef3c7; border-color: #d97706; color: #78350f; }
 #crystal-synth-dialog::backdrop { backdrop-filter: blur(4px); background: rgba(2, 6, 23, 0.6); }
-.preview-window pre { position: relative; }
-.budget-bar-container { border: 1px solid var(--border-subtle); }
-.export-footer { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px); }
 .doc-title-cell, .doc-subtitle-text { max-width: clamp(180px, 24vw, 380px); }
 @media (max-width: 720px) { main { padding: 18px; }.dashboard-intro { align-items: flex-start; flex-direction: column; }.dashboard-upload-action { width: 100%; }.release-badge { display: none; }.nav-container { padding-inline: 18px; }.nav-actions { gap: 6px; }.nav-link { padding: 8px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; } }
