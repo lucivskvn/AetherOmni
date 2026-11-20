@@ -28,18 +28,33 @@ if not project or "${" in project:
         "GCP project ID must be specified via 'pulumi config set gcp:project <id>' or GCP_PROJECT_ID env var."
     )
 
-region = gcp_config.get("region") or os.getenv("GCP_REGION") or "asia-southeast1"
+region = config.get("resource_region") or os.getenv("GCP_REGION") or "asia-southeast1"
+provider_region = gcp_config.get("region") or region
+queue_region = config.get("queue_region") or provider_region
 
-release_version = config.get("release_version") or "1.5.0"
-image_tag = config.get("image_tag") or os.getenv("IMAGE_TAG") or release_version
+
+def _is_semver(value: str) -> bool:
+    parts = value.split(".")
+    return len(parts) == 3 and all(part.isascii() and part.isdigit() for part in parts)
+
+
+# Stack configuration parameters
+release_version = config.get("release_version") or os.getenv("RELEASE_VERSION")
+image_tag = config.get("image_tag") or os.getenv("IMAGE_TAG")
+if not release_version or not _is_semver(release_version):
+    raise ValueError("A computed semantic release_version is required for the Pulumi stack.")
+if not image_tag or image_tag == "latest":
+    raise ValueError("A computed IMAGE_TAG is required; floating 'latest' is not deployable.")
+if image_tag != release_version:
+    raise ValueError("IMAGE_TAG must match the computed release_version for release verification.")
 web_min_instances = config.get_int("web_min_instances") or 0
 web_max_instances = config.get_int("web_max_instances") or 5
 worker_min_instances = config.get_int("worker_min_instances") or 0
 worker_max_instances = config.get_int("worker_max_instances") or 5
 
-gcp_provider = gcp.Provider("gcp-provider", project=project, region=region)
+# Explicit GCP Provider passing resolved project and region dynamically
+gcp_provider = gcp.Provider("gcp-provider", project=project, region=provider_region)
 project_info = gcp.organizations.get_project(project_id=project, opts=pulumi.InvokeOptions(provider=gcp_provider))
-cloud_tasks_oidc_member = f"serviceAccount:{project_info.number}-compute@developer.gserviceaccount.com"
 
 # 1. Ephemeral Media & Export Bucket (Soft Delete OFF, Versioning OFF, Prefix Lifecycles)
 media_bucket = ComplianceBucket(
@@ -68,7 +83,7 @@ queue_name = config.get("queue_name") or os.getenv("CLOUD_TASKS_QUEUE") or "extr
 tasks_queue = gcp.cloudtasks.Queue(
     "korda-tasks-queue",
     name=queue_name,
-    location=region,
+    location=queue_region,
     project=project,
     rate_limits=gcp.cloudtasks.QueueRateLimitsArgs(
         max_concurrent_dispatches=10,
@@ -88,10 +103,17 @@ service_account = gcp.serviceaccount.Account(
     "korda-service-account",
     account_id="korda-runtime",
     display_name="KORDA Cloud Run Runtime Service Account",
+)
+
+# Keep task tokens separate from the runtime identity's data-access permissions.
+task_invoker_account = gcp.serviceaccount.Account(
+    "korda-task-invoker-account",
+    account_id="korda-tasks-invoker",
+    display_name="KORDA Cloud Tasks worker invocation",
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-# Least-privilege project-level IAM bindings (run.invoker is scoped to korda-worker below)
+# Least-privilege IAM bindings
 RUN_INVOKER_ROLE = "roles/run.invoker"
 iam_roles = [
     "roles/aiplatform.user",
@@ -122,6 +144,23 @@ for sa_idx, sa_role in enumerate(["roles/iam.serviceAccountUser", "roles/iam.ser
     )
     iam_members.append(sa_member)
 
+for resource_name, principal in (
+    ("korda-task-creator-act-as", service_account.email.apply(lambda email: f"serviceAccount:{email}")),
+    (
+        "korda-task-agent-act-as",
+        f"serviceAccount:service-{project_info.number}@gcp-sa-cloudtasks.iam.gserviceaccount.com",
+    ),
+):
+    iam_members.append(
+        gcp.serviceaccount.IAMMember(
+            resource_name,
+            service_account_id=task_invoker_account.name,
+            role="roles/iam.serviceAccountUser",
+            member=principal,
+            opts=pulumi.ResourceOptions(provider=gcp_provider),
+        )
+    )
+
 gcp.projects.IAMMember(
     "korda-gcs-pubsub-publisher",
     project=project,
@@ -133,7 +172,7 @@ gcp.projects.IAMMember(
 gcp.cloudtasks.QueueIamMember(
     "korda-queue-task-deleter",
     name=tasks_queue.name,
-    location=region,
+    location=queue_region,
     project=project,
     role="roles/cloudtasks.taskDeleter",
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
@@ -156,18 +195,53 @@ gcp.storage.BucketIAMMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-# 4. Artifact Registry Repository
+# 4. Artifact Registry Repository (for container images)
+artifact_repo_id = config.get("artifact_repo_id") or "cloud-run-source-deploy"
 artifact_repo = gcp.artifactregistry.Repository(
+    "korda-artifact-registry",
+    repository_id=artifact_repo_id,
+    location=region,
+    format="DOCKER",
+    description="Cloud Run Source Deployments",
+    cleanup_policy_dry_run=False,
+    cleanup_policies=[
+        gcp.artifactregistry.RepositoryCleanupPolicyArgs(
+            id="delete-all-versions-after-30-days",
+            action="DELETE",
+            condition=gcp.artifactregistry.RepositoryCleanupPolicyConditionArgs(
+                older_than="2592000s",
+                tag_state="ANY",
+            ),
+        ),
+        gcp.artifactregistry.RepositoryCleanupPolicyArgs(
+            id="delete-untagged-after-1-day",
+            action="DELETE",
+            condition=gcp.artifactregistry.RepositoryCleanupPolicyConditionArgs(
+                older_than="86400s",
+                tag_state="UNTAGGED",
+            ),
+        ),
+        gcp.artifactregistry.RepositoryCleanupPolicyArgs(
+            id="keep-10-most-recent-per-package",
+            action="KEEP",
+            most_recent_versions=gcp.artifactregistry.RepositoryCleanupPolicyMostRecentVersionsArgs(keep_count=10),
+        ),
+    ],
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+# Retain the pre-existing registry so state reconciliation never deletes its images.
+legacy_artifact_repo = gcp.artifactregistry.Repository(
     "korda-repo",
     repository_id="korda-repo",
     location=region,
     format="DOCKER",
     description="Docker container registry for KORDA images",
-    opts=pulumi.ResourceOptions(provider=gcp_provider),
+    opts=pulumi.ResourceOptions(provider=gcp_provider, protect=True),
 )
 
 container_image = (
-    config.get("container_image") or f"{region}-docker.pkg.dev/{project}/cloud-run-source-deploy/korda:{image_tag}"
+    config.get("container_image") or f"{region}-docker.pkg.dev/{project}/{artifact_repo_id}/korda:{image_tag}"
 )
 
 custom_domain = config.get("custom_domain")
@@ -175,10 +249,14 @@ extra_allowed_hosts = config.get("extra_allowed_hosts") or ""
 extra_csrf_origins = config.get("extra_csrf_origins") or ""
 
 common_env = [
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+        name="WORKER_URL", value=f"https://korda-worker-{project_info.number}.{region}.run.app"
+    ),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="DJANGO_DEBUG", value="False"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="RELEASE_VERSION", value=release_version),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_PROJECT_ID", value=project),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_REGION", value=region),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_QUEUE_LOCATION", value=queue_region),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_QUEUE_NAME", value=tasks_queue.name),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GS_BUCKET_NAME", value=media_bucket.name),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="BACKUP_BUCKET_NAME", value=backup_bucket.name),
@@ -190,8 +268,7 @@ common_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_LITE", value="gemini-2.5-flash-lite"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GEMINI_MODEL_PRO", value="gemini-2.5-flash"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
-        name="CLOUD_TASKS_SERVICE_ACCOUNT",
-        value=service_account.email,
+        name="CLOUD_TASKS_SERVICE_ACCOUNT", value=task_invoker_account.email
     ),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
         name="EVENTARC_SERVICE_ACCOUNT",
@@ -262,13 +339,14 @@ worker_component = ScaleToZeroWorker(
 )
 worker_service = worker_component.service
 
-gcp.cloudrunv2.ServiceIamMember(
+# Cloud Tasks signs worker callbacks with this project-scoped OIDC identity.
+worker_invoker_binding = gcp.cloudrunv2.ServiceIamMember(
     "korda-worker-cloud-tasks-invoker",
     name=worker_service.name,
     location=region,
     project=project,
     role=RUN_INVOKER_ROLE,
-    member=cloud_tasks_oidc_member,
+    member=task_invoker_account.email.apply(lambda email: f"serviceAccount:{email}"),
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
@@ -297,7 +375,6 @@ raw_trigger = EventarcRawTrigger(
 # 6. Cloud Run Web Service (korda-web, public, scale-to-zero)
 web_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="2"),
-    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="WORKER_URL", value=worker_service.uri),
 ]
 if custom_domain:
     web_env.append(gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="APP_URL", value=f"https://{custom_domain}"))
@@ -316,7 +393,7 @@ web_component = ScaleToZeroWorker(
     max_instances=web_max_instances,
     is_public=True,
     legacy_name="korda-web",
-    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
+    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=[*iam_members, worker_invoker_binding]),
 )
 web_service = web_component.service
 

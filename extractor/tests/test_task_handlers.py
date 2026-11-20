@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from django.test import RequestFactory, TestCase, override_settings
@@ -8,6 +9,7 @@ from extractor.task_handlers import CloudTaskHandlerView
 from extractor.task_state import CLOUD_TASK_NAME
 
 
+@override_settings(WORKER_URL="https://worker.example.test")
 class TaskHandlersTestCase(TestCase):
     """Direct unit tests for task_handlers.py."""
 
@@ -53,7 +55,23 @@ class TaskHandlersTestCase(TestCase):
         mock_verify_oidc.assert_called_once()
         call_args = mock_verify_oidc.call_args[0]
         self.assertEqual(call_args[0], request)
-        self.assertIn("https://worker.example.test/internal/tasks/audience_test/", call_args[1])
+        self.assertEqual(call_args[1], ["https://worker.example.test"])
+
+    @override_settings(DEBUG=False, WORKER_URL="", APP_URL="https://web.example.test")
+    @patch("extractor.task_handlers._verify_oidc_token")
+    def test_worker_cannot_fall_back_to_the_web_audience(self, mock_verify_oidc):
+        request = self.factory.post("/internal/tasks/test_task/", data="{}", content_type="application/json")
+        response = CloudTaskHandlerView().post(request, "test_task")
+        self.assertEqual(response.status_code, 503)
+        mock_verify_oidc.assert_not_called()
+
+    def test_naive_document_claim_timestamp_is_interpreted_as_utc(self):
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        with patch("extractor.task_handlers.timezone.now", return_value=now):
+            for age, active in ((timedelta(minutes=1), True), (timedelta(minutes=6), False)):
+                with self.subTest(age=age):
+                    updated_at = (now - age).replace(tzinfo=None).isoformat()
+                    self.assertEqual(task_handlers._has_active_document_claim({"updated_at": updated_at}), active)
 
     @override_settings(DEBUG=False, CLOUD_TASKS_SERVICE_ACCOUNT="tasks@example.iam.gserviceaccount.com")
     @patch("google.oauth2.id_token.verify_oauth2_token")

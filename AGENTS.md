@@ -9,9 +9,32 @@
 Use `.agents/skills/aetheromni-delivery/SKILL.md` as the concise operational
 runbook. This file remains the authoritative cross-agent policy.
 
+Deployment manifests must use the computed release image, the independently
+configured queue location, the active queue name, and the Supabase database
+secret. Cloud Build must bind submitted source to the approved commit, fail if
+history cannot be unshallowed, and deploy and verify both services against the
+same resolved image digest used for the SBOM.
+
 `run_checks.sh` is the canonical local verification entrypoint. The legacy
 `scripts/verify-pipeline.sh` is a compatibility wrapper only and must not fetch,
 pull, stash, perform remote scans, or deploy.
+
+GitHub Actions use an explicit supported Ubuntu LTS runner label so image
+migrations are reviewed. CI installs a pinned SurrealDB CLI and treats
+`surreal validate` as a blocking check; a missing validator must fail the job.
+Pulumi requires the computed semantic `release_version` and matching
+`IMAGE_TAG`; missing, mismatched, or floating `latest` inputs fail closed.
+Keep Pulumi's `gcp:region` provider setting separate from resource placement
+(`resource_region` or `GCP_REGION`). Preserve the provider region recorded in
+existing stack state and preserve each resource's default or explicit provider
+association during targeted reconciliations; changing either can require a
+full-stack provider migration.
+Keep the Cloud Tasks queue region independently configured from the Cloud Run
+resource region. Propagate `GCP_QUEUE_LOCATION` to web and worker services and
+use the same queue region for the queue IAM binding and Cloud Build deployment.
+Pulumi must preserve existing Artifact Registry cleanup policies and repository
+metadata during imports and targeted reconciliations; review retention changes
+explicitly before applying them.
 
 ### Runtime reliability contracts
 
@@ -35,7 +58,7 @@ pull, stash, perform remote scans, or deploy.
 - **MANDATORY BEFORE CREATING ANY PULL REQUEST OR COMMITTING CODE**:
   - **Pre-Commit Gatekeeper Hook**: Local commits are enforced by `.githooks/pre-commit` (with `core.hooksPath=.githooks`), which runs Sonar secrets scanning followed by `bash run_checks.sh --fast`. This differential gate checks modified files with Ruff AST formatting/linting, ESLint, strict Sonar-aligned YAML linting, Hadolint Dockerfile audits, markdownlint, SurrealQL validation, Bandit, Semgrep, AST-Grep regex rules, Python Cognitive Complexity (scripts/check_code_quality.py <= 15), and ShellCheck where applicable. The AST-Grep rules block recurring regex complexity and backtracking findings before a push; new suppressions require a precise rule ID, with Semgrep and SonarQube suppressions also requiring a reason.
   - **Pre-Push Gatekeeper Hook**: Local pushes are enforced by `.githooks/pre-push` (with `core.hooksPath=.githooks`), running Sonar secrets scanning followed by the full verification suite across Python (`ruff`, `mypy`, `bandit`), JavaScript (`eslint`), YAML (`yamllint`), Docker (`hadolint`), SurrealQL (`surreal validate`), and AST pattern rules (`ast-grep`).
-  - **Full Suite Run**: Execute `bash run_checks.sh` locally for the complete verification pass. Shell pipeline failures must propagate so log capture cannot mask a failed check.
+  - **Full Suite Run**: Execute `bash run_checks.sh` locally for the complete verification pass. Required linters, type checks, and security scanners must fail closed when missing; a skipped tool is not a passing gate. Shell pipeline failures must propagate so log capture cannot mask a failed check.
   - **Runtime Alignment**: Create the local environment with the interpreter declared by `pyproject.toml` and install `requirements-dev.txt`; `run_checks.sh` rejects an incompatible interpreter rather than silently producing incompatible results.
   - **Active Linters & Auto-Fixers**: Ensure active auto-fixers (`markdownlint --fix`, `yamllint`, `ruff check --fix`, `ruff format`) are executed so document formatting, JS/Python code standards, and YAML schemas are automatically corrected.
 - You MUST ensure the verification suite passes cleanly with **0 Blocker / High Security Vulnerabilities** and **0 Complexity Errors** BEFORE creating or opening a Pull Request.
@@ -216,3 +239,16 @@ If the command reports that the file contains a secret, **do not read the file**
 2. Advise them to rotate the leaked credential at its source of truth and remove it from the file.
 3. Do not proceed with the original request until the secret has been removed.
 <!-- sonar:end:codex-secrets-on-read -->
+
+### Cloud Tasks deployment authentication
+
+Use the deterministic Cloud Run worker service URL derived from the project
+number and resource region as `WORKER_URL` on both services, including the
+worker itself. OIDC audiences must be the service root URL, without handler
+paths. Dispatch fails closed without the configured signing identity.
+Pulumi provisions a dedicated task invoker with worker-scoped invocation;
+only the runtime account and Cloud Tasks service agent receive account-scoped
+`roles/iam.serviceAccountUser` on that identity. Cloud Build verifies these
+metadata-only IAM prerequisites before deployment and requires enabled latest
+versions of deployment secrets without accessing their values.
+Keep text checkouts in LF format for consistent Windows, WSL, and CI behavior.
