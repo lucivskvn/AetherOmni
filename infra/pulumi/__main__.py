@@ -9,7 +9,6 @@ Provisions:
 """
 
 import os
-import re
 
 import pulumi
 import pulumi_gcp as gcp
@@ -33,10 +32,15 @@ region = config.get("resource_region") or os.getenv("GCP_REGION") or "asia-south
 provider_region = gcp_config.get("region") or region
 queue_region = config.get("queue_region") or provider_region
 
+def _is_semver(value: str) -> bool:
+    parts = value.split(".")
+    return len(parts) == 3 and all(part.isascii() and part.isdigit() for part in parts)
+
+
 # Stack configuration parameters
 release_version = config.get("release_version") or os.getenv("RELEASE_VERSION")
 image_tag = config.get("image_tag") or os.getenv("IMAGE_TAG")
-if not release_version or not re.fullmatch(r"\d+\.\d+\.\d+", release_version):
+if not release_version or not _is_semver(release_version):
     raise ValueError("A computed semantic release_version is required for the Pulumi stack.")
 if not image_tag or image_tag == "latest":
     raise ValueError("A computed IMAGE_TAG is required; floating 'latest' is not deployable.")

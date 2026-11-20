@@ -31,6 +31,10 @@ def _metadata(project: str, *arguments: str) -> Metadata:
     executable = shutil.which("gcloud")
     if executable is None:
         raise PreflightError("gcloud is required for deployment metadata checks.")
+    if not project or project.startswith("-") or not all(c.islower() or c.isdigit() or c in "-:." for c in project):
+        raise PreflightError("The GCP project identifier is invalid.")
+    if any(argument.startswith("-") and not argument.startswith("--") for argument in arguments):
+        raise PreflightError("Unsupported gcloud argument.")
     command = [executable, *arguments, f"--project={project}", "--format=json"]
     try:
         result = subprocess.run(  # nosec B603 # Resolved gcloud executable; identifiers remain separate arguments.
