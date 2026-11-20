@@ -49,13 +49,13 @@ if [[ -z "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sy
 fi
 
 echo -e "${YELLOW}[Bytecode] Validating Python syntax & compilation across codebase...${NC}"
-$PYTHON_BIN -m compileall -q core extractor scripts infra/pulumi manage.py
+"$PYTHON_BIN" -m compileall -q core extractor scripts infra/pulumi manage.py
 echo -e "${GREEN}✓ Python bytecode compiled cleanly with 0 syntax errors.${NC}"
 
 echo -e "${YELLOW}[Reliability Contracts] Verifying task, recovery, export, and polling controls...${NC}"
-$PYTHON_BIN scripts/check_reliability_contracts.py
+"$PYTHON_BIN" scripts/check_reliability_contracts.py
 
-APP_VERSION=$($PYTHON_BIN scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
+APP_VERSION=$("$PYTHON_BIN" scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${CYAN} 🚀 KORDA Pre-Production Quality & DevSecOps Verification Suite        ${NC}"
@@ -82,7 +82,8 @@ if [[ "$DOCS_ONLY" != true ]]; then
             exit 1
         fi
     done
-    if ! $PYTHON_BIN -m mypy --version &> /dev/null; then
+    if ! "$PYTHON_BIN" -m mypy --version &> /dev/null \
+        && ! command -v mypy &> /dev/null; then
         echo -e "${RED}✗ mypy is required for static type checking.${NC}" >&2
         exit 1
     fi
@@ -137,17 +138,17 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed Python files
     CHANGED_PY=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
-    if [[ -n "$CHANGED_PY" ]] && $PYTHON_BIN -m ruff --version &> /dev/null; then
+    if [[ -n "$CHANGED_PY" ]] && "$PYTHON_BIN" -m ruff --version &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST & Django Linters...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
-        $PYTHON_BIN -m ruff check $CHANGED_PY
+        "$PYTHON_BIN" -m ruff check $CHANGED_PY
         # shellcheck disable=SC2086
-        $PYTHON_BIN -m ruff format --check $CHANGED_PY
+        "$PYTHON_BIN" -m ruff format --check $CHANGED_PY
         echo -e "${GREEN}✓ Changed Python files verified cleanly.${NC}"
     fi
 
     echo -e "${YELLOW}[Diff Audit] Validating new static-analysis suppressions...${NC}"
-    $PYTHON_BIN scripts/check_suppressions.py
+    "$PYTHON_BIN" scripts/check_suppressions.py
 
     CHANGED_SAST=$(echo "$CHANGED_FILES" | grep -E '\.(py|js|html|ya?ml)$' || true)
     if [[ -n "$CHANGED_SAST" ]]; then
@@ -171,10 +172,10 @@ if [[ "$DOCS_ONLY" = true ]]; then
     if [[ -n "$CHANGED_PY" ]]; then
         echo -e "${YELLOW}[Diff Audit] Running Bandit on changed Python files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
-        $PYTHON_BIN -m bandit -c bandit.yaml $CHANGED_PY
+        "$PYTHON_BIN" -m bandit -c bandit.yaml $CHANGED_PY
         echo -e "${YELLOW}[Diff Audit] Running Cognitive Complexity & Literal Quality gate on changed Python files...${NC}"
         # shellcheck disable=SC2086
-        $PYTHON_BIN scripts/check_code_quality.py $CHANGED_PY || exit 1
+        "$PYTHON_BIN" scripts/check_code_quality.py $CHANGED_PY || exit 1
         echo -e "${GREEN}✓ Changed Python files satisfy Cognitive Complexity <=15 and literal deduplication.${NC}"
     fi
 
@@ -206,8 +207,8 @@ if [[ "$DOCS_ONLY" = true ]]; then
     if [[ -n "$CHANGED_TEMPLATES" ]]; then
         echo -e "${YELLOW}[Diff Audit] Verifying Django System Integrity & Template Configuration...${NC}"
         SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
-            $PYTHON_BIN manage.py check --deploy --fail-level=ERROR || exit 1
-        $PYTHON_BIN scripts/verify_templates_and_assets.py || exit 1
+            "$PYTHON_BIN" manage.py check --deploy --fail-level=ERROR || exit 1
+        "$PYTHON_BIN" scripts/verify_templates_and_assets.py || exit 1
         echo -e "${GREEN}✓ Django system check & template asset integrity passed cleanly (0 errors).${NC}"
     fi
 
@@ -251,7 +252,7 @@ if [[ "$DOCS_ONLY" = true ]]; then
         echo -e "${GREEN}✓ JavaScript unit tests passed cleanly.${NC}"
     fi
 
-    $PYTHON_BIN scripts/update_docs.py || exit 1
+    "$PYTHON_BIN" scripts/update_docs.py || exit 1
     echo -e "${GREEN}======================================================================${NC}"
     echo -e "${GREEN} ✅ DIFFERENTIAL FAST VERIFICATION PASSED CLEANLY (<0.3s)!           ${NC}"
     echo -e "${GREEN}======================================================================${NC}"
@@ -262,9 +263,9 @@ fi
 
 if [[ "$AUTOFIX" = true ]]; then
     echo -e "\n${YELLOW}🛠️ Executing Automated Code Formatting & Lint Fix Pass...${NC}"
-    if $PYTHON_BIN -m ruff --version &> /dev/null; then
-        $PYTHON_BIN -m ruff check --fix . || true
-        $PYTHON_BIN -m ruff format . || true
+    if "$PYTHON_BIN" -m ruff --version &> /dev/null; then
+        "$PYTHON_BIN" -m ruff check --fix . || true
+        "$PYTHON_BIN" -m ruff format . || true
     fi
     if command -v markdownlint &> /dev/null; then
         markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md 2>/dev/null || true
@@ -276,8 +277,8 @@ if [[ "$AUTOFIX" = true ]]; then
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Executing Ruff AST Linter & Cyclomatic Complexity Check...${NC}"
-if $PYTHON_BIN -m ruff --version &> /dev/null; then
-    $PYTHON_BIN -m ruff check .
+if "$PYTHON_BIN" -m ruff --version &> /dev/null; then
+    "$PYTHON_BIN" -m ruff check .
     echo -e "${GREEN}✓ Python code quality & cyclomatic complexity checks passed cleanly.${NC}"
 else
     echo -e "${RED}✗ Ruff is not installed! Please execute 'pip install ruff'.${NC}" >&2
@@ -309,7 +310,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Verifying Source Code Formatting Consistency...${NC}"
-$PYTHON_BIN -m ruff format --check .
+"$PYTHON_BIN" -m ruff format --check .
 echo -e "${GREEN}✓ Source code formatting is fully consistent.${NC}"
 
 
@@ -337,8 +338,8 @@ fi
 
 echo -e "\n${YELLOW}[Infrastructure as Code] Auditing Pulumi Python Stack Integrity...${NC}"
 if [[ -f "infra/pulumi/Pulumi.yaml" && -f "infra/pulumi/__main__.py" ]]; then
-    $PYTHON_BIN -m ruff check infra/pulumi/
-    $PYTHON_BIN -m ruff format --check infra/pulumi/
+    "$PYTHON_BIN" -m ruff check infra/pulumi/
+    "$PYTHON_BIN" -m ruff format --check infra/pulumi/
     echo -e "${GREEN}✓ Pulumi Python IaC stack verified cleanly.${NC}"
 else
     echo -e "${YELLOW}⚠ Pulumi stack not found in infra/pulumi (skipping).${NC}"
@@ -362,7 +363,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[UI/UX Gatekeeper] Auditing Template & Static Asset Integrity...${NC}"
-$PYTHON_BIN scripts/verify_templates_and_assets.py || exit 1
+"$PYTHON_BIN" scripts/verify_templates_and_assets.py || exit 1
 
 echo -e "\n${YELLOW}[Shell Security] Executing ShellCheck Shell Script Audit...${NC}"
 if command -v shellcheck &> /dev/null; then
@@ -385,8 +386,8 @@ echo -e "${GREEN}✓ HTML templates verified for SRI integrity compliance.${NC}"
 # ── PHASE 3: DEEP SECURITY & DATA FLOW SAST ───────────────────────────────────
 
 echo -e "\n${YELLOW}[Type & Data Flow] Performing Mypy Static Type & Data Flow Analysis...${NC}"
-if $PYTHON_BIN -m mypy --version &> /dev/null; then
-    $PYTHON_BIN -m mypy --ignore-missing-imports core/ extractor/
+if "$PYTHON_BIN" -m mypy --version &> /dev/null; then
+    "$PYTHON_BIN" -m mypy --ignore-missing-imports core/ extractor/
     echo -e "${GREEN}✓ Static type definitions & data flow analysis passed cleanly (0 errors).${NC}"
 elif command -v mypy &> /dev/null; then
     mypy --ignore-missing-imports core/ extractor/
@@ -426,7 +427,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Code Quality & Cognitive Complexity] Running AST Gatekeeper & Literal Deduplication...${NC}"
-if $PYTHON_BIN scripts/check_code_quality.py; then
+if "$PYTHON_BIN" scripts/check_code_quality.py; then
     echo -e "${GREEN}✓ Cognitive Complexity (<=15) & literal deduplication gate passed cleanly.${NC}"
 else
     echo -e "${RED}✗ Cognitive Complexity or literal duplication gate failed!${NC}" >&2
@@ -434,7 +435,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Security Audit] Running Bandit Vulnerability & ReDoS Audit...${NC}"
-if $PYTHON_BIN -m bandit -c bandit.yaml -r extractor/ core/ scripts/; then
+if "$PYTHON_BIN" -m bandit -c bandit.yaml -r extractor/ core/ scripts/; then
     echo -e "${GREEN}✓ Bandit security audit passed (0 security vulnerabilities).${NC}"
 else
     echo -e "${RED}✗ Bandit security audit identified issues! Please review output above.${NC}" >&2
@@ -442,7 +443,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Supply Chain] Performing Pip-Audit Dependency Security Scan...${NC}"
-if $PYTHON_BIN -m pip_audit -r requirements.txt; then
+if "$PYTHON_BIN" -m pip_audit -r requirements.txt; then
     echo -e "${GREEN}✓ Dependency security audit passed cleanly (0 vulnerability advisories).${NC}"
 else
     echo -e "${RED}✗ Pip-Audit detected vulnerable dependencies! Please upgrade them.${NC}" >&2
@@ -453,12 +454,12 @@ fi
 
 echo -e "\n${YELLOW}[System Integrity] Verifying Django Application Configuration...${NC}"
 SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
-    $PYTHON_BIN manage.py check
+    "$PYTHON_BIN" manage.py check
 echo -e "${GREEN}✓ Django system integrity verification completed cleanly.${NC}"
 
 echo -e "\n${YELLOW}[Schema Drift] Checking for missing Django database migrations...${NC}"
 SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
-    $PYTHON_BIN manage.py makemigrations --check --dry-run
+    "$PYTHON_BIN" manage.py makemigrations --check --dry-run
 echo -e "${GREEN}✓ Database schema is synchronized with Django models (0 unapplied model changes).${NC}"
 
 echo -e "\n${YELLOW}[Automated Testing] Executing Django Unit Test Suite & Coverage Analysis...${NC}"
@@ -467,7 +468,7 @@ echo -e "${YELLOW}Running dynamic discovered tests in memory-bounded offline ver
 rm -f .coverage .coverage.* coverage.xml "$TMPDIR_AET"/test_output*.txt 2>/dev/null || true
 
 # Dynamic test module discovery & balanced partitioning (zero hardcoded lists)
-BATCH_DISPATCHER=$($PYTHON_BIN -c "
+BATCH_DISPATCHER=$("$PYTHON_BIN" -c "
 import glob
 
 modules = [
@@ -496,7 +497,7 @@ while IFS= read -r BATCH_MODULES; do
     set +e
     # shellcheck disable=SC2086
     SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 MALLOC_ARENA_MAX=2 \
-        $PYTHON_BIN -m coverage run -p \
+        "$PYTHON_BIN" -m coverage run -p \
         manage.py test $BATCH_MODULES --buffer --keepdb \
         >"$TMPDIR_AET/test_output_batch_${BATCH_NUM}.txt" 2>&1
     BATCH_STATUS=$?
@@ -515,8 +516,8 @@ if [[ "$TESTS_FAILED" = true ]]; then
     exit 1
 fi
 
-$PYTHON_BIN -m coverage combine 2>/dev/null
-$PYTHON_BIN -m coverage xml -o coverage.xml 2>/dev/null
+"$PYTHON_BIN" -m coverage combine 2>/dev/null
+"$PYTHON_BIN" -m coverage xml -o coverage.xml 2>/dev/null
 TEST_COUNT=$(grep -oP '(?<=Ran )\d+' "$TMPDIR_AET/test_output.txt" 2>/dev/null | awk '{s+=$1} END {print s}')
 if [[ -n "$TEST_COUNT" ]]; then echo "$TEST_COUNT" > .test_count; fi
 echo -e "${GREEN}✓ Automated Django unit test suite executed successfully with coverage.xml generated (${TEST_COUNT:-0} tests passed).${NC}"
@@ -544,7 +545,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Release Governance] Synchronizing Documentation & Version Metadata...${NC}"
-if $PYTHON_BIN scripts/update_docs.py; then
+if "$PYTHON_BIN" scripts/update_docs.py; then
     echo -e "${GREEN}✓ Release documentation & version metadata synchronized successfully.${NC}"
 else
     echo -e "${YELLOW}⚠ Documentation update skipped (non-fatal).${NC}"

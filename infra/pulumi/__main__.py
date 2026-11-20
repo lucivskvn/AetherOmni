@@ -130,6 +130,7 @@ for idx, role in enumerate(iam_roles):
         project=project,
         role=role,
         member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+        opts=pulumi.ResourceOptions(provider=gcp_provider),
     )
     iam_members.append(member)
 
@@ -229,8 +230,18 @@ artifact_repo = gcp.artifactregistry.Repository(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
+# Retain the pre-existing registry so state reconciliation never deletes its images.
+legacy_artifact_repo = gcp.artifactregistry.Repository(
+    "korda-repo",
+    repository_id="korda-repo",
+    location=region,
+    format="DOCKER",
+    description="Docker container registry for KORDA images",
+    opts=pulumi.ResourceOptions(provider=gcp_provider, protect=True),
+)
+
 container_image = (
-    config.get("container_image") or f"{region}-docker.pkg.dev/{project}/cloud-run-source-deploy/korda:{image_tag}"
+    config.get("container_image") or f"{region}-docker.pkg.dev/{project}/{artifact_repo_id}/korda:{image_tag}"
 )
 
 custom_domain = config.get("custom_domain")

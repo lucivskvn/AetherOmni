@@ -57,8 +57,6 @@ spec:
           value: "${WORKER_URL}"
         - name: BACKUP_BUCKET_NAME
           value: "${BACKUP_BUCKET_NAME}"
-        - name: CLOUD_TASKS_SERVICE_ACCOUNT
-          value: "${CLOUD_TASKS_SERVICE_ACCOUNT}"
         - name: EVENTARC_SERVICE_ACCOUNT
           value: "${CLOUD_TASKS_SERVICE_ACCOUNT}"
         - name: SURREAL_NS
@@ -86,11 +84,6 @@ spec:
           valueFrom:
             secretKeyRef:
               name: SURREAL_URL
-              key: "latest"
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: SUPABASE_DATABASE_URL
               key: "latest"
         - name: ADMIN_EMAIL
           valueFrom:
