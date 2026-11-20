@@ -28,31 +28,34 @@ CYAN='\033[0;36m'
 NC='\033[0;m'
 
 PYTHON_BIN="${PYTHON_BIN:-}"
-if [[ -z "$PYTHON_BIN" ]] && [[ -x ".venv/bin/python3.14" ]]; then
-    PYTHON_BIN=".venv/bin/python3.14"
-elif [[ -z "$PYTHON_BIN" ]] && [[ -x ".venv/bin/python3" ]]; then
-    PYTHON_BIN=".venv/bin/python3"
-elif [[ -z "$PYTHON_BIN" ]] && [[ -x ".venv/bin/python" ]]; then
-    PYTHON_BIN=".venv/bin/python"
-elif command -v python3.14 &> /dev/null; then
-    PYTHON_BIN="python3.14"
-else
-    PYTHON_BIN="python3"
+if [[ -z "$PYTHON_BIN" ]]; then
+    for PYTHON_CANDIDATE in .venv/bin/python3.14 .venv/bin/python3 .venv/bin/python python3.14 python3; do
+        if [[ "$PYTHON_CANDIDATE" == */* ]]; then
+            PYTHON_RESOLVED="$PYTHON_CANDIDATE"
+        else
+            PYTHON_RESOLVED="$(command -v "$PYTHON_CANDIDATE" 2>/dev/null || true)"
+        fi
+        if [[ -n "$PYTHON_RESOLVED" && -x "$PYTHON_RESOLVED" ]] && \
+            "$PYTHON_RESOLVED" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))' &> /dev/null; then
+            PYTHON_BIN="$PYTHON_RESOLVED"
+            break
+        fi
+    done
 fi
 
-if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))'; then
+if [[ -z "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(sys.version_info < (3, 14))'; then
     echo -e "${RED}✗ Python 3.14 or newer is required. Recreate .venv with Python 3.14 and install requirements-dev.txt.${NC}" >&2
     exit 1
 fi
 
 echo -e "${YELLOW}[Bytecode] Validating Python syntax & compilation across codebase...${NC}"
-$PYTHON_BIN -m compileall -q core extractor scripts manage.py
+"$PYTHON_BIN" -m compileall -q core extractor scripts infra/pulumi manage.py
 echo -e "${GREEN}✓ Python bytecode compiled cleanly with 0 syntax errors.${NC}"
 
 echo -e "${YELLOW}[Reliability Contracts] Verifying task, recovery, export, and polling controls...${NC}"
-$PYTHON_BIN scripts/check_reliability_contracts.py
+"$PYTHON_BIN" scripts/check_reliability_contracts.py
 
-APP_VERSION=$($PYTHON_BIN scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
+APP_VERSION=$("$PYTHON_BIN" scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${CYAN} 🚀 KORDA Pre-Production Quality & DevSecOps Verification Suite        ${NC}"
@@ -72,6 +75,20 @@ if [[ -d "${HOME}/.surrealdb" ]]; then
     export PATH="${HOME}/.surrealdb:${PATH}"
 fi
 
+if [[ "$DOCS_ONLY" != true ]]; then
+    for REQUIRED_TOOL in markdownlint yamllint hadolint shellcheck ast-grep semgrep; do
+        if ! command -v "$REQUIRED_TOOL" &> /dev/null; then
+            echo -e "${RED}✗ Required verification tool '$REQUIRED_TOOL' is not installed or not on PATH.${NC}" >&2
+            exit 1
+        fi
+    done
+    if ! "$PYTHON_BIN" -m mypy --version &> /dev/null \
+        && ! command -v mypy &> /dev/null; then
+        echo -e "${RED}✗ mypy is required for static type checking.${NC}" >&2
+        exit 1
+    fi
+fi
+
 if [[ "$DOCS_ONLY" = true ]]; then
     echo -e "\n${CYAN}⚡ Executing Fast Differential Verification Pass (Targeting Changed Files Only)...${NC}"
     
@@ -85,7 +102,11 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed markdown files
     CHANGED_MD=$(echo "$CHANGED_FILES" | grep -E '\.(md|markdown)$' || true)
-    if [[ -n "$CHANGED_MD" ]] && command -v markdownlint &> /dev/null; then
+    if [[ -n "$CHANGED_MD" ]]; then
+        if ! command -v markdownlint &> /dev/null; then
+            echo -e "${RED}✗ markdownlint is required for changed Markdown files.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Scanning changed Markdown files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_MD holds space-separated filenames
         markdownlint --fix $CHANGED_MD 2>/dev/null || true
@@ -96,14 +117,18 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed YAML files
     CHANGED_YAML=$(echo "$CHANGED_FILES" | grep -E '\.(yml|yaml)$' || true)
-    if [[ -n "$CHANGED_YAML" ]] && command -v yamllint &> /dev/null; then
+    if [[ -n "$CHANGED_YAML" ]]; then
+        if ! command -v yamllint &> /dev/null; then
+            echo -e "${RED}✗ yamllint is required for changed YAML files.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Scanning changed YAML files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_YAML holds space-separated filenames
         yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" $CHANGED_YAML
         echo -e "${GREEN}✓ Changed YAML structures verified cleanly.${NC}"
     fi
 
-    if [[ -n "$CHANGED_YAML" ]] && command -v yamllint &> /dev/null; then
+    if [[ -n "$CHANGED_YAML" ]]; then
         for SONAR_YAML_FILE in bandit.yaml docker-compose.yml; do
             if echo "$CHANGED_YAML" | grep -Fxq "$SONAR_YAML_FILE"; then
                 yamllint "$SONAR_YAML_FILE"
@@ -113,17 +138,17 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed Python files
     CHANGED_PY=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
-    if [[ -n "$CHANGED_PY" ]] && $PYTHON_BIN -m ruff --version &> /dev/null; then
+    if [[ -n "$CHANGED_PY" ]] && "$PYTHON_BIN" -m ruff --version &> /dev/null; then
         echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST & Django Linters...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
-        $PYTHON_BIN -m ruff check $CHANGED_PY
+        "$PYTHON_BIN" -m ruff check $CHANGED_PY
         # shellcheck disable=SC2086
-        $PYTHON_BIN -m ruff format --check $CHANGED_PY
+        "$PYTHON_BIN" -m ruff format --check $CHANGED_PY
         echo -e "${GREEN}✓ Changed Python files verified cleanly.${NC}"
     fi
 
     echo -e "${YELLOW}[Diff Audit] Validating new static-analysis suppressions...${NC}"
-    $PYTHON_BIN scripts/check_suppressions.py
+    "$PYTHON_BIN" scripts/check_suppressions.py
 
     CHANGED_SAST=$(echo "$CHANGED_FILES" | grep -E '\.(py|js|html|ya?ml)$' || true)
     if [[ -n "$CHANGED_SAST" ]]; then
@@ -147,15 +172,19 @@ if [[ "$DOCS_ONLY" = true ]]; then
     if [[ -n "$CHANGED_PY" ]]; then
         echo -e "${YELLOW}[Diff Audit] Running Bandit on changed Python files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
-        $PYTHON_BIN -m bandit -c bandit.yaml $CHANGED_PY
+        "$PYTHON_BIN" -m bandit -c bandit.yaml $CHANGED_PY
         echo -e "${YELLOW}[Diff Audit] Running Cognitive Complexity & Literal Quality gate on changed Python files...${NC}"
         # shellcheck disable=SC2086
-        $PYTHON_BIN scripts/check_code_quality.py $CHANGED_PY || exit 1
+        "$PYTHON_BIN" scripts/check_code_quality.py $CHANGED_PY || exit 1
         echo -e "${GREEN}✓ Changed Python files satisfy Cognitive Complexity <=15 and literal deduplication.${NC}"
     fi
 
     CHANGED_DOCKER=$(echo "$CHANGED_FILES" | grep -E '(^|/)Dockerfile' || true)
-    if [[ -n "$CHANGED_DOCKER" ]] && command -v hadolint &> /dev/null; then
+    if [[ -n "$CHANGED_DOCKER" ]]; then
+        if ! command -v hadolint &> /dev/null; then
+            echo -e "${RED}✗ Hadolint is required for changed Dockerfiles.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Running Hadolint on changed Dockerfiles...${NC}"
         # shellcheck disable=SC2086
         hadolint $CHANGED_DOCKER || exit 1
@@ -178,14 +207,18 @@ if [[ "$DOCS_ONLY" = true ]]; then
     if [[ -n "$CHANGED_TEMPLATES" ]]; then
         echo -e "${YELLOW}[Diff Audit] Verifying Django System Integrity & Template Configuration...${NC}"
         SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
-            $PYTHON_BIN manage.py check --deploy --fail-level=ERROR || exit 1
-        $PYTHON_BIN scripts/verify_templates_and_assets.py || exit 1
+            "$PYTHON_BIN" manage.py check --deploy --fail-level=ERROR || exit 1
+        "$PYTHON_BIN" scripts/verify_templates_and_assets.py || exit 1
         echo -e "${GREEN}✓ Django system check & template asset integrity passed cleanly (0 errors).${NC}"
     fi
 
     # Filter changed SurrealQL files
     CHANGED_SURQL=$(echo "$CHANGED_FILES" | grep -E '\.surql$' || true)
-    if [[ -n "$CHANGED_SURQL" ]] && command -v surreal &> /dev/null && surreal version &> /dev/null; then
+    if [[ -n "$CHANGED_SURQL" ]]; then
+        if ! command -v surreal &> /dev/null || ! surreal version &> /dev/null; then
+            echo -e "${RED}✗ SurrealDB CLI is required for changed SurrealQL files.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Validating changed SurrealQL files...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_SURQL holds space-separated filenames
         surreal validate $CHANGED_SURQL 2>&1 || exit 1
@@ -219,7 +252,7 @@ if [[ "$DOCS_ONLY" = true ]]; then
         echo -e "${GREEN}✓ JavaScript unit tests passed cleanly.${NC}"
     fi
 
-    $PYTHON_BIN scripts/update_docs.py || exit 1
+    "$PYTHON_BIN" scripts/update_docs.py || exit 1
     echo -e "${GREEN}======================================================================${NC}"
     echo -e "${GREEN} ✅ DIFFERENTIAL FAST VERIFICATION PASSED CLEANLY (<0.3s)!           ${NC}"
     echo -e "${GREEN}======================================================================${NC}"
@@ -230,22 +263,22 @@ fi
 
 if [[ "$AUTOFIX" = true ]]; then
     echo -e "\n${YELLOW}🛠️ Executing Automated Code Formatting & Lint Fix Pass...${NC}"
-    if $PYTHON_BIN -m ruff --version &> /dev/null; then
-        $PYTHON_BIN -m ruff check --fix . || true
-        $PYTHON_BIN -m ruff format . || true
+    if "$PYTHON_BIN" -m ruff --version &> /dev/null; then
+        "$PYTHON_BIN" -m ruff check --fix . || true
+        "$PYTHON_BIN" -m ruff format . || true
     fi
     if command -v markdownlint &> /dev/null; then
-        markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md .kiro/steering/*.md 2>/dev/null || true
+        markdownlint --fix README.md docs/gcp_deployment_guide.md AGENTS.md .cursorrules .github/copilot-instructions.md 2>/dev/null || true
     fi
     if command -v yamllint &> /dev/null; then
-        yamllint service.yaml service-worker.yaml cloudbuild.yaml bandit.yaml .coderabbit.yaml .github/workflows/*.yml .github/dependabot.yml 2>/dev/null || true
+        yamllint infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml bandit.yaml .coderabbit.yaml .github/workflows/*.yml .github/dependabot.yml 2>/dev/null || true
     fi
     echo -e "${GREEN}✓ Automated code formatting and lint fixes applied across entire codebase.${NC}"
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Executing Ruff AST Linter & Cyclomatic Complexity Check...${NC}"
-if $PYTHON_BIN -m ruff --version &> /dev/null; then
-    $PYTHON_BIN -m ruff check .
+if "$PYTHON_BIN" -m ruff --version &> /dev/null; then
+    "$PYTHON_BIN" -m ruff check .
     echo -e "${GREEN}✓ Python code quality & cyclomatic complexity checks passed cleanly.${NC}"
 else
     echo -e "${RED}✗ Ruff is not installed! Please execute 'pip install ruff'.${NC}" >&2
@@ -254,10 +287,10 @@ fi
 
 echo -e "\n${YELLOW}[Code Quality] Executing JavaScript ESLint & SonarQube JS Convention Check...${NC}"
 if [[ -x "./node_modules/.bin/eslint" ]]; then
-    ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+    ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 elif command -v npx &> /dev/null; then
-    npx --no-install eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 static/js/**/*.js
+    npx --no-install eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js" || ./node_modules/.bin/eslint --no-warn-ignored --max-warnings 0 "static/js/**/*.js"
     echo -e "${GREEN}✓ JavaScript quality, globals & SonarQube conventions verified cleanly.${NC}"
 else
     echo -e "${RED}✗ eslint not found in local node_modules or PATH! Run 'npm ci' to install.${NC}" >&2
@@ -272,11 +305,12 @@ elif command -v npm &> /dev/null; then
     npm test
     echo -e "${GREEN}✓ JavaScript unit tests passed cleanly (0 failures).${NC}"
 else
-    echo -e "${YELLOW}⚠ Vitest / npm not found (skipping JS unit tests).${NC}"
+    echo -e "${RED}✗ Vitest / npm is required for JavaScript unit tests.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Code Quality] Verifying Source Code Formatting Consistency...${NC}"
-$PYTHON_BIN -m ruff format --check .
+"$PYTHON_BIN" -m ruff format --check .
 echo -e "${GREEN}✓ Source code formatting is fully consistent.${NC}"
 
 
@@ -286,10 +320,11 @@ echo -e "\n${YELLOW}[Schema Audit] Verifying YAML & Configuration File Structure
 if command -v yamllint &> /dev/null; then
     yamllint bandit.yaml docker-compose.yml
     yamllint -d "{extends: default, rules: {line-length: {max: 180}, document-start: disable, comments: disable, truthy: disable, indentation: disable}}" \
-        docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml
+        docker-compose.yml bandit.yaml sgconfig.yml .agents/rules/no-eval.yml .github/workflows/ci.yml .markdownlint.json infra/gcp/service.yaml infra/gcp/service-worker.yaml infra/gcp/cloudbuild.yaml infra/pulumi/esc/korda-base.yaml
     echo -e "${GREEN}✓ Configuration schemas and YAML structures verified successfully.${NC}"
 else
-    echo -e "${YELLOW}⚠ yamllint not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ yamllint is required for configuration validation.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Container Security] Executing Hadolint Dockerfile Hardening Audit...${NC}"
@@ -297,45 +332,46 @@ if command -v hadolint &> /dev/null; then
     hadolint Dockerfile
     echo -e "${GREEN}✓ Container hardening and Dockerfile standards verified.${NC}"
 else
-    echo -e "${YELLOW}⚠ Hadolint not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ Hadolint is required for Dockerfile validation.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Infrastructure as Code] Auditing Pulumi Python Stack Integrity...${NC}"
 if [[ -f "infra/pulumi/Pulumi.yaml" && -f "infra/pulumi/__main__.py" ]]; then
-    $PYTHON_BIN -m ruff check infra/pulumi/
-    $PYTHON_BIN -m ruff format --check infra/pulumi/
+    "$PYTHON_BIN" -m ruff check infra/pulumi/
+    "$PYTHON_BIN" -m ruff format --check infra/pulumi/
     echo -e "${GREEN}✓ Pulumi Python IaC stack verified cleanly.${NC}"
 else
     echo -e "${YELLOW}⚠ Pulumi stack not found in infra/pulumi (skipping).${NC}"
 fi
 
 echo -e "\n${YELLOW}[SurrealQL] Validating SurrealQL schema syntax (surreal validate)...${NC}"
-if command -v surreal &> /dev/null && surreal version &> /dev/null; then
-    SURQL_FILES=$(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" 2>/dev/null | tr '\n' ' ')
-    if [[ -n "$SURQL_FILES" ]]; then
-        # shellcheck disable=SC2086  # intentional word-splitting: SURQL_FILES holds space-separated filenames
-        if surreal validate $SURQL_FILES 2>&1; then
-            echo -e "${GREEN}✓ SurrealQL schema syntax verified cleanly (0 errors).${NC}"
-        else
-            echo -e "${RED}✗ SurrealQL validation found schema errors! Fix before committing.${NC}" >&2
-            exit 1
-        fi
+if ! command -v surreal &> /dev/null || ! surreal version &> /dev/null; then
+    echo -e "${RED}✗ SurrealDB CLI is required for SurrealQL validation.${NC}" >&2
+    exit 1
+fi
+mapfile -t SURQL_FILES < <(find . -name "*.surql" -not -path "./.git/*" -not -path "./.venv/*" -not -path "./node_modules/*" 2>/dev/null)
+if (( ${#SURQL_FILES[@]} > 0 )); then
+    if surreal validate "${SURQL_FILES[@]}" 2>&1; then
+        echo -e "${GREEN}✓ SurrealQL schema syntax verified cleanly (0 errors).${NC}"
     else
-        echo -e "${GREEN}✓ No .surql files found (skipping).${NC}"
+        echo -e "${RED}✗ SurrealQL validation found schema errors! Fix before committing.${NC}" >&2
+        exit 1
     fi
 else
-    echo -e "${YELLOW}⚠ surreal CLI not found or executable (install: curl -sSf https://install.surrealdb.com | sh). Skipping SurrealQL validation.${NC}"
+    echo -e "${GREEN}✓ No .surql files found (skipping).${NC}"
 fi
 
 echo -e "\n${YELLOW}[UI/UX Gatekeeper] Auditing Template & Static Asset Integrity...${NC}"
-$PYTHON_BIN scripts/verify_templates_and_assets.py || exit 1
+"$PYTHON_BIN" scripts/verify_templates_and_assets.py || exit 1
 
 echo -e "\n${YELLOW}[Shell Security] Executing ShellCheck Shell Script Audit...${NC}"
 if command -v shellcheck &> /dev/null; then
     shellcheck run_checks.sh scripts/*.sh
     echo -e "${GREEN}✓ ShellCheck script conventions & POSIX safety verified cleanly.${NC}"
 else
-    echo -e "${YELLOW}⚠ ShellCheck not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ ShellCheck is required for shell validation.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Template Audit] Checking HTML templates for SRI integrity and security standards...${NC}"
@@ -350,14 +386,15 @@ echo -e "${GREEN}✓ HTML templates verified for SRI integrity compliance.${NC}"
 # ── PHASE 3: DEEP SECURITY & DATA FLOW SAST ───────────────────────────────────
 
 echo -e "\n${YELLOW}[Type & Data Flow] Performing Mypy Static Type & Data Flow Analysis...${NC}"
-if $PYTHON_BIN -m mypy --version &> /dev/null; then
-    $PYTHON_BIN -m mypy --ignore-missing-imports core/ extractor/
+if "$PYTHON_BIN" -m mypy --version &> /dev/null; then
+    "$PYTHON_BIN" -m mypy --ignore-missing-imports core/ extractor/
     echo -e "${GREEN}✓ Static type definitions & data flow analysis passed cleanly (0 errors).${NC}"
 elif command -v mypy &> /dev/null; then
     mypy --ignore-missing-imports core/ extractor/
     echo -e "${GREEN}✓ Static type definitions & data flow analysis passed cleanly (0 errors).${NC}"
 else
-    echo -e "${YELLOW}⚠ mypy not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ mypy is required for static type checking.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[AST Security] Executing AST-Grep Code Pattern Auditor...${NC}"
@@ -372,7 +409,8 @@ if command -v ast-grep &> /dev/null; then
     fi
     echo -e "${GREEN}✓ AST pattern scan completed: 0 errors, $AST_WARNS warning(s).${NC}"
 else
-    echo -e "${YELLOW}⚠ ast-grep not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ ast-grep is required for repository pattern checks.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[SAST Engine] Executing Semgrep Static Application Security Testing...${NC}"
@@ -384,11 +422,12 @@ if command -v semgrep &> /dev/null; then
         exit 1
     fi
 else
-    echo -e "${YELLOW}⚠ Semgrep not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ Semgrep is required for static application security analysis.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Code Quality & Cognitive Complexity] Running AST Gatekeeper & Literal Deduplication...${NC}"
-if $PYTHON_BIN scripts/check_code_quality.py; then
+if "$PYTHON_BIN" scripts/check_code_quality.py; then
     echo -e "${GREEN}✓ Cognitive Complexity (<=15) & literal deduplication gate passed cleanly.${NC}"
 else
     echo -e "${RED}✗ Cognitive Complexity or literal duplication gate failed!${NC}" >&2
@@ -396,7 +435,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Security Audit] Running Bandit Vulnerability & ReDoS Audit...${NC}"
-if $PYTHON_BIN -m bandit -c bandit.yaml -r extractor/ core/ scripts/; then
+if "$PYTHON_BIN" -m bandit -c bandit.yaml -r extractor/ core/ scripts/; then
     echo -e "${GREEN}✓ Bandit security audit passed (0 security vulnerabilities).${NC}"
 else
     echo -e "${RED}✗ Bandit security audit identified issues! Please review output above.${NC}" >&2
@@ -404,7 +443,7 @@ else
 fi
 
 echo -e "\n${YELLOW}[Supply Chain] Performing Pip-Audit Dependency Security Scan...${NC}"
-if $PYTHON_BIN -m pip_audit -r requirements.txt; then
+if "$PYTHON_BIN" -m pip_audit -r requirements.txt; then
     echo -e "${GREEN}✓ Dependency security audit passed cleanly (0 vulnerability advisories).${NC}"
 else
     echo -e "${RED}✗ Pip-Audit detected vulnerable dependencies! Please upgrade them.${NC}" >&2
@@ -415,12 +454,12 @@ fi
 
 echo -e "\n${YELLOW}[System Integrity] Verifying Django Application Configuration...${NC}"
 SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
-    $PYTHON_BIN manage.py check
+    "$PYTHON_BIN" manage.py check
 echo -e "${GREEN}✓ Django system integrity verification completed cleanly.${NC}"
 
 echo -e "\n${YELLOW}[Schema Drift] Checking for missing Django database migrations...${NC}"
 SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 \
-    $PYTHON_BIN manage.py makemigrations --check --dry-run
+    "$PYTHON_BIN" manage.py makemigrations --check --dry-run
 echo -e "${GREEN}✓ Database schema is synchronized with Django models (0 unapplied model changes).${NC}"
 
 echo -e "\n${YELLOW}[Automated Testing] Executing Django Unit Test Suite & Coverage Analysis...${NC}"
@@ -429,7 +468,7 @@ echo -e "${YELLOW}Running dynamic discovered tests in memory-bounded offline ver
 rm -f .coverage .coverage.* coverage.xml "$TMPDIR_AET"/test_output*.txt 2>/dev/null || true
 
 # Dynamic test module discovery & balanced partitioning (zero hardcoded lists)
-BATCH_DISPATCHER=$($PYTHON_BIN -c "
+BATCH_DISPATCHER=$("$PYTHON_BIN" -c "
 import glob
 
 modules = [
@@ -458,7 +497,7 @@ while IFS= read -r BATCH_MODULES; do
     set +e
     # shellcheck disable=SC2086
     SURREALDB_OFFLINE=True DATABASE_URL=sqlite:///db.sqlite3 MALLOC_ARENA_MAX=2 \
-        $PYTHON_BIN -m coverage run -p \
+        "$PYTHON_BIN" -m coverage run -p \
         manage.py test $BATCH_MODULES --buffer --keepdb \
         >"$TMPDIR_AET/test_output_batch_${BATCH_NUM}.txt" 2>&1
     BATCH_STATUS=$?
@@ -477,8 +516,8 @@ if [[ "$TESTS_FAILED" = true ]]; then
     exit 1
 fi
 
-$PYTHON_BIN -m coverage combine 2>/dev/null
-$PYTHON_BIN -m coverage xml -o coverage.xml 2>/dev/null
+"$PYTHON_BIN" -m coverage combine 2>/dev/null
+"$PYTHON_BIN" -m coverage xml -o coverage.xml 2>/dev/null
 TEST_COUNT=$(grep -oP '(?<=Ran )\d+' "$TMPDIR_AET/test_output.txt" 2>/dev/null | awk '{s+=$1} END {print s}')
 if [[ -n "$TEST_COUNT" ]]; then echo "$TEST_COUNT" > .test_count; fi
 echo -e "${GREEN}✓ Automated Django unit test suite executed successfully with coverage.xml generated (${TEST_COUNT:-0} tests passed).${NC}"
@@ -501,11 +540,12 @@ if command -v markdownlint &> /dev/null; then
     markdownlint README.md docs/gcp_deployment_guide.md
     echo -e "${GREEN}✓ Documentation syntax & markdown standards verified.${NC}"
 else
-    echo -e "${YELLOW}⚠ markdownlint not found in PATH (skipping).${NC}"
+    echo -e "${RED}✗ markdownlint is required for documentation validation.${NC}" >&2
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[Release Governance] Synchronizing Documentation & Version Metadata...${NC}"
-if $PYTHON_BIN scripts/update_docs.py; then
+if "$PYTHON_BIN" scripts/update_docs.py; then
     echo -e "${GREEN}✓ Release documentation & version metadata synchronized successfully.${NC}"
 else
     echo -e "${YELLOW}⚠ Documentation update skipped (non-fatal).${NC}"

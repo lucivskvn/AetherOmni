@@ -111,8 +111,8 @@ class FileUtilsTestCase(TestCase):
 
     def test_get_client_ip_with_x_forwarded_for_multiple(self):
         request = MagicMock()
-        request.META = {"HTTP_X_FORWARDED_FOR": "192.168.1.1, 10.0.0.1, 127.0.0.1"}
-        self.assertEqual(file_utils.get_client_ip(request), "192.168.1.1")
+        request.META = {"HTTP_X_FORWARDED_FOR": "203.0.113.5, 10.0.0.1, 127.0.0.1"}
+        self.assertEqual(file_utils.get_client_ip(request), "203.0.113.5")
 
     def test_get_client_ip_with_remote_addr(self):
         request = MagicMock()

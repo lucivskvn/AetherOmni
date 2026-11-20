@@ -2,6 +2,11 @@
 
 KORDA is a secure knowledge workspace for turning document collections into searchable, grounded answers. Upload source material, follow its processing status, and retrieve answers with links back to the documents that support them.
 
+Production delivery binds submitted source to the approved commit and deploys
+both services from the same resolved image digest used for the SBOM. Fallback
+manifests require the computed release, an independent queue location, and the
+Supabase database secret while preserving the configured memory floors.
+
 [![CI](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lucivskvn/AetherOmni/actions/workflows/ci.yml)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=lucivskvn_AetherOmni&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=lucivskvn_AetherOmni)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
@@ -61,7 +66,7 @@ KORDA is useful before model evaluation or dataset curation: it transforms mixed
 | Knowledge retrieval | Tenant-scoped hybrid retrieval, grounded source references, and streaming answers with a safe JSON fallback. |
 | Curation and export | Editable document detail views plus Markdown ZIP, SFT JSONL, SQLite FTS, and CSV exports. |
 | Governance | Spend caps, immutable audit records, user-scoped data access, and administrator-only operational controls. |
-| Delivery | Private Cloud Run worker, Cloud Tasks OIDC delivery, Pulumi-managed GCP resources, and immutable image release verification. |
+| Delivery | Private Cloud Run worker, Cloud Tasks OIDC delivery, Pulumi-managed GCP resources with release-pinned image inputs, immutable image release verification, and blocking CI schema checks. |
 
 ## Current milestone
 
@@ -118,13 +123,26 @@ Run the complete local gate before committing source, UI, workflow, or infrastru
 bash run_checks.sh
 ```
 
-`bash run_checks.sh` is the local lint, type, test, and security gate. GitHub Actions adds Dependency Review, CodeQL, Semgrep SARIF, and zizmor; SonarCloud runs its separate hosted analysis using `.sonarcloud.properties` for the Python runtime and test scope. Cloud Build validates required secrets before building and infrastructure before deployment, then requires commit-scoped passing SonarCloud, CodeQL, and Semgrep results before deployment. CI installs application checks from the committed `uv.lock`, keeps Semgrep isolated, and checks out the repository before workflow-security analysis. Production images receive an SPDX SBOM generated with pinned non-root Syft in a dedicated writable SBOM directory and attached to the same resolved Artifact Registry digest.
+`bash run_checks.sh` is the local lint, type, test, and security gate. Required local scanners must fail closed when unavailable; a skipped tool does not count as a pass. GitHub Actions adds Dependency Review, CodeQL, Semgrep SARIF, and zizmor; SonarCloud runs its separate hosted analysis using `.sonarcloud.properties` for the Python runtime and test scope. Cloud Build validates required secrets before building and infrastructure before deployment, then requires commit-scoped passing SonarCloud, CodeQL, and Semgrep results before deployment. CI installs application checks from the committed `uv.lock`, keeps Semgrep isolated, and checks out the repository before workflow-security analysis. Production images receive an SPDX SBOM generated with pinned non-root Syft in a dedicated writable SBOM directory and attached to the same resolved Artifact Registry digest.
 
 Report suspected vulnerabilities privately through the process in [SECURITY.md](SECURITY.md). Production SurrealDB connections require encrypted `wss://` transport; unencrypted connections remain limited to explicit local development.
 
 ## Contributing
 
-Keep changes focused, preserve tenant boundaries and task-identity fencing, and run the relevant verification gate. For GCP changes, use the existing Pulumi project and preview infrastructure changes before applying them.
+Keep changes focused, preserve tenant boundaries and task-identity fencing, and run the relevant verification gate. For GCP changes, use the existing Pulumi project and preview infrastructure changes before applying them. Keep Pulumi's `gcp:region` provider setting separate from resource placement (`resource_region` or `GCP_REGION`), and configure the Cloud Tasks queue's region separately through `queue_region` and `GCP_QUEUE_LOCATION`. Preserve each existing resource's default or explicit provider association and Artifact Registry cleanup policies during targeted state reconciliation.
+
+## Cloud Tasks deployment authentication
+
+Use the deterministic Cloud Run worker service URL derived from the project
+number and resource region as `WORKER_URL` on both services, including the
+worker itself. OIDC audiences must be the service root URL, without handler
+paths. Dispatch fails closed without the configured signing identity.
+Pulumi provisions a dedicated task invoker with worker-scoped invocation;
+only the runtime account and Cloud Tasks service agent receive account-scoped
+`roles/iam.serviceAccountUser` on that identity. Cloud Build verifies these
+metadata-only IAM prerequisites before deployment and requires enabled latest
+versions of deployment secrets without accessing their values.
+Keep text checkouts in LF format for consistent Windows, WSL, and CI behavior.
 
 ## License
 

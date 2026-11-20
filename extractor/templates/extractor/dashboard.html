@@ -25,13 +25,13 @@
         <div class="metric-value">{{ formatted_monthly_spent }}</div>
         <div class="metric-sub">
             Cap: {{ formatted_budget_cap }}
-            <div class="budget-bar-container">
+            <div class="budget-bar-container" role="progressbar" aria-label="Monthly AI compute budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{% if budget_exceeded %}100{% else %}{{ stats.percent_spent|default:0 }}{% endif %}">
                 <!-- Calc percent in template -->
                 <div class="budget-bar-fill" style="width: {% if budget_exceeded %}100%{% else %}{{ stats.percent_spent }}%{% endif %};"></div>
             </div>
         </div>
     </div>
-    
+
     <!-- Processed Books Pages -->
     <div class="glass-card metric-card">
         <div class="metric-title">
@@ -81,7 +81,7 @@
     <i data-lucide="shield-alert"></i>
     <div>
         <strong class="alert-card-title">Monthly API Billing Cap Triggered</strong>
-        <span class="alert-card-desc">The platform has safely paused out-of-boundary AI API calls since cumulative expenses reached your customized limit. All fresh uploads will queue as 'PENDING'. Adjust your monthly budget in the <a href="#" id="error-settings-trigger">Console Settings</a> to resume processing.</span>
+        <span class="alert-card-desc">The platform has safely paused out-of-boundary AI API calls since cumulative expenses reached your customized limit. All fresh uploads will queue as 'PENDING'. Adjust your monthly budget in the <button type="button" id="error-settings-trigger" class="btn-link" aria-haspopup="dialog" aria-controls="settings-modal">Console Settings</button> to resume processing.</span>
     </div>
 </div>
 {% endif %}
@@ -111,11 +111,11 @@
                     <div class="panel-title">
                         <i data-lucide="archive"></i> Curated knowledge library
                     </div>
-                    <div class="flex-gap-sm" style="display: flex; gap: 12px; align-items: center;">
+                    <div class="flex-gap-sm" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
                         <div class="table-filter-wrapper" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); position: relative;">
                             <label for="table-filter" class="visually-hidden">Filter knowledge documents</label>
-                            <input type="search" id="table-filter" class="table-filter-input" placeholder="Filter knowledge…">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted);"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                            <input type="search" id="table-filter" class="table-filter-input" placeholder="Filter knowledge…" onkeydown="if(event.key==='Enter'){event.preventDefault();}">
+                            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted);"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                         </div>
                         <div class="sort-select-wrapper" style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted);">
                             <label for="sort-select" style="display: flex; align-items: center; gap: 4px;">
@@ -132,8 +132,8 @@
                                 <option value="-status" {% if sort_by == '-status' %}selected{% endif %}>Status (Z-A)</option>
                             </select>
                         </div>
-                        <button type="button" id="btn-select-all" class="btn btn-secondary">Select All</button>
-                        <button type="button" id="btn-clear-all" class="btn btn-secondary">Clear</button>
+                        <button type="button" id="btn-select-all" class="btn btn-secondary" aria-label="Select All documents">Select All</button>
+                        <button type="button" id="btn-clear-all" class="btn btn-secondary" aria-label="Clear selected documents">Clear</button>
                     </div>
                 </div>
 
@@ -141,7 +141,7 @@
                     <table>
                         <thead>
                             <tr>
-                                <th class="checkbox-col"></th>
+                                <th class="checkbox-col"><span class="visually-hidden">Select</span></th>
                                 <th>
                                     <a href="?sort_by={% if sort_by == 'name' %}-name{% else %}name{% endif %}" class="sort-link" style="display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none;">
                                         Name / Source
@@ -271,23 +271,37 @@
             <div class="search-panel-desc">
                 Ask natural-language questions and receive grounded answers from your documents.
             </div>
-            
+
             <form id="rag-search-form" class="search-form" action="#" onsubmit="return false;">
                 <label for="rag-query" class="visually-hidden">Search document contents</label>
                 <div class="search-input-container">
                     <input type="search" id="rag-query" class="search-input" placeholder="Ask questions on the books..." enterkeyhint="search" aria-describedby="search-hint">
                     <kbd class="search-shortcut-hint" id="search-hint" aria-label="Shortcut: forward slash">/</kbd>
                 </div>
-                <button type="submit" id="rag-btn" class="btn btn-primary" aria-label="Submit search">
-                    <i data-lucide="search"></i>
+                <button type="submit" id="rag-btn" class="btn btn-primary" aria-label="Submit search" title="Submit search">
+                    <i data-lucide="search" aria-hidden="true"></i>
                 </button>
             </form>
+            <div style="margin-top: 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; font-size: 13px;">
+                <label style="display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                    <input type="checkbox" id="strict-librarian-toggle" data-librarian-url="{% url 'strict_librarian_search' %}">
+                    <span>Strict Librarian Mode (Zero-LLM Verbatim + Coordinates)</span>
+                </label>
+                <div style="display: inline-flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button type="button" id="btn-open-crystal-dialog" class="btn btn-secondary btn-sm">
+                        <i data-lucide="sparkles" aria-hidden="true"></i> Synthesize Crystal
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-compile-kb" data-compile-url="{% url 'compile_markdown' %}" title="Compile Verified Crystals into NotebookLM Markdown">
+                        <i data-lucide="book-marked" aria-hidden="true"></i> Compile KB (.md)
+                    </button>
+                </div>
+            </div>
 
             <!-- Loader -->
-            <div id="rag-loader" class="search-loader">
-                <i data-lucide="loader" class="spinner"></i>
-                <div class="search-loader-text">Running vector search & generating response...</div>
-            </div>
+            <output id="rag-loader" class="search-loader" for="rag-query">
+                <i data-lucide="loader" class="spinner" aria-hidden="true"></i>
+                <div class="search-loader-text">Running vector search &amp; generating response...</div>
+            </output>
 
             <!-- Display box -->
             <div id="rag-results-container" class="search-results" aria-live="polite">
@@ -301,12 +315,49 @@
     </div>
 </div>
 
+<!-- Crystal Synthesis Modal -->
+<dialog id="crystal-synth-dialog" aria-labelledby="crystal-dialog-title" style="max-width: 540px; width: 92%; margin: auto; border-radius: 12px; border: 1px solid var(--border-subtle); background: var(--dialog-bg); color: var(--text-main); padding: 1.25rem;">
+    <form id="crystal-synth-form" data-synthesize-url="{% url 'crystal_synthesize' %}">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h3 id="crystal-dialog-title" style="margin: 0; font-size: 1.05rem;">Synthesize Verified Crystal</h3>
+            <button type="button" id="btn-close-crystal-dialog" class="btn btn-secondary btn-sm" aria-label="Close">✕</button>
+        </div>
+        <div style="display: grid; gap: 0.75rem;">
+            <div>
+                <label for="crystal-title" class="text-sm font-medium">Title</label>
+                <input type="text" id="crystal-title" required maxlength="200" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="e.g., FSRS Memory Stability Formula">
+            </div>
+            <div>
+                <label for="crystal-doc-slug" class="text-sm font-medium">Doc Slug</label>
+                <input type="text" id="crystal-doc-slug" maxlength="120" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="general">
+            </div>
+            <div>
+                <label for="crystal-summary" class="text-sm font-medium">Distilled Summary</label>
+                <textarea id="crystal-summary" required rows="4" maxlength="5000" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="Synthesized knowledge grounded in selected Strict Librarian anchors..."></textarea>
+            </div>
+            <div>
+                <label for="crystal-anchor-ids" class="text-sm font-medium">Anchor IDs (comma-separated, auto-filled from checked evidence)</label>
+                <input type="text" id="crystal-anchor-ids" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="anchor_1, anchor_2">
+            </div>
+            <div>
+                <label for="crystal-tags" class="text-sm font-medium">Tags (comma-separated)</label>
+                <input type="text" id="crystal-tags" class="search-input" style="width: 100%; margin-top: 0.25rem;" placeholder="fsrs, core-concept">
+            </div>
+            <output id="crystal-synth-status" for="crystal-title" style="display: block; margin: 0; font-size: 0.85rem;"></output>
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                <button type="button" id="btn-cancel-crystal-dialog" class="btn btn-secondary btn-sm">Cancel</button>
+                <button type="submit" id="btn-submit-crystal" class="btn btn-primary btn-sm">Save Verified Crystal</button>
+            </div>
+        </div>
+    </form>
+</dialog>
+
 <!-- Floating Actions bottom bar (positioned relative to viewport for correct float/sticky behavior) -->
-<div id="export-actions-bar" class="export-footer">
+<section id="export-actions-bar" class="export-footer" aria-label="Selected source actions">
     <span>
         <span id="selected-count">0</span> sources selected
     </span>
-    <div class="flex-gap-sm" style="display: flex; gap: 8px; align-items: center;">
+    <div class="flex-gap-sm" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
         <div class="export-format-selector" style="display: flex; align-items: center; gap: 6px;">
             <label for="export-format" class="visually-hidden">Export Format</label>
             <select id="export-format" name="export_format" class="btn btn-secondary" style="padding: 6px 10px; font-size: 13px; cursor: pointer; border-radius: var(--border-radius-sm); height: auto;">
@@ -319,6 +370,9 @@
         <button type="submit" form="export-form" id="btn-export-submit" class="btn btn-primary" title="Export Selected Documents">
             <i data-lucide="download-cloud" aria-hidden="true"></i> Export Selected
         </button>
+        <button type="button" class="btn btn-secondary btn-compile-kb" data-compile-url="{% url 'compile_markdown' %}" title="Compile Verified Crystals into NotebookLM Markdown">
+            <i data-lucide="book-marked" aria-hidden="true"></i> Compile KB (.md)
+        </button>
         <button type="button" id="btn-bulk-restart" class="btn btn-secondary" title="Bulk Restart Processing" data-action-url="{% url 'bulk_action' %}">
             <i data-lucide="refresh-cw" aria-hidden="true"></i> Bulk Restart
         </button>
@@ -326,5 +380,5 @@
             <i data-lucide="trash-2" aria-hidden="true"></i> Bulk Delete
         </button>
     </div>
-</div>
+</section>
 {% endblock %}

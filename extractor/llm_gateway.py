@@ -139,24 +139,24 @@ def check_budget_and_api_limit() -> None:
         transaction_sql = """
         BEGIN TRANSACTION;
         LET $live = (SELECT math::sum(cost_usd) AS total FROM documents WHERE created_at >= <datetime> $first_of_month GROUP ALL);
-        LET $spent = IF array::len($live) > 0 THEN $live[0].total ELSE 0.0 END;
+        LET $spent = IF array::len($live) > 0 AND $live[0].total != NONE THEN $live[0].total ELSE 0.0 END;
         LET $deleted = (SELECT math::sum(cost_usd) AS total FROM document_spend_reconciliations WHERE year = $year AND month = $month GROUP ALL);
-        LET $deleted_spent = IF array::len($deleted) > 0 THEN $deleted[0].total ELSE 0.0 END;
+        LET $deleted_spent = IF array::len($deleted) > 0 AND $deleted[0].total != NONE THEN $deleted[0].total ELSE 0.0 END;
         LET $settings = (SELECT monthly_budget_usd FROM system_settings:1);
-        LET $cap = IF array::len($settings) > 0 THEN $settings[0].monthly_budget_usd ELSE 10.0 END;
+        LET $cap = IF array::len($settings) > 0 AND $settings[0].monthly_budget_usd != NONE THEN $settings[0].monthly_budget_usd ELSE 10.0 END;
         RETURN { live_spent: $spent, deleted_spent: $deleted_spent, cap: $cap };
         COMMIT TRANSACTION;
         """
-        res = surreal_db._first_result(
+        res = surreal_db._last_non_null_result(
             surreal_db._run(
                 transaction_sql,
                 {"first_of_month": format_datetime(first_of_month), "year": now.year, "month": now.month},
             )
         )
         if res and isinstance(res, dict):
-            live_spent = Decimal(str(res.get("live_spent", 0.0)))
-            deleted_spent = Decimal(str(res.get("deleted_spent", 0.0)))
-            monthly_cap = Decimal(str(res.get("cap", 10.0)))
+            live_spent = Decimal(str(res.get("live_spent") or 0.0))
+            deleted_spent = Decimal(str(res.get("deleted_spent") or 0.0))
+            monthly_cap = Decimal(str(res.get("cap") or 10.0))
         else:
             live_spent = Decimal("0.0")
             deleted_spent = Decimal("0.0")
@@ -251,7 +251,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                 }
                 for k, v in pricing_map.items()
             }
-    except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError, TypeError, KeyError, OSError) as exc:
         logger.exception("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
 
     return None
@@ -1603,3 +1603,124 @@ def generate_multimodal_vision_ocr(
     except Exception as exc:
         logger.warning("[Vision OCR] Multi-Modal Diagram OCR failed: %s", exc)
     return ""
+
+
+MODEL_TIER_LITE = os.getenv("GEMINI_MODEL_LITE", "gemini-2.5-flash-lite")
+MODEL_TIER_PRO = os.getenv("GEMINI_MODEL_PRO", "gemini-2.5-flash")
+
+
+def _get_vertex_client():
+    client, is_vertex = _init_ocr_client()
+    if not is_vertex:
+        return None
+    return client
+
+
+def _coerce_optional_number(val: Any, caster: type[int] | type[float]) -> int | float | None:
+    if val is None:
+        return None
+    try:
+        return caster(val)
+    except TypeError, ValueError:
+        return None
+
+
+def _normalize_anchor_entry(raw_a: Any) -> dict[str, Any] | None:
+    if not isinstance(raw_a, dict) or not raw_a.get("quote"):
+        return None
+    anc = dict(raw_a)
+    anc["quote"] = str(anc["quote"])
+    anc["page_num"] = _coerce_optional_number(anc.get("page_num"), int)
+    anc["start_sec"] = _coerce_optional_number(anc.get("start_sec"), float)
+    anc["end_sec"] = _coerce_optional_number(anc.get("end_sec"), float)
+    return anc
+
+
+def _parse_anchor_extraction_response(
+    response: Any,
+    model_name: str,
+    doc_slug: str,
+    gcs_uri: str,
+) -> dict[str, Any]:
+    try:
+        parsed = json.loads(response.text or "{}")
+    except json.JSONDecodeError as exc:
+        logger.warning("[VertexURI] Invalid JSON from %s for %s: %s", model_name, doc_slug or gcs_uri, exc)
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    raw_anchors = parsed.get("anchors")
+    anchors: list[dict[str, Any]] = []
+    if isinstance(raw_anchors, list):
+        anchors = [norm for raw_a in raw_anchors if (norm := _normalize_anchor_entry(raw_a)) is not None]
+    usage = getattr(response, "usage_metadata", None)
+    return {
+        "title": str(parsed.get("title") or doc_slug or "Untitled"),
+        "anchors": anchors,
+        "model_used": model_name,
+        "input_tokens": getattr(usage, "prompt_token_count", 0) or 0,
+        "output_tokens": getattr(usage, "candidates_token_count", 0) or 0,
+    }
+
+
+def extract_anchors_from_gcs_uri(
+    gcs_uri: str,
+    mime_type: str = MIME_PDF,
+    *,
+    dense_mode: bool = False,
+    doc_slug: str = "",
+) -> dict[str, Any]:
+    """Zero-copy GCS URI extraction returning verbatim anchors with deterministic coordinates."""
+    if not str(gcs_uri).startswith("gs://"):
+        raise ValueError("gcs_uri must be a valid gs:// URI.")
+
+    client = _get_vertex_client()
+    if client is None:
+        raise RuntimeError(VAL_ERROR_UNAVAILABLE)
+
+    model_name = MODEL_TIER_PRO if dense_mode else MODEL_TIER_LITE
+    prompt = (
+        "Extract verbatim factual quotes from this asset. For every anchor return JSON: "
+        '{"title": str, "anchors": [{"quote": str, "page_num": int|null, '
+        '"section_heading": str|null, "start_sec": float|null, "end_sec": float|null, "figure_id": str|null}]}.'
+    )
+    part = types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
+    config_kwargs: dict[str, Any] = {
+        "temperature": 0.1,
+        "response_mime_type": APPLICATION_JSON,
+    }
+    if not dense_mode and "gemini-3" in model_name and hasattr(types, "ThinkingConfig"):
+        thinking_val = getattr(types, "ThinkingLevel", None)
+        config_kwargs["thinking_config"] = types.ThinkingConfig(
+            thinking_level=thinking_val.MINIMAL if thinking_val else "MINIMAL"  # type: ignore[arg-type]
+        )
+
+    response = execute_with_backoff(
+        lambda: client.models.generate_content(
+            model=model_name,
+            contents=[part, prompt],
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+    )
+    return _parse_anchor_extraction_response(response, model_name, doc_slug, gcs_uri)
+
+
+def generate_query_embedding(text: str) -> list[float]:
+    """Generate a 768-dim embedding for Strict Librarian HNSW queries and anchor indexing."""
+    clean = (text or "").strip()
+    if not clean:
+        return []
+    try:
+        client, _is_vertex = _init_ocr_client()
+        if client is None:
+            return []
+        resp = client.models.embed_content(
+            model=os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004"),
+            contents=[clean[:4000]],
+        )
+        embeddings = getattr(resp, "embeddings", None) or []
+        if embeddings and getattr(embeddings[0], "values", None):
+            return [float(x) for x in embeddings[0].values]
+    except Exception as exc:
+        logger.warning("[Embedding] Falling back to BM25-only (embedding unavailable): %s", exc)
+    return []

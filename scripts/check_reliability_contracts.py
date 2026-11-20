@@ -21,6 +21,118 @@ def _require(errors: list[str], source: str, required: tuple[str, ...], message:
         errors.append(message)
 
 
+def _check_infra_contracts(
+    errors: list[str],
+    service_manifest: str,
+    worker_manifest: str,
+    cloudbuild: str,
+    pulumi: str,
+    sonar_autoscan: str,
+) -> None:
+    _require(
+        errors,
+        service_manifest,
+        ("memory: 1024Mi",),
+        "Web Cloud Run manifest must retain the post-incident memory floor.",
+    )
+    if not any(mem in worker_manifest for mem in ("memory: 1024Mi", "memory: 2048Mi", "memory: 2Gi")):
+        errors.append("Worker Cloud Run manifest must retain the post-incident memory floor.")
+    pulumi_components = _read("infra/pulumi/components.py") if (ROOT / "infra/pulumi/components.py").exists() else ""
+    _require(
+        errors,
+        pulumi + "\n" + pulumi_components,
+        (
+            'memory="1Gi"',
+            'memory="2Gi"',
+            'RUN_INVOKER_ROLE = "roles/run.invoker"',
+            "korda-worker-cloud-tasks-invoker",
+            "role=RUN_INVOKER_ROLE",
+            "roles/run.viewer",
+            "objects/raw/**",
+            "korda-backup-schedule",
+            "gcp.cloudscheduler.Job",
+        ),
+        "Pulumi must retain memory floors, private worker invoker role, Eventarc raw/ scope, and backup schedule.",
+    )
+    if ":latest" in service_manifest or ":latest" in worker_manifest:
+        errors.append("Cloud Run service manifests must not deploy :latest container images.")
+    _require(
+        errors,
+        cloudbuild,
+        ("--memory=1Gi", "--memory=2Gi", "--no-allow-unauthenticated", "DATABASE_URL=SUPABASE_DATABASE_URL:latest"),
+        "Cloud Build must retain memory floors, a private worker, and a required Supabase database secret.",
+    )
+    _require(
+        errors,
+        sonar_autoscan,
+        (
+            "sonar.tests=extractor/tests,core/tests",
+            "sonar.test.inclusions=extractor/tests/**/*.py,core/tests/**/*.py",
+            "sonar.python.version=3.14",
+        ),
+        "SonarCloud Automatic Analysis must use the supported Python version and explicit test scope.",
+    )
+
+
+def _check_deployment_identity(errors: list[str], manifests: tuple[str, ...], cloudbuild: str) -> None:
+    _check_task_authentication(errors, cloudbuild)
+    for manifest in manifests:
+        _require(
+            errors,
+            manifest,
+            (
+                "cloud-run-source-deploy/korda:${RELEASE_VERSION}",
+                'value: "${GCP_QUEUE_LOCATION}"',
+                'value: "extractor-tasks-v2"',
+                "name: DATABASE_URL",
+                "name: SUPABASE_DATABASE_URL",
+            ),
+            "Cloud Run manifests must use the computed release, independent queue region, and Supabase database secret.",
+        )
+    _require(
+        errors,
+        cloudbuild,
+        (
+            "Submitted source does not match the approved deployment commit",
+            'test "$$(git rev-parse --is-shallow-repository)" = "false"',
+            'BUILD_SHA="$${SOURCE_SHA:0:7}"',
+            "--digest-file=/workspace/korda.image.digest",
+            'test "$${REMOTE_DIGEST}" = "$${DIGEST}"',
+            "for service in korda-web korda-worker; do",
+            'if [ "$${ACTUAL_IMAGE}" != "$${EXPECTED_IMAGE}" ]; then',
+        ),
+        "Cloud Build must bind source identity, require full version history, and verify both deployed images.",
+    )
+    if cloudbuild.count('--image="$${IMAGE_REFERENCE}"') != 2:
+        errors.append("Both Cloud Run deploys must use the resolved SBOM image digest.")
+
+
+def _check_task_authentication(errors: list[str], cloudbuild: str) -> None:
+    _require(
+        errors,
+        _read("extractor/cloud_tasks.py"),
+        ('"audience": service_url.rstrip("/")', "Cloud Tasks OIDC service account is not configured"),
+        "Cloud Tasks requires an explicit signing identity and service-root audience.",
+    )
+    _require(
+        errors,
+        _read("infra/pulumi/__main__.py"),
+        (
+            "korda-task-invoker-account",
+            "korda-task-creator-act-as",
+            "korda-task-agent-act-as",
+            'value=f"https://korda-worker-{project_info.number}.{region}.run.app"',
+        ),
+        "Pulumi must provision scoped task identities and bootstrap the worker self URL.",
+    )
+    _require(
+        errors,
+        cloudbuild,
+        ("require_enabled_secret", "scripts/verify_gcp_prerequisites.py", "korda-tasks-invoker@${PROJECT_ID}"),
+        "Deployment must verify enabled secrets and task invocation prerequisites.",
+    )
+
+
 def main() -> int:
     """Verify task, tenant, auth, export, and deployment controls before remote checks."""
     errors: list[str] = []
@@ -42,6 +154,7 @@ def main() -> int:
         settings_normalizer = _read("scripts/normalize_system_settings.py")
         surreal_schema = _read("schema.surql")
         sonar_autoscan = _read(".sonarcloud.properties")
+        tasks_source = _read("extractor/tasks.py")
     except OSError as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
@@ -59,7 +172,6 @@ def main() -> int:
         ("def _abort_inflight_processing", "cancel_document_task(doc_uuid,"),
         "Bulk document deletion must invoke task cancellation for in-flight documents.",
     )
-    tasks_source = _read("extractor/tasks.py")
     _require(
         errors,
         tasks_source,
@@ -149,36 +261,6 @@ def main() -> int:
     )
     _require(
         errors,
-        service_manifest,
-        ("memory: 1024Mi",),
-        "Web Cloud Run manifest must retain the post-incident memory floor.",
-    )
-    _require(
-        errors,
-        worker_manifest,
-        ("memory: 1024Mi",),
-        "Worker Cloud Run manifest must retain the post-incident memory floor.",
-    )
-    _require(
-        errors,
-        pulumi,
-        (
-            '"memory": "1Gi"',
-            '"memory": "2Gi"',
-            "korda-worker-cloud-tasks-invoker",
-            "roles/run.invoker",
-            "roles/run.viewer",
-        ),
-        "Pulumi must retain memory floors, Cloud Tasks worker invocation, and deployment-controller read access.",
-    )
-    _require(
-        errors,
-        cloudbuild,
-        ("--memory=1Gi", "--memory=2Gi", "--no-allow-unauthenticated", "DATABASE_URL=SUPABASE_DATABASE_URL:latest"),
-        "Cloud Build must retain memory floors, a private worker, and a required Supabase database secret.",
-    )
-    _require(
-        errors,
         views,
         ("class SaveSettingsView", "return self.request.user.is_superuser", "or not parsed.netloc"),
         "Global settings must be superuser-only and accept only strict HTTPS origins.",
@@ -189,16 +271,8 @@ def main() -> int:
         ('parser.add_argument("--apply"', "Dry run only", "has_retired_field", "postcondition failed"),
         "System-settings normalization must remain dry-run by default and verify retired-field removal explicitly.",
     )
-    _require(
-        errors,
-        sonar_autoscan,
-        (
-            "sonar.tests=extractor/tests,core/tests",
-            "sonar.test.inclusions=extractor/tests/**/*.py,core/tests/**/*.py",
-            "sonar.python.version=3.14",
-        ),
-        "SonarCloud Automatic Analysis must use the supported Python version and explicit test scope.",
-    )
+    _check_infra_contracts(errors, service_manifest, worker_manifest, cloudbuild, pulumi, sonar_autoscan)
+    _check_deployment_identity(errors, (service_manifest, worker_manifest), cloudbuild)
 
     if errors:
         print("FAILED: Reliability contract violation(s):", file=sys.stderr)

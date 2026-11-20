@@ -16,6 +16,9 @@ def _gunicorn_command() -> list[str]:
     workers = os.getenv("GUNICORN_WORKERS", "2")
     if workers not in {"1", "2", "3", "4"}:
         workers = "2"
+    raw_timeout = os.getenv("GUNICORN_TIMEOUT", "120").strip()
+    timeout_val = int(raw_timeout) if raw_timeout.isdigit() else 120
+    timeout_str = str(max(60, min(timeout_val, 3600)))
     command = [
         "gunicorn",
         "--bind",
@@ -25,16 +28,19 @@ def _gunicorn_command() -> list[str]:
         "--threads",
         "4",
         "--timeout",
-        "120",
+        timeout_str,
     ]
     if not _debug_enabled():
         command.extend(["--log-level", "warning"])
     return [*command, "core.wsgi:application"]
 
 
+MANAGE_PY = "manage.py"
+
+
 def _run_migrations() -> None:
     # interpreter, script, and arguments are fixed constants
-    subprocess.run([sys.executable, "manage.py", "migrate", "--noinput"], check=True, timeout=120)  # nosec B603
+    subprocess.run([sys.executable, MANAGE_PY, "migrate", "--noinput"], check=True, timeout=120)  # nosec B603
 
 
 def _start_database_initialization() -> None:
@@ -42,9 +48,21 @@ def _start_database_initialization() -> None:
     subprocess.Popen([sys.executable, "init_surreal.py"])  # nosec B603
 
 
+ALLOWED_COMMANDS: dict[tuple[str, ...], list[str]] = {
+    (MANAGE_PY, "backup_surreal"): [sys.executable, MANAGE_PY, "backup_surreal"],
+}
+
+
 def main() -> NoReturn:
-    _run_migrations()
-    _start_database_initialization()
+    if len(sys.argv) > 1:
+        key = tuple(sys.argv[1:])
+        allowed = ALLOWED_COMMANDS.get(key)
+        if allowed is None:
+            raise SystemExit(f"Unsupported entrypoint command: {key!r}")
+        os.execv(sys.executable, allowed)  # noqa: S606 # nosec B606
+    if os.getenv("RUN_MIGRATIONS_ON_STARTUP", "True").lower() == "true":
+        _run_migrations()
+        _start_database_initialization()
     command = _gunicorn_command()
     # executable and arguments are constructed from fixed constants
     os.execvp(command[0], command)  # noqa: S606 # nosec B606

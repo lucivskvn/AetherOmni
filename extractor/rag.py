@@ -1073,3 +1073,41 @@ def ensure_document_chunks_loaded(doc_uuids: Any) -> None:
     missing_uuids = [u for u in doc_uuid_strs if counts.get(u, 0) == 0]
     if missing_uuids:
         _reload_missing_chunks(missing_uuids, surreal_db)
+
+
+def strict_librarian_search(
+    query_text: str,
+    *,
+    owner_id: str,
+    query_embedding: list[float] | None = None,
+    limit: int = 10,
+    doc_slug: str | None = None,
+) -> dict[str, Any]:
+    """Zero-LLM Strict Librarian Mode: returns verbatim evidence + deterministic coordinates."""
+    from extractor import compiler, llm_gateway, surreal_db
+
+    if query_embedding is None and hasattr(llm_gateway, "generate_query_embedding"):
+        try:
+            query_embedding = llm_gateway.generate_query_embedding(query_text)
+        except Exception:
+            query_embedding = None
+
+    anchors = surreal_db.search_anchors_hybrid(
+        query_text,
+        owner_id=owner_id,
+        query_embedding=query_embedding,
+        limit=limit,
+        doc_slug=doc_slug,
+    )
+    evidence = [
+        {
+            "anchor_id": anc.get("anchor_id"),
+            "source_id": anc.get("source_id"),
+            "doc_slug": anc.get("doc_slug"),
+            "quote": anc.get("quote", ""),
+            "coord": compiler.format_anchor_coord(anc),
+            "rrf_score": anc.get("rrf_score", 0.0),
+        }
+        for anc in anchors
+    ]
+    return {"mode": "strict_librarian", "query": query_text, "evidence": evidence}

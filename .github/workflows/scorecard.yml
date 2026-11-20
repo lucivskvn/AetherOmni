@@ -13,12 +13,17 @@ permissions:
 jobs:
   analysis:
     name: Supply-chain posture
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
       security-events: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Run OpenSSF Scorecard
         # ossf/scorecard-action v2.4.4
         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc

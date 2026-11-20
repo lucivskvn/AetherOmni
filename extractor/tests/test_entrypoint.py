@@ -61,10 +61,29 @@ class EntrypointTest(SimpleTestCase):
     @patch("scripts.entrypoint._start_database_initialization")
     @patch("scripts.entrypoint._run_migrations")
     def test_main_executes_gunicorn_after_bootstrap(self, mock_migrate, mock_initialize, mock_exec):
-        with self.assertRaises(SystemExit):
+        with patch.object(entrypoint.sys, "argv", ["entrypoint.py"]), self.assertRaises(SystemExit):
             mock_exec.side_effect = SystemExit
             entrypoint.main()
 
         mock_migrate.assert_called_once_with()
         mock_initialize.assert_called_once_with()
         mock_exec.assert_called_once_with("gunicorn", entrypoint._gunicorn_command())
+
+    @patch("scripts.entrypoint.os.execv")
+    def test_main_allows_whitelisted_subcommand_and_rejects_others(self, mock_execv):
+        mock_execv.side_effect = SystemExit
+        with (
+            patch.object(entrypoint.sys, "argv", ["entrypoint.py", "manage.py", "backup_surreal"]),
+            self.assertRaises(SystemExit),
+        ):
+            entrypoint.main()
+        mock_execv.assert_called_once_with(
+            entrypoint.sys.executable, [entrypoint.sys.executable, "manage.py", "backup_surreal"]
+        )
+
+        with (
+            patch.object(entrypoint.sys, "argv", ["entrypoint.py", "sh", "-c", "id"]),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            entrypoint.main()
+        self.assertIn("Unsupported entrypoint command", str(ctx.exception))

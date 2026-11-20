@@ -359,21 +359,12 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
         # Add live spend from active SurrealDB documents if available
         monthly_live = Decimal(0)
         try:
+            from datetime import UTC, datetime
+
             from extractor import surreal_db as _sdb
 
-            raw_docs = _sdb.list_documents(actor_id or str(user.id))
-            from datetime import datetime
-
-            first_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
-            monthly_live = Decimal(
-                str(
-                    sum(
-                        float(d.get("cost_usd") or 0)
-                        for d in raw_docs
-                        if _parse_dt(d.get("created_at")) and _parse_dt(d.get("created_at")) >= first_of_month
-                    )
-                )
-            )
+            first_of_month = datetime(now.year, now.month, 1, tzinfo=UTC)
+            monthly_live = _sdb.get_user_total_spend(actor_id or str(user.id), since=first_of_month)
         except Exception as err:
             logger.debug("[Budget Check] SurrealDB query bypassed, relying on MonthlySpendLog: %s", err)
 
@@ -384,6 +375,57 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
             return False
         logger.exception("[Budget Check] Budget evaluation failed; denying production request")
         return True
+
+
+def _enforce_distributed_rate_limit(
+    surreal_key: str,
+    cache_key: str,
+    max_requests: int,
+    window_seconds: int = 60,
+) -> bool:
+    """Enforce rate limit via SurrealDB in production, or local cache in debug/offline mode."""
+    if not getattr(settings, "DEBUG", False) and not getattr(settings, "SURREALDB_OFFLINE", False):
+        try:
+            from extractor import surreal_db
+
+            return bool(
+                surreal_db.check_rate_limit_atomic(
+                    surreal_key,
+                    max_requests=max_requests,
+                    window_seconds=window_seconds,
+                )
+            )
+        except Exception as surreal_err:
+            logger.warning("[RateLimit] SurrealDB distributed rate limit error for %s: %s", surreal_key, surreal_err)
+            return False
+
+    from django.core.cache import cache
+
+    try:
+        if cache.add(cache_key, 1, window_seconds):
+            rl_count = 1
+        else:
+            try:
+                rl_count = cache.incr(cache_key)
+            except ValueError:
+                cache.set(cache_key, 1, window_seconds)
+                rl_count = 1
+        return rl_count <= max_requests
+    except Exception as exc:
+        logger.debug("[RateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
+        try:
+            from extractor import surreal_db
+
+            return bool(
+                surreal_db.check_rate_limit_atomic(
+                    surreal_key,
+                    max_requests=max_requests,
+                    window_seconds=window_seconds,
+                )
+            )
+        except Exception as surreal_err:
+            logger.warning("[RateLimit] SurrealDB fallback error for %s: %s", surreal_key, surreal_err)
+            return False
 
 
 def _parse_dt(value):
@@ -783,6 +825,7 @@ def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
             "input_tokens": 0,
             "output_tokens": 0,
             "error_message": "",
+            "cancel_requested": False,
             "retry_count": retry_cnt + 1,
         },
     )
@@ -836,21 +879,28 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
         "created_at": format_datetime(timezone.now()),
         "updated_at": format_datetime(timezone.now()),
     }
-    doc = surreal_db.create_document(data)
+    try:
+        doc = surreal_db.create_document(data)
 
-    _record_view_audit(
-        request,
-        AuditAction.UPLOAD,
-        f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
-        document=doc,
-        ip=ip,
-    )
+        _record_view_audit(
+            request,
+            AuditAction.UPLOAD,
+            f"File '{orig_name}' uploaded successfully (size: {uploaded_file.size} bytes).",
+            document=doc,
+            ip=ip,
+        )
 
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
-        cloud_tasks.enqueue("process_document", {"document_id": doc_id})
-    else:
-        cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
+            cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+        else:
+            cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
+    except Exception:
+        try:
+            default_storage.delete(saved_path)
+        except Exception as cleanup_exc:
+            logger.warning("[Upload] Failed to clean up orphaned file %s: %s", saved_path, cleanup_exc)
+        raise
     return {"status": "success", "name": orig_name}
 
 
@@ -1339,37 +1389,9 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
     """
 
     def _check_rag_limits(self, request):
-        from django.core.cache import cache
-
         rl_key = f"rag_ratelimit_{get_request_actor_id(request)}"
-        try:
-            if cache.add(rl_key, 1, 60):
-                rl_count = 1
-            else:
-                try:
-                    rl_count = cache.incr(rl_key)
-                except ValueError:
-                    cache.set(rl_key, 1, 60)
-                    rl_count = 1
-        except Exception as exc:
-            logger.debug("[RAGRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
-            try:
-                from extractor import surreal_db
-
-                if not surreal_db.check_rate_limit_atomic(f"rag:{rl_key}", max_requests=10, window_seconds=60):
-                    return JsonResponse(
-                        {"error": RAG_RATE_LIMIT_MSG},
-                        status=429,
-                    )
-                rl_count = 1
-            except Exception as surreal_err:
-                logger.warning("[RAGRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
-                return JsonResponse(
-                    {"error": RAG_RATE_LIMIT_MSG},
-                    status=429,
-                )
-
-        if rl_count > 10:
+        if not _enforce_distributed_rate_limit(f"rag:{rl_key}", rl_key, max_requests=10, window_seconds=60):
+            logger.warning("[RAGRateLimit] SurrealDB rate limit fallback error or limit exceeded for %s", rl_key)
             return JsonResponse(
                 {"error": RAG_RATE_LIMIT_MSG},
                 status=429,
@@ -1438,10 +1460,15 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
 def _reserve_export_rate_limit(request) -> bool:
     """Atomically reserves a 60-second export rate limit for both actor and IP keys.
     Returns True if reservation succeeded, or False if rate limit is active."""
-    from django.core.cache import cache
-
     user_key = f"export_ratelimit_{get_request_actor_id(request)}"
     ip_key = f"export_ratelimit_{get_client_ip(request)}"
+
+    if not getattr(settings, "DEBUG", False) and not getattr(settings, "SURREALDB_OFFLINE", False):
+        return _enforce_distributed_rate_limit(
+            f"export:{user_key}", user_key, max_requests=1, window_seconds=60
+        ) and _enforce_distributed_rate_limit(f"export:{ip_key}", ip_key, max_requests=1, window_seconds=60)
+
+    from django.core.cache import cache
 
     try:
         # cache.add sets key only if it does not exist (atomic in Redis/Memcached/LocMem)
@@ -1508,32 +1535,10 @@ class ExportZipView(LoginRequiredMixin, View):
 
 
 def _check_sft_preview_rate_limit(actor_id: str) -> JsonResponse | None:
-    """Check cache and SurrealDB atomic sliding window for SFT preview endpoint."""
-    from django.core.cache import cache
-
+    """Check SurrealDB (prod) or cache atomic sliding window for SFT preview endpoint."""
     rl_key = f"sft_preview_ratelimit_{actor_id}"
-    try:
-        if cache.add(rl_key, 1, 60):
-            rl_count = 1
-        else:
-            try:
-                rl_count = cache.incr(rl_key)
-            except ValueError:
-                cache.set(rl_key, 1, 60)
-                rl_count = 1
-    except Exception as exc:
-        logger.debug("[SFTPreviewRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
-        try:
-            from extractor import surreal_db
-
-            if not surreal_db.check_rate_limit_atomic(f"sft:{rl_key}", max_requests=10, window_seconds=60):
-                return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
-            rl_count = 1
-        except Exception as surreal_err:
-            logger.warning("[SFTPreviewRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
-            return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
-
-    if rl_count > 10:
+    if not _enforce_distributed_rate_limit(f"sft:{rl_key}", rl_key, max_requests=10, window_seconds=60):
+        logger.warning("[SFTPreviewRateLimit] SurrealDB rate limit fallback error or limit exceeded for %s", rl_key)
         return JsonResponse({"status": "error", "message": SFT_PREVIEW_RATE_LIMIT_MSG}, status=429)
     return None
 
@@ -2948,22 +2953,8 @@ class SupabaseSessionExchangeView(View):
 
     def _rate_limited(self, request) -> bool:
         """Throttle anonymous token exchanges by source IP, failing closed in production."""
-        from django.core.cache import cache
-
         key = f"supabase_session_exchange:{get_client_ip(request)}"
-        try:
-            if cache.add(key, 1, 60):
-                return False
-            return cache.incr(key) > 10
-        except Exception as exc:
-            logger.debug("[AuthRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
-            try:
-                from extractor import surreal_db
-
-                return not surreal_db.check_rate_limit_atomic(key, max_requests=10, window_seconds=60)
-            except Exception as surreal_exc:
-                logger.warning("[AuthRateLimit] Distributed fallback failed: %s", surreal_exc)
-                return not getattr(settings, "SURREALDB_OFFLINE", False)
+        return not _enforce_distributed_rate_limit(key, key, max_requests=10, window_seconds=60)
 
     def post(self, request):
         import json
@@ -3036,37 +3027,9 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
     """
 
     def _check_stream_limits(self, request, actor_id: str):
-        from django.core.cache import cache
-
         rl_key = f"rag_ratelimit_{actor_id}"
-        try:
-            if cache.add(rl_key, 1, 60):
-                rl_count = 1
-            else:
-                try:
-                    rl_count = cache.incr(rl_key)
-                except ValueError:
-                    cache.set(rl_key, 1, 60)
-                    rl_count = 1
-        except Exception as exc:
-            logger.debug("[RAGStreamRateLimit] Cache backend error, falling back to SurrealDB: %s", exc)
-            try:
-                from extractor import surreal_db
-
-                if not surreal_db.check_rate_limit_atomic(f"stream:{rl_key}", max_requests=10, window_seconds=60):
-                    return JsonResponse(
-                        {"error": RAG_RATE_LIMIT_MSG},
-                        status=429,
-                    )
-                rl_count = 1
-            except Exception as surreal_err:
-                logger.warning("[RAGStreamRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
-                return JsonResponse(
-                    {"error": RAG_RATE_LIMIT_MSG},
-                    status=429,
-                )
-
-        if rl_count > 10:
+        if not _enforce_distributed_rate_limit(f"stream:{rl_key}", rl_key, max_requests=10, window_seconds=60):
+            logger.warning("[RAGStreamRateLimit] SurrealDB rate limit fallback error or limit exceeded for %s", rl_key)
             return JsonResponse(
                 {"error": RAG_RATE_LIMIT_MSG},
                 status=429,
@@ -3132,3 +3095,394 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
         response["Connection"] = "keep-alive"
         response["Content-Encoding"] = "none"
         return response
+
+
+ERR_INVALID_JSON_PAYLOAD = "Invalid JSON payload."
+
+
+ERR_SERVICE_UNAVAILABLE = "Service temporarily unavailable."
+ERR_RATE_LIMIT = "Rate limit exceeded."
+
+
+def _parse_json_dict_body(request) -> tuple[dict | None, JsonResponse | None]:
+    import json
+
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except UnicodeDecodeError, json.JSONDecodeError:
+        return None, JsonResponse({"error": ERR_INVALID_JSON_PAYLOAD}, status=400)
+    if not isinstance(body, dict):
+        return None, JsonResponse({"error": "JSON object required."}, status=400)
+    return body, None
+
+
+def _parse_positive_int(raw: Any, *, default: int = 5, min_val: int = 1, max_val: int = 30) -> int | None:
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return None
+    try:
+        val = int(raw)
+    except TypeError, ValueError, OverflowError:
+        return None
+    return max(min_val, min(val, max_val))
+
+
+CONTENT_DISPOSITION_ATTACHMENT = "attachment"
+
+
+def _apply_markdown_download_headers(resp: HttpResponse, filename: str) -> HttpResponse:
+    resp["Content-Disposition"] = f'{CONTENT_DISPOSITION_ATTACHMENT}; filename="{filename}"'
+    resp["X-Content-Type-Options"] = "nosniff"
+    resp["Cache-Control"] = "private, no-store, no-transform"
+    return resp
+
+
+def _load_quiz_crystals(actor_id: str, body: dict) -> list[dict]:
+    from extractor import surreal_db
+
+    doc_slug = str(body.get("doc_slug") or "").strip()[:120] or None
+    crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=50)
+    raw_cids = body.get("crystal_ids")
+    if crystals and isinstance(raw_cids, list) and raw_cids:
+        wanted = {str(c) for c in raw_cids if c}
+        filtered = [c for c in crystals if str(c.get("crystal_id") or "") in wanted]
+        if filtered:
+            return filtered[:20]
+    if crystals or not isinstance(body.get("crystals"), list):
+        return crystals[:20]
+    return [
+        {
+            "crystal_id": "",
+            "title": str(c.get("title") or "")[:200],
+            "summary": str(c.get("summary") or "")[:2000],
+            "anchor_ids": [],
+        }
+        for c in body["crystals"][:10]
+        if isinstance(c, dict) and (c.get("title") or c.get("summary"))
+    ]
+
+
+class StrictLibrarianAPIView(LoginRequiredMixin, View):
+    """Zero-LLM Strict Librarian Mode returning verbatim anchors + deterministic coordinates."""
+
+    def post(self, request):
+        from extractor import rag
+
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
+
+        query = str(body.get("query") or "").strip()[:1000]
+        if not query:
+            return JsonResponse({"error": "Query is required."}, status=400)
+
+        limit = _parse_positive_int(body.get("limit"), default=10, min_val=1, max_val=30)
+        if limit is None:
+            return JsonResponse({"error": "Invalid limit."}, status=400)
+        doc_slug = str(body.get("doc_slug") or "").strip()[:120] or None
+
+        actor_id = get_request_actor_id(request)
+        rl_key = f"librarian:{actor_id}"
+        if not _enforce_distributed_rate_limit(rl_key, rl_key, max_requests=30, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        try:
+            return JsonResponse(rag.strict_librarian_search(query, owner_id=actor_id, limit=limit, doc_slug=doc_slug))
+        except Exception as exc:
+            logger.exception("[StrictLibrarian] Search failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
+
+
+from django.views.generic import TemplateView as _TemplateView
+
+
+class QuizStudioView(LoginRequiredMixin, _TemplateView):
+    """Distraction-free Quiz Studio & Timed Mock Exam Runner."""
+
+    template_name = "extractor/quiz_runner.html"
+
+    def get_context_data(self, **kwargs):
+        from extractor import quiz_studio, surreal_db
+
+        ctx = super().get_context_data(**kwargs)
+        actor_id = get_request_actor_id(self.request)
+        try:
+            items = surreal_db.list_exam_items(actor_id, due_only=True, limit=30)
+            crystals = surreal_db.list_crystals_for_user(actor_id, limit=50)
+        except Exception as exc:
+            logger.warning("[QuizStudio] Failed to load items/crystals for actor=%s: %s", actor_id, exc)
+            items = []
+            crystals = []
+        ctx["exam_session"] = quiz_studio.build_mock_exam_session(items)
+        ctx["item_count"] = len(items)
+        ctx["crystals"] = crystals
+        return ctx
+
+
+class QuizGenerateAPIView(LoginRequiredMixin, View):
+    """Generate and persist Quiz Studio items grounded in verified crystals."""
+
+    def post(self, request):
+        from extractor import llm_gateway, quiz_studio
+
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
+
+        actor_id = get_request_actor_id(request)
+        if _is_budget_exceeded(request.user, actor_id):
+            return JsonResponse({"error": "Monthly spend budget exceeded."}, status=402)
+        rl_key = f"quiz_gen:{actor_id}"
+        if not _enforce_distributed_rate_limit(rl_key, rl_key, max_requests=10, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        count = _parse_positive_int(body.get("count"), default=5, min_val=1, max_val=30)
+        if count is None:
+            return JsonResponse({"error": "Invalid count."}, status=400)
+
+        raw_formats = body.get("formats") or ["MCQ"]
+        if not isinstance(raw_formats, list):
+            return JsonResponse({"error": "formats must be a list."}, status=400)
+
+        weights = body.get("blueprint_weights")
+        try:
+            crystals = _load_quiz_crystals(actor_id, body)
+            if not crystals:
+                return JsonResponse({"error": "No verified crystals available for quiz generation."}, status=400)
+            items = quiz_studio.generate_and_persist_quiz(
+                owner_id=actor_id,
+                crystals=crystals,
+                difficulty=str(body.get("difficulty") or "Medium"),
+                count=count,
+                formats=[str(f) for f in raw_formats[:4]],
+                focus_prompt=str(body.get("focus_prompt") or "")[:500],
+                blueprint_weights=weights if isinstance(weights, dict) else None,
+            )
+        except (ValueError, RuntimeError, llm_gateway.APIError) as exc:
+            logger.warning("[QuizGenerate] Generation unavailable for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": "Quiz generation service temporarily unavailable."}, status=503)
+        except Exception as exc:
+            logger.exception("[QuizGenerate] Unexpected error for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
+
+        return JsonResponse(
+            {"status": "ok", "count": len(items), "session": quiz_studio.build_mock_exam_session(items)}
+        )
+
+
+class QuizSubmitAPIView(LoginRequiredMixin, View):
+    """Grade Mock Exam submission at zero LLM cost and return Cited Review + Tombstone cards."""
+
+    def post(self, request):
+        from extractor import quiz_studio, surreal_db
+
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
+        if not isinstance(body.get("answers"), dict):
+            return JsonResponse({"error": "Invalid answers payload."}, status=400)
+
+        actor_id = get_request_actor_id(request)
+        rl_key = f"quiz_submit:{actor_id}"
+        if not _enforce_distributed_rate_limit(rl_key, rl_key, max_requests=30, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        session_id = str(body.get("session_id") or "").strip()[:64] or uuid.uuid4().hex[:16]
+        answers = body["answers"]
+        raw_item_ids = body.get("item_ids")
+        target_ids = (
+            [str(i) for i in raw_item_ids if i][:50]
+            if isinstance(raw_item_ids, list)
+            else [str(k) for k in answers][:50]
+        )
+        if not target_ids:
+            return JsonResponse({"error": "No quiz items submitted."}, status=400)
+        raw_ratings = body.get("ratings")
+        ratings = (
+            {str(k): int(v) for k, v in raw_ratings.items() if isinstance(v, int) and not isinstance(v, bool)}
+            if isinstance(raw_ratings, dict)
+            else None
+        )
+        try:
+            items = surreal_db.get_exam_items_by_ids(actor_id, target_ids)
+            if not items:
+                return JsonResponse({"error": "No matching exam items found."}, status=404)
+            anchor_ids = list({aid for item in items for aid in (item.get("anchor_ids") or []) if aid})
+            anchors = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
+            graded = quiz_studio.grade_mock_exam_submission(
+                owner_id=actor_id,
+                session_id=session_id,
+                items=items,
+                answers=answers,
+                anchors_by_id=anchors,
+                ratings=ratings,
+            )
+        except Exception as exc:
+            logger.exception("[QuizSubmit] Grading failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
+        return JsonResponse(graded)
+
+
+class QuizRateAPIView(LoginRequiredMixin, View):
+    """Update FSRS self-rating (1=Again..4=Easy) for a graded exam item."""
+
+    def post(self, request):
+        from extractor import surreal_db
+
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
+
+        actor_id = get_request_actor_id(request)
+        rl_key = f"quiz_rate:{actor_id}"
+        if not _enforce_distributed_rate_limit(rl_key, rl_key, max_requests=60, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        session_id = str(body.get("session_id") or "").strip()[:64]
+        item_id = str(body.get("item_id") or "").strip()[:64]
+        rating = _parse_positive_int(body.get("rating"), default=3, min_val=1, max_val=4)
+        if not session_id or not item_id or rating is None or body.get("rating") is None:
+            return JsonResponse({"error": "session_id, item_id, and rating (1-4) are required."}, status=400)
+
+        try:
+            updated = surreal_db.update_attempt_rating(
+                session_id=session_id,
+                item_id=item_id,
+                owner_id=actor_id,
+                rating=rating,
+            )
+        except Exception as exc:
+            logger.exception("[QuizRate] Rating update failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
+        if not updated:
+            return JsonResponse({"error": "Attempt not found."}, status=404)
+        return JsonResponse({"status": "ok", "item_id": item_id, "rating": rating})
+
+
+class QuizExportMarkdownView(LoginRequiredMixin, View):
+    """Export persistent exam items as a Markdown Exam Pack with toggleable Answer Key."""
+
+    def get(self, request):
+        from extractor import quiz_studio, surreal_db
+
+        actor_id = get_request_actor_id(request)
+        rl_key = f"quiz_export:{actor_id}"
+        if not _enforce_distributed_rate_limit(rl_key, rl_key, max_requests=20, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        include_answers = request.GET.get("answers", "1") != "0"
+        try:
+            items = surreal_db.list_exam_items(actor_id, due_only=False, limit=100)
+        except Exception as exc:
+            logger.exception("[QuizExport] Failed to list exam items for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
+        md = quiz_studio.export_exam_markdown(items, include_answers=include_answers)
+        resp = HttpResponse(md, content_type="text/markdown; charset=utf-8")
+        return _apply_markdown_download_headers(resp, "korda_exam_pack.md")
+
+
+def _parse_crystal_synth_payload(body: dict) -> tuple[dict | None, JsonResponse | None]:
+    title = str(body.get("title") or "").strip()[:200]
+    summary = str(body.get("summary") or "").strip()[:5000]
+    doc_slug = str(body.get("doc_slug") or "general").strip()[:120] or "general"
+    raw_aids = body.get("anchor_ids")
+    if raw_aids is not None and not isinstance(raw_aids, list):
+        return None, JsonResponse({"error": "anchor_ids must be a list."}, status=400)
+    raw_tags = body.get("tags")
+    if raw_tags is not None and not isinstance(raw_tags, list):
+        return None, JsonResponse({"error": "tags must be a list."}, status=400)
+    if not title or not summary:
+        return None, JsonResponse({"error": "title and summary are required."}, status=400)
+    return {
+        "title": title,
+        "summary": summary,
+        "doc_slug": doc_slug,
+        "anchor_ids": list(dict.fromkeys(str(a) for a in (raw_aids or []) if a))[:50],
+        "tags": [str(t)[:60] for t in (raw_tags or []) if t][:20],
+    }, None
+
+
+class CrystalSynthesizeAPIView(LoginRequiredMixin, View):
+    """Synthesize and persist a verified Crystal grounded in existing Anchors."""
+
+    def post(self, request):
+        import uuid
+
+        from extractor import surreal_db
+
+        body, err = _parse_json_dict_body(request)
+        if err is not None or body is None:
+            return err
+
+        actor_id = get_request_actor_id(request)
+        rl_key = f"crystal_synth:{actor_id}"
+        if not _enforce_distributed_rate_limit(rl_key, rl_key, max_requests=20, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        parsed, parse_err = _parse_crystal_synth_payload(body)
+        if parse_err is not None or parsed is None:
+            return parse_err
+
+        try:
+            crystal = surreal_db.create_crystal_with_provenance(
+                crystal_id=uuid.uuid4().hex[:16],
+                owner_id=actor_id,
+                doc_slug=parsed["doc_slug"],
+                title=parsed["title"],
+                summary=parsed["summary"],
+                anchor_ids=parsed["anchor_ids"],
+                status="verified",
+                tags=parsed["tags"],
+            )
+        except Exception as exc:
+            logger.exception("[CrystalSynthesize] Failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
+        return JsonResponse({"status": "ok", "crystal": crystal})
+
+
+def _serve_markdown_download(request, bundles: list[str]) -> HttpResponse:
+    if not bundles:
+        return JsonResponse({"error": "No verified crystals available to compile."}, status=404)
+    raw_part = request.GET.get("part")
+    if raw_part is None:
+        part_num = 1
+    else:
+        try:
+            part_num = int(raw_part)
+        except ValueError:
+            return JsonResponse({"error": "Invalid bundle part."}, status=400)
+        if part_num < 1 or part_num > len(bundles):
+            return JsonResponse({"error": "Bundle part not found."}, status=404)
+    resp = HttpResponse(bundles[part_num - 1], content_type="text/markdown; charset=utf-8")
+    return _apply_markdown_download_headers(resp, f"korda_kb_part_{part_num}.md")
+
+
+class MarkdownCompileAPIView(LoginRequiredMixin, View):
+    """Compile verified crystals & verbatim anchors into NotebookLM-optimized Markdown bundles."""
+
+    def get(self, request):
+        from extractor import compiler, surreal_db
+
+        actor_id = get_request_actor_id(request)
+        rl_key = f"compile_md:{actor_id}"
+        if not _enforce_distributed_rate_limit(rl_key, rl_key, max_requests=20, window_seconds=60):
+            return JsonResponse({"error": ERR_RATE_LIMIT}, status=429)
+
+        doc_slug = (request.GET.get("doc_slug") or "").strip()[:120] or None
+        try:
+            crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=200)
+            anchor_ids = list({aid for c in crystals for aid in (c.get("anchor_ids") or []) if aid})
+            anchors_by_id = surreal_db.get_anchors_by_ids(anchor_ids, actor_id)
+        except Exception as exc:
+            logger.exception("[MarkdownCompile] Failed for actor=%s: %s", actor_id, exc)
+            return JsonResponse({"error": ERR_SERVICE_UNAVAILABLE}, status=503)
+
+        for crystal in crystals:
+            crystal["anchors"] = [
+                anchors_by_id[aid] for aid in (crystal.get("anchor_ids") or []) if aid in anchors_by_id
+            ]
+        bundles = compiler.compile_markdown_bundles(crystals)
+        if request.GET.get("download") == "1":
+            return _serve_markdown_download(request, bundles)
+        return JsonResponse({"status": "ok", "bundle_count": len(bundles), "bundles": bundles})
