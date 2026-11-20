@@ -25,10 +25,7 @@
         <div class="metric-value">{{ formatted_monthly_spent }}</div>
         <div class="metric-sub">
             Cap: {{ formatted_budget_cap }}
-            <div class="budget-bar-container" role="progressbar" aria-label="Monthly AI compute budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{% if budget_exceeded %}100{% else %}{{ stats.percent_spent|default:0 }}{% endif %}">
-                <!-- Calc percent in template -->
-                <div class="budget-bar-fill" style="width: {% if budget_exceeded %}100%{% else %}{{ stats.percent_spent }}%{% endif %};"></div>
-            </div>
+            <progress class="budget-bar-container" aria-label="Monthly AI compute budget used" max="100" value="{% if budget_exceeded %}100{% else %}{{ stats.percent_spent|default:0 }}{% endif %}"></progress>
         </div>
     </div>
 

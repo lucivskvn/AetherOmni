@@ -75,6 +75,21 @@ class ComplianceBucket(pulumi.ComponentResource):
         self.register_outputs({"bucket_name": self.bucket.name, "bucket_url": self.bucket.url})
 
 
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class WorkerSizing:
+    """Resource limits, scaling bounds, and execution settings for a Cloud Run service."""
+
+    cpu: str = "2000m"
+    memory: str = "2Gi"
+    min_instances: int = 0
+    max_instances: int = 5
+    timeout: str = "900s"
+    execution_environment: str | None = None
+
+
 class ScaleToZeroWorker(pulumi.ComponentResource):
     """Cloud Run v2 service enforcing scale-to-zero ($0 idle) and least-privilege ingress."""
 
@@ -88,41 +103,37 @@ class ScaleToZeroWorker(pulumi.ComponentResource):
         image: str,
         service_account_email: pulumi.Input[str],
         envs: list[gcp.cloudrunv2.ServiceTemplateContainerEnvArgs],
-        cpu: str = "2000m",
-        memory: str = "2Gi",
-        min_instances: int = 0,
-        max_instances: int = 5,
-        timeout: str = "900s",
-        execution_environment: str | None = None,
+        sizing: WorkerSizing | None = None,
         is_public: bool = False,
         legacy_name: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("korda:compute:ScaleToZeroWorker", name, None, opts)
+        cfg = sizing or WorkerSizing()
         aliases = [pulumi.Alias(name=legacy_name, parent=pulumi.ROOT_STACK_OBJECT)] if legacy_name else None
         child_opts = pulumi.ResourceOptions(parent=self, aliases=aliases)
 
         scaling = gcp.cloudrunv2.ServiceTemplateScalingArgs(
-            min_instance_count=min_instances,
-            max_instance_count=max_instances,
+            min_instance_count=cfg.min_instances,
+            max_instance_count=cfg.max_instances,
         )
         template_kwargs: dict = {
             "service_account": service_account_email,
             "scaling": scaling,
-            "timeout": timeout,
+            "timeout": cfg.timeout,
             "containers": [
                 gcp.cloudrunv2.ServiceTemplateContainerArgs(
                     image=image,
                     ports=[gcp.cloudrunv2.ServiceTemplateContainerPortArgs(container_port=8080)],
                     envs=envs,
                     resources=gcp.cloudrunv2.ServiceTemplateContainerResourcesArgs(
-                        limits={"cpu": cpu, "memory": memory},
+                        limits={"cpu": cfg.cpu, "memory": cfg.memory},
                     ),
                 )
             ],
         }
-        if execution_environment:
-            template_kwargs["execution_environment"] = execution_environment
+        if cfg.execution_environment:
+            template_kwargs["execution_environment"] = cfg.execution_environment
 
         self.service = gcp.cloudrunv2.Service(
             f"{name}-service",

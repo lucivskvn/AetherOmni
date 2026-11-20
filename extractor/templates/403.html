@@ -93,6 +93,17 @@
         transform: translateY(-1px);
     }
 
+    @media (prefers-reduced-motion: reduce) {
+        .error-card {
+            animation: none;
+        }
+        .btn-return-home,
+        .btn-return-home:hover {
+            transition: none;
+            transform: none;
+        }
+    }
+
     .btn-return-home:focus-visible {
         outline: 2px solid var(--primary, #6366f1);
         outline-offset: 2px;
