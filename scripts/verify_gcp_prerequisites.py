@@ -27,14 +27,25 @@ class PreflightError(RuntimeError):
     """A required deployment contract could not be confirmed."""
 
 
+_SAFE_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:@/=")
+
+
+def _safe_argument(value: str) -> str:
+    """Reject option-like or shell-significant gcloud values; only --key=value options are allowed."""
+    if not value or not set(value) <= _SAFE_CHARS:
+        raise PreflightError("A gcloud argument contains unsupported characters.")
+    if value.startswith("-") and not (value.startswith("--") and "=" in value):
+        raise PreflightError("Unsupported gcloud option.")
+    return value
+
+
 def _metadata(project: str, *arguments: str) -> Metadata:
     executable = shutil.which("gcloud")
     if executable is None:
         raise PreflightError("gcloud is required for deployment metadata checks.")
-    if not project or project.startswith("-") or not all(c.islower() or c.isdigit() or c in "-:." for c in project):
-        raise PreflightError("The GCP project identifier is invalid.")
-    if any(argument.startswith("-") and not argument.startswith("--") for argument in arguments):
-        raise PreflightError("Unsupported gcloud argument.")
+    safe_arguments = [_safe_argument(argument) for argument in (project, *arguments)]
+    project = safe_arguments[0]
+    arguments = tuple(safe_arguments[1:])
     command = [executable, *arguments, f"--project={project}", "--format=json"]
     try:
         result = subprocess.run(  # nosec B603 # Resolved gcloud executable; identifiers remain separate arguments.
