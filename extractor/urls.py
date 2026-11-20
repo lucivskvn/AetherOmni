@@ -38,6 +38,14 @@ urlpatterns = [
     path("save-settings/", views.SaveSettingsView.as_view(), name="save_settings"),
     path("api/documents/status/", views.DocumentStatusAPIView.as_view(), name="document_status_api"),
     path("api/v1/stream-query/", views.StreamQueryRAGView.as_view(), name="stream_query_rag"),
+    path("api/v1/librarian-search/", views.StrictLibrarianAPIView.as_view(), name="strict_librarian_search"),
+    path("api/v1/crystals/synthesize/", views.CrystalSynthesizeAPIView.as_view(), name="crystal_synthesize"),
+    path("api/v1/compile-markdown/", views.MarkdownCompileAPIView.as_view(), name="compile_markdown"),
+    path("quiz-studio/", views.QuizStudioView.as_view(), name="quiz_studio"),
+    path("api/v1/quiz/generate/", views.QuizGenerateAPIView.as_view(), name="quiz_generate"),
+    path("api/v1/quiz/submit/", views.QuizSubmitAPIView.as_view(), name="quiz_submit"),
+    path("api/v1/quiz/rate/", views.QuizRateAPIView.as_view(), name="quiz_rate"),
+    path("quiz-studio/export/", views.QuizExportMarkdownView.as_view(), name="quiz_export_markdown"),
     path("deployment-controller/", views.DeploymentControllerView.as_view(), name="deployment_controller"),
     path(
         "password-change/",
@@ -53,6 +61,8 @@ urlpatterns = [
     ),
     # Cloud Tasks internal webhook receiver (CSRF-exempt, OIDC-verified)
     path("internal/tasks/<str:task_name>/", task_handlers.CloudTaskHandlerView.as_view(), name="cloud_task_handler"),
+    # Eventarc GCS raw/ object finalization receiver (CSRF-exempt, OIDC-verified)
+    path("internal/events/gcs-raw/", task_handlers.EventarcGCSRawView.as_view(), name="eventarc_gcs_raw"),
     # Client-side Supabase OAuth session exchange endpoint
     path(
         "api/auth/supabase-session/",

@@ -1,0 +1,3 @@
+name: korda-compliance-policy
+runtime: python
+description: CrossGuard compliance policy pack for KORDA GCP infrastructure

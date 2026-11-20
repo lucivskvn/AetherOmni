@@ -194,7 +194,7 @@ class SurrealNamespaceMigrator:
         migrated_total = 0
 
         while True:
-            fetch_query = f"SELECT * FROM {table} START {offset} LIMIT {batch_size};"  # nosec B608 # noqa: S608
+            fetch_query = f"SELECT * FROM {table} ORDER BY id START {offset} LIMIT {batch_size};"  # nosec B608 # noqa: S608
             src_records_resp = self._execute_sql(self.source_ns, fetch_query)
             if not src_records_resp or "result" not in src_records_resp[0]:
                 break
