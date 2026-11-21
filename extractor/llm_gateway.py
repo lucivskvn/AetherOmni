@@ -721,7 +721,21 @@ def generate_llm_content_unified(
         return _call_gemini_with_fallback(prompt, system_instruction, final_model, files, openrouter_api_key)
 
 
-def _try_stream_vertex_fallback_chain(model_name: str, contents: list[Any], config: types.GenerateContentConfig):
+def _capture_stream_usage(usage_sink: dict | None, chunk: Any) -> None:
+    """Retain the latest usage_metadata seen on a streaming chunk."""
+    if usage_sink is None:
+        return
+    usage = getattr(chunk, "usage_metadata", None)
+    if usage is not None:
+        usage_sink["usage"] = usage
+
+
+def _try_stream_vertex_fallback_chain(
+    model_name: str,
+    contents: list[Any],
+    config: types.GenerateContentConfig,
+    usage_sink: dict | None = None,
+):
     """Attempt streaming content across regional Vertex AI endpoints."""
     for region in VERTEX_REGION_FALLBACK_CHAIN:
         vertex_client = get_vertex_client_for_location(region)
@@ -735,13 +749,21 @@ def _try_stream_vertex_fallback_chain(model_name: str, contents: list[Any], conf
                 stream_resp = vertex_client.models.generate_content_stream(
                     model=model_name, contents=contents, config=config
                 )
-                yield from (chunk.text for chunk in stream_resp if chunk.text)
+                for chunk in stream_resp:
+                    _capture_stream_usage(usage_sink, chunk)
+                    if chunk.text:
+                        yield chunk.text
                 return
             except Exception as e:
                 logger.warning("[Gateway Stream] Vertex AI streaming in region %s failed: %s.", region, e)
 
 
-def _try_stream_ai_studio(model_name: str, contents: list[Any], config: types.GenerateContentConfig):
+def _try_stream_ai_studio(
+    model_name: str,
+    contents: list[Any],
+    config: types.GenerateContentConfig,
+    usage_sink: dict | None = None,
+):
     """Attempt streaming content on AI Studio fallback."""
     api_key = getattr(settings, "GEMINI_API_KEY", "")
     if api_key and api_key.strip().lower() not in ["", "none", "your-gemini-api-key", "placeholder"]:
@@ -749,13 +771,31 @@ def _try_stream_ai_studio(model_name: str, contents: list[Any], config: types.Ge
             logger.info("[Gateway Stream] Attempting streaming on AI Studio using model %s...", model_name)
             client = genai.Client(api_key=api_key)
             stream_resp = client.models.generate_content_stream(model=model_name, contents=contents, config=config)
-            yield from (chunk.text for chunk in stream_resp if chunk.text)
+            for chunk in stream_resp:
+                _capture_stream_usage(usage_sink, chunk)
+                if chunk.text:
+                    yield chunk.text
             return
         except Exception as e:
             logger.warning("[Gateway Stream] AI Studio streaming failed: %s.", e)
 
 
-def _stream_gemini_direct(model_name: str, prompt: str, system_instruction: str | None):
+def _record_stream_usage_spend(model_name: str, usage: Any) -> None:
+    """Persist token spend observed on a streaming response (last-chunk usage_metadata)."""
+    try:
+        from extractor.models import MonthlySpendLog
+
+        in_tok = getattr(usage, "prompt_token_count", 0) or 0
+        out_tok = getattr(usage, "candidates_token_count", 0) or 0
+        if in_tok <= 0 and out_tok <= 0:
+            return
+        cost = calculate_gemini_cost(model_name, in_tok, out_tok)
+        MonthlySpendLog.add_cost(datetime.now(UTC), cost, in_tok=in_tok, out_tok=out_tok)
+    except Exception as exc:
+        logger.warning("[Gateway Stream] Failed to record stream spend: %s", exc)
+
+
+def _stream_gemini_direct(model_name: str, prompt: str, system_instruction: str | None, usage_sink: dict | None = None):
     gemini_model = model_name
     if gemini_model.startswith(PREFIX_GOOGLE):
         gemini_model = gemini_model.replace(PREFIX_GOOGLE, "")
@@ -768,7 +808,7 @@ def _stream_gemini_direct(model_name: str, prompt: str, system_instruction: str 
     # 1. Try Vertex AI regional streaming
     yielded_any = False
     try:
-        for text_chunk in _try_stream_vertex_fallback_chain(gemini_model, contents, config):
+        for text_chunk in _try_stream_vertex_fallback_chain(gemini_model, contents, config, usage_sink):
             yield text_chunk
             yielded_any = True
         if yielded_any:
@@ -778,7 +818,7 @@ def _stream_gemini_direct(model_name: str, prompt: str, system_instruction: str 
 
     # 2. Try AI Studio streaming
     try:
-        for text_chunk in _try_stream_ai_studio(gemini_model, contents, config):
+        for text_chunk in _try_stream_ai_studio(gemini_model, contents, config, usage_sink):
             yield text_chunk
             yielded_any = True
         if yielded_any:
@@ -808,10 +848,17 @@ def generate_llm_stream_unified(
 
     if not use_openrouter:
         streamed = False
-        for chunk in _stream_gemini_direct(final_model, prompt, system_instruction):
+        usage_sink: dict[str, Any] = {}
+        gemini_model = final_model
+        if gemini_model.startswith(PREFIX_GOOGLE):
+            gemini_model = gemini_model.replace(PREFIX_GOOGLE, "")
+        for chunk in _stream_gemini_direct(final_model, prompt, system_instruction, usage_sink):
             yield chunk
             streamed = True
         if streamed:
+            # Streamed tokens bypass the non-streaming cost accounting path;
+            # persist provider-reported usage so the monthly budget stays honest.
+            _record_stream_usage_spend(gemini_model, usage_sink.get("usage"))
             return
 
     # Fallback: non-streaming unified generation yielded as a single block
