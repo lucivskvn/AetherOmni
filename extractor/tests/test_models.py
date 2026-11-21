@@ -1,4 +1,5 @@
 import os
+from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -20,12 +21,27 @@ class SafeVectorFieldTestCase(TestCase):
 
 
 class MonthlySpendLogTestCase(TestCase):
+    @patch("extractor.surreal_db.monthly_spend_ledger_total", return_value=None)
     @patch("extractor.surreal_db.kv_cache_get")
-    def test_surreal_monthly_spend_reads_decoded_cache_values(self, mock_get):
+    def test_surreal_monthly_spend_reads_decoded_cache_values(self, mock_get, _mock_ledger):
         mock_get.return_value = {"accumulated_cost_usd": 12.345678}
 
         with self.settings(SURREALDB_OFFLINE=False):
             self.assertEqual(str(MonthlySpendLog.total_for_month(2026, 7)), "12.345678")
+
+    @patch("extractor.surreal_db.monthly_spend_ledger_total", return_value={"cost_usd": 3.5})
+    @patch("extractor.surreal_db.kv_cache_get")
+    def test_surreal_monthly_spend_sums_legacy_kv_and_ledger(self, mock_get, _mock_ledger):
+        mock_get.return_value = {"accumulated_cost_usd": 10.0}
+
+        with self.settings(SURREALDB_OFFLINE=False):
+            self.assertEqual(str(MonthlySpendLog.total_for_month(2026, 7)), "13.5")
+
+    @patch("extractor.surreal_db.monthly_spend_ledger_add", return_value=True)
+    def test_surreal_add_cost_appends_to_ledger(self, mock_add):
+        with self.settings(SURREALDB_OFFLINE=False):
+            self.assertTrue(MonthlySpendLog.add_cost(date(2026, 7, 15), Decimal("1.25"), 10, 20))
+        mock_add.assert_called_once_with(2026, 7, 1.25, 10, 20)
 
     @override_settings(SURREALDB_OFFLINE=False)
     @patch.object(MonthlySpendLog, "add_cost")

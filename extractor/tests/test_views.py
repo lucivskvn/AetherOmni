@@ -776,6 +776,32 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
         finally:
             settings.CSRF_TRUSTED_ORIGINS = original_origins
 
+    def test_dynamic_csrf_middleware_ignores_loopback_origin_for_remote_host(self):
+        # Remote clients must not be able to grow CSRF_TRUSTED_ORIGINS by
+        # presenting loopback Origin/Referer headers in production.
+        original_origins = list(settings.CSRF_TRUSTED_ORIGINS)
+
+        try:
+            factory = RequestFactory()
+            request = factory.post(
+                "/",
+                HTTP_HOST="app.example.com",
+                HTTP_ORIGIN="http://127.0.0.1:9999",
+                HTTP_REFERER="http://localhost:1234/login/",
+            )
+
+            with self.settings(DEBUG=False, ALLOWED_HOSTS=["app.example.com"]):
+                from core.middleware import DynamicCsrfTrustedOriginsMiddleware
+
+                middleware = DynamicCsrfTrustedOriginsMiddleware(lambda req: None)
+                middleware(request)
+
+                self.assertNotIn("http://127.0.0.1:9999", settings.CSRF_TRUSTED_ORIGINS)
+                self.assertNotIn("http://localhost:1234", settings.CSRF_TRUSTED_ORIGINS)
+
+        finally:
+            settings.CSRF_TRUSTED_ORIGINS = original_origins
+
     def test_dynamic_csrf_middleware_db_cooldown(self):
         original_origins = list(settings.CSRF_TRUSTED_ORIGINS)
         try:

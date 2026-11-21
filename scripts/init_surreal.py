@@ -30,16 +30,20 @@ if (
     raise ValueError("Production deployments require an explicit, strong password for SurrealDB.")
 
 
-def wait_for_surreal(client: httpx.Client, max_retries: int = 30) -> bool:
+def wait_for_surreal(client: httpx.Client, max_retries: int | None = None) -> bool:
+    if max_retries is None:
+        max_retries = max(1, int(os.getenv("SURREAL_INIT_MAX_ATTEMPTS", "90")))
     for i in range(1, max_retries + 1):
         try:
-            logger.info("Checking SurrealDB health (attempt %d/%d)...", i, max_retries)
+            if i == 1 or i % 15 == 0:
+                logger.info("Checking SurrealDB health (attempt %d/%d)...", i, max_retries)
             resp = client.get("/health")
             if resp.status_code == 200:
                 logger.info("SurrealDB is healthy and ready!")
                 return True
         except Exception as exc:
-            logger.warning("SurrealDB not ready yet: %s", exc)
+            if i == 1 or i % 15 == 0:
+                logger.warning("SurrealDB not ready yet: %s", exc)
         time.sleep(1)
     return False
 
@@ -102,6 +106,7 @@ def apply_schema(client: httpx.Client) -> None:
         logger.info("SurrealDB schema initialized successfully!")
     else:
         logger.error("Schema applied with %d errors.", errors)
+        raise RuntimeError(f"SurrealDB schema application failed with {errors} statement error(s).")
 
 
 def _rest_endpoint(surreal_url: str) -> str:
@@ -282,16 +287,32 @@ def main():
         logger.exception("SurrealDB initialization aborted")
         return
 
+    # Schema application is idempotent, so a bounded retry loop covers both
+    # slow cold starts and transient mid-schema failures. This script runs as a
+    # background process alongside Gunicorn, so a bounded wait is safe.
+    max_rounds = max(1, int(os.getenv("SURREAL_INIT_MAX_ROUNDS", "3")))
     with httpx.Client(
         base_url=http_url,
         auth=(SURREAL_USER, SURREAL_PASS),
         timeout=10.0,
         verify=True,
     ) as client:
-        if wait_for_surreal(client):
-            apply_schema(client)
-        else:
-            logger.error("Failed to connect to SurrealDB. Initialization aborted.")
+        for round_num in range(1, max_rounds + 1):
+            try:
+                if not wait_for_surreal(client):
+                    logger.error(
+                        "SurrealDB did not become healthy within the probe window (round %d/%d).",
+                        round_num,
+                        max_rounds,
+                    )
+                    continue
+                apply_schema(client)
+                return
+            except Exception:
+                logger.exception("SurrealDB initialization round %d/%d failed", round_num, max_rounds)
+                if round_num < max_rounds:
+                    time.sleep(5)
+        logger.error("Failed to connect to SurrealDB. Initialization aborted.")
 
 
 if __name__ == "__main__":

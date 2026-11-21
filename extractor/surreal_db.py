@@ -28,7 +28,6 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
-from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from surrealdb import AsyncSurreal
@@ -301,15 +300,13 @@ def _prioritize_namespaces(namespaces: list[str]) -> list[str]:
     return res
 
 
-async def _perform_ns_detection(url: str, auth: dict, db_name: str, fallback_ns: str) -> str:
-    async with AsyncSurreal(url) as db:
-        await db.signin(auth)
-        root_info_res = await db.query("INFO FOR ROOT;")
-        namespaces = _prioritize_namespaces(_extract_namespaces(root_info_res))
-        if not namespaces:
-            return fallback_ns
-        probed_ns = await _probe_namespaces(db, namespaces, db_name)
-        return probed_ns or (namespaces[0] if namespaces else fallback_ns)
+async def _perform_ns_detection(db, db_name: str, fallback_ns: str) -> str:
+    root_info_res = await db.query("INFO FOR ROOT;")
+    namespaces = _prioritize_namespaces(_extract_namespaces(root_info_res))
+    if not namespaces:
+        return fallback_ns
+    probed_ns = await _probe_namespaces(db, namespaces, db_name)
+    return probed_ns or (namespaces[0] if namespaces else fallback_ns)
 
 
 async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
@@ -331,7 +328,13 @@ async def _detect_active_namespace(url: str, auth: dict, db_name: str) -> str:
     _max_attempts = 3
     for attempt in range(_max_attempts):
         try:
-            _detected_ns = await _perform_ns_detection(url, auth, db_name, fallback_ns)
+            # Namespace probing issues USE per candidate on the connection. It
+            # must run on a dedicated probe session so it cannot mutate the
+            # shared connection's session namespace while concurrent queries
+            # are in flight.
+            async with AsyncSurreal(url) as probe_db:
+                await probe_db.signin(auth)
+                _detected_ns = await _perform_ns_detection(probe_db, db_name, fallback_ns)
             return _detected_ns
         except Exception as e:
             if attempt < _max_attempts - 1:
@@ -364,30 +367,191 @@ def _get_surreal_ns_db() -> tuple[str, str]:
     return str(ns or "korda"), str(db or "extractor")
 
 
+# ── Dedicated RPC event loop & shared connection ──────────────────────────────
+# A single long-lived WebSocket connection is owned by a dedicated daemon
+# thread running its own event loop. Every synchronous caller submits coroutines
+# via run_coroutine_threadsafe, so queries multiplex over ONE TLS session
+# instead of paying a full TCP+TLS+WebSocket handshake per query. This removes
+# the handshake storm that triggered intermittent TLS alerts against managed
+# SurrealDB endpoints and cuts per-query latency dramatically.
+
+_RPC_LOOP: asyncio.AbstractEventLoop | None = None
+_RPC_LOOP_THREAD: threading.Thread | None = None
+_RPC_LOOP_GUARD = threading.Lock()
+_RPC_DB: Any = None
+_RPC_DB_NS: str | None = None
+_RPC_DB_NAME: str | None = None
+_RPC_DB_LOCK: asyncio.Lock | None = None
+_RPC_DB_LOCK_GUARD = threading.Lock()
+_RPC_ADMISSION: threading.BoundedSemaphore | None = None
+
+
+def _surreal_executor_workers() -> int:
+    """Return a bounded RPC executor size suitable for the current deployment."""
+    from django.conf import settings
+
+    return max(1, getattr(settings, "SURREAL_EXECUTOR_WORKERS", 16))
+
+
+def _ensure_rpc_loop() -> asyncio.AbstractEventLoop:
+    """Lazily start the dedicated SurrealDB RPC event loop thread."""
+    global _RPC_LOOP, _RPC_LOOP_THREAD
+    loop = _RPC_LOOP
+    if loop is not None and loop.is_running():
+        return loop
+    with _RPC_LOOP_GUARD:
+        if _RPC_LOOP is not None and _RPC_LOOP.is_running():
+            return _RPC_LOOP
+        new_loop = asyncio.new_event_loop()
+        ready = threading.Event()
+
+        def _loop_main() -> None:
+            asyncio.set_event_loop(new_loop)
+            ready.set()
+            new_loop.run_forever()
+
+        thread = threading.Thread(target=_loop_main, name="surreal-rpc-loop", daemon=True)
+        thread.start()
+        if not ready.wait(timeout=10):
+            raise RuntimeError("SurrealDB RPC event loop failed to start.")
+        _RPC_LOOP = new_loop
+        _RPC_LOOP_THREAD = thread
+        return new_loop
+
+
+def _get_rpc_admission() -> threading.BoundedSemaphore:
+    """Bound the number of in-flight RPC coroutines to preserve backpressure."""
+    global _RPC_ADMISSION
+    if _RPC_ADMISSION is None:
+        with _RPC_LOOP_GUARD:
+            if _RPC_ADMISSION is None:
+                _RPC_ADMISSION = threading.BoundedSemaphore(_surreal_executor_workers() * 2)
+    if _RPC_ADMISSION is None:
+        raise RuntimeError("SurrealDB RPC admission control could not be initialized.")
+    return _RPC_ADMISSION
+
+
+def _rpc_db_lock() -> asyncio.Lock:
+    """Return the loop-bound lock guarding shared connection setup."""
+    global _RPC_DB_LOCK
+    if _RPC_DB_LOCK is None:
+        with _RPC_DB_LOCK_GUARD:
+            if _RPC_DB_LOCK is None:
+                _RPC_DB_LOCK = asyncio.Lock()
+    if _RPC_DB_LOCK is None:
+        raise RuntimeError("SurrealDB connection lock could not be initialized.")
+    return _RPC_DB_LOCK
+
+
+def _submit_to_rpc_loop(coro, timeout: float | None = None):
+    """Schedule a coroutine on the dedicated RPC loop and wait for its result."""
+    if threading.current_thread() is _RPC_LOOP_THREAD:
+        coro.close()
+        raise RuntimeError("SurrealDB RPC cannot be dispatched from the RPC loop thread.")
+    loop = _ensure_rpc_loop()
+    admission = _get_rpc_admission()
+    if not admission.acquire(blocking=False):
+        coro.close()
+        raise RuntimeError("SurrealDB RPC executor is saturated; retry later.")
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    future.add_done_callback(lambda _f: admission.release())
+    if timeout is None:
+        timeout = max(1, getattr(settings, "SURREAL_RPC_TIMEOUT_SECONDS", 60))
+    try:
+        return future.result(timeout=max(1, timeout))
+    except concurrent.futures.TimeoutError as exc:
+        future.cancel()
+        raise RuntimeError("SurrealDB RPC timed out; retry later.") from exc
+
+
+def _connection_is_open(db) -> bool:
+    """Best-effort liveness probe for the shared WebSocket connection."""
+    socket = getattr(db, "socket", None)
+    if socket is None:
+        return False
+    try:
+        from websockets.protocol import State
+    except Exception:
+        return True
+    state = getattr(socket, "state", None)
+    # Non-State values come from test doubles; treat them as live and let the
+    # query path trigger a reconnect if the connection is actually dead.
+    if not isinstance(state, State):
+        return True
+    return state is State.OPEN
+
+
+async def _drop_shared_db() -> None:
+    """Close and discard the shared connection; safe to call on the RPC loop."""
+    global _RPC_DB, _RPC_DB_NS, _RPC_DB_NAME
+    db, _RPC_DB, _RPC_DB_NS, _RPC_DB_NAME = _RPC_DB, None, None, None
+    if db is not None:
+        try:
+            await db.close()
+        except Exception as close_err:
+            logger.debug("[SurrealDB] Shared connection close failed: %s", close_err)
+
+
+async def _ensure_shared_db(url: str, auth: dict):
+    """Return a connected, authenticated shared connection (loop-confined)."""
+    global _RPC_DB, _RPC_DB_NS, _RPC_DB_NAME
+    async with _rpc_db_lock():
+        if _RPC_DB is not None and _connection_is_open(_RPC_DB):
+            return _RPC_DB
+        await _drop_shared_db()
+        db = AsyncSurreal(url)
+        try:
+            await db.connect(url)
+            await db.signin(auth)
+        except Exception:
+            try:
+                await db.close()
+            except Exception as close_err:
+                logger.debug("[SurrealDB] Failed connection cleanup after signin/connect error: %s", close_err)
+            raise
+        _RPC_DB = db
+        _RPC_DB_NS = None
+        _RPC_DB_NAME = None
+        logger.info("[SurrealDB] Shared WebSocket connection established.")
+        return db
+
+
+async def _use_ns_db_if_needed(db, ns: str, db_name: str) -> None:
+    """Issue USE only when the session namespace/database actually changes."""
+    global _RPC_DB_NS, _RPC_DB_NAME
+    if ns == _RPC_DB_NS and db_name == _RPC_DB_NAME:
+        return
+    await db.use(ns, db_name)
+    _RPC_DB_NS = ns
+    _RPC_DB_NAME = db_name
+
+
 async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
     url = _get_surreal_url()
     auth = _get_surreal_auth()
     db_name = getattr(settings, "SURREAL_DB", os.getenv("SURREAL_DB", "extractor"))
 
     global _detected_ns
-    if not _detected_ns and "INFO FOR ROOT" not in sql:
-        await _detect_active_namespace(url, auth, db_name)
-
-    ns, _ = _get_surreal_ns_db()
-
     # EDGE-04 fix: retry with exponential backoff to handle transient TCP resets,
     # SurrealDB container restarts, and Cloud Run cold-start connection delays.
     _max_attempts = 3
     last_exc: Exception | None = None
     for attempt in range(_max_attempts):
         try:
-            async with AsyncSurreal(url) as db:
-                await db.signin(auth)
-                await db.use(ns, db_name)
-                result = await db.query(sql, params)
-                return [x for x in result if isinstance(x, dict)] if isinstance(result, list) else []
+            if not _detected_ns and "INFO FOR ROOT" not in sql:
+                # Detection probes namespaces on a dedicated connection so it
+                # cannot mutate the shared session while queries are in flight.
+                await _detect_active_namespace(url, auth, db_name)
+            db = await _ensure_shared_db(url, auth)
+            ns, _ = _get_surreal_ns_db()
+            await _use_ns_db_if_needed(db, ns, db_name)
+            result = await db.query(sql, params)
+            return [x for x in result if isinstance(x, dict)] if isinstance(result, list) else []
         except Exception as exc:
             last_exc = exc
+            # Drop the shared connection so the next attempt re-establishes a
+            # clean session (covers TCP resets, idle timeouts, and token expiry).
+            await _drop_shared_db()
             if attempt < _max_attempts - 1:
                 wait_secs = 2**attempt  # 1s, 2s
                 logger.warning(
@@ -408,76 +572,13 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
     raise RuntimeError(f"SurrealDB error after {_max_attempts} attempts: {last_exc}")
 
 
-def _surreal_executor_workers() -> int:
-    """Return a bounded RPC executor size suitable for the current deployment."""
-    from django.conf import settings
-
-    return max(1, getattr(settings, "SURREAL_EXECUTOR_WORKERS", 16))
-
-
-_SHARED_EXECUTOR: concurrent.futures.ThreadPoolExecutor | None = None
-_EXECUTOR_ADMISSION: threading.BoundedSemaphore | None = None
-_EXECUTOR_LOCK = threading.Lock()
-
-
-def _get_shared_executor() -> tuple[concurrent.futures.ThreadPoolExecutor, threading.BoundedSemaphore]:
-    """Lazily create a bounded executor after Django settings are available."""
-    global _SHARED_EXECUTOR, _EXECUTOR_ADMISSION
-    if _SHARED_EXECUTOR is None:
-        with _EXECUTOR_LOCK:
-            if _SHARED_EXECUTOR is None:
-                workers = _surreal_executor_workers()
-                _SHARED_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-                    max_workers=workers, thread_name_prefix="surreal-rpc"
-                )
-                _EXECUTOR_ADMISSION = threading.BoundedSemaphore(workers * 2)
-    if _SHARED_EXECUTOR is None or _EXECUTOR_ADMISSION is None:
-        raise RuntimeError("SurrealDB RPC executor could not be initialized.")
-    return _SHARED_EXECUTOR, _EXECUTOR_ADMISSION
-
-
-def _shutdown_shared_executor() -> None:
-    """Cancel queued RPC work during process shutdown without blocking termination."""
-    if _SHARED_EXECUTOR is not None:
-        _SHARED_EXECUTOR.shutdown(wait=False, cancel_futures=True)
-
-
-atexit.register(_shutdown_shared_executor)
-
-
-def _run_in_thread(coro):
-    """Run an async coroutine synchronously in a separate thread to prevent event loop blocking/corruption."""
-    executor, admission = _get_shared_executor()
-    if not admission.acquire(blocking=False):
-        coro.close()
-        raise RuntimeError("SurrealDB RPC executor is saturated; retry later.")
-    future = executor.submit(asyncio.run, coro)
-    future.add_done_callback(lambda _: admission.release())
-    timeout = max(1, getattr(settings, "SURREAL_RPC_TIMEOUT_SECONDS", 60))
-    try:
-        return future.result(timeout=timeout)
-    except concurrent.futures.TimeoutError as exc:
-        future.cancel()
-        raise RuntimeError("SurrealDB RPC timed out; retry later.") from exc
-
-
 def _run(sql: str, params: dict | None = None) -> list[dict]:
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return [{"status": "OK", "result": []}]
 
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        # SEC-01 fix: Dispatch to a worker thread running a clean event loop
-        # instead of calling nest_asyncio.apply() which corrupts the ASGI loop.
-        return _run_in_thread(_async_run(sql, params))
-    else:
-        return async_to_sync(_async_run)(sql, params)
+    return _submit_to_rpc_loop(_async_run(sql, params))
 
 
 def _check_surreal_error(obj: Any) -> None:
@@ -534,6 +635,28 @@ async def _async_check_health() -> bool:
         return False
 
 
+async def _close_shared_db_on_loop() -> None:
+    await _drop_shared_db()
+
+
+def _shutdown_rpc_loop() -> None:
+    """Best-effort orderly shutdown of the shared connection and RPC loop."""
+    loop = _RPC_LOOP
+    if loop is None or not loop.is_running():
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(_close_shared_db_on_loop(), loop).result(timeout=5)
+    except Exception as shutdown_err:
+        logger.debug("[SurrealDB] RPC loop shutdown warning: %s", shutdown_err)
+    try:
+        loop.call_soon_threadsafe(loop.stop)
+    except Exception as stop_err:
+        logger.debug("[SurrealDB] RPC loop stop warning: %s", stop_err)
+
+
+atexit.register(_shutdown_rpc_loop)
+
+
 def check_health() -> bool:
     from django.conf import settings
 
@@ -541,15 +664,10 @@ def check_health() -> bool:
         return False
 
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        # SEC-01 fix: Safe thread execution without nest_asyncio
-        return _run_in_thread(_async_check_health())
-    else:
-        return async_to_sync(_async_check_health)()
+        return bool(_submit_to_rpc_loop(_async_check_health(), timeout=15))
+    except Exception as health_err:
+        logger.warning("[SurrealDB] Health check dispatch failed: %s", health_err)
+        return False
 
 
 _IDENTIFIER_REGEX = re.compile(r"^[a-zA-Z_]\w*$")
@@ -1101,6 +1219,10 @@ def get_document_by_hash(file_hash: str, user_id: str | None = None) -> dict | N
 # ── System Settings helpers ─────────────────────────────────────────────────
 
 
+_SYSTEM_SETTINGS_CACHE_KEY = "surreal:system_settings"
+_SYSTEM_SETTINGS_CACHE_TTL = 30
+
+
 def get_system_settings() -> dict:
     """Get the global system settings record. Creates default if missing."""
     from django.conf import settings
@@ -1111,15 +1233,29 @@ def get_system_settings() -> dict:
         s = SystemSettings.get_settings()
         return _settings_to_dict(s)
 
+    # Settings change rarely but are read on every page render; a short TTL
+    # avoids one extra RPC per request. Enforcement paths (budget checks) read
+    # system_settings:1 transactionally and are unaffected by this cache.
+    from django.core.cache import cache
+
+    cached = cache.get(_SYSTEM_SETTINGS_CACHE_KEY)
+    if cached is not None:
+        # Return a copy: callers may mutate the dict (e.g. settings migration
+        # flows), and the cached object must stay pristine for other readers.
+        return dict(cached)
+
     sql = "SELECT * FROM system_settings:1;"
     rows = _first_result(_run(sql))
     if rows:
-        return rows[0]
-
-    # Create default settings if empty. Provider credentials are deployment-managed.
-    default_data = {"monthly_budget_usd": 10.0, "selected_model": "auto", "currency": "auto"}
-    rows = _first_result(_run("UPSERT system_settings:1 CONTENT $data;", {"data": default_data}))
-    return rows[0] if rows else default_data
+        result = rows[0]
+    else:
+        # Create default settings if empty. Provider credentials are deployment-managed.
+        default_data = {"monthly_budget_usd": 10.0, "selected_model": "auto", "currency": "auto"}
+        rows = _first_result(_run("UPSERT system_settings:1 CONTENT $data;", {"data": default_data}))
+        result = rows[0] if rows else default_data
+    # Cache a copy so caller-side mutation cannot poison the shared entry.
+    cache.set(_SYSTEM_SETTINGS_CACHE_KEY, dict(result), _SYSTEM_SETTINGS_CACHE_TTL)
+    return result
 
 
 # Provider credentials are intentionally excluded from ALLOWED_SETTINGS_KEYS.
@@ -1154,6 +1290,9 @@ def save_system_settings(data: dict) -> dict:
         payload["monthly_budget_usd"] = float(payload["monthly_budget_usd"])
     sql = "UPSERT system_settings:1 MERGE $data;"
     rows = _first_result(_run(sql, {"data": payload}))
+    from django.core.cache import cache
+
+    cache.delete(_SYSTEM_SETTINGS_CACHE_KEY)
     return rows[0] if rows else {}
 
 
@@ -1216,6 +1355,52 @@ def _record_document_spend(doc_uuid: str, created_at: datetime, cost: float, in_
         logger.warning("[Delete] Failed to reconcile document spend: %s", exc)
         return False
     return True
+
+
+def monthly_spend_ledger_add(year: int, month: int, cost_usd: float, input_tokens: int, output_tokens: int) -> bool:
+    """Append one spend event to the monthly ledger (atomic INSERT, no read-modify-write)."""
+    sql = (
+        "CREATE monthly_spend_ledger CONTENT {"
+        "year: $year, month: $month, cost_usd: $cost_usd, "
+        "input_tokens: $input_tokens, output_tokens: $output_tokens};"
+    )
+    try:
+        _run(
+            sql,
+            {
+                "year": int(year),
+                "month": int(month),
+                "cost_usd": float(cost_usd),
+                "input_tokens": int(input_tokens or 0),
+                "output_tokens": int(output_tokens or 0),
+            },
+        )
+    except Exception as exc:
+        logger.warning("[SurrealDB] Failed to append monthly spend ledger entry: %s", exc)
+        return False
+    return True
+
+
+def monthly_spend_ledger_total(year: int, month: int) -> dict[str, float] | None:
+    """Return summed ledger totals for a calendar month, or None on failure."""
+    sql = (
+        "SELECT math::sum(cost_usd) AS cost_usd, math::sum(input_tokens) AS input_tokens, "
+        "math::sum(output_tokens) AS output_tokens FROM monthly_spend_ledger "
+        "WHERE year = $year AND month = $month GROUP ALL;"
+    )
+    try:
+        rows = _first_result(_run(sql, {"year": int(year), "month": int(month)}))
+    except Exception as exc:
+        logger.warning("[SurrealDB] Failed to read monthly spend ledger: %s", exc)
+        return None
+    if not rows:
+        return {"cost_usd": 0.0, "input_tokens": 0.0, "output_tokens": 0.0}
+    row = rows[0] if isinstance(rows[0], dict) else {}
+    return {
+        "cost_usd": float(row.get("cost_usd") or 0.0),
+        "input_tokens": float(row.get("input_tokens") or 0.0),
+        "output_tokens": float(row.get("output_tokens") or 0.0),
+    }
 
 
 def _flush_document_cost(doc) -> bool:

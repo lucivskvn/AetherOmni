@@ -19,10 +19,14 @@ class SurrealDBClientTestCase(TestCase):
 
         settings.SURREALDB_OFFLINE = self.original_offline
         surreal_db._detected_url = None
+        surreal_db._RPC_DB = None
+        surreal_db._RPC_DB_NS = None
+        surreal_db._RPC_DB_NAME = None
 
     def _create_mock_db(self, return_value=None):
         mock_db = MagicMock()
-        mock_db.__aenter__.return_value = mock_db
+        mock_db.connect = AsyncMock()
+        mock_db.close = AsyncMock()
         mock_db.signin = AsyncMock()
         mock_db.use = AsyncMock()
         mock_db.query = AsyncMock(return_value=return_value or [])
@@ -352,7 +356,8 @@ class SurrealDBClientTestCase(TestCase):
     def test_async_run_transient_failure_recovery(self, mock_surreal, mock_sleep):
         surreal_db._detected_ns = "korda"
         mock_failing_db = MagicMock()
-        mock_failing_db.__aenter__.side_effect = Exception("Connection reset by peer")
+        mock_failing_db.connect = AsyncMock(side_effect=Exception("Connection reset by peer"))
+        mock_failing_db.close = AsyncMock()
 
         mock_working_db = self._create_mock_db([{"result": [{"id": "1"}]}])
 
@@ -369,7 +374,8 @@ class SurrealDBClientTestCase(TestCase):
     def test_async_run_retry_exhaustion(self, mock_surreal, mock_sleep):
         surreal_db._detected_ns = "korda"
         mock_failing_db = MagicMock()
-        mock_failing_db.__aenter__.side_effect = Exception("TCP reset")
+        mock_failing_db.connect = AsyncMock(side_effect=Exception("TCP reset"))
+        mock_failing_db.close = AsyncMock()
         mock_surreal.return_value = mock_failing_db
 
         with self.assertRaisesRegex(RuntimeError, "SurrealDB error after 3 attempts: TCP reset"):

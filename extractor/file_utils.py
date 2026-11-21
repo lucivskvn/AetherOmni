@@ -411,6 +411,10 @@ def _parse_excel_zipxml(file_path: str) -> str | None:
             shared_strings = _load_zipxml_shared_strings(zf)
             sheets_md = _parse_zipxml_sheets(zf, shared_strings)
             return "\n\n".join(sheets_md) if sheets_md else None
+    except ValueError:
+        # Parser budget violations must fail loudly, not degrade to a
+        # placeholder document — mirrors the openpyxl path above.
+        raise
     except Exception as exc:
         logger.warning("[Excel Parser] Native XML extraction failed: %s", exc)
         return None

@@ -120,6 +120,22 @@ DEFINE INDEX IF NOT EXISTS idx_spend_reconciliation_doc ON document_spend_reconc
 DEFINE INDEX IF NOT EXISTS idx_spend_reconciliation_month ON document_spend_reconciliations FIELDS year, month;
 
 
+-- ── 5b. monthly_spend_ledger ─────────────────────────────────
+-- Append-only ledger for non-document spend events (e.g. Eventarc KORDA
+-- lanes). Each event is an immutable INSERT so concurrent writers cannot
+-- lose increments through a read-modify-write on a shared KV value.
+DEFINE TABLE IF NOT EXISTS monthly_spend_ledger SCHEMAFULL;
+
+DEFINE FIELD IF NOT EXISTS year          ON monthly_spend_ledger TYPE int;
+DEFINE FIELD IF NOT EXISTS month         ON monthly_spend_ledger TYPE int;
+DEFINE FIELD IF NOT EXISTS cost_usd      ON monthly_spend_ledger TYPE float;
+DEFINE FIELD IF NOT EXISTS input_tokens  ON monthly_spend_ledger TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS output_tokens ON monthly_spend_ledger TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS recorded_at   ON monthly_spend_ledger TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX IF NOT EXISTS idx_monthly_spend_ledger_month ON monthly_spend_ledger FIELDS year, month;
+
+
 -- ── 5. audit_logs ─────────────────────────────────────────────
 -- Immutable compliance audit trail.  Dual-written from Django ORM
 -- (SQLite) + SurrealDB for long-term retention.

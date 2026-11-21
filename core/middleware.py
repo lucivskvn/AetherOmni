@@ -58,7 +58,10 @@ def _patched_process_view(self, request, callback, callback_args, callback_kwarg
             logger.debug("[CSRF Middleware] Could not split referer URL '%s': %s", referer, val_err)
             is_loopback_referer = False
 
-    if is_loopback_referer:
+    # Only bypass the HTTPS referer check for loopback referers in DEBUG mode.
+    # In production the referer scheme check must stay enforced: the bypass
+    # exists for local development behind SSL-terminating proxies.
+    if settings.DEBUG and is_loopback_referer:
         orig_is_secure = request.is_secure
         request.is_secure = lambda: False
         try:
@@ -198,7 +201,19 @@ class DynamicCsrfTrustedOriginsMiddleware:
         if origin and (settings.DEBUG or self._is_loopback(origin)) and origin not in settings.CSRF_TRUSTED_ORIGINS:
             settings.CSRF_TRUSTED_ORIGINS.append(origin)
 
+    def _request_host_is_loopback(self, request) -> bool:
+        try:
+            return _is_loopback_origin(request.get_host())
+        except Exception:
+            return False
+
     def _trust_header_origins_if_safe(self, request):
+        # Header-derived origins are trusted only in DEBUG mode or when the
+        # request itself targets a loopback host. Otherwise remote clients
+        # could grow CSRF_TRUSTED_ORIGINS with arbitrary loopback origin
+        # strings (unbounded per-process list mutation).
+        if not settings.DEBUG and not self._request_host_is_loopback(request):
+            return
         # Origin header
         origin = request.META.get("HTTP_ORIGIN")
         self._trust_origin_if_safe(origin)

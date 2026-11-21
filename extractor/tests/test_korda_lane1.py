@@ -351,3 +351,23 @@ class KordaLane1Tests(TestCase):
         self.assertEqual(r1["version"], 1)
         self.assertEqual(r2["version"], 2)
         self.assertEqual(mock_spend.call_count, 2)
+
+    @override_settings(DEBUG=True, GS_BUCKET_NAME="korda-media")
+    def test_eventarc_budget_exceeded_is_acknowledged_not_retried(self):
+        """Budget exhaustion is permanent for the delivery; return 202, not a retryable 5xx."""
+        import json
+
+        from extractor import task_handlers
+        from extractor.llm_gateway import BudgetExceededException
+
+        payload = json.dumps(
+            {"bucket": "korda-media", "name": "raw/ephemeral/u1/spec/doc.pdf", "contentType": "application/pdf"}
+        ).encode("utf-8")
+        request = self.factory.post("/internal/events/gcs-raw/", data=payload, content_type="application/json")
+        with patch(
+            "extractor.llm_gateway.check_budget_and_api_limit",
+            side_effect=BudgetExceededException("cap reached"),
+        ):
+            resp = task_handlers.EventarcGCSRawView.as_view()(request)
+        self.assertEqual(resp.status_code, 202)
+        self.assertEqual(json.loads(resp.content)["reason"], "monthly-budget-exceeded")

@@ -73,6 +73,24 @@ def _project_crystals_for_prompt(crystals: list[dict[str, Any]]) -> str:
     return json.dumps(projected, ensure_ascii=False)
 
 
+def _record_quiz_generation_spend(model_name: str, response: Any) -> None:
+    """Itemize quiz-generation LLM spend into the monthly budget ledger."""
+    usage = getattr(response, "usage_metadata", None)
+    in_tok = int(getattr(usage, "prompt_token_count", 0) or 0)
+    out_tok = int(getattr(usage, "candidates_token_count", 0) or 0)
+    if not in_tok and not out_tok:
+        return
+    try:
+        from datetime import UTC, datetime
+
+        from extractor.models import MonthlySpendLog
+
+        cost = llm_gateway.calculate_gemini_cost(model_name, in_tok, out_tok)
+        MonthlySpendLog.add_cost(datetime.now(UTC), cost, in_tok=in_tok, out_tok=out_tok)
+    except Exception as exc:
+        logger.warning("[QuizStudio] Failed to record generation spend: %s", exc)
+
+
 def generate_and_persist_quiz(
     *,
     owner_id: str,
@@ -118,6 +136,7 @@ def generate_and_persist_quiz(
             response_mime_type=llm_gateway.APPLICATION_JSON,
         ),
     )
+    _record_quiz_generation_spend(model_name, response)
     try:
         parsed = json.loads(response.text or "{}")
     except json.JSONDecodeError:

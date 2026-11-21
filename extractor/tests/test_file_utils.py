@@ -442,3 +442,21 @@ class FileUtilsTestCase(TestCase):
         with self.assertRaises(ValueError) as ctx:
             file_utils.generate_sft_dataset_pairs(["doc"] * 1001)
         self.assertIn("Export batch exceeds maximum document limit of 1000 items.", str(ctx.exception))
+
+    def test_xlsx_zipxml_budget_violation_propagates_instead_of_degrading(self):
+        """Budget ValueErrors must reach the pipeline, not become 'unreadable' docs."""
+        import os
+        import tempfile
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            zf.writestr("xl/worksheets/sheet1.xml", b"x" * (file_utils._XLSX_MAX_UNCOMPRESSED_BYTES + 1))
+        zip_buffer.seek(0)
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp.write(zip_buffer.getvalue())
+            tmp_path = tmp.name
+        try:
+            with self.assertRaises(ValueError):
+                file_utils.process_excel_local(tmp_path)
+        finally:
+            os.unlink(tmp_path)

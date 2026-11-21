@@ -256,38 +256,11 @@ class MonthlySpendLog(models.Model):
 
     @classmethod
     def _add_cost_surreal(cls, year: int, month: int, cost: Decimal, in_tok: int, out_tok: int) -> bool:
-        import json
-        from decimal import Decimal as D
-
         from extractor import surreal_db
 
-        key = f"monthly_spend_log:{year}:{month}"
-        try:
-            existing = surreal_db.kv_cache_get(key)
-            if isinstance(existing, dict):
-                data = existing
-            elif isinstance(existing, str):
-                try:
-                    data = json.loads(existing)
-                except Exception:
-                    data = {"accumulated_cost_usd": 0.0, "accumulated_input_tokens": 0, "accumulated_output_tokens": 0}
-            else:
-                data = {"accumulated_cost_usd": 0.0, "accumulated_input_tokens": 0, "accumulated_output_tokens": 0}
-
-            accumulated_cost = D(str(data.get("accumulated_cost_usd", 0.0))) + D(str(cost))
-            accumulated_in = int(data.get("accumulated_input_tokens", 0)) + in_tok
-            accumulated_out = int(data.get("accumulated_output_tokens", 0)) + out_tok
-
-            new_data = {
-                "accumulated_cost_usd": float(accumulated_cost),
-                "accumulated_input_tokens": accumulated_in,
-                "accumulated_output_tokens": accumulated_out,
-            }
-            surreal_db.kv_cache_set(key, new_data)
-            return True
-        except Exception as exc:
-            logger.warning("[SurrealDB] Failed to add cost to KV cache monthly log: %s", exc)
-            return False
+        # Append-only ledger INSERT: concurrent spend events cannot lose
+        # increments through a read-modify-write on a shared KV value.
+        return surreal_db.monthly_spend_ledger_add(year, month, float(cost), in_tok, out_tok)
 
     @classmethod
     def _add_cost_django(cls, year: int, month: int, cost: Decimal, in_tok: int, out_tok: int) -> bool:
@@ -333,15 +306,21 @@ class MonthlySpendLog(models.Model):
 
             from extractor import surreal_db
 
+            total = D("0.0")
+            # Legacy KV aggregate is frozen at cutover; new spend appends to
+            # monthly_spend_ledger, so summing both never double-counts.
             key = f"monthly_spend_log:{year}:{month}"
             try:
                 existing = surreal_db.kv_cache_get(key)
                 if existing:
                     data = json.loads(existing) if isinstance(existing, str) else existing
-                    return D(str(data.get("accumulated_cost_usd", 0.0)))
+                    total += D(str(data.get("accumulated_cost_usd", 0.0)))
             except Exception as exc:
                 logger.warning("[SurrealDB] Failed to read cost from KV cache monthly log: %s", exc)
-            return D("0.0")
+            ledger = surreal_db.monthly_spend_ledger_total(year, month)
+            if ledger:
+                total += D(str(ledger.get("cost_usd", 0.0)))
+            return total
 
         try:
             row = cls.objects.filter(year=year, month=month).first()

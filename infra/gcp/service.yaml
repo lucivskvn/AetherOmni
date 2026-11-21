@@ -29,6 +29,8 @@ spec:
           value: "${RELEASE_VERSION}"
         - name: DJANGO_DEBUG
           value: "False"
+        - name: GUNICORN_TIMEOUT
+          value: "900"
         - name: SECURE_SSL_REDIRECT
           value: "True"
         - name: SESSION_COOKIE_SECURE
