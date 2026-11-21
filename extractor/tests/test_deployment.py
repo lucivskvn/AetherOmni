@@ -263,3 +263,36 @@ class ProductionDeploymentContractTestCase(TestCase):
         self.assertIn('_metadata(project, "storage", "buckets", "describe", bucket)', preflight)
         self.assertIn('_metadata(project, "iam", "service-accounts", "describe", account)', preflight)
         self.assertIn("roles/storage.objectAdmin", preflight)
+
+    def test_web_service_matches_worker_gunicorn_timeout(self):
+        """Cloud Run allows 900s; the web Gunicorn timeout must not undercut it."""
+        pulumi_program = self._repo_file("infra", "pulumi", "__main__.py")
+        cloudbuild = self._repo_file("infra", "gcp", "cloudbuild.yaml")
+        service_manifest = self._repo_file("infra", "gcp", "service.yaml")
+
+        self.assertEqual(pulumi_program.count('name="GUNICORN_TIMEOUT", value="900"'), 2)
+        self.assertEqual(cloudbuild.count("GUNICORN_TIMEOUT=900"), 2)
+        self.assertIn('- name: GUNICORN_TIMEOUT\n          value: "900"', service_manifest)
+
+    def test_pulumi_grants_deployer_preflight_reader_role(self):
+        """The Cloud Build trigger identity must be able to run verify_gcp_prerequisites.py.
+
+        Regression: every trigger build failed at validate-prerequisites because
+        the default compute service account lacked get/getIamPolicy reads.
+        """
+        pulumi_program = self._repo_file("infra", "pulumi", "__main__.py")
+
+        self.assertIn('role_id="kordaDeployPreflight"', pulumi_program)
+        for permission in (
+            "storage.buckets.get",
+            "storage.buckets.getIamPolicy",
+            "iam.serviceAccounts.get",
+            "iam.serviceAccounts.getIamPolicy",
+            "run.services.get",
+            "run.services.getIamPolicy",
+            "cloudtasks.queues.get",
+            "cloudtasks.queues.getIamPolicy",
+        ):
+            self.assertIn(f'"{permission}"', pulumi_program)
+        self.assertIn("-compute@developer.gserviceaccount.com", pulumi_program)
+        self.assertIn("korda-deploy-preflight-binding", pulumi_program)

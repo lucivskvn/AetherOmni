@@ -734,7 +734,7 @@ def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_blo
     )
 
 
-def stream_query_rag(
+def _stream_query_rag_events(
     query: str,
     document_ids: list[int] | None = None,
     top_k: int = 5,
@@ -831,6 +831,31 @@ def stream_query_rag(
 
     # 3. Final completion event
     yield f"data: {json.dumps({'done': True})}\n\n"
+
+
+def stream_query_rag(
+    query: str,
+    document_ids: list[int] | None = None,
+    top_k: int = 5,
+    user: Any = None,
+    actor_id: str | None = None,
+):
+    """SSE wrapper that converts pre-stream failures into a client-visible error event."""
+    import json
+
+    try:
+        yield from _stream_query_rag_events(
+            query=query,
+            document_ids=document_ids,
+            top_k=top_k,
+            user=user,
+            actor_id=actor_id,
+        )
+    except GeneratorExit:
+        raise
+    except Exception as stream_setup_err:
+        logger.warning("[Stream RAG] Error before streaming began: %s", stream_setup_err)
+        yield f"data: {json.dumps({'error': 'Search is temporarily unavailable. Please try again.'})}\n\n"
 
 
 def _parse_offline_document_ids(document_ids):

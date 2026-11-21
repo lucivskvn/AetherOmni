@@ -195,6 +195,42 @@ gcp.storage.BucketIAMMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
+# The GitHub-connected Cloud Build trigger runs as the default compute service
+# account. scripts/verify_gcp_prerequisites.py performs get/getIamPolicy reads
+# on the media bucket, runtime/invoker service accounts, worker service, and
+# tasks queue; without these permissions every deploy fails at the
+# validate-prerequisites step. Grant a narrow custom role covering exactly
+# those reads — no write or IAM-mutation permissions.
+deployer_preflight_role = gcp.projects.IAMCustomRole(
+    "korda-deploy-preflight-role",
+    project=project,
+    role_id="kordaDeployPreflight",
+    title="KORDA Deploy Preflight Reader",
+    description=(
+        "Read-only resource and IAM-policy access required by scripts/verify_gcp_prerequisites.py during Cloud Build."
+    ),
+    permissions=[
+        "storage.buckets.get",
+        "storage.buckets.getIamPolicy",
+        "iam.serviceAccounts.get",
+        "iam.serviceAccounts.getIamPolicy",
+        "run.services.get",
+        "run.services.getIamPolicy",
+        "cloudtasks.queues.get",
+        "cloudtasks.queues.getIamPolicy",
+    ],
+    stage="GA",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+gcp.projects.IAMMember(
+    "korda-deploy-preflight-binding",
+    project=project,
+    role=deployer_preflight_role.name,
+    member=f"serviceAccount:{project_info.number}-compute@developer.gserviceaccount.com",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
 # 4. Artifact Registry Repository (for container images)
 artifact_repo_id = config.get("artifact_repo_id") or "cloud-run-source-deploy"
 artifact_repo = gcp.artifactregistry.Repository(
@@ -377,6 +413,9 @@ raw_trigger = EventarcRawTrigger(
 # 6. Cloud Run Web Service (korda-web, public, scale-to-zero)
 web_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="2"),
+    # Match the worker/Cloud Run 900s request ceiling: SSE RAG streams and large
+    # exports legitimately exceed Gunicorn's 120s default worker timeout.
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_TIMEOUT", value="900"),
 ]
 if custom_domain:
     web_env.append(gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="APP_URL", value=f"https://{custom_domain}"))

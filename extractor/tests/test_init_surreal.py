@@ -76,7 +76,8 @@ class InitSurrealTestCase(TestCase):
         mock_resp.json.return_value = [{"status": "OK"}, {"status": "ERR", "detail": "Syntax error"}]
         mock_client.post.return_value = mock_resp
 
-        init_surreal.apply_schema(mock_client)
+        with self.assertRaisesRegex(RuntimeError, "schema application failed"):
+            init_surreal.apply_schema(mock_client)
         self.assertEqual(mock_client.post.call_count, 3)
 
     @patch.dict(os.environ, {"SURREALDB_OFFLINE": "True"})

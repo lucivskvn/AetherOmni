@@ -158,3 +158,17 @@ class HybridRAGTestCase(TestCase):
             )
             self.assertIsNotNone(res_sem)
             mock_allowed_uuids.assert_called_with(None, ["doc-1"], actor_id="actor-123")
+
+    def test_stream_query_rag_wraps_prestream_failures_as_sse_error(self):
+        """Pre-stream failures must surface as an SSE error event, not a dropped connection."""
+        import json
+
+        from extractor.rag import stream_query_rag
+
+        with patch("extractor.rag._stream_query_rag_events", side_effect=RuntimeError("surreal down")):
+            events = list(stream_query_rag(query="test", user=None))
+
+        self.assertEqual(len(events), 1)
+        self.assertTrue(events[0].startswith("data: "))
+        payload = json.loads(events[0][len("data: ") :].strip())
+        self.assertIn("error", payload)

@@ -997,7 +997,7 @@ requires-dist = [
     { name = "ruff", specifier = ">=0.16.4" },
     { name = "sentry-sdk", extras = ["django"], specifier = "==2.22.0" },
     { name = "sqlparse", specifier = ">=0.5.5" },
-    { name = "surrealdb", specifier = ">=2.0.0" },
+    { name = "surrealdb", specifier = ">=2.0.0,<3.0.0" },
     { name = "whitenoise", specifier = ">=6.12.0" },
 ]
 provides-extras = ["dev"]

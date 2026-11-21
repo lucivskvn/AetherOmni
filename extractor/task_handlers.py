@@ -436,10 +436,9 @@ def _digitalize_gcs_object(payload: dict, bucket_name: str, object_name: str) ->
     from . import llm_gateway, surreal_db
 
     meta = _parse_gcs_event_fields(payload, bucket_name, object_name)
-    try:
-        llm_gateway.check_budget_and_api_limit()
-    except llm_gateway.GeminiProcessingError as exc:
-        raise ValueError(str(exc)) from exc
+    # BudgetExceededException propagates to the view, which acknowledges the
+    # event as deferred (2xx) instead of retrying a permanently-failing delivery.
+    llm_gateway.check_budget_and_api_limit()
 
     extracted = llm_gateway.extract_anchors_from_gcs_uri(
         gcs_uri=meta["gcs_uri"], mime_type=meta["mime_type"], doc_slug=meta["doc_slug"]
@@ -509,6 +508,25 @@ def _eventarc_service_accounts() -> tuple[str, ...]:
     return tuple(sa.strip() for sa in candidates if sa and sa.strip())
 
 
+def _digitalize_or_error_response(payload, bucket_name, object_name):
+    """Run Eventarc digitalization, mapping outcomes to the receiver contract."""
+    from extractor import llm_gateway
+
+    try:
+        return _digitalize_gcs_object(payload, bucket_name, object_name), None
+    except llm_gateway.BudgetExceededException as exc:
+        # Acknowledge (202) so Eventarc does not retry a permanently-failing
+        # delivery; the object stays unprocessed until the budget resets.
+        logger.warning("[EventarcGCSRaw] Monthly budget exceeded for gs://%s/%s: %s", bucket_name, object_name, exc)
+        return None, JsonResponse({"status": "deferred", "reason": "monthly-budget-exceeded"}, status=202)
+    except ValueError as exc:
+        logger.warning("[EventarcGCSRaw] Permanent failure for gs://%s/%s: %s", bucket_name, object_name, exc)
+        return None, JsonResponse({"error": "Invalid Eventarc digitalization request."}, status=400)
+    except Exception as exc:
+        logger.exception("[EventarcGCSRaw] Digitalization failed for gs://%s/%s: %s", bucket_name, object_name, exc)
+        return None, JsonResponse({"error": "Eventarc digitalization failed; retryable."}, status=503)
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class EventarcGCSRawView(View):
     """OIDC-verified Eventarc receiver scoped strictly to raw/ GCS uploads."""
@@ -538,13 +556,7 @@ class EventarcGCSRawView(View):
         if configured_bucket and bucket_name != configured_bucket:
             return JsonResponse({"status": "ignored", "reason": "unrecognized-bucket"})
 
-        try:
-            result = _digitalize_gcs_object(payload, bucket_name, object_name)
-        except ValueError as exc:
-            logger.warning("[EventarcGCSRaw] Permanent failure for gs://%s/%s: %s", bucket_name, object_name, exc)
-            return JsonResponse({"error": "Invalid Eventarc digitalization request."}, status=400)
-        except Exception as exc:
-            logger.exception("[EventarcGCSRaw] Digitalization failed for gs://%s/%s: %s", bucket_name, object_name, exc)
-            return JsonResponse({"error": "Eventarc digitalization failed; retryable."}, status=503)
-
+        result, error_response = _digitalize_or_error_response(payload, bucket_name, object_name)
+        if error_response is not None:
+            return error_response
         return JsonResponse(result)

@@ -355,6 +355,7 @@ steps:
         ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL}"
         ENV_VARS="$${ENV_VARS},SURREAL_NS=korda,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
         ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-2.5-flash,GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
+        ENV_VARS="$${ENV_VARS},GEMINI_MODEL_LITE=gemini-2.5-flash-lite,GEMINI_MODEL_PRO=gemini-2.5-flash"
         ENV_VARS="$${ENV_VARS},CLOUD_TASKS_SERVICE_ACCOUNT=korda-tasks-invoker@${PROJECT_ID}.iam.gserviceaccount.com,EVENTARC_SERVICE_ACCOUNT=$${RUNTIME_SERVICE_ACCOUNT}"
         SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
         SECRETS="$${SECRETS},SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest"
@@ -397,25 +398,30 @@ steps:
         printf '%s' "$${IMAGE_REFERENCE}" | grep -Eq '^${_REGION}-docker[.]pkg[.]dev/${PROJECT_ID}/cloud-run-source-deploy/korda@sha256:[0-9a-f]{64}$$'
         WEB_URL="$$(gcloud run services describe korda-web --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo '')"
         WORKER_URL="https://korda-worker-${PROJECT_NUMBER}.${_REGION}.run.app"
-        CUSTOM_DOMAINS="$$(gcloud beta run domain-mappings list --region=${_REGION} --format='value(DOMAIN)' 2>/dev/null | tr '\n' ',' | sed 's/,$$//')"
+        # Only domains routed to korda-web belong in ALLOWED_HOSTS; the region
+        # may host unrelated services' mappings (e.g. lead-exporter proxies).
+        CUSTOM_DOMAINS="$$(gcloud beta run domain-mappings list --region=${_REGION} --format=json 2>/dev/null | python3 -c 'import json,sys; print(",".join(sorted({str(m.get("metadata",{}).get("name","")) for m in json.load(sys.stdin) if m.get("spec",{}).get("routeName")=="korda-web"})))')"
         APP_URL='${_APP_URL}'
         if [ -z "$${APP_URL}" ] && [ -n "$${CUSTOM_DOMAINS}" ]; then
           PRIMARY_CUSTOM_DOMAIN="$$(echo "$${CUSTOM_DOMAINS}" | cut -d',' -f1)"
           APP_URL="https://$${PRIMARY_CUSTOM_DOMAIN}"
         fi
         APP_URL="$${APP_URL:-$${WEB_URL}}"
-        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},BUILD_SHA=$${BUILD_SHA},SHORT_SHA=$${BUILD_SHA}"
-        ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=2"
+        ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION};BUILD_SHA=$${BUILD_SHA};SHORT_SHA=$${BUILD_SHA}"
+        ENV_VARS="$${ENV_VARS};DJANGO_DEBUG=False;ENABLE_PERIODIC_MAINTENANCE=False;GUNICORN_WORKERS=2;GUNICORN_TIMEOUT=900"
         # Keep the deploy contract aligned with the Pulumi-managed media bucket
         # and its least-privilege runtime identity.
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-        ENV_VARS="$${ENV_VARS},GS_BUCKET_NAME=${PROJECT_ID}-media-korda,BACKUP_BUCKET_NAME=${PROJECT_ID}-backup-korda"
-        ENV_VARS="$${ENV_VARS},GCP_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_REGION=${_REGION}"
-        ENV_VARS="$${ENV_VARS},GCP_QUEUE_LOCATION=${_QUEUE_REGION},GCP_QUEUE_NAME=extractor-tasks-v2"
-        ENV_VARS="$${ENV_VARS},APP_URL=$${APP_URL},WORKER_URL=$${WORKER_URL},EXTRA_ALLOWED_HOSTS=$${CUSTOM_DOMAINS}"
-        ENV_VARS="$${ENV_VARS},SURREAL_NS=korda,SURREAL_DB=extractor,SURREALDB_OFFLINE=False"
-        ENV_VARS="$${ENV_VARS},GEMINI_MODEL=gemini-2.5-flash,GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
-        ENV_VARS="$${ENV_VARS},CLOUD_TASKS_SERVICE_ACCOUNT=korda-tasks-invoker@${PROJECT_ID}.iam.gserviceaccount.com,EVENTARC_SERVICE_ACCOUNT=$${RUNTIME_SERVICE_ACCOUNT}"
+        ENV_VARS="$${ENV_VARS};GS_BUCKET_NAME=${PROJECT_ID}-media-korda;BACKUP_BUCKET_NAME=${PROJECT_ID}-backup-korda"
+        ENV_VARS="$${ENV_VARS};GCP_PROJECT_ID=${PROJECT_ID};GOOGLE_CLOUD_PROJECT=${PROJECT_ID};GCP_REGION=${_REGION}"
+        ENV_VARS="$${ENV_VARS};GCP_QUEUE_LOCATION=${_QUEUE_REGION};GCP_QUEUE_NAME=extractor-tasks-v2"
+        # EXTRA_ALLOWED_HOSTS replaces the settings.py defaults when set, so the
+        # default suffixes must be re-included alongside discovered custom domains.
+        ENV_VARS="$${ENV_VARS};APP_URL=$${APP_URL};WORKER_URL=$${WORKER_URL};EXTRA_ALLOWED_HOSTS=$${CUSTOM_DOMAINS},.cloudflareaccess.com,.fainko.my.id,.fainko.id"
+        ENV_VARS="$${ENV_VARS};SURREAL_NS=korda;SURREAL_DB=extractor;SURREALDB_OFFLINE=False"
+        ENV_VARS="$${ENV_VARS};GEMINI_MODEL=gemini-2.5-flash;GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
+        ENV_VARS="$${ENV_VARS};GEMINI_MODEL_LITE=gemini-2.5-flash-lite;GEMINI_MODEL_PRO=gemini-2.5-flash"
+        ENV_VARS="$${ENV_VARS};CLOUD_TASKS_SERVICE_ACCOUNT=korda-tasks-invoker@${PROJECT_ID}.iam.gserviceaccount.com;EVENTARC_SERVICE_ACCOUNT=$${RUNTIME_SERVICE_ACCOUNT}"
         SECRETS="DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
         SECRETS="$${SECRETS},SURREAL_URL=SURREAL_URL:latest,SURREAL_USER=SURREAL_USER:latest"
         SECRETS="$${SECRETS},SURREAL_PASS=SURREAL_PASS:latest,ADMIN_EMAIL=ADMIN_EMAIL:latest"
@@ -434,7 +440,7 @@ steps:
           --allow-unauthenticated \
           --memory=1Gi \
           --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
-          --set-env-vars="$${ENV_VARS}" \
+          --set-env-vars="^;^$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 
   # 6. Verify the public runtime reports the exact Cloud Build release identity.
