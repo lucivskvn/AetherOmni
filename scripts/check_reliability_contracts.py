@@ -121,7 +121,7 @@ def _check_task_authentication(errors: list[str], cloudbuild: str) -> None:
             "korda-task-invoker-account",
             "korda-task-creator-act-as",
             "korda-task-agent-act-as",
-            'value=f"https://korda-worker-{project_info.number}.{region}.run.app"',
+            'worker_task_base_url = f"https://korda-worker-{project_info.number}.{region}.run.app"',
         ),
         "Pulumi must provision scoped task identities and bootstrap the worker self URL.",
     )
