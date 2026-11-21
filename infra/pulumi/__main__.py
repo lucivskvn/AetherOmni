@@ -8,6 +8,7 @@ Provisions:
 - Eventarc Trigger scoped to raw/ GCS uploads
 """
 
+import base64
 import os
 
 import pulumi
@@ -284,10 +285,12 @@ custom_domain = config.get("custom_domain")
 extra_allowed_hosts = config.get("extra_allowed_hosts") or ""
 extra_csrf_origins = config.get("extra_csrf_origins") or ""
 
+# The task handler verifies OIDC audience against this WORKER_URL value, so
+# scheduler dispatches must target the same project-number URL form.
+worker_task_base_url = f"https://korda-worker-{project_info.number}.{region}.run.app"
+
 common_env = [
-    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
-        name="WORKER_URL", value=f"https://korda-worker-{project_info.number}.{region}.run.app"
-    ),
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="WORKER_URL", value=worker_task_base_url),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="DJANGO_DEBUG", value="False"),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="RELEASE_VERSION", value=release_version),
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_PROJECT_ID", value=project),
@@ -503,6 +506,47 @@ backup_schedule = gcp.cloudscheduler.Job(
     ),
     opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=[backup_job]),
 )
+
+# 8. Cloud Scheduler maintenance dispatches -> private worker task handler.
+#    The worker scales to zero, so in-process periodic threads cannot run in
+#    production; scheduled OIDC POSTs wake it for bounded maintenance work.
+#    The task-invoker identity is already allowlisted by the handler's OIDC
+#    check and holds run.invoker on the worker.
+worker_maintenance_jobs = {
+    "korda-reaper-schedule": (
+        "*/15 * * * *",
+        "reap_stale_tasks",
+        "Recover documents stuck in non-terminal states",
+    ),
+    "korda-cleanup-schedule": (
+        "0 * * * *",
+        "cleanup_expired_documents",
+        "Purge documents past their retention expiry",
+    ),
+}
+for sched_name, (cron, task_name, description) in worker_maintenance_jobs.items():
+    gcp.cloudscheduler.Job(
+        sched_name,
+        name=sched_name,
+        description=description,
+        schedule=cron,
+        time_zone="UTC",
+        region=region,
+        project=project,
+        http_target=gcp.cloudscheduler.JobHttpTargetArgs(
+            http_method="POST",
+            uri=f"{worker_task_base_url}/internal/tasks/{task_name}/",
+            headers={"Content-Type": "application/json"},
+            body=base64.b64encode(b"{}").decode("ascii"),
+            oidc_token=gcp.cloudscheduler.JobHttpTargetOidcTokenArgs(
+                service_account_email=task_invoker_account.email,
+                audience=worker_task_base_url,
+            ),
+        ),
+        opts=pulumi.ResourceOptions(
+            provider=gcp_provider, depends_on=[worker_service, worker_invoker_binding]
+        ),
+    )
 
 # Stack Outputs
 pulumi.export("web_url", web_service.uri)

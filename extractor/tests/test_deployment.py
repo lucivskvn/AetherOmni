@@ -296,3 +296,21 @@ class ProductionDeploymentContractTestCase(TestCase):
             self.assertIn(f'"{permission}"', pulumi_program)
         self.assertIn("-compute@developer.gserviceaccount.com", pulumi_program)
         self.assertIn("korda-deploy-preflight-binding", pulumi_program)
+
+    def test_pulumi_schedules_worker_maintenance_dispatches(self):
+        """Scale-to-zero workers cannot run in-process periodic threads, so
+        Cloud Scheduler must wake the private worker for reaper/cleanup tasks.
+
+        Regression: reap_stale_tasks and cleanup_expired_documents were
+        registered in the task registry but never invoked in production —
+        expired documents were never purged and stuck tasks never recovered.
+        """
+        pulumi_program = self._repo_file("infra", "pulumi", "__main__.py")
+
+        self.assertIn('"korda-reaper-schedule"', pulumi_program)
+        self.assertIn('"korda-cleanup-schedule"', pulumi_program)
+        self.assertIn('"reap_stale_tasks"', pulumi_program)
+        self.assertIn('"cleanup_expired_documents"', pulumi_program)
+        self.assertIn("/internal/tasks/", pulumi_program)
+        self.assertIn("oidc_token", pulumi_program)
+        self.assertIn("task_invoker_account.email", pulumi_program)
