@@ -15,6 +15,7 @@ from extractor.llm_gateway import (
     check_budget_and_api_limit,
     extract_retry_delay,
     fetch_realtime_model_pricing,
+    generate_llm_stream_unified,
     is_rate_limit_error,
 )
 
@@ -202,3 +203,52 @@ class LLMGatewayTestCase(TestCase):
     def test_call_openrouter_handles_exception(self, mock_key, mock_post):
         with self.assertRaises(GeminiProcessingError):
             _call_openrouter("Hello prompt", None, "openrouter/free")
+
+    @patch("extractor.models.MonthlySpendLog.add_cost")
+    @patch("extractor.llm_gateway._stream_gemini_direct")
+    @patch("extractor.llm_gateway._determine_api_routing", return_value=("gemini-2.5-flash", False))
+    @patch("extractor.llm_gateway._resolve_model_name", return_value="gemini-2.5-flash")
+    @patch("extractor.llm_gateway._get_openrouter_api_key", return_value="")
+    def test_stream_unified_records_provider_usage_spend(
+        self, mock_or_key, mock_resolve, mock_routing, mock_stream, mock_add_cost
+    ):
+        """Streamed Gemini responses must persist token spend to the monthly ledger.
+
+        Regression: generate_llm_stream_unified bypassed all cost accounting,
+        letting RAG streaming answers consume budget invisibly.
+        """
+        usage = MagicMock()
+        usage.prompt_token_count = 1200
+        usage.candidates_token_count = 300
+
+        def fake_stream(model_name, prompt, system_instruction, usage_sink=None):
+            if usage_sink is not None:
+                usage_sink["usage"] = usage
+            yield "Hello "
+            yield "world"
+
+        mock_stream.side_effect = fake_stream
+
+        chunks = list(generate_llm_stream_unified("query", model_name="gemini-2.5-flash"))
+
+        self.assertEqual("".join(chunks), "Hello world")
+        mock_add_cost.assert_called_once()
+        _args, kwargs = mock_add_cost.call_args
+        self.assertEqual(kwargs.get("in_tok"), 1200)
+        self.assertEqual(kwargs.get("out_tok"), 300)
+
+    @patch("extractor.models.MonthlySpendLog.add_cost")
+    @patch("extractor.llm_gateway._stream_gemini_direct")
+    @patch("extractor.llm_gateway._determine_api_routing", return_value=("gemini-2.5-flash", False))
+    @patch("extractor.llm_gateway._resolve_model_name", return_value="gemini-2.5-flash")
+    @patch("extractor.llm_gateway._get_openrouter_api_key", return_value="")
+    def test_stream_unified_skips_spend_when_no_usage_metadata(
+        self, mock_or_key, mock_resolve, mock_routing, mock_stream, mock_add_cost
+    ):
+        """Providers that omit usage_metadata must not write zero-cost ledger rows."""
+        mock_stream.side_effect = lambda *a, **k: iter(["chunk"])
+
+        chunks = list(generate_llm_stream_unified("query", model_name="gemini-2.5-flash"))
+
+        self.assertEqual(chunks, ["chunk"])
+        mock_add_cost.assert_not_called()
