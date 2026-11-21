@@ -543,9 +543,7 @@ for sched_name, (cron, task_name, description) in worker_maintenance_jobs.items(
                 audience=worker_task_base_url,
             ),
         ),
-        opts=pulumi.ResourceOptions(
-            provider=gcp_provider, depends_on=[worker_service, worker_invoker_binding]
-        ),
+        opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=[worker_service, worker_invoker_binding]),
     )
 
 # Stack Outputs
