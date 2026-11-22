@@ -519,8 +519,8 @@ class CleanupExpiredDocumentsTestCase(TestCase):
         cleaned = _cleanup_single_expired_doc(doc, hash_counts, mock_db)
         self.assertTrue(cleaned)
         mock_cancel_task.assert_called_once_with("doc-inflight-789", {"cloud_task_name": "task-abc"})
-        mock_bcast.assert_any_call("doc-inflight-789", "FAILED")
-        mock_bcast.assert_any_call("doc-inflight-789", "DELETED")
+        mock_bcast.assert_any_call("doc-inflight-789", "FAILED", owner_id="supabase-user-uuid-111")
+        mock_bcast.assert_any_call("doc-inflight-789", "DELETED", owner_id="supabase-user-uuid-111")
 
     @patch("extractor.surreal_db._run")
     @patch("extractor.surreal_db._first_result", return_value=None)

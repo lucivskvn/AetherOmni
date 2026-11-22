@@ -290,6 +290,13 @@ def _build_synthetic_surreal_doc(d: dict, users_map: dict | None = None) -> Simp
     return doc_obj
 
 
+def _doc_owner_id(doc: Any) -> str | None:
+    """Return the uploaded_by_id owner key from a raw dict or wrapped document."""
+    if isinstance(doc, dict):
+        return doc.get("uploaded_by_id")
+    return getattr(doc, "uploaded_by_id", None)
+
+
 def _wrap_surreal_doc(d, users_map=None):
     if not d:
         return None
@@ -810,7 +817,7 @@ def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: st
         document=doc,
         ip=ip,
     )
-    broadcast_status_change(new_uuid, "COMPLETED")
+    broadcast_status_change(new_uuid, "COMPLETED", owner_id=_doc_owner_id(existing_doc))
     return {"status": "cached", "name": orig_name}
 
 
@@ -853,7 +860,7 @@ def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
         cloud_tasks.enqueue("process_document", {"document_id": doc_id})
     else:
         cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
-    broadcast_status_change(str(doc_uuid), "PENDING")
+    broadcast_status_change(str(doc_uuid), "PENDING", owner_id=_doc_owner_id(existing_doc))
     return {"status": "success", "name": f"{orig_name} (re-enqueued)"}
 
 
@@ -1180,7 +1187,7 @@ class DocumentSaveView(LoginRequiredMixin, View):
             cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_id": doc_id})
         else:
             cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid})
-        broadcast_status_change(str(doc_uuid), "PENDING")
+        broadcast_status_change(str(doc_uuid), "PENDING", owner_id=_doc_owner_id(doc_wrapped))
 
         messages.success(request, "Changes saved and re-indexing queued successfully!")
         return redirect(ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
@@ -1240,7 +1247,7 @@ class DocumentDeleteView(LoginRequiredMixin, View):
         from extractor.cloud_tasks import cancel_document_task
 
         cancel_document_task(doc_uuid, surreal_db.get_document(doc_uuid) or {})
-        broadcast_status_change(str(doc_uuid), "FAILED")
+        broadcast_status_change(str(doc_uuid), "FAILED", owner_id=_doc_owner_id(doc))
 
     def post(self, request, doc_uuid):
         is_ajax = (
@@ -1296,7 +1303,7 @@ class DocumentDeleteView(LoginRequiredMixin, View):
             except Exception as sqlite_cleanup_err:
                 logger.debug("[Delete] SQLite cleanup for doc_uuid=%s skipped: %s", doc_uuid, sqlite_cleanup_err)
 
-        broadcast_status_change(str(doc_uuid), "DELETED")
+        broadcast_status_change(str(doc_uuid), "DELETED", owner_id=raw_doc.get("uploaded_by_id"))
 
         if is_ajax:
             return JsonResponse({"status": "success", "message": f"Document '{orig_name}' deleted successfully."})
@@ -1343,7 +1350,7 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             from extractor.cloud_tasks import cancel_document_task
 
             cancel_document_task(doc_uuid, surreal_db.get_document(doc_uuid) or doc)
-            broadcast_status_change(str(doc_uuid), "FAILED")
+            broadcast_status_change(str(doc_uuid), "FAILED", owner_id=doc.get("uploaded_by_id"))
 
     def post(self, request):
         raw_docs = surreal_db.list_documents()
@@ -1730,7 +1737,7 @@ def _enqueue_restarted_document(doc: dict, doc_uuid: str, cloud_tasks: Any) -> N
         cloud_tasks.enqueue("process_document", {"document_id": doc_id})
     else:
         cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
-    broadcast_status_change(doc_uuid, "PENDING")
+    broadcast_status_change(doc_uuid, "PENDING", owner_id=doc.get("uploaded_by_id"))
 
 
 def _restart_single_document(doc, request, cloud_tasks):
@@ -1807,7 +1814,7 @@ def _abort_inflight_processing(doc, doc_uuid, surreal_db) -> None:
 
             raw_surreal_doc = surreal_db.get_document(doc_uuid) if hasattr(surreal_db, "get_document") else {}
             cancel_document_task(doc_uuid, raw_surreal_doc or {})
-            broadcast_status_change(str(doc_uuid), "FAILED")
+            broadcast_status_change(str(doc_uuid), "FAILED", owner_id=_doc_owner_id(doc))
         except Exception as abort_err:
             logger.debug("[Bulk Delete] Could not cancel in-flight doc %s: %s", doc_uuid, abort_err)
 
@@ -1855,7 +1862,7 @@ def _delete_single_document(doc, hash_ref_counts, request, default_storage, surr
     )
 
     if doc_uuid:
-        broadcast_status_change(str(doc_uuid), "DELETED")
+        broadcast_status_change(str(doc_uuid), "DELETED", owner_id=_doc_owner_id(doc))
 
 
 def _get_offline_docs_for_delete(request, document_ids):
@@ -2276,7 +2283,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
 
         self._requeue_document_task(doc_wrapped, doc_uuid, request)
-        broadcast_status_change(str(doc_uuid), "PENDING")
+        broadcast_status_change(str(doc_uuid), "PENDING", owner_id=_doc_owner_id(doc_ref))
 
         if is_ajax:
             return JsonResponse({"status": "success", "message": "Curation pipeline re-enqueued."})
@@ -2335,7 +2342,7 @@ class DocumentCancelView(LoginRequiredMixin, View):
                 return JsonResponse({"error": DOCUMENT_CANCEL_FAILURE_MSG}, status=503)
             messages.error(request, DOCUMENT_CANCEL_FAILURE_MSG)
             return redirect("dashboard")
-        broadcast_status_change(str(doc_uuid), "FAILED")
+        broadcast_status_change(str(doc_uuid), "FAILED", owner_id=raw_doc.get("uploaded_by_id"))
 
         _record_view_audit(
             request,

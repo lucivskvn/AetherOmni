@@ -45,6 +45,13 @@ class Command(BaseCommand):
         self.stdout.write(f"Processing Mode: {'SYNCHRONOUS (Live logs)' if sync_mode else 'ASYNCHRONOUS (Queue)'}")
         self.stdout.write(f"Force Re-ingest: {force_mode}\n")
 
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            raise CommandError(
+                "ingest_sources writes through the Django ORM, which is the offline document store. "
+                "In production, documents and chunks live in SurrealDB, so this command would create "
+                "mirror rows invisible to the application. Run it only with SURREALDB_OFFLINE=True."
+            )
+
         if not os.path.exists(sources_dir):
             raise CommandError(f"Sources directory does not exist: {sources_dir}")
 
@@ -144,7 +151,11 @@ class Command(BaseCommand):
         try:
             surreal_db.clone_chunks(str(existing_doc.uuid), str(doc.uuid))
         except Exception as exc:
-            self.stdout.write(self.style.WARNING(f"   - [WARNING] SurrealDB chunk clone failed: {exc}"))
+            doc.status = "FAILED"
+            doc.error_message = f"Chunk clone failed: {exc}"
+            doc.save(update_fields=["status", "error_message"])
+            self.stdout.write(self.style.ERROR(f"   - [ERROR] Chunk clone failed; doc marked FAILED: {exc}"))
+            return
 
         self.stdout.write(self.style.SUCCESS("   - [SUCCESS] Duplicated reference created in DB at $0.00 cost.\n"))
 
