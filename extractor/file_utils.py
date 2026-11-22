@@ -89,6 +89,8 @@ _XLSX_MAX_ROWS: int = 5_000
 _XLSX_MAX_COLUMNS: int = 50
 _XLSX_MAX_CELL_CHARS: int = 1_024
 _XLSX_MAX_MARKDOWN_BYTES: int = 16 * 1024 * 1024
+_LOCAL_MAX_MARKDOWN_BYTES: int = 16 * 1024 * 1024
+_LOCAL_MAX_PDF_PAGES: int = 600
 
 
 def validate_zip(zf: zipfile.ZipFile) -> None:
@@ -199,40 +201,49 @@ def process_csv_local(file_path: str) -> str:
     """
     Converts tabular CSV files cleanly to an aligned Markdown table locally ($0 cost!).
     Supports heavy columns and escapes standard symbols.
+    Streams rows and enforces a rendered-output budget so pathological
+    files cannot exhaust worker memory.
     """
     import csv
 
     markdown_lines: list[str] = []
-    try:
-        with open(file_path, newline="", encoding="utf-8-sig") as f:
-            reader = csv.reader(f)
-            rows = list(reader)
-    except UnicodeDecodeError:
-        with open(file_path, newline="", encoding="latin-1") as f:
-            reader = csv.reader(f)
-            rows = list(reader)
+    rendered_bytes = 0
 
-    if not rows:
-        return "*Empty CSV Document*"
+    def _emit_row(cells: list[str]) -> None:
+        nonlocal rendered_bytes
+        line = "| " + " | ".join(cells) + " |"
+        rendered_bytes += len(line.encode("utf-8")) + 1
+        if rendered_bytes > _LOCAL_MAX_MARKDOWN_BYTES:
+            raise ValueError("CSV document exceeds the rendered output limit.")
+        markdown_lines.append(line)
 
-    headers = rows[0]
-    markdown_lines.extend(
-        (
-            "| " + " | ".join([h.replace("|", "\\|") for h in headers]) + " |",
-            "| " + " | ".join(["---" for _ in headers]) + " |",
-        )
-    )
+    def _escape_cell(cell: Any) -> str:
+        return str(cell).replace("|", "\\|").replace("\n", "<br>")
 
-    for row in rows[1:]:
-        if len(row) < len(headers):
-            row += [""] * (len(headers) - len(row))
-        elif len(row) > len(headers):
-            row = row[: len(headers)]
-        markdown_lines.append(
-            "| " + " | ".join([cell.replace("|", "\\|").replace("\n", "<br>") for cell in row]) + " |"
-        )
-
-    return "\n".join(markdown_lines)
+    last_error: Exception | None = None
+    for encoding in ("utf-8-sig", "latin-1"):
+        try:
+            with open(file_path, newline="", encoding=encoding) as f:
+                reader = csv.reader(f)
+                try:
+                    headers = next(reader)
+                except StopIteration:
+                    return "*Empty CSV Document*"
+                _emit_row([_escape_cell(h) for h in headers])
+                _emit_row(["---" for _ in headers])
+                for row in reader:
+                    if len(row) < len(headers):
+                        row += [""] * (len(headers) - len(row))
+                    elif len(row) > len(headers):
+                        row = row[: len(headers)]
+                    _emit_row([_escape_cell(c) for c in row])
+            return "\n".join(markdown_lines)
+        except UnicodeDecodeError as exc:
+            last_error = exc
+            markdown_lines.clear()
+            rendered_bytes = 0
+            continue
+    raise ValueError(f"CSV document could not be decoded: {last_error}") from last_error
 
 
 def process_txt_local(file_path: str) -> str:
@@ -272,6 +283,12 @@ def process_json_local(file_path: str) -> str:
     Parses local JSON documents (including Quran verse datasets, Hadith collections,
     and structured JSON payloads) into structured Markdown sections and tables ($0 API cost).
     """
+    # json.load amplifies input size several-fold in memory; cap the input so a
+    # max-size upload cannot exhaust worker memory before formatting budgets apply.
+    import os
+
+    if os.path.getsize(file_path) > 25 * 1024 * 1024:
+        raise ValueError("JSON document exceeds the maximum supported input size.")
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
@@ -286,14 +303,18 @@ def process_json_local(file_path: str) -> str:
         if not data:
             return "*Empty JSON List*"
         if all(isinstance(item, dict) for item in data):
-            return _format_json_rows_as_table("Dataset", data)
-        return "\n\n".join(f"- {json.dumps(item, ensure_ascii=False)}" for item in data)
-
-    if isinstance(data, dict):
+            result = _format_json_rows_as_table("Dataset", data)
+        else:
+            result = "\n\n".join(f"- {json.dumps(item, ensure_ascii=False)}" for item in data)
+    elif isinstance(data, dict):
         sections = [_format_json_dict_section(k, v) for k, v in data.items()]
-        return "\n\n".join(sections) if sections else "*Empty JSON Object*"
+        result = "\n\n".join(sections) if sections else "*Empty JSON Object*"
+    else:
+        result = str(data)
 
-    return str(data)
+    if len(result.encode("utf-8")) > _LOCAL_MAX_MARKDOWN_BYTES:
+        raise ValueError("JSON document exceeds the rendered output limit.")
+    return result
 
 
 def _format_markdown_table_sheet(
@@ -449,16 +470,24 @@ def process_pdf_local(file_path: str) -> tuple[str, int]:
         try:
             pages_md: list[str] = []
             page_count = len(doc)
+            if page_count > _LOCAL_MAX_PDF_PAGES:
+                raise ValueError("PDF document exceeds the maximum supported page count.")
+            extracted_bytes = 0
             for page_num in range(page_count):
                 page = doc[page_num]
                 text = page.get_text("text").strip()
                 if text:
+                    extracted_bytes += len(text.encode("utf-8"))
+                    if extracted_bytes > _LOCAL_MAX_MARKDOWN_BYTES:
+                        raise ValueError("PDF document exceeds the rendered output limit.")
                     pages_md.append(f"## Page {page_num + 1}\n\n{text}")
         finally:
             doc.close()
         if pages_md and len("".join(pages_md).strip()) > 30:
             return "\n\n---\n\n".join(pages_md), page_count
         return "", page_count
+    except ValueError:
+        raise
     except Exception as exc:
         logger.debug("[PDF Local] PyMuPDF local text extraction skipped (%s)", exc)
 
@@ -467,14 +496,22 @@ def process_pdf_local(file_path: str) -> tuple[str, int]:
 
         reader = pypdf.PdfReader(file_path)
         page_count = len(reader.pages)
+        if page_count > _LOCAL_MAX_PDF_PAGES:
+            raise ValueError("PDF document exceeds the maximum supported page count.")
         pages_md = []
+        extracted_bytes = 0
         for p_idx, page in enumerate(reader.pages, 1):
             text = (page.extract_text() or "").strip()
             if text:
+                extracted_bytes += len(text.encode("utf-8"))
+                if extracted_bytes > _LOCAL_MAX_MARKDOWN_BYTES:
+                    raise ValueError("PDF document exceeds the rendered output limit.")
                 pages_md.append(f"## Page {p_idx}\n\n{text}")
         if pages_md and len("".join(pages_md).strip()) > 30:
             return "\n\n---\n\n".join(pages_md), page_count
         return "", page_count
+    except ValueError:
+        raise
     except Exception as exc:
         logger.debug("[PDF Local] pypdf local text extraction skipped (%s)", exc)
 
