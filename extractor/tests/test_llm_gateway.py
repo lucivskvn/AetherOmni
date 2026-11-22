@@ -47,6 +47,29 @@ class LLMGatewayTestCase(TestCase):
         self.assertGreater(cost, Decimal("0"))
         self.assertIsInstance(cost, Decimal)
 
+    @patch("extractor.llm_gateway.fetch_realtime_model_pricing")
+    def test_resolve_pricing_never_binds_paid_model_to_free_variant(self, mock_fetch):
+        from extractor.llm_gateway import resolve_realtime_pricing
+
+        mock_fetch.return_value = {
+            "google/gemma-3-27b-it:free": {"prompt": Decimal("0"), "completion": Decimal("0")},
+            "google/gemma-3-27b-it": {"prompt": Decimal("0.000001"), "completion": Decimal("0.000002")},
+        }
+        prompt_rate, completion_rate = resolve_realtime_pricing("gemma-3-27b")
+        self.assertEqual(prompt_rate, Decimal("0.000001"))
+        self.assertEqual(completion_rate, Decimal("0.000002"))
+
+    @patch("extractor.llm_gateway.fetch_realtime_model_pricing")
+    def test_resolve_pricing_prefers_most_specific_soft_match(self, mock_fetch):
+        from extractor.llm_gateway import resolve_realtime_pricing
+
+        mock_fetch.return_value = {
+            "google/gemini-3.5-flash-lite": {"prompt": Decimal("0.0000001"), "completion": Decimal("0.0000004")},
+            "google/gemini-3.5-flash": {"prompt": Decimal("0.0000015"), "completion": Decimal("0.000009")},
+        }
+        prompt_rate, _ = resolve_realtime_pricing("gemini-3.5")
+        self.assertEqual(prompt_rate, Decimal("0.0000015"))
+
     def test_is_rate_limit_error(self):
         err_429 = Exception("429 Too Many Requests")
         err_quota = Exception("ResourceHasBeenExhausted: quota exceeded")

@@ -279,10 +279,24 @@ def resolve_realtime_pricing(model_name: str) -> tuple[Decimal, Decimal] | None:
             if m_id == model_name or m_id.split("/")[-1] == model_name:
                 return pricing["prompt"], pricing["completion"]
 
-        # 3. Soft match (e.g. "gemini-3.5-flash" in "google/gemini-3.1-flash-lite")
+        # 3. Soft match on the model tail (e.g. "gemini-3.5-flash" matching
+        # "google/gemini-3.1-flash-lite"). Prefer the candidate whose tail is
+        # closest in length to the request so "flash" is not priced as
+        # "flash-lite", and never bind a non-free model to a zero-priced
+        # ":free" variant which would under-report spend.
+        request_is_free = "free" in model_name
+        best_match: tuple[int, dict] | None = None
         for m_id, pricing in pricing_map.items():
-            if model_name in m_id or m_id in model_name:
-                return pricing["prompt"], pricing["completion"]
+            tail = m_id.split("/")[-1]
+            if not (model_name in tail or tail in model_name or model_name in m_id or m_id in model_name):
+                continue
+            if not request_is_free and m_id.endswith(":free"):
+                continue
+            score = abs(len(tail) - len(model_name))
+            if best_match is None or score < best_match[0]:
+                best_match = (score, pricing)
+        if best_match is not None:
+            return best_match[1]["prompt"], best_match[1]["completion"]
     except (KeyError, ValueError, TypeError, AttributeError) as e:
         logger.debug("[Pricing API] Error resolving pricing for %s: %s", model_name, e)
 
