@@ -6,6 +6,8 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.db.models import JSONField
 
+from extractor.utils import KEY_CSRF_TRUSTED_ORIGINS
+
 logger = logging.getLogger(__name__)
 
 
@@ -145,7 +147,7 @@ class SystemSettings(models.Model):
                         self.monthly_budget_usd = Decimal(str(raw_data.get("monthly_budget_usd", 10.0)))
                         self.selected_model = raw_data.get("selected_model", "auto")
                         self.currency = raw_data.get("currency", "auto")
-                        self.csrf_trusted_origins = raw_data.get("csrf_trusted_origins", "")
+                        self.csrf_trusted_origins = raw_data.get(KEY_CSRF_TRUSTED_ORIGINS, "")
 
                     def save(self, *args, **kwargs):
                         # Read-only proxy for the remote settings record in offline mode.
