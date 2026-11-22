@@ -1044,7 +1044,11 @@ class DocumentDetailView(LoginRequiredMixin, View):
 
             raise Http404(DOCUMENT_NOT_FOUND_MSG)
 
-        raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned=True)
+        try:
+            raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned=True)
+        except RuntimeError:
+            logger.warning("[Detail View] Knowledge store unreachable for doc %s; rendering 503 page.", doc_uuid)
+            return render(request, "extractor/service_unavailable.html", status=503)
         if not raw_doc:
             from django.http import Http404
 
