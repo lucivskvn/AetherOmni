@@ -422,10 +422,11 @@ class CleanupExpiredDocumentsTestCase(TestCase):
         mock_s3.assert_not_called()
 
     @patch("extractor.cloud_tasks.enqueue")
-    @patch("extractor.surreal_db.update_document")
+    @patch("extractor.surreal_db.update_document_if_status")
     def test_reap_single_stale_doc_skips_cancelled_doc(self, mock_update, mock_enqueue):
         from extractor.tasks import _reap_single_stale_doc
 
+        mock_update.return_value = {"doc_uuid": "doc-cancelled-123", "status": "FAILED"}
         doc = {
             "doc_uuid": "doc-cancelled-123",
             "status": "EXTRACTING",
@@ -437,7 +438,7 @@ class CleanupExpiredDocumentsTestCase(TestCase):
         self.assertTrue(reaped)
         # Should NOT enqueue auto-retry
         mock_enqueue.assert_not_called()
-        # Should mark as FAILED
+        # Should mark as FAILED via the status-guarded write
         mock_update.assert_called_with(
             "doc-cancelled-123",
             {
@@ -447,6 +448,7 @@ class CleanupExpiredDocumentsTestCase(TestCase):
                     "The background worker may have scaled down, been preempted, or queue permissions were missing."
                 ),
             },
+            allowed_statuses=["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"],
         )
 
     @patch("extractor.tasks.log_audit_event")

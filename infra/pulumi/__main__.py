@@ -543,6 +543,15 @@ for sched_name, (cron, task_name, description) in worker_maintenance_jobs.items(
                 audience=worker_task_base_url,
             ),
         ),
+        # Bounded retries: a transient worker/SurrealDB 503 must not wait a full
+        # cron period for the next attempt (the Cloud Tasks queue retry policy
+        # does not apply to direct Scheduler dispatches).
+        retry_config=gcp.cloudscheduler.JobRetryConfigArgs(
+            retry_count=3,
+            min_backoff_duration="30s",
+            max_backoff_duration="300s",
+            max_doublings=3,
+        ),
         opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=[worker_service, worker_invoker_binding]),
     )
 

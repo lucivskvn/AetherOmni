@@ -327,9 +327,12 @@ from the configured `ADMIN_EMAIL`, never from Supabase app metadata;
 the application never promotes the first authenticated user automatically.
 
 Cloud Run deploys the worker in bounded on-demand mode by default. Cloud Tasks
-wakes it for queued ingestion and it scales back to zero when idle; periodic
-SurrealDB maintenance is disabled unless an explicit always-on operating mode is
-selected. Web instances never start maintenance threads. Paid document deletion
+wakes it for queued ingestion and it scales back to zero when idle; in-process
+periodic maintenance threads stay disabled. Instead, Pulumi-managed Cloud
+Scheduler jobs (`korda-reaper-schedule`, `korda-cleanup-schedule`) dispatch OIDC
+POSTs to the worker's `/internal/tasks/` endpoints, so stale-task recovery and
+retention cleanup run against the scale-to-zero worker without an always-on
+instance. Web instances never start maintenance threads. Paid document deletion
 stops if spend-ledger persistence fails.
 
 ---

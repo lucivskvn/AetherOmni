@@ -1556,6 +1556,9 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     logger.info("[Cron] Cleanup finished. Deleted %s expired records.", purged_count)
 
 
+_IN_FLIGHT_STATUSES = ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]
+
+
 def _reap_single_stale_doc(doc: dict) -> bool:
     """Check one stale document; auto-retry if under retry limit or mark FAILED. Returns True if reaped."""
     doc_uuid = str(doc.get("doc_uuid") or "")
@@ -1567,6 +1570,9 @@ def _reap_single_stale_doc(doc: dict) -> bool:
 
     # If document is stuck in PENDING or had a worker restart and has retries left, auto-re-enqueue it
     # only if the user has not explicitly requested cancellation.
+    # The status-guarded write is a compare-and-swap: if a live worker moved the
+    # document to a terminal state after the scan, the UPDATE matches zero rows
+    # and we must not enqueue a duplicate processing task.
     if retry_count < 3 and not doc.get(CANCEL_REQUESTED):
         logger.info(
             "[Reaper] Document %s was stuck in '%s' (attempt %s/3). Auto-re-enqueuing task...",
@@ -1574,7 +1580,7 @@ def _reap_single_stale_doc(doc: dict) -> bool:
             current_status,
             retry_count + 1,
         )
-        surreal_db.update_document(
+        claimed = surreal_db.update_document_if_status(
             doc_uuid,
             {
                 "status": "PENDING",
@@ -1582,7 +1588,15 @@ def _reap_single_stale_doc(doc: dict) -> bool:
                 "error_message": "",
                 CANCEL_REQUESTED: False,
             },
+            allowed_statuses=_IN_FLIGHT_STATUSES,
         )
+        if claimed is None:
+            logger.info(
+                "[Reaper] Document %s changed state since scan (was '%s'); skipping re-enqueue.",
+                doc_uuid,
+                current_status,
+            )
+            return False
         try:
             from django.conf import settings
 
@@ -1601,10 +1615,16 @@ def _reap_single_stale_doc(doc: dict) -> bool:
             return True
         except Exception as enq_err:
             logger.warning("[Reaper] Auto-retry enqueue failed for %s: %s", doc_uuid, enq_err)
-            surreal_db.update_document(doc_uuid, {"retry_count": retry_count, "status": current_status})
+            # Only roll back while the document is still the PENDING row we just wrote;
+            # an unconditional write could clobber a concurrent worker transition.
+            surreal_db.update_document_if_status(
+                doc_uuid,
+                {"retry_count": retry_count, "status": current_status},
+                allowed_statuses=["PENDING"],
+            )
             return False
 
-    surreal_db.update_document(
+    failed = surreal_db.update_document_if_status(
         doc_uuid,
         {
             "status": "FAILED",
@@ -1613,7 +1633,15 @@ def _reap_single_stale_doc(doc: dict) -> bool:
                 "The background worker may have scaled down, been preempted, or queue permissions were missing."
             ),
         },
+        allowed_statuses=_IN_FLIGHT_STATUSES,
     )
+    if failed is None:
+        logger.info(
+            "[Reaper] Document %s changed state since scan (was '%s'); skipping FAILED write.",
+            doc_uuid,
+            current_status,
+        )
+        return False
     logger.warning("[Reaper] Reaped stale document task %s (was %s, max retries reached).", doc_uuid, current_status)
 
     uploaded_by_id = doc.get("uploaded_by_id")
