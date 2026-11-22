@@ -125,6 +125,34 @@ class LLMGatewayTestCase(TestCase):
         with self.assertRaises(BudgetExceededException):
             check_budget_and_api_limit()
 
+    @patch("extractor.models.MonthlySpendLog.total_for_month", return_value=Decimal("0"))
+    @patch("extractor.surreal_db.monthly_spend_ledger_total")
+    @patch("extractor.surreal_db._run")
+    @override_settings(SURREALDB_OFFLINE=False)
+    def test_check_budget_fails_closed_on_ledger_read_failure(self, mock_run, mock_ledger, mock_spend):
+        mock_ledger.return_value = None
+        with self.assertRaises(RuntimeError):
+            check_budget_and_api_limit()
+        mock_run.assert_not_called()
+
+    @patch("extractor.models.MonthlySpendLog.total_for_month", return_value=Decimal("0"))
+    @patch("extractor.surreal_db.monthly_spend_ledger_total", return_value={"cost_usd": 0.0})
+    @patch("extractor.surreal_db._run")
+    @override_settings(SURREALDB_OFFLINE=False)
+    def test_check_budget_fails_closed_on_malformed_result(self, mock_run, mock_ledger, mock_spend):
+        mock_run.return_value = [{"result": {"unexpected": True}}]
+        with self.assertRaises(RuntimeError):
+            check_budget_and_api_limit()
+
+    @patch("extractor.models.MonthlySpendLog.total_for_month", return_value=Decimal("0"))
+    @patch("extractor.surreal_db.monthly_spend_ledger_total", return_value={"cost_usd": 0.0})
+    @patch("extractor.surreal_db._run")
+    @override_settings(SURREALDB_OFFLINE=False)
+    def test_check_budget_honors_zero_cap(self, mock_run, mock_ledger, mock_spend):
+        mock_run.return_value = [{"result": {"live_spent": 0.0, "deleted_spent": 0.0, "cap": 0}}]
+        with self.assertRaises(BudgetExceededException):
+            check_budget_and_api_limit()
+
     @patch("extractor.llm_gateway._get_cached_realtime_pricing", return_value=None)
     @patch("extractor.llm_gateway.httpx.get")
     def test_fetch_realtime_model_pricing_success(self, mock_httpx_get, mock_get_cached):
