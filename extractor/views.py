@@ -3182,7 +3182,15 @@ def _parse_json_dict_body(request) -> tuple[dict | None, JsonResponse | None]:
         return None, JsonResponse({"error": "Request body too large."}, status=413)
 
     try:
-        body = json.loads(request.body) if request.body else {}
+        if content_length.isdigit():
+            raw_body = request.body
+        else:
+            # Chunked or missing Content-Length: bound the read ourselves so the
+            # 1 MiB cap still applies instead of relying on DATA_UPLOAD_MAX_MEMORY_SIZE.
+            raw_body = request.read(MAX_JSON_BODY_BYTES + 1)
+            if len(raw_body) > MAX_JSON_BODY_BYTES:
+                return None, JsonResponse({"error": "Request body too large."}, status=413)
+        body = json.loads(raw_body) if raw_body else {}
     except UnicodeDecodeError, json.JSONDecodeError:
         return None, JsonResponse({"error": ERR_INVALID_JSON_PAYLOAD}, status=400)
     if not isinstance(body, dict):
