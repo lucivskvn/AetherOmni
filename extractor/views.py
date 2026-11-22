@@ -2060,7 +2060,12 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             KEY_CSRF_TRUSTED_ORIGINS: csrf_trusted_origins,
         }
 
-        surreal_db.save_system_settings(payload)
+        try:
+            surreal_db.save_system_settings(payload)
+        except Exception as exc:
+            logger.warning("[SaveSettings] SurrealDB settings save failed: %s", exc)
+            messages.error(request, "Settings could not be saved: the settings store is unavailable. Please retry.")
+            return redirect("dashboard")
 
         try:
             from extractor.models import SystemSettings
