@@ -80,7 +80,7 @@ jobs:
           echo "AST-Grep scan: 0 errors"
 
       - name: Setup Python (for pip-audit and surreal validate)
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.14"
 
@@ -138,7 +138,7 @@ jobs:
           restore-keys: ${{ runner.os }}-deps-
 
       - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.14"
 
