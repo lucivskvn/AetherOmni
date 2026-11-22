@@ -259,7 +259,7 @@
                     </p>
                 </div>
                 <label for="reset_confirm_input">Type <strong>RESET</strong> below to confirm:</label>
-                <input type="text" id="reset_confirm_input" placeholder="RESET">
+                <input type="text" id="reset_confirm_input" name="confirm" form="purge-all-form" placeholder="RESET" autocomplete="off">
 
                 <form action="{% url 'purge_all_documents' %}" method="post" class="full-width-form" id="purge-all-form">
                     {% csrf_token %}

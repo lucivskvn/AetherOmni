@@ -1375,6 +1375,12 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             broadcast_status_change(str(doc_uuid), "FAILED", owner_id=doc.get("uploaded_by_id"))
 
     def post(self, request):
+        # The RESET confirmation is enforced server-side; the template gate is
+        # only a UX affordance and cannot be trusted to protect a global wipe.
+        if request.POST.get("confirm") != "RESET":
+            messages.error(request, "Type RESET in the confirmation field to permanently wipe all data.")
+            return redirect("dashboard")
+
         raw_docs = surreal_db.list_documents()
         ip = get_client_ip(request)
 

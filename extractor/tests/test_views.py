@@ -159,7 +159,7 @@ class ViewsTestCase(TestCase):
 
         UserMemory.objects.create(user=self.user, memory_text="test memory", embedding=[0.1] * 768)
         MonthlySpendLog.objects.create(year=2026, month=9, accumulated_cost_usd=Decimal("5.00"))
-        response = self.client.post(reverse("purge_all_documents"))
+        response = self.client.post(reverse("purge_all_documents"), {"confirm": "RESET"})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(SourceDocument.objects.count(), 0)
         self.assertEqual(UserMemory.objects.count(), 0)
@@ -2460,9 +2460,24 @@ class ViewsExceptionPathsTestCase(TestCase):
             email="admin@example.com",
         )
         self.client.force_login(superuser)
-        response = self.client.post(reverse("purge_all_documents"))
+        response = self.client.post(reverse("purge_all_documents"), {"confirm": "RESET"})
         self.assertEqual(response.status_code, 302)
         mock_purge.assert_called_once()
+
+    @patch("extractor.views.surreal_db.purge_all")
+    @patch("extractor.views.surreal_db.list_documents", return_value=[])
+    def test_document_purge_all_requires_server_side_reset_confirmation(self, mock_list, mock_purge):
+        """A bare POST without the RESET confirmation must not wipe any data."""
+        superuser = User.objects.create_superuser(
+            username="confirm_super",
+            password="Password123!",
+            email="confirm@example.com",
+        )
+        self.client.force_login(superuser)
+        response = self.client.post(reverse("purge_all_documents"))
+        self.assertEqual(response.status_code, 302)
+        mock_list.assert_not_called()
+        mock_purge.assert_not_called()
 
     def test_wrap_surreal_doc_provides_get_status_display(self):
         """Verify _wrap_surreal_doc attaches get_status_display matching Django choices."""
