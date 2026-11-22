@@ -882,6 +882,25 @@ def _parse_offline_document_ids(document_ids):
     return uuids, ids_int
 
 
+def _offline_document_id_filter(document_ids):
+    """Build a Q filter for explicit document_ids, or None when none resolve.
+
+    Returns a Q that matches nothing when the caller supplied IDs but none
+    parsed — an explicit filter must not widen the search to every document.
+    """
+    from django.db.models import Q
+
+    uuids, ids_int = _parse_offline_document_ids(document_ids)
+    if not uuids and not ids_int:
+        return Q(pk__in=[])
+    q_filter = Q()
+    if uuids:
+        q_filter |= Q(uuid__in=uuids)
+    if ids_int:
+        q_filter |= Q(id__in=ids_int)
+    return q_filter
+
+
 def _get_offline_uuids(user, document_ids):
     from django.db.models import Q
 
@@ -895,18 +914,7 @@ def _get_offline_uuids(user, document_ids):
         qs = SourceDocument.objects.all()
 
     if document_ids:
-        uuids, ids_int = _parse_offline_document_ids(document_ids)
-        if not uuids and not ids_int:
-            # An explicit filter that resolves to nothing must not widen the
-            # search to every document the user can see.
-            return []
-        q_filter = Q()
-        if uuids:
-            q_filter |= Q(uuid__in=uuids)
-        if ids_int:
-            q_filter |= Q(id__in=ids_int)
-        if uuids or ids_int:
-            qs = qs.filter(q_filter)
+        qs = qs.filter(_offline_document_id_filter(document_ids))
     return [str(d.uuid) for d in qs]
 
 
