@@ -181,6 +181,15 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(results[0]["doc_uuid"], "00000000-0000-0000-0000-000000000000")
         mock_db.query.assert_called_once()
 
+    @patch("extractor.surreal_db._run", return_value=[{"result": [{"memory_text": "prefers detail", "score": 0.1}]}])
+    def test_search_user_memories_uses_knn_operator(self, mock_run):
+        results = surreal_db.search_user_memories("user-1", [0.1] * 8, limit=5)
+        sql = mock_run.call_args.args[0]
+        self.assertIn("<|", sql)
+        self.assertIn("vector::distance::knn()", sql)
+        self.assertNotIn("vector::similarity::cosine", sql)
+        self.assertEqual(results[0]["memory_text"], "prefers detail")
+
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
     def test_kv_cache_set_and_get(self, mock_surreal):
