@@ -1933,7 +1933,14 @@ def purge_all_rag_cache() -> None:
 
 
 def purge_all() -> None:
-    """Delete all records from documents, chunks, rag_cache, and user_memories tables."""
+    """Delete all user-derived knowledge records, retaining financial and audit data.
+
+    Covers the full derived corpus — documents, chunks, rag_cache, sources,
+    anchors, crystals, exam items/attempts, entity graph, context cache, and
+    user memories — while preserving monthly_spend_ledger,
+    document_spend_reconciliations, audit_logs, system_settings, and kv_cache
+    (which carries spend/settings state required for budget accounting).
+    """
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -1941,12 +1948,24 @@ def purge_all() -> None:
 
         SourceDocument.objects.all().delete()
         _test_chunks.clear()
+        _test_korda_sources.clear()
+        _test_korda_anchors.clear()
+        _test_korda_crystals.clear()
+        _test_korda_exam_items.clear()
+        _test_korda_attempts.clear()
         return
 
     documents = list_documents()
     if not all(_flush_document_cost(document) for document in documents):
         raise RuntimeError("Document costs could not be recorded; purge aborted.")
-    _run("DELETE FROM documents; DELETE FROM chunks; DELETE FROM rag_cache; DELETE FROM user_memories;")
+    _run(
+        "DELETE FROM documents; DELETE FROM chunks; DELETE FROM rag_cache; DELETE FROM user_memories; "
+        "DELETE FROM source; DELETE FROM anchor; DELETE FROM anchored_in; "
+        "DELETE FROM crystal; DELETE FROM grounded_in; "
+        "DELETE FROM exam_item; DELETE FROM attempt; "
+        "DELETE FROM entities; DELETE FROM chunk_references; DELETE FROM entity_relations; "
+        "DELETE FROM context_cache;"
+    )
 
 
 # ── KV cache helpers ──────────────────────────────────────────────────────────
