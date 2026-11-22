@@ -1798,26 +1798,31 @@ def search_chunks_hnsw(
     """
     Approximate nearest-neighbour chunk search using the HNSW index.
     Optionally restricts results to an allowlist of doc UUIDs (tenant isolation).
+    Uses the KNN operator so idx_chunks_hnsw is actually consulted, and excludes
+    chunks whose embedding failed to generate (stored as NONE).
     """
     params = {"query_embedding": query_embedding, "limit": limit}
+    knn_k = min(max(int(limit), 1) * 3, 100)
+    # knn_k is a bounded integer derived from limit; never user-controlled text.
+    knn_predicate = f"embedding <|{knn_k},40|> $query_embedding"
+    select_fields = (
+        "id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id, "
+        "vector::distance::knn() AS score "
+    )
+    where_parts = ["embedding != NONE"]
     if allowed_doc_uuids is not None:
         params["allowed_doc_uuids"] = allowed_doc_uuids
-        sql = (
-            "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id, "
-            "1.0 - vector::similarity::cosine(embedding, $query_embedding) AS score "
-            "FROM chunks "
-            "WHERE doc_uuid INSIDE $allowed_doc_uuids "
-            "ORDER BY score ASC "
-            "LIMIT $limit;"
-        )
-    else:
-        sql = (
-            "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id, "
-            "1.0 - vector::similarity::cosine(embedding, $query_embedding) AS score "
-            "FROM chunks "
-            "ORDER BY score ASC "
-            "LIMIT $limit;"
-        )
+        where_parts.append("doc_uuid INSIDE $allowed_doc_uuids")
+    where_parts.append(knn_predicate)
+    sql = " ".join(
+        [
+            f"SELECT {select_fields}",
+            "FROM chunks",
+            "WHERE " + " AND ".join(where_parts),
+            "ORDER BY score ASC",
+            "LIMIT $limit;",
+        ]
+    )
     return _first_result(_run(sql, params))
 
 
@@ -1897,13 +1902,19 @@ def search_rag_cache_hnsw(
     user_id: str, query_embedding: list[float], threshold: float = 0.15, limit: int = 1
 ) -> list[dict]:
     """Search for a semantically similar cached answer for this user."""
-    sql = (
-        "SELECT id, answer_text, sources, query_text, "
-        "1.0 - vector::similarity::cosine(query_embedding, $query_embedding) AS score "
-        "FROM rag_cache "
-        "WHERE user_id = $user_id AND expires_at > time::now() "
-        "ORDER BY score ASC "
-        "LIMIT $limit;"
+    knn_k = min(max(int(limit), 1) * 4, 50)
+    # knn_k is a bounded integer derived from limit; never user-controlled text.
+    knn_predicate = f"query_embedding <|{knn_k},40|> $query_embedding"
+    sql = " ".join(
+        [
+            "SELECT id, answer_text, sources, query_text,",
+            "vector::distance::knn() AS score",
+            "FROM rag_cache",
+            "WHERE user_id = $user_id AND expires_at > time::now()",
+            "AND " + knn_predicate,
+            "ORDER BY score ASC",
+            "LIMIT $limit;",
+        ]
     )
     results = _first_result(
         _run(
