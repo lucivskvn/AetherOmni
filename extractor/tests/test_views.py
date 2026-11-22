@@ -1887,6 +1887,16 @@ class CoreDesignHardeningTests(TestCase):
             "filtered-query", document_ids=[5, 12], top_k=5, user=self.user, actor_id=str(self.user.id)
         )
 
+    @patch("extractor.views.query_semantic_knowledge_rag")
+    def test_document_rag_search_view_bounds_query_and_document_ids(self, mock_rag):
+        mock_rag.return_value = {"answer": "bounded", "sources": []}
+        many_ids = ",".join(str(i) for i in range(200))
+        response = self.client.get(reverse("rag_search") + "?q=" + "x" * 2000 + f"&document_ids={many_ids}")
+        self.assertEqual(response.status_code, 200)
+        call_args = mock_rag.call_args
+        self.assertEqual(len(call_args.kwargs["document_ids"]), 50)
+        self.assertEqual(call_args.args[0], "x" * 1000)
+
 
 class DatetimeUtilityTestCase(TestCase):
     """Verifies robustness of parse_datetime utility function to prevent regressions."""
