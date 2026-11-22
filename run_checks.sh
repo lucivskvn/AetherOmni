@@ -138,7 +138,11 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed Python files
     CHANGED_PY=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
-    if [[ -n "$CHANGED_PY" ]] && "$PYTHON_BIN" -m ruff --version &> /dev/null; then
+    if [[ -n "$CHANGED_PY" ]]; then
+        if ! "$PYTHON_BIN" -m ruff --version &> /dev/null; then
+            echo -e "${RED}✗ Ruff is required for changed Python files but is not installed.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST & Django Linters...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
         "$PYTHON_BIN" -m ruff check $CHANGED_PY
@@ -248,6 +252,9 @@ if [[ "$DOCS_ONLY" = true ]]; then
             ./node_modules/.bin/vitest run
         elif command -v npm &> /dev/null; then
             npm test
+        else
+            echo -e "${RED}✗ Changed JavaScript files detected but no JS test runner (vitest/npm) is available.${NC}" >&2
+            exit 1
         fi
         echo -e "${GREEN}✓ JavaScript unit tests passed cleanly.${NC}"
     fi
