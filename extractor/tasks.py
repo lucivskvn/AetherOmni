@@ -1576,6 +1576,19 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     except Exception as exc:
         logger.warning("[Cron] Failed to purge expired RAG cache: %s", exc)
 
+    # Purge expired kv_cache and rate_limits rows; both tables carry expiry
+    # indexes but previously had no cleanup path, so dead rows accumulated.
+    for purge_fn, label in (
+        (surreal_db.purge_expired_kv_cache, "kv_cache"),
+        (surreal_db.purge_expired_rate_limits, "rate_limits"),
+    ):
+        try:
+            pruned = purge_fn()
+            if pruned:
+                logger.info("[Cron] Pruned %s expired SurrealDB %s rows.", pruned, label)
+        except Exception as exc:
+            logger.warning("[Cron] Failed to purge expired %s rows: %s", label, exc)
+
     logger.info("[Cron] Cleanup finished. Deleted %s expired records.", purged_count)
 
 
