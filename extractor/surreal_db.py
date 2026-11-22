@@ -2072,12 +2072,15 @@ def add_user_memory(user_id: str, memory_text: str, embedding: list[float]) -> N
 
 
 def search_user_memories(user_id: str, query_embedding: list[float], limit: int = 5) -> list[dict]:
-    """Find the closest user memories using HNSW vector search."""
+    """Find the closest user memories using the HNSW index via the KNN operator."""
+    knn_k = min(max(int(limit), 1) * 3, 50)
+    # knn_k is a bounded integer derived from limit; never user-controlled text.
     sql = (
         "SELECT memory_text, "
-        "1.0 - vector::similarity::cosine(embedding, $query_embedding) AS score "
+        "vector::distance::knn() AS score "
         "FROM user_memories "
-        "WHERE user_id = $user_id "
+        "WHERE user_id = $user_id AND embedding != NONE "
+        f"AND embedding <|{knn_k},40|> $query_embedding "
         "ORDER BY score ASC "
         "LIMIT $limit;"
     )
