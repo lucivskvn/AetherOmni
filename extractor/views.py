@@ -2032,16 +2032,12 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
     def test_func(self):
         return self.request.user.is_superuser
 
-    def post(self, request):
-        monthly_budget_usd = request.POST.get("monthly_budget_usd", "10.00").strip()
-        selected_model = request.POST.get("selected_model", "auto").strip()
-        currency = request.POST.get("currency", "auto").strip()
-        csrf_trusted_origins = request.POST.get(KEY_CSRF_TRUSTED_ORIGINS, "").strip()[:8192]
-
+    @staticmethod
+    def _allowed_models() -> set[str]:
         from extractor.llm_gateway import KNOWN_GEMINI_MODELS
 
         # Strict validation whitelist for SystemSettings selected_model to prevent unauthorized/expensive models
-        ALLOWED_MODELS = (
+        return (
             {
                 "auto",
                 "openrouter/free",
@@ -2053,7 +2049,35 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             | KNOWN_GEMINI_MODELS
             | {f"google/{m}" for m in KNOWN_GEMINI_MODELS}
         )
-        if selected_model not in ALLOWED_MODELS:
+
+    @staticmethod
+    def _invalid_csrf_origins(csrf_trusted_origins: str) -> list[str]:
+        """Return origin entries that are not bare HTTPS origins."""
+        raw_entries = [
+            entry.strip() for line in csrf_trusted_origins.splitlines() for entry in line.split(",") if entry.strip()
+        ]
+        bad = []
+        for origin in raw_entries:
+            parsed = urlparse(origin)
+            if (
+                parsed.scheme != "https"
+                or not parsed.netloc
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+                or parsed.path
+            ):
+                bad.append(origin)
+        return bad
+
+    def post(self, request):
+        monthly_budget_usd = request.POST.get("monthly_budget_usd", "10.00").strip()
+        selected_model = request.POST.get("selected_model", "auto").strip()
+        currency = request.POST.get("currency", "auto").strip()
+        csrf_trusted_origins = request.POST.get(KEY_CSRF_TRUSTED_ORIGINS, "").strip()[:8192]
+
+        if selected_model not in self._allowed_models():
             messages.error(request, "Invalid model selection.")
             return redirect("dashboard")
 
@@ -2073,25 +2097,7 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
 
         # Require HTTPS origins so saved configuration cannot weaken CSRF transport security.
         if csrf_trusted_origins:
-            raw_entries = [
-                entry.strip()
-                for line in csrf_trusted_origins.splitlines()
-                for entry in line.split(",")
-                if entry.strip()
-            ]
-            bad_origins = []
-            for origin in raw_entries:
-                parsed = urlparse(origin)
-                if (
-                    parsed.scheme != "https"
-                    or not parsed.netloc
-                    or parsed.username
-                    or parsed.password
-                    or parsed.query
-                    or parsed.fragment
-                    or parsed.path
-                ):
-                    bad_origins.append(origin)
+            bad_origins = self._invalid_csrf_origins(csrf_trusted_origins)
             if bad_origins:
                 messages.error(
                     request,
@@ -2106,7 +2112,12 @@ class SaveSettingsView(LoginRequiredMixin, UserPassesTestMixin, View):
             KEY_CSRF_TRUSTED_ORIGINS: csrf_trusted_origins,
         }
 
-        surreal_db.save_system_settings(payload)
+        try:
+            surreal_db.save_system_settings(payload)
+        except Exception as exc:
+            logger.warning("[SaveSettings] SurrealDB settings save failed: %s", exc)
+            messages.error(request, "Settings could not be saved: the settings store is unavailable. Please retry.")
+            return redirect("dashboard")
 
         try:
             from extractor.models import SystemSettings
