@@ -2042,6 +2042,28 @@ class SupabaseSessionExchangeTestCase(TestCase):
 class ViewsExceptionPathsTestCase(TestCase):
     """Direct unit tests for helper functions and exception paths in views.py."""
 
+    def test_parse_json_dict_body_chunked_over_limit(self):
+        """Missing Content-Length (chunked) bodies are still bounded by the 1 MiB cap."""
+        from extractor.views import MAX_JSON_BODY_BYTES, _parse_json_dict_body
+
+        request = MagicMock()
+        request.META = {"CONTENT_LENGTH": ""}
+        request.read.return_value = b"x" * (MAX_JSON_BODY_BYTES + 1)
+        body, err = _parse_json_dict_body(request)
+        self.assertIsNone(body)
+        self.assertEqual(err.status_code, 413)
+
+    def test_parse_json_dict_body_chunked_valid(self):
+        """Chunked bodies within the limit parse normally."""
+        from extractor.views import _parse_json_dict_body
+
+        request = MagicMock()
+        request.META = {"CONTENT_LENGTH": ""}
+        request.read.return_value = b'{"key": "value"}'
+        body, err = _parse_json_dict_body(request)
+        self.assertIsNone(err)
+        self.assertEqual(body, {"key": "value"})
+
     def test_parse_datetime_variations(self):
         from datetime import datetime
 
