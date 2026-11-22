@@ -160,13 +160,29 @@ class HybridRAGTestCase(TestCase):
 
     @override_settings(SURREALDB_OFFLINE=False)
     @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
+    def test_fill_missing_fallbacks_empty_embeddings_list_becomes_sentinel(self, mock_embed):
+        from types import SimpleNamespace
+
+        from extractor.rag import _EMBEDDING_FAILED_SENTINEL, _fill_missing_fallbacks
+
+        # An empty embeddings list must not escape as IndexError/TypeError.
+        mock_embed.return_value = SimpleNamespace(embeddings=[])
+        final_embeddings = [None]
+        _fill_missing_fallbacks(final_embeddings, ["Filtered chunk"], "text-embedding-004")
+        self.assertEqual(final_embeddings[0], _EMBEDDING_FAILED_SENTINEL)
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
     def test_get_query_embedding_empty_values_raises(self, mock_embed):
         from types import SimpleNamespace
 
+        from extractor.llm_gateway import GeminiProcessingError
         from extractor.rag import _get_query_embedding
 
         mock_embed.return_value = SimpleNamespace(embeddings=[SimpleNamespace(values=[])])
-        with self.assertRaises(ValueError):
+        # Provider failure must not surface as ValueError: the RAG view maps
+        # ValueError to HTTP 400 "invalid parameters" for a valid query.
+        with self.assertRaises(GeminiProcessingError):
             _get_query_embedding("query")
 
     @patch("extractor.rag._get_allowed_doc_uuids")

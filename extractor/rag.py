@@ -253,6 +253,8 @@ def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
 
             try:
                 response = execute_embed_content_with_fallback(model_name=model_name, contents=[chunks_list[idx]])
+                if not response.embeddings:
+                    raise ValueError("Embedding provider returned no embeddings.")
                 final_embeddings[idx] = response.embeddings[0].values or None
             except RuntimeError, ValueError, AttributeError:
                 logger.warning(
@@ -537,13 +539,15 @@ def _retrieve_matching_chunks(
 def _get_query_embedding(query_cleaned: str) -> list[float]:
     from django.conf import settings
 
-    from extractor.llm_gateway import execute_embed_content_with_fallback
+    from extractor.llm_gateway import GeminiProcessingError, execute_embed_content_with_fallback
 
     try:
         query_emb_resp = execute_embed_content_with_fallback(model_name="text-embedding-004", contents=[query_cleaned])
         values = query_emb_resp.embeddings[0].values if query_emb_resp.embeddings else None
         if not values:
-            raise ValueError("Embedding provider returned an empty vector.")
+            # Provider failure, not bad input — keep it out of the ValueError
+            # path so views don't misreport it as invalid search parameters.
+            raise GeminiProcessingError("Embedding provider returned an empty vector.")
         return values
     except Exception as e:
         # Deterministic pseudo-embeddings live in a different vector space than
