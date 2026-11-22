@@ -33,7 +33,11 @@ import re
 import uuid
 from typing import Any
 
-from extractor.llm_gateway import generate_llm_content_unified, generate_llm_stream_unified
+from extractor.llm_gateway import (
+    generate_llm_content_unified,
+    generate_llm_stream_unified,
+    record_unified_response_spend,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -729,9 +733,11 @@ def _generate_rag_answer(query_cleaned: str, context_str: str, user_memories_blo
     Answer:
     """
 
-    return generate_llm_content_unified(
+    response = generate_llm_content_unified(
         prompt=rag_prompt, system_instruction=system_instruction.strip(), model_name=selected_model
     )
+    record_unified_response_spend(response)
+    return response
 
 
 def _stream_query_rag_events(
