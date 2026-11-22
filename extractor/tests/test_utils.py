@@ -3,7 +3,7 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 
 try:
     import google.genai  # noqa: F401
@@ -955,3 +955,38 @@ class RegionalModelTestCase(TestCase):
 
         model = get_cheapest_regional_gemini_model(region="asia-southeast1", is_vision=True)
         self.assertTrue(model in {"gemini-2.5-flash", "gemini-2.5-flash-lite"})
+
+
+class BroadcastTopicTestCase(TestCase):
+    """Realtime broadcast topics must be owner-scoped: the channel is public
+    (anon key), so a shared topic would leak every tenant's document metadata."""
+
+    @override_settings(SUPABASE_URL="https://example.supabase.co", SUPABASE_PUBLIC_KEY="anon-key")
+    @patch("urllib.request.urlopen")
+    def test_broadcast_topic_scoped_per_owner(self, mock_urlopen):
+        import json
+
+        from extractor.utils import broadcast_status_change
+
+        mock_urlopen.return_value.__enter__.return_value.status = 200
+        broadcast_status_change("doc-uuid-1", "COMPLETED", owner_id="owner-uuid-1")
+
+        req = mock_urlopen.call_args[0][0]
+        payload = json.loads(req.data.decode("utf-8"))
+        self.assertEqual(payload["messages"][0]["topic"], "document-updates:owner-uuid-1")
+
+    @override_settings(SUPABASE_URL="https://example.supabase.co", SUPABASE_PUBLIC_KEY="anon-key")
+    @patch("urllib.request.urlopen")
+    def test_broadcast_unowned_doc_uses_shared_topic(self, mock_urlopen):
+        import json
+
+        from extractor.utils import broadcast_status_change
+
+        mock_urlopen.return_value.__enter__.return_value.status = 200
+        broadcast_status_change("doc-uuid-2", "COMPLETED", owner_id=None)
+        broadcast_status_change("doc-uuid-3", "COMPLETED", owner_id="   ")
+
+        topics = []
+        for call in mock_urlopen.call_args_list:
+            topics.append(json.loads(call[0][0].data.decode("utf-8"))["messages"][0]["topic"])
+        self.assertEqual(topics, ["document-updates:shared", "document-updates:shared"])
