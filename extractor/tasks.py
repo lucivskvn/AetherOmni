@@ -1313,6 +1313,9 @@ def _claim_for_reembedding(doc_uuid: str) -> dict | None:
 
 def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], existing_pages: int) -> int:
     if not chunks:
+        # Edited content may chunk to nothing (e.g. emptied document). Purge the
+        # previous vectors anyway — otherwise stale chunks stay searchable.
+        surreal_db.recreate_chunks(doc_uuid, [])
         return max(0, existing_pages)
 
     check_budget_and_api_limit()
