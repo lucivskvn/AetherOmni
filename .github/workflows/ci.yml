@@ -132,8 +132,9 @@ jobs:
         with:
           path: |
             ~/.cache/pip
+            ~/.cache/uv
             ~/.npm
-          key: ${{ runner.os }}-deps-${{ hashFiles('**/requirements.txt', '**/package-lock.json') }}
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/requirements.txt', '**/package-lock.json', '**/uv.lock') }}
           restore-keys: ${{ runner.os }}-deps-
 
       - name: Setup Python
@@ -195,7 +196,12 @@ jobs:
           export DJANGO_SECRET_KEY="ci-test-key-50-chars-long-for-local-testing-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df"
           python scripts/verify_templates_and_assets.py
           python manage.py collectstatic --noinput
-          rm -f .coverage .coverage.* coverage.xml
+          rm -f .coverage .coverage.* coverage.xml semgrep.sarif semgrep.log semgrep.exit
+
+          # Run Semgrep detached during the test step; the Collect step below
+          # waits on semgrep.exit so scan time overlaps the suite instead of
+          # adding serial wall-clock time.
+          setsid bash -c '.semgrep-venv/bin/semgrep scan --config=auto --error --sarif --output=semgrep.sarif > semgrep.log 2>&1; echo $? > semgrep.exit' >/dev/null 2>&1 &
 
           BATCH_DISPATCHER=$(python -c "
           import glob
@@ -214,10 +220,24 @@ jobs:
               print(' '.join(b))
           ")
 
+          # Run test batches in parallel (runner has 4 vCPUs). Each batch is an
+          # isolated `coverage run -p` process with its own in-memory SQLite DB;
+          # test_views stays in its own batch to isolate file-storage fixtures.
+          MAX_PARALLEL=4
+          TEST_PIDS=()
+          TEST_FAILED=0
           while IFS= read -r BATCH_MODULES; do
               [[ -z "$BATCH_MODULES" ]] && continue
-              coverage run -p manage.py test $BATCH_MODULES --keepdb --buffer
+              coverage run -p manage.py test $BATCH_MODULES --keepdb --buffer &
+              TEST_PIDS+=("$!")
+              while (( $(jobs -rp | wc -l) >= MAX_PARALLEL )); do sleep 1; done
           done <<< "$BATCH_DISPATCHER"
+          for pid in "${TEST_PIDS[@]}"; do
+              wait "$pid" || TEST_FAILED=1
+          done
+          if [[ "$TEST_FAILED" -ne 0 ]]; then
+              exit 1
+          fi
 
           coverage combine
           coverage xml -o coverage.xml
@@ -230,10 +250,16 @@ jobs:
         run: |
           npm run test:coverage
 
-      - name: Generate Semgrep SARIF
+      - name: Collect Semgrep SARIF result
         id: semgrep
         continue-on-error: true
-        run: .semgrep-venv/bin/semgrep scan --config=auto --error --sarif --output=semgrep.sarif
+        run: |
+          for _ in $(seq 1 180); do
+              [[ -f semgrep.exit ]] && break
+              sleep 5
+          done
+          cat semgrep.log 2>/dev/null || true
+          exit "$(cat semgrep.exit 2>/dev/null || echo 1)"
 
       - name: Publish Semgrep SARIF to GitHub code scanning
         if: |
