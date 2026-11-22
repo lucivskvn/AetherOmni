@@ -809,7 +809,8 @@ def record_unified_response_spend(resp: UnifiedResponse) -> None:
         out_tok = int(getattr(resp, "output_tokens", 0) or 0)
         if in_tok <= 0 and out_tok <= 0:
             return
-        MonthlySpendLog.add_cost(datetime.now(UTC), resp.cost_usd, in_tok=in_tok, out_tok=out_tok)
+        if not MonthlySpendLog.add_cost(datetime.now(UTC), resp.cost_usd, in_tok=in_tok, out_tok=out_tok):
+            logger.warning("[Gateway] Spend ledger write failed; response cost was not recorded.")
     except Exception as exc:
         logger.warning("[Gateway] Failed to record unified response spend: %s", exc)
 
@@ -880,11 +881,14 @@ def generate_llm_stream_unified(
             _record_stream_usage_spend(gemini_model, usage_sink.get("usage"))
             return
 
-    # Fallback: non-streaming unified generation yielded as a single block
+    # Fallback: non-streaming unified generation yielded as a single block.
+    # Record spend whenever a response exists — an empty-text reply can still
+    # carry provider-reported usage that must reach the monthly ledger.
     full_resp = generate_llm_content_unified(prompt, system_instruction, final_model)
-    if full_resp and full_resp.text:
+    if full_resp:
         record_unified_response_spend(full_resp)
-        yield full_resp.text
+        if full_resp.text:
+            yield full_resp.text
 
 
 def extract_retry_delay(exception: Exception) -> float | None:
