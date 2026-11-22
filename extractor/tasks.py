@@ -875,7 +875,24 @@ def _execute_stage2_chunks_refinement(
     stage2_input_tokens = 0
     stage2_output_tokens = 0
 
+    from extractor.llm_gateway import BudgetExceededException
+
     for idx, chunk in enumerate(chunks, 1):
+        # Per-chunk budget gate: a single large document can contain dozens of
+        # chunks, and the stage-level gate runs only once before the loop. Stop
+        # refining (keeping raw chunk text) once the monthly budget is reached
+        # or can no longer be verified, bounding per-document overshoot.
+        try:
+            check_budget_and_api_limit()
+        except (BudgetExceededException, RuntimeError) as budget_err:
+            logger.warning(
+                "[Worker] Stage 2 budget gate halted refinement at chunk %d/%d: %s",
+                idx,
+                total_chunks,
+                budget_err,
+            )
+            refined_parts.extend(chunks[idx - 1 :])
+            break
         try:
             chunk_results = run_stage2_editorial_refinement(chunk, model_name=selected_model)
         except Exception as chunk_err:

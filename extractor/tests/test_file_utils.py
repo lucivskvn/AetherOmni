@@ -443,6 +443,53 @@ class FileUtilsTestCase(TestCase):
             file_utils.generate_sft_dataset_pairs(["doc"] * 1001)
         self.assertIn("Export batch exceeds maximum document limit of 1000 items.", str(ctx.exception))
 
+    def test_csv_rendered_output_budget_enforced(self):
+        """Pathological CSVs must not exhaust worker memory building markdown."""
+        import os
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as tmp:
+            tmp.write("a,b\n")
+            for _ in range(2000):
+                tmp.write("x" * 500 + "," + "y" * 500 + "\n")
+            tmp_path = tmp.name
+        try:
+            with (
+                patch.object(file_utils, "_LOCAL_MAX_MARKDOWN_BYTES", 10_000),
+                self.assertRaises(ValueError),
+            ):
+                file_utils.process_csv_local(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+
+    def test_csv_streaming_matches_legacy_output(self):
+        import os
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as tmp:
+            tmp.write('name,desc\nrow1,"has | pipe"\nrow2,"line1\nline2",ok\n')
+            tmp_path = tmp.name
+        try:
+            result = file_utils.process_csv_local(tmp_path)
+            self.assertIn("| name | desc |", result)
+            self.assertIn("has \\| pipe", result)
+            self.assertIn("line1<br>line2", result)
+        finally:
+            os.unlink(tmp_path)
+
+    def test_json_oversized_input_rejected(self):
+        import os
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+            tmp.write('{"k": "' + "x" * (26 * 1024 * 1024) + '"}')
+            tmp_path = tmp.name
+        try:
+            with self.assertRaises(ValueError):
+                file_utils.process_json_local(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+
     def test_xlsx_zipxml_budget_violation_propagates_instead_of_degrading(self):
         """Budget ValueErrors must reach the pipeline, not become 'unreadable' docs."""
         import os
