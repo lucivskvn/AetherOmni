@@ -475,7 +475,7 @@ def _invalidate_doc_rag_caches(doc_uuid: str, actor_id: str | None = None) -> No
     try:
         surreal_db.delete_rag_cache_for_document(str(doc_uuid))
         if actor_id:
-            surreal_db.kv_cache_delete_pattern(f"rag_search_cache:{actor_id}:")
+            surreal_db.kv_cache_delete_pattern(f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{actor_id}:")
     except Exception as exc:
         logger.warning("[RAGCache] Invalidation failed for %s: %s", doc_uuid, exc)
 

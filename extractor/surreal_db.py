@@ -2035,6 +2035,9 @@ def kv_cache_set(key: str, value: Any, ttl_seconds: int | None = None) -> None:
     )
 
 
+RAG_SEARCH_CACHE_PREFIX = "rag_search_cache:"
+
+
 def kv_cache_delete_pattern(prefix: str) -> None:
     """Delete all KV entries whose key starts with the given prefix."""
     sql = "DELETE FROM kv_cache WHERE string::starts_with(cache_key, $prefix);"
