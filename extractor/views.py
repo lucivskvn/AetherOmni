@@ -1157,6 +1157,18 @@ class DocumentSaveView(LoginRequiredMixin, View):
         doc_ref = surreal_db.update_document(doc_uuid, payload)
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
 
+        # Invalidate cached RAG answers derived from the pre-edit content.
+        # The Django post_save signal cannot fire here (production writes go
+        # through SurrealDB), so the purge must be explicit. Failure-isolated:
+        # a cache purge failure must not fail the user's save.
+        try:
+            surreal_db.delete_rag_cache_for_document(str(doc_uuid))
+            actor_id = get_request_actor_id(request)
+            if actor_id:
+                surreal_db.kv_cache_delete_pattern(f"rag_search_cache:{actor_id}:")
+        except Exception as cache_err:
+            logger.warning("[DocumentSave] RAG cache invalidation failed for %s: %s", doc_uuid, cache_err)
+
         _record_view_audit(
             request,
             AuditAction.DOCUMENT_EDITED,
