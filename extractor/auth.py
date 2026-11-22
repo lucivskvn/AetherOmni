@@ -112,7 +112,9 @@ def _sync_supabase_user(
     from django.db import transaction
 
     user_info = resp_data.get("user", {})
-    user_email = user_info.get("email", username)
+    user_email = str(user_info.get("email") or username or "").strip()
+    if not user_email:
+        raise ValueError("Supabase identity has no email address; account sync is impossible.")
     django_username = generate_unique_username(user_email)
 
     with transaction.atomic():

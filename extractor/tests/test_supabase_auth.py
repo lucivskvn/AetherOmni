@@ -67,3 +67,10 @@ class SupabaseAuthBackendSecurityTests(TestCase):
         authenticated = SupabaseAuthBackend().authenticate(None, username=self.user.username, password=self.password)
 
         self.assertEqual(authenticated.pk, self.user.pk)
+
+    def test_emailless_supabase_identity_fails_closed(self):
+        """Account sync must reject identities with no usable email instead of crashing on None."""
+        from extractor.auth import _sync_supabase_user
+
+        with self.assertRaises(ValueError):
+            _sync_supabase_user(None, {"user": {"id": "phone-user", "email": None}}, None)
