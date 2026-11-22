@@ -648,7 +648,11 @@ class DashboardView(LoginRequiredMixin, View):
 
     def get(self, request):
         snapshot_limit = 501
-        stats = _get_dashboard_stats(request, document_limit=snapshot_limit)
+        try:
+            stats = _get_dashboard_stats(request, document_limit=snapshot_limit)
+        except RuntimeError:
+            logger.warning("[Dashboard] Knowledge store unreachable; rendering 503 page.")
+            return render(request, "extractor/service_unavailable.html", status=503)
         sort_by = request.GET.get("sort_by", "-date")
         docs = _filter_dashboard_docs(stats["docs"], request.GET.get("q", "").strip())
         sorted_docs = _sort_dashboard_docs(docs, sort_by)
@@ -1040,7 +1044,11 @@ class DocumentDetailView(LoginRequiredMixin, View):
 
             raise Http404(DOCUMENT_NOT_FOUND_MSG)
 
-        raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned=True)
+        try:
+            raw_doc, doc, is_authorized, _ = _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned=True)
+        except RuntimeError:
+            logger.warning("[Detail View] Knowledge store unreachable for doc %s; rendering 503 page.", doc_uuid)
+            return render(request, "extractor/service_unavailable.html", status=503)
         if not raw_doc:
             from django.http import Http404
 
@@ -2096,7 +2104,11 @@ class DocumentStatusAPIView(LoginRequiredMixin, View):
     """
 
     def get(self, request):
-        stats = _get_dashboard_stats(request)
+        try:
+            stats = _get_dashboard_stats(request)
+        except RuntimeError:
+            logger.warning("[StatusAPI] Knowledge store unreachable; returning 503.")
+            return JsonResponse({"error": "knowledge_base_unavailable"}, status=503)
         docs = stats["docs"]
 
         # This is a complete, user-scoped snapshot. Clients use absence as deletion.

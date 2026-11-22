@@ -1,0 +1,101 @@
+{% extends 'extractor/base.html' %}
+{% load static %}
+
+{% block title %}503 - Service Unavailable{% endblock %}
+
+{% block extra_css %}
+<style>
+    .error-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 220px);
+        padding: 24px;
+        position: relative;
+    }
+
+    .error-card {
+        width: 100%;
+        max-width: 520px;
+        padding: 40px;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .error-card { animation: none; }
+    }
+
+    .error-icon-wrapper {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background-color: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        color: #f59e0b;
+        margin-bottom: 20px;
+    }
+
+    .error-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 0 12px;
+        color: #f8fafc;
+    }
+
+    .error-description {
+        color: #94a3b8;
+        line-height: 1.6;
+        margin: 0 0 28px;
+    }
+
+    .error-actions .btn-return-home {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        border-radius: 12px;
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        color: #93c5fd;
+        text-decoration: none;
+        font-weight: 600;
+        transition: background 0.2s ease;
+    }
+
+    .error-actions .btn-return-home:hover {
+        background: rgba(59, 130, 246, 0.25);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-card" role="alert" aria-labelledby="error-title" aria-describedby="error-desc">
+        <div class="error-icon-wrapper" aria-hidden="true">
+            <i data-lucide="cloud-off" style="width: 36px; height: 36px;"></i>
+        </div>
+        <h1 id="error-title" class="error-title">503 - Temporarily Unavailable</h1>
+        <p id="error-desc" class="error-description">
+            The knowledge service is temporarily unreachable. Your documents and data are safe —
+            please try again in a few moments.
+        </p>
+        <div class="error-actions">
+            <a href="{% url 'dashboard' %}" class="btn-return-home">
+                <i data-lucide="rotate-cw" style="width: 16px; height: 16px;" aria-hidden="true"></i>
+                Try Again
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
