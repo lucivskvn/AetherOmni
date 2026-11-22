@@ -1943,6 +1943,19 @@ def purge_all_rag_cache() -> None:
     _run("DELETE FROM rag_cache;")
 
 
+def delete_rag_cache_for_document(doc_uuid: str) -> None:
+    """Delete semantic-cache rows whose sources include the given document.
+
+    Used when document content changes (edit/reprocess) so stale grounded
+    answers are not served for up to the 7-day TTL.
+    """
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return
+    _run("DELETE FROM rag_cache WHERE $doc_uuid INSIDE sources;", {"doc_uuid": str(doc_uuid)})
+
+
 def purge_all() -> None:
     """Delete all user-derived knowledge records, retaining financial and audit data.
 
@@ -2031,6 +2044,9 @@ def kv_cache_set(key: str, value: Any, ttl_seconds: int | None = None) -> None:
             "expires_at": expires_at_val,
         },
     )
+
+
+RAG_SEARCH_CACHE_PREFIX = "rag_search_cache:"
 
 
 def kv_cache_delete_pattern(prefix: str) -> None:
