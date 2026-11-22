@@ -197,6 +197,29 @@ def calculate_filepath_sha256(file_path: str) -> str:
         return calculate_file_sha256(f)
 
 
+def _emit_csv_table(reader: Any, headers: list[str], markdown_lines: list[str], state: dict[str, int]) -> None:
+    """Stream CSV rows into markdown_lines, enforcing the rendered-output budget."""
+
+    def _emit_row(cells: list[str]) -> None:
+        line = "| " + " | ".join(cells) + " |"
+        state["bytes"] += len(line.encode("utf-8")) + 1
+        if state["bytes"] > _LOCAL_MAX_MARKDOWN_BYTES:
+            raise ValueError("CSV document exceeds the rendered output limit.")
+        markdown_lines.append(line)
+
+    def _escape_cell(cell: Any) -> str:
+        return str(cell).replace("|", "\\|").replace("\n", "<br>")
+
+    _emit_row([_escape_cell(h) for h in headers])
+    _emit_row(["---" for _ in headers])
+    for row in reader:
+        if len(row) < len(headers):
+            row += [""] * (len(headers) - len(row))
+        elif len(row) > len(headers):
+            row = row[: len(headers)]
+        _emit_row([_escape_cell(c) for c in row])
+
+
 def process_csv_local(file_path: str) -> str:
     """
     Converts tabular CSV files cleanly to an aligned Markdown table locally ($0 cost!).
@@ -207,19 +230,6 @@ def process_csv_local(file_path: str) -> str:
     import csv
 
     markdown_lines: list[str] = []
-    rendered_bytes = 0
-
-    def _emit_row(cells: list[str]) -> None:
-        nonlocal rendered_bytes
-        line = "| " + " | ".join(cells) + " |"
-        rendered_bytes += len(line.encode("utf-8")) + 1
-        if rendered_bytes > _LOCAL_MAX_MARKDOWN_BYTES:
-            raise ValueError("CSV document exceeds the rendered output limit.")
-        markdown_lines.append(line)
-
-    def _escape_cell(cell: Any) -> str:
-        return str(cell).replace("|", "\\|").replace("\n", "<br>")
-
     last_error: Exception | None = None
     for encoding in ("utf-8-sig", "latin-1"):
         try:
@@ -229,19 +239,11 @@ def process_csv_local(file_path: str) -> str:
                     headers = next(reader)
                 except StopIteration:
                     return "*Empty CSV Document*"
-                _emit_row([_escape_cell(h) for h in headers])
-                _emit_row(["---" for _ in headers])
-                for row in reader:
-                    if len(row) < len(headers):
-                        row += [""] * (len(headers) - len(row))
-                    elif len(row) > len(headers):
-                        row = row[: len(headers)]
-                    _emit_row([_escape_cell(c) for c in row])
+                _emit_csv_table(reader, headers, markdown_lines, {"bytes": 0})
             return "\n".join(markdown_lines)
         except UnicodeDecodeError as exc:
             last_error = exc
             markdown_lines.clear()
-            rendered_bytes = 0
             continue
     raise ValueError(f"CSV document could not be decoded: {last_error}") from last_error
 
@@ -278,6 +280,20 @@ def _format_json_dict_section(key: Any, value: Any) -> str:
     return f"## {title}\n\n{value}"
 
 
+def _format_json_data(data: Any) -> str:
+    """Render a parsed JSON value into structured Markdown."""
+    if isinstance(data, list):
+        if not data:
+            return "*Empty JSON List*"
+        if all(isinstance(item, dict) for item in data):
+            return _format_json_rows_as_table("Dataset", data)
+        return "\n\n".join(f"- {json.dumps(item, ensure_ascii=False)}" for item in data)
+    if isinstance(data, dict):
+        sections = [_format_json_dict_section(k, v) for k, v in data.items()]
+        return "\n\n".join(sections) if sections else "*Empty JSON Object*"
+    return str(data)
+
+
 def process_json_local(file_path: str) -> str:
     """
     Parses local JSON documents (including Quran verse datasets, Hadith collections,
@@ -299,19 +315,7 @@ def process_json_local(file_path: str) -> str:
         except Exception:
             return "*Empty or Malformed JSON Document*"
 
-    if isinstance(data, list):
-        if not data:
-            return "*Empty JSON List*"
-        if all(isinstance(item, dict) for item in data):
-            result = _format_json_rows_as_table("Dataset", data)
-        else:
-            result = "\n\n".join(f"- {json.dumps(item, ensure_ascii=False)}" for item in data)
-    elif isinstance(data, dict):
-        sections = [_format_json_dict_section(k, v) for k, v in data.items()]
-        result = "\n\n".join(sections) if sections else "*Empty JSON Object*"
-    else:
-        result = str(data)
-
+    result = _format_json_data(data)
     if len(result.encode("utf-8")) > _LOCAL_MAX_MARKDOWN_BYTES:
         raise ValueError("JSON document exceeds the rendered output limit.")
     return result
@@ -457,64 +461,66 @@ def process_excel_local(file_path: str) -> str:
     return "*Empty or Unreadable Excel Document*"
 
 
+def _extract_pdf_pymupdf(file_path: str) -> tuple[str, int]:
+    """Extract page text via PyMuPDF; returns (markdown, page_count)."""
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(file_path)
+    try:
+        pages_md: list[str] = []
+        page_count = len(doc)
+        if page_count > _LOCAL_MAX_PDF_PAGES:
+            raise ValueError("PDF document exceeds the maximum supported page count.")
+        extracted_bytes = 0
+        for page_num in range(page_count):
+            text = doc[page_num].get_text("text").strip()
+            if text:
+                extracted_bytes += len(text.encode("utf-8"))
+                if extracted_bytes > _LOCAL_MAX_MARKDOWN_BYTES:
+                    raise ValueError("PDF document exceeds the rendered output limit.")
+                pages_md.append(f"## Page {page_num + 1}\n\n{text}")
+    finally:
+        doc.close()
+    if pages_md and len("".join(pages_md).strip()) > 30:
+        return "\n\n---\n\n".join(pages_md), page_count
+    return "", page_count
+
+
+def _extract_pdf_pypdf(file_path: str) -> tuple[str, int]:
+    """Extract page text via pypdf; returns (markdown, page_count)."""
+    import pypdf
+
+    reader = pypdf.PdfReader(file_path)
+    page_count = len(reader.pages)
+    if page_count > _LOCAL_MAX_PDF_PAGES:
+        raise ValueError("PDF document exceeds the maximum supported page count.")
+    pages_md = []
+    extracted_bytes = 0
+    for p_idx, page in enumerate(reader.pages, 1):
+        text = (page.extract_text() or "").strip()
+        if text:
+            extracted_bytes += len(text.encode("utf-8"))
+            if extracted_bytes > _LOCAL_MAX_MARKDOWN_BYTES:
+                raise ValueError("PDF document exceeds the rendered output limit.")
+            pages_md.append(f"## Page {p_idx}\n\n{text}")
+    if pages_md and len("".join(pages_md).strip()) > 30:
+        return "\n\n---\n\n".join(pages_md), page_count
+    return "", page_count
+
+
 def process_pdf_local(file_path: str) -> tuple[str, int]:
     """
     Extracts native digital text and page structure from PDF pages locally ($0 API cost).
     Returns a tuple of (extracted_markdown, page_count).
     If no text or PyMuPDF/pypdf is uninstalled, returns ("", page_count).
     """
-    try:
-        import fitz  # PyMuPDF
-
-        doc = fitz.open(file_path)
+    for extractor in (_extract_pdf_pymupdf, _extract_pdf_pypdf):
         try:
-            pages_md: list[str] = []
-            page_count = len(doc)
-            if page_count > _LOCAL_MAX_PDF_PAGES:
-                raise ValueError("PDF document exceeds the maximum supported page count.")
-            extracted_bytes = 0
-            for page_num in range(page_count):
-                page = doc[page_num]
-                text = page.get_text("text").strip()
-                if text:
-                    extracted_bytes += len(text.encode("utf-8"))
-                    if extracted_bytes > _LOCAL_MAX_MARKDOWN_BYTES:
-                        raise ValueError("PDF document exceeds the rendered output limit.")
-                    pages_md.append(f"## Page {page_num + 1}\n\n{text}")
-        finally:
-            doc.close()
-        if pages_md and len("".join(pages_md).strip()) > 30:
-            return "\n\n---\n\n".join(pages_md), page_count
-        return "", page_count
-    except ValueError:
-        raise
-    except Exception as exc:
-        logger.debug("[PDF Local] PyMuPDF local text extraction skipped (%s)", exc)
-
-    try:
-        import pypdf
-
-        reader = pypdf.PdfReader(file_path)
-        page_count = len(reader.pages)
-        if page_count > _LOCAL_MAX_PDF_PAGES:
-            raise ValueError("PDF document exceeds the maximum supported page count.")
-        pages_md = []
-        extracted_bytes = 0
-        for p_idx, page in enumerate(reader.pages, 1):
-            text = (page.extract_text() or "").strip()
-            if text:
-                extracted_bytes += len(text.encode("utf-8"))
-                if extracted_bytes > _LOCAL_MAX_MARKDOWN_BYTES:
-                    raise ValueError("PDF document exceeds the rendered output limit.")
-                pages_md.append(f"## Page {p_idx}\n\n{text}")
-        if pages_md and len("".join(pages_md).strip()) > 30:
-            return "\n\n---\n\n".join(pages_md), page_count
-        return "", page_count
-    except ValueError:
-        raise
-    except Exception as exc:
-        logger.debug("[PDF Local] pypdf local text extraction skipped (%s)", exc)
-
+            return extractor(file_path)
+        except ValueError:
+            raise
+        except Exception as exc:
+            logger.debug("[PDF Local] %s extraction skipped (%s)", extractor.__name__, exc)
     return "", 0
 
 
