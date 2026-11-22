@@ -512,6 +512,14 @@ backup_schedule = gcp.cloudscheduler.Job(
 #    production; scheduled OIDC POSTs wake it for bounded maintenance work.
 #    The task-invoker identity is already allowlisted by the handler's OIDC
 #    check and holds run.invoker on the worker.
+#
+#    NOTE: these jobs were first created imperatively (gcloud) before this
+#    code existed. On the first `pulumi up` after this change, import them
+#    once or the create will fail with 409 AlreadyExists:
+#      pulumi import gcp:cloudscheduler/job:Job \
+#        projects/esbpcs-lab-un/locations/asia-southeast1/jobs/korda-reaper-schedule \
+#        <pulumi-resource-name>
+#    (same for korda-cleanup-schedule). After import, subsequent ups converge.
 worker_maintenance_jobs = {
     "korda-reaper-schedule": (
         "*/15 * * * *",
