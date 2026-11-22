@@ -215,6 +215,21 @@ class DeploymentFunctionsTestCase(TestCase):
 
     @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
+    @patch("extractor.deployment._get_service_logs_local")
+    @patch("urllib.request.urlopen", side_effect=OSError("logging api down"))
+    def test_get_service_logs_gcp_fallback_uses_configured_region(
+        self, _urlopen, mock_local, mock_get_token, mock_get_details
+    ):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "europe-west1"}
+        mock_get_token.return_value = "mock-token"
+        mock_local.return_value = []
+
+        get_service_logs("worker")
+
+        mock_local.assert_called_once_with("worker", "test-project", "europe-west1", 50)
+
+    @patch("extractor.deployment.get_gcp_project_details")
+    @patch("extractor.deployment.get_gcp_access_token")
     @patch("subprocess.check_output")
     def test_get_service_logs_gcloud(self, mock_check_output, mock_get_token, mock_get_details):
         mock_get_details.return_value = {"project_id": "test-project", "region": "asia-southeast1"}

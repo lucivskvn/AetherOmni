@@ -416,7 +416,7 @@ def _fallback_local_run_logs(service_name, region, project_id, limit):
         return [{"timestamp": "", "message": f"Local log retrieval failed: {ex!s}", "severity": "ERROR"}]
 
 
-def _get_service_logs_gcp(service_name, project_id, limit, token):
+def _get_service_logs_gcp(service_name, project_id, region, limit, token):
     safe_service = _sanitize_gcp_token(service_name, "korda-web")
     safe_project = _sanitize_gcp_token(project_id)
     url = "https://logging.googleapis.com/v2/entries:list"
@@ -451,7 +451,7 @@ def _get_service_logs_gcp(service_name, project_id, limit, token):
         logger.warning(
             "[Deployment] Failed to fetch logs via Logging REST API: %s. Falling back to local gcloud log retrieval.", e
         )
-        return _get_service_logs_local(service_name, project_id, "asia-southeast1", limit)
+        return _get_service_logs_local(service_name, project_id, region, limit)
 
 
 def _get_service_logs_local(service_name, project_id, region, limit):
@@ -501,7 +501,7 @@ def get_service_logs(service_name, limit=50):
 
     token = get_gcp_access_token()
     if token:
-        return _get_service_logs_gcp(service_name, project_id, limit, token)
+        return _get_service_logs_gcp(service_name, project_id, region, limit, token)
     else:
         return _get_service_logs_local(service_name, project_id, region, limit)
 
