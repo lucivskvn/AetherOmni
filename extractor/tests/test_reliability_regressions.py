@@ -465,3 +465,26 @@ class DurableDeliveryTests(SimpleTestCase):
         called_args = mock_gen.call_args[0]
         # called_args: (client, model, contents=...)
         self.assertEqual(called_args[1], MODEL_GEMINI_FLASH_LITE)
+
+    @patch("extractor.tasks._record_memory_distill_spend")
+    @patch("extractor.llm_gateway._init_refinement_client")
+    @patch("extractor.llm_gateway.execute_generate_content_with_fallback")
+    @patch("extractor.rag.generate_surreal_embeddings")
+    @patch("extractor.surreal_db.add_user_memory")
+    def test_store_user_memory_handles_missing_response_text(
+        self, mock_add_memory, mock_embeddings, mock_gen, mock_init_client, mock_record_spend
+    ):
+        """google-genai can return response.text=None; spend is still recorded and nothing is indexed."""
+        from extractor.tasks import store_user_memory_task
+
+        mock_gen_response = MagicMock()
+        mock_gen_response.text = None
+        mock_gen_response.usage_metadata = None
+        mock_gen.return_value = (mock_gen_response, 50)
+
+        store_user_memory_task({"user_id": "user-uuid-1", "text": "Please be concise."})
+
+        mock_gen.assert_called_once()
+        mock_record_spend.assert_called_once()
+        mock_embeddings.assert_not_called()
+        mock_add_memory.assert_not_called()

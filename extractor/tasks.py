@@ -1731,6 +1731,24 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
     return reaped_count
 
 
+def _record_memory_distill_spend(model_used: str, response: Any) -> None:
+    """Persist token spend for the memory-distillation LLM call to the monthly ledger."""
+    try:
+        from extractor.llm_gateway import calculate_gemini_cost, usage_token_counts
+        from extractor.models import MonthlySpendLog
+
+        usage = getattr(response, "usage_metadata", None)
+        in_tok, out_tok = usage_token_counts(usage)
+        if in_tok <= 0 and out_tok <= 0:
+            return
+
+        cost = calculate_gemini_cost(str(model_used or ""), in_tok, out_tok)
+        if not MonthlySpendLog.add_cost(timezone.now(), cost, in_tok=in_tok, out_tok=out_tok):
+            logger.warning("[Memory Task] Spend ledger write returned False for distillation call.")
+    except Exception as exc:
+        logger.warning("[Memory Task] Failed to record distillation spend: %s", exc)
+
+
 def store_user_memory_task(payload: dict) -> None:
     """
     Cloud Tasks receiver: Distill a user preference statement, generate its embedding,
@@ -1772,8 +1790,9 @@ def store_user_memory_task(payload: dict) -> None:
     model = _resolve_model_name(MODEL_GEMINI_FLASH_LITE)
 
     try:
-        response, _ = execute_generate_content_with_fallback(client, model, contents=[distill_prompt])
-        distilled = response.text.strip().strip("\"'").rstrip(".")
+        response, model_used = execute_generate_content_with_fallback(client, model, contents=[distill_prompt])
+        _record_memory_distill_spend(model_used, response)
+        distilled = (response.text or "").strip().strip("\"'").rstrip(".")
     except Exception as exc:
         logger.warning("[Memory Task] Gemini preference distillation failed: %s. Using raw query.", exc)
         distilled = raw_text.rstrip(".")
