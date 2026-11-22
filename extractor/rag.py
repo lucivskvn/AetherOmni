@@ -592,7 +592,7 @@ def query_semantic_knowledge_rag(
     query_cleaned = query.strip()
     query_hash = hashlib.sha256(query_cleaned.lower().encode("utf-8")).hexdigest()
     user_part = actor_id or (str(user.id) if (user and user.is_authenticated) else "guest")
-    cache_key = f"rag_search_cache:{user_part}:{query_hash}"
+    cache_key = f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{user_part}:{query_hash}"
 
     # ── 1. Exact-match KV cache lookup (SurrealDB) ────────────────────────────
     cached_result = _lookup_kv_cache(cache_key, user, document_ids, surreal_db, actor_id=actor_id)
@@ -748,7 +748,7 @@ def _stream_query_rag_events(
     query_cleaned = query.strip()
     query_hash = hashlib.sha256(query_cleaned.lower().encode("utf-8")).hexdigest()
     user_part = actor_id or (str(user.id) if (user and user.is_authenticated) else "guest")
-    cache_key = f"rag_search_cache:{user_part}:{query_hash}"
+    cache_key = f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{user_part}:{query_hash}"
 
     # 1. Exact-match KV cache lookup
     cached_result = _lookup_kv_cache(cache_key, user, document_ids, surreal_db, actor_id=actor_id)
