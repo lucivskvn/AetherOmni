@@ -86,7 +86,8 @@ def _record_quiz_generation_spend(model_name: str, response: Any) -> None:
         from extractor.models import MonthlySpendLog
 
         cost = llm_gateway.calculate_gemini_cost(model_name, in_tok, out_tok)
-        MonthlySpendLog.add_cost(datetime.now(UTC), cost, in_tok=in_tok, out_tok=out_tok)
+        if not MonthlySpendLog.add_cost(datetime.now(UTC), cost, in_tok=in_tok, out_tok=out_tok):
+            logger.warning("[QuizStudio] Spend ledger write returned False for quiz generation.")
     except Exception as exc:
         logger.warning("[QuizStudio] Failed to record generation spend: %s", exc)
 
