@@ -458,6 +458,22 @@ def get_request_actor_id(request) -> str:
     return str(request.session.get("supabase_user_id") or request.user.id)
 
 
+def _invalidate_doc_rag_caches(doc_uuid: str, actor_id: str | None = None) -> None:
+    """Purge cached RAG answers derived from a document's prior content.
+
+    Production document writes go through SurrealDB, so the Django post_save
+    cache-invalidation signal cannot fire; callers must invoke this explicitly
+    after content changes (edit, retry, restart). Failure-isolated: cache
+    purge errors are logged, never raised into the request path.
+    """
+    try:
+        surreal_db.delete_rag_cache_for_document(str(doc_uuid))
+        if actor_id:
+            surreal_db.kv_cache_delete_pattern(f"rag_search_cache:{actor_id}:")
+    except Exception as exc:
+        logger.warning("[RAGCache] Invalidation failed for %s: %s", doc_uuid, exc)
+
+
 def _record_view_audit(request, action, details: str, document=None, ip: str | None = None) -> None:
     """Helper to record standardized view-level audit trail events without repetitive boilerplate."""
     from extractor.utils import AuditEvent, get_client_ip, log_audit_event
@@ -1158,16 +1174,7 @@ class DocumentSaveView(LoginRequiredMixin, View):
         doc_wrapped = _wrap_surreal_doc(doc_ref, users_map)
 
         # Invalidate cached RAG answers derived from the pre-edit content.
-        # The Django post_save signal cannot fire here (production writes go
-        # through SurrealDB), so the purge must be explicit. Failure-isolated:
-        # a cache purge failure must not fail the user's save.
-        try:
-            surreal_db.delete_rag_cache_for_document(str(doc_uuid))
-            actor_id = get_request_actor_id(request)
-            if actor_id:
-                surreal_db.kv_cache_delete_pattern(f"rag_search_cache:{actor_id}:")
-        except Exception as cache_err:
-            logger.warning("[DocumentSave] RAG cache invalidation failed for %s: %s", doc_uuid, cache_err)
+        _invalidate_doc_rag_caches(str(doc_uuid), get_request_actor_id(request))
 
         _record_view_audit(
             request,
@@ -1766,6 +1773,9 @@ def _restart_single_document(doc, request, cloud_tasks):
     )
 
     _enqueue_restarted_document(doc, doc_uuid, cloud_tasks)
+    # Reprocessing may change refined content; drop cached answers derived
+    # from the previous pipeline output for this document's owner.
+    _invalidate_doc_rag_caches(str(doc_uuid), doc.get("uploaded_by_id"))
     doc_title = doc.get("title") or doc.get("original_filename") or doc_uuid
     _record_view_audit(
         request,
@@ -2228,6 +2238,13 @@ class DocumentRetryView(LoginRequiredMixin, View):
             cloud_tasks.enqueue("process_document", {"document_id": doc_id})
         else:
             cloud_tasks.enqueue("process_document", {"document_uuid": str(doc_uuid)})
+
+        # Reprocessing may produce different refined content; drop cached
+        # answers derived from the previous pipeline output.
+        _invalidate_doc_rag_caches(
+            str(doc_uuid),
+            getattr(doc_wrapped, "uploaded_by_id", None) or get_request_actor_id(request),
+        )
 
     def post(self, request, doc_uuid):
         raw_doc = surreal_db.get_document(doc_uuid)
