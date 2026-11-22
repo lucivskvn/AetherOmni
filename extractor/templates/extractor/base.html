@@ -96,7 +96,7 @@
         }
     </style>
 </head>
-<body data-supabase-url="{{ SUPABASE_URL|default:'' }}" data-supabase-key="{{ SUPABASE_PUBLIC_KEY|default:'' }}">
+<body data-supabase-url="{{ SUPABASE_URL|default:'' }}" data-supabase-key="{{ SUPABASE_PUBLIC_KEY|default:'' }}" data-supabase-user-id="{{ request.session.supabase_user_id|default:'' }}">
     <a href="#main-content" class="skip-to-main">Skip to main content</a>
     <header>
         <div class="nav-container">
