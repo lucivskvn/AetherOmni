@@ -960,6 +960,76 @@ def update_document(doc_uuid: str, data: dict) -> dict:
     return _update_document_surreal(doc_uuid, data)
 
 
+def _conditional_update_document_offline(doc_uuid, data, allowed_statuses):
+    """Atomic compare-and-swap update guarded by the document's current status."""
+    from django.utils import timezone
+
+    from extractor.models import SourceDocument
+
+    try:
+        lookup = _offline_document_lookup(doc_uuid)
+    except TypeError, ValueError:
+        return None
+
+    payload = {
+        k: v
+        for k, v in data.items()
+        if k in {"status", "retry_count", "error_message", CANCEL_REQUESTED} and v is not None
+    }
+    if not payload:
+        return None
+    payload["updated_at"] = timezone.now()
+
+    updated = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses), cancel_requested=False).update(
+        **payload
+    )
+    if updated != 1:
+        return None
+    try:
+        return _model_to_dict(SourceDocument.objects.get(**lookup))
+    except SourceDocument.DoesNotExist:
+        return None
+
+
+def _conditional_update_document_surreal(doc_uuid, data, allowed_statuses):
+    """SurrealDB counterpart: UPDATE ... WHERE status still in the allowed set."""
+    VALID_FIELDS = {"status", "retry_count", "error_message", CANCEL_REQUESTED}
+    payload = {k: v for k, v in data.items() if k in VALID_FIELDS and v is not None}
+    if not payload:
+        return None
+
+    set_parts = []
+    params: dict[str, Any] = {"doc_uuid": doc_uuid, "allowed_statuses": list(allowed_statuses)}
+    for k, v in payload.items():
+        _validate_field_name(k)
+        set_parts.append(f"{k} = ${k}")
+        params[k] = v
+    set_parts.append("updated_at = time::now()")
+
+    sql = (
+        f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid "  # nosec B608 # noqa: S608
+        "AND status IN $allowed_statuses AND cancel_requested != true RETURN AFTER;"
+    )
+    rows = _first_result(_run(sql, params))
+    return rows[0] if rows else None
+
+
+def update_document_if_status(doc_uuid: str, data: dict, *, allowed_statuses: list[str]) -> dict | None:
+    """Conditionally update a document only while its status remains in allowed_statuses.
+
+    Compare-and-swap guard for the stale-task reaper: a worker that completes or
+    fails the document between the scan snapshot and this write makes the UPDATE
+    match zero rows, so the reaper cannot overwrite a fresher terminal state.
+    Returns the updated row, or None when the guard rejected the write.
+    """
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return _conditional_update_document_offline(doc_uuid, data, allowed_statuses)
+    return _conditional_update_document_surreal(doc_uuid, data, allowed_statuses)
+
+
 def claim_document_for_processing(doc_uuid: str) -> dict | None:
     """Atomically claim a pending document for a single processing attempt."""
     doc_uuid = str(doc_uuid)
@@ -1863,7 +1933,14 @@ def purge_all_rag_cache() -> None:
 
 
 def purge_all() -> None:
-    """Delete all records from documents, chunks, rag_cache, and user_memories tables."""
+    """Delete all user-derived knowledge records, retaining financial and audit data.
+
+    Covers the full derived corpus — documents, chunks, rag_cache, sources,
+    anchors, crystals, exam items/attempts, entity graph, context cache, and
+    user memories — while preserving monthly_spend_ledger,
+    document_spend_reconciliations, audit_logs, system_settings, and kv_cache
+    (which carries spend/settings state required for budget accounting).
+    """
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
@@ -1871,12 +1948,24 @@ def purge_all() -> None:
 
         SourceDocument.objects.all().delete()
         _test_chunks.clear()
+        _test_korda_sources.clear()
+        _test_korda_anchors.clear()
+        _test_korda_crystals.clear()
+        _test_korda_exam_items.clear()
+        _test_korda_attempts.clear()
         return
 
     documents = list_documents()
     if not all(_flush_document_cost(document) for document in documents):
         raise RuntimeError("Document costs could not be recorded; purge aborted.")
-    _run("DELETE FROM documents; DELETE FROM chunks; DELETE FROM rag_cache; DELETE FROM user_memories;")
+    _run(
+        "DELETE FROM documents; DELETE FROM chunks; DELETE FROM rag_cache; DELETE FROM user_memories; "
+        "DELETE FROM source; DELETE FROM anchor; DELETE FROM anchored_in; "
+        "DELETE FROM crystal; DELETE FROM grounded_in; "
+        "DELETE FROM exam_item; DELETE FROM attempt; "
+        "DELETE FROM entities; DELETE FROM chunk_references; DELETE FROM entity_relations; "
+        "DELETE FROM context_cache;"
+    )
 
 
 # ── KV cache helpers ──────────────────────────────────────────────────────────

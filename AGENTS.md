@@ -130,9 +130,10 @@ explicitly before applying them.
   tenant filtering, exports, RAG access, and rate-limit keys. Django/SQLite IDs
   are local implementation details and are permitted only in explicit offline mode.
 - Default the worker to Cloud Run on-demand scaling (minimum zero, bounded
-  maximum) and disable periodic maintenance. Cloud Tasks wakes the worker for
-  queued work; opt into an always-on worker only when scheduled maintenance is
-  explicitly required. Web instances must not start maintenance threads.
+  maximum) and disable in-process periodic maintenance. Cloud Tasks wakes the
+  worker for queued work, and Pulumi-managed Cloud Scheduler jobs dispatch OIDC
+  maintenance POSTs to the scale-to-zero worker. Web instances must not start
+  maintenance threads.
 - Cloud Tasks must dispatch only to `WORKER_URL` in production; never fall back
   to a local web-process thread. Cloud Build resolves the worker URL and GCP
   project identity at deploy time, while `_APP_URL` may set the public Supabase

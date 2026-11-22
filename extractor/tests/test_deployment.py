@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -296,3 +297,37 @@ class ProductionDeploymentContractTestCase(TestCase):
             self.assertIn(f'"{permission}"', pulumi_program)
         self.assertIn("-compute@developer.gserviceaccount.com", pulumi_program)
         self.assertIn("korda-deploy-preflight-binding", pulumi_program)
+
+    def test_pulumi_schedules_worker_maintenance_dispatches(self):
+        """Scale-to-zero workers cannot run in-process periodic threads, so
+        Cloud Scheduler must wake the private worker for reaper/cleanup tasks.
+
+        Regression: reap_stale_tasks and cleanup_expired_documents were
+        registered in the task registry but never invoked in production —
+        expired documents were never purged and stuck tasks never recovered.
+        """
+        pulumi_program = self._repo_file("infra", "pulumi", "__main__.py")
+
+        # Bind the schedule names to their task endpoints structurally so a
+        # renamed job or swapped handler cannot pass on string presence alone.
+        jobs_block = re.search(r"worker_maintenance_jobs\s*=\s*\{(.*?)\n\}", pulumi_program, re.DOTALL)
+        self.assertIsNotNone(jobs_block, "worker_maintenance_jobs mapping not found")
+        jobs_src = jobs_block.group(1)
+        for sched_name, task_name in (
+            ("korda-reaper-schedule", "reap_stale_tasks"),
+            ("korda-cleanup-schedule", "cleanup_expired_documents"),
+        ):
+            entry = re.search(rf'"{sched_name}"\s*:\s*\([^)]*?"{task_name}"', jobs_src, re.DOTALL)
+            self.assertIsNotNone(entry, f"{sched_name} must dispatch {task_name}")
+
+        # The OIDC audience and dispatch URI must derive from the shared
+        # project-number worker URL, not the hash-form service.uri.
+        self.assertIn("audience=worker_task_base_url", pulumi_program)
+        self.assertIn('uri=f"{worker_task_base_url}/internal/tasks/{task_name}/"', pulumi_program)
+        self.assertIn("oidc_token", pulumi_program)
+        self.assertIn("task_invoker_account.email", pulumi_program)
+
+        # Transient worker/SurrealDB failures need bounded Scheduler retries;
+        # the Cloud Tasks queue retry policy does not apply to direct dispatch.
+        self.assertIn("retry_config", pulumi_program)
+        self.assertIn("retry_count=3", pulumi_program)

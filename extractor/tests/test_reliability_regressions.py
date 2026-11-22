@@ -399,11 +399,12 @@ class DurableDeliveryTests(SimpleTestCase):
             mock_broadcast.assert_called_once_with("doc-uuid-999", "FAILED")
 
     @patch("extractor.cloud_tasks.enqueue")
-    @patch("extractor.surreal_db.update_document")
+    @patch("extractor.surreal_db.update_document_if_status")
     def test_reaper_clears_cancel_requested_flag(self, mock_update, mock_enqueue):
         from extractor.task_state import CANCEL_REQUESTED
         from extractor.tasks import _reap_single_stale_doc
 
+        mock_update.return_value = {"doc_uuid": "test-uuid-reap", "status": "PENDING"}
         doc = {
             "id": "doc:123",
             "doc_uuid": "test-uuid-reap",
@@ -414,11 +415,33 @@ class DurableDeliveryTests(SimpleTestCase):
             success = _reap_single_stale_doc(doc)
             self.assertTrue(success)
             mock_update.assert_called_once()
-            called_uuid, payload = mock_update.call_args[0]
+            called_uuid, payload = mock_update.call_args[0][0], mock_update.call_args[0][1]
             self.assertEqual(called_uuid, "test-uuid-reap")
             self.assertEqual(payload["status"], "PENDING")
             self.assertEqual(payload["retry_count"], 2)
             self.assertFalse(payload[CANCEL_REQUESTED])
+            self.assertEqual(
+                mock_update.call_args[1]["allowed_statuses"],
+                ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"],
+            )
+
+    @patch("extractor.cloud_tasks.enqueue")
+    @patch("extractor.surreal_db.update_document_if_status")
+    def test_reaper_skips_reenqueue_when_document_changed_state(self, mock_update, mock_enqueue):
+        """CAS guard: a worker that completed the doc after the scan must not
+        be overwritten with PENDING or receive a duplicate processing task."""
+        from extractor.tasks import _reap_single_stale_doc
+
+        mock_update.return_value = None
+        doc = {
+            "doc_uuid": "doc-raced-1",
+            "status": "EXTRACTING",
+            "retry_count": 0,
+            "original_filename": "raced.pdf",
+        }
+        with patch("extractor.utils.broadcast_status_change"):
+            self.assertFalse(_reap_single_stale_doc(doc))
+        mock_enqueue.assert_not_called()
 
     @patch("extractor.llm_gateway._init_refinement_client")
     @patch("extractor.llm_gateway.execute_generate_content_with_fallback")
