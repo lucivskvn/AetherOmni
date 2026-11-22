@@ -213,6 +213,22 @@ class DeploymentFunctionsTestCase(TestCase):
 
         self.assertEqual([entry["message"] for entry in logs], ["earlier", "latest"])
 
+    @patch("extractor.deployment._get_service_logs_local")
+    @patch("extractor.deployment.get_gcp_project_details")
+    @patch("extractor.deployment.get_gcp_access_token")
+    @patch("urllib.request.urlopen")
+    def test_get_service_logs_gcp_failure_uses_configured_region(
+        self, mock_urlopen, mock_get_token, mock_get_details, mock_local_logs
+    ):
+        mock_get_details.return_value = {"project_id": "test-project", "region": "europe-west1"}
+        mock_get_token.return_value = "mock-token"
+        mock_urlopen.side_effect = Exception("logging api down")
+        mock_local_logs.return_value = []
+
+        get_service_logs("worker")
+
+        mock_local_logs.assert_called_once_with("worker", "test-project", "europe-west1", 50)
+
     @patch("extractor.deployment.get_gcp_project_details")
     @patch("extractor.deployment.get_gcp_access_token")
     @patch("extractor.deployment._get_service_logs_local")
