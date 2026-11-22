@@ -375,6 +375,7 @@ steps:
           --no-allow-unauthenticated \
           --min-instances=0 \
           --max-instances=5 \
+          --cpu=2 \
           --memory=2Gi \
           --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="$${ENV_VARS}" \
@@ -439,6 +440,9 @@ steps:
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
+          --min-instances=0 \
+          --max-instances=5 \
+          --cpu=1 \
           --memory=1Gi \
           --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="^;^$${ENV_VARS}" \
