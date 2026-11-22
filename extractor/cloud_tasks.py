@@ -224,18 +224,28 @@ def _persist_document_task(task_name: str, payload: dict) -> None:
         raise RuntimeError("Could not persist the task identity; dispatch was not attempted.")
 
 
+_IN_FLIGHT_STATUSES = ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]
+
+
 def cancel_document_task(doc_uuid: str, document: dict) -> None:
     """Persist cancellation before deleting queued work; retain identity on failure."""
     from google.api_core.exceptions import NotFound
 
     from extractor import surreal_db
 
-    updated = surreal_db.update_document(
+    # Status-guarded write: if a worker reached a terminal state between the
+    # caller's snapshot and this write, do not flap a COMPLETED document back
+    # to FAILED. The queued-task cleanup below still runs so a stranded
+    # Cloud Tasks entry cannot resurrect the document.
+    updated = surreal_db.update_document_if_status(
         doc_uuid,
         {"status": "FAILED", CANCEL_REQUESTED: True, "error_message": "Processing stopped by user."},
+        allowed_statuses=_IN_FLIGHT_STATUSES,
     )
-    if not updated:
-        raise RuntimeError("Cancellation could not be saved. Please retry.")
+    if updated is None:
+        updated = surreal_db.get_document(doc_uuid) or document
+        if not updated:
+            raise RuntimeError("Cancellation could not be saved. Please retry.")
     task_name = updated.get(CLOUD_TASK_NAME) or document.get(CLOUD_TASK_NAME)
     if not task_name or settings.DEBUG:
         return
