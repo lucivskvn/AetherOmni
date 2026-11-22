@@ -138,7 +138,11 @@ if [[ "$DOCS_ONLY" = true ]]; then
 
     # Filter changed Python files
     CHANGED_PY=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
-    if [[ -n "$CHANGED_PY" ]] && "$PYTHON_BIN" -m ruff --version &> /dev/null; then
+    if [[ -n "$CHANGED_PY" ]]; then
+        if ! "$PYTHON_BIN" -m ruff --version &> /dev/null; then
+            echo -e "${RED}✗ Ruff is required for changed Python files but is not installed.${NC}" >&2
+            exit 1
+        fi
         echo -e "${YELLOW}[Diff Audit] Scanning changed Python files with Ruff AST & Django Linters...${NC}"
         # shellcheck disable=SC2086  # intentional word-splitting: CHANGED_PY holds space-separated filenames
         "$PYTHON_BIN" -m ruff check $CHANGED_PY
@@ -248,6 +252,9 @@ if [[ "$DOCS_ONLY" = true ]]; then
             ./node_modules/.bin/vitest run
         elif command -v npm &> /dev/null; then
             npm test
+        else
+            echo -e "${RED}✗ Changed JavaScript files detected but no JS test runner (vitest/npm) is available.${NC}" >&2
+            exit 1
         fi
         echo -e "${GREEN}✓ JavaScript unit tests passed cleanly.${NC}"
     fi
@@ -449,6 +456,20 @@ else
     echo -e "${RED}✗ Pip-Audit detected vulnerable dependencies! Please upgrade them.${NC}" >&2
     exit 1
 fi
+
+echo -e "\n${YELLOW}[Dependency Drift] Verifying requirements.txt matches uv.lock export...${NC}"
+if ! command -v uv &> /dev/null; then
+    echo -e "${RED}✗ uv is required to verify the requirements.txt/uv.lock export contract.${NC}" >&2
+    exit 1
+fi
+uv export --frozen --no-dev --format requirements-txt -o "$TMPDIR_AET/requirements_export.txt"
+# The generated header embeds the output path; compare package bodies only.
+if ! diff <(tail -n +3 "$TMPDIR_AET/requirements_export.txt") <(tail -n +3 requirements.txt) > /dev/null; then
+    echo -e "${RED}✗ requirements.txt is out of sync with uv.lock.${NC}" >&2
+    echo "  Regenerate it with: uv export --frozen --no-dev --format requirements-txt -o requirements.txt" >&2
+    exit 1
+fi
+echo -e "${GREEN}✓ requirements.txt is an exact uv.lock export (0 drift).${NC}"
 
 # ── PHASE 4: RUNTIME INTEGRITY & AUTOMATED VERIFICATION ──────────────────────
 

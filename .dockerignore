@@ -35,3 +35,4 @@ ast-grep-report.json
 infra/pulumi/venv/
 coverage/
 .vitest/
+node_modules/

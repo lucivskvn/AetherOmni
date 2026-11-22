@@ -60,9 +60,11 @@ def _read_untracked_files() -> list[tuple[str, int, str]]:
     for path in untracked:
         file_path = ROOT / path
         if file_path.is_file():
-            result.extend(
-                (path, index, line) for index, line in enumerate(file_path.read_text(encoding="utf-8").splitlines(), 1)
-            )
+            try:
+                lines = file_path.read_text(encoding="utf-8").splitlines()
+            except UnicodeDecodeError:
+                continue
+            result.extend((path, index, line) for index, line in enumerate(lines, 1))
     return result
 
 

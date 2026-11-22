@@ -198,14 +198,18 @@ def broadcast_status_change(doc_uuid: str, status: str, owner_id: str | None = N
         import json
         import urllib.request
 
-        # Use Supabase Realtime HTTP broadcast REST endpoint
+        # Use Supabase Realtime HTTP broadcast REST endpoint. The channel is
+        # public (anon key), so scope the topic per owner — a shared topic would
+        # leak every tenant's document UUIDs, statuses, and owner IDs to any
+        # subscriber. Unowned (public-corpus) documents use the shared topic.
+        owner_topic = str(owner_id).strip() if owner_id else "shared"
         broadcast_url = f"{supabase_url.rstrip('/')}/realtime/v1/api/broadcast"
         validate_url_scheme(broadcast_url)
         payload = json.dumps(
             {
                 "messages": [
                     {
-                        "topic": "document-updates",
+                        "topic": f"document-updates:{owner_topic}",
                         "event": "status-changed",
                         "payload": {"uuid": doc_uuid, "status": status, "owner_id": owner_id},
                     }

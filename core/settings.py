@@ -345,7 +345,7 @@ if (
 
 # Priority: CLOUD_TASKS_QUEUE > GCP_QUEUE_NAME > canonical fallback
 # IMPORTANT: must match the actual queue name created in GCP Cloud Tasks.
-# The deployed service.yaml sets GCP_QUEUE_NAME="extractor-tasks".
+# The deployed manifests set GCP_QUEUE_NAME="extractor-tasks-v2".
 CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "extractor-tasks"
 # APP_URL is the fully-qualified URL of this Cloud Run service (used for task callbacks)
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")

@@ -76,6 +76,30 @@ class ReembeddingTestCase(TestCase):
         self.assertIn("Monthly budget limit reached", doc.error_message)
         mock_recreate.assert_not_called()
 
+    @patch("extractor.tasks.log_audit_event")
+    @patch("extractor.tasks.chunk_document_semantically", return_value=[])
+    @patch("extractor.surreal_db.recreate_chunks")
+    def test_reembed_edited_document_purges_chunks_when_content_emptied(
+        self, mock_recreate, _mock_chunk, _mock_log_audit
+    ):
+        """Emptying a document must not leave stale vectors searchable."""
+        doc = SourceDocument.objects.create(
+            original_filename="emptied.txt",
+            file_hash="emptied-hash",
+            status="COMPLETED",
+            refined_markdown="",
+            raw_markdown="",
+        )
+
+        from extractor.tasks import reembed_edited_document_task
+
+        reembed_edited_document_task({"document_id": doc.id})
+
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, "COMPLETED")
+        mock_recreate.assert_called_once()
+        self.assertEqual(mock_recreate.call_args[0][1], [])
+
 
 class ResilienceAndSafetyTestCase(TestCase):
     """

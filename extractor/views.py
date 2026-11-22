@@ -1375,6 +1375,12 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             broadcast_status_change(str(doc_uuid), "FAILED", owner_id=doc.get("uploaded_by_id"))
 
     def post(self, request):
+        # The RESET confirmation is enforced server-side; the template gate is
+        # only a UX affordance and cannot be trusted to protect a global wipe.
+        if request.POST.get("confirm") != "RESET":
+            messages.error(request, "Type RESET in the confirmation field to permanently wipe all data.")
+            return redirect("dashboard")
+
         raw_docs = surreal_db.list_documents()
         ip = get_client_ip(request)
 
@@ -1451,8 +1457,8 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
         if not document_ids_str:
             return None
         document_ids = []
-        for i in document_ids_str.split(","):
-            i_clean = i.strip()
+        for i in document_ids_str.split(",")[:50]:
+            i_clean = i.strip()[:64]
             if i_clean:
                 if ":" in i_clean:
                     i_clean = i_clean.split(":", 1)[1]
@@ -1460,10 +1466,10 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
                     document_ids.append(int(i_clean))
                 except ValueError:
                     document_ids.append(i_clean)
-        return document_ids
+        return document_ids[:50]
 
     def get(self, request):
-        query = request.GET.get("q", "").strip()
+        query = request.GET.get("q", "").strip()[:1000]
         if not query:
             return JsonResponse({"error": "Empty search query."}, status=400)
 

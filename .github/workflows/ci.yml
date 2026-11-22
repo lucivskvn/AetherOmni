@@ -157,6 +157,12 @@ jobs:
           .semgrep-venv/bin/pip install --no-cache-dir --only-binary :all: --upgrade pip==26.0.1 --quiet
           .semgrep-venv/bin/pip install --no-cache-dir --only-binary :all: semgrep==1.176.1 --quiet
 
+      - name: Dependency Manifest Drift Gate
+        run: |
+          uv export --frozen --no-dev --format requirements-txt -o /tmp/requirements_export.txt
+          # The generated header embeds the output path; compare package bodies only.
+          diff <(tail -n +3 /tmp/requirements_export.txt) <(tail -n +3 requirements.txt)
+
       - name: Install Node Dependencies
         run: |
           npm ci --prefer-offline --ignore-scripts
