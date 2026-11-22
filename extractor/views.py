@@ -366,6 +366,12 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
             first_of_month = datetime(now.year, now.month, 1, tzinfo=UTC)
             monthly_live = _sdb.get_user_total_spend(actor_id or str(user.id), since=first_of_month)
         except Exception as err:
+            # Fail closed in production: an unreadable spend source must not
+            # let uploads/quiz generation slip past the budget pre-check.
+            # The worker-side gate remains the authoritative enforcement.
+            if not getattr(settings, "SURREALDB_OFFLINE", False):
+                logger.warning("[Budget Check] SurrealDB live-spend read failed; denying request: %s", err)
+                return True
             logger.debug("[Budget Check] SurrealDB query bypassed, relying on MonthlySpendLog: %s", err)
 
         return (monthly_live + monthly_logged) >= budget_cap
