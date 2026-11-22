@@ -281,6 +281,37 @@ class SurrealDBClientTestCase(TestCase):
         allowed = surreal_db.check_rate_limit_atomic("user:456", max_requests=10)
         self.assertTrue(allowed)
 
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run")
+    def test_purge_expired_kv_cache_counts_and_deletes_only_expired(self, mock_run):
+        mock_run.side_effect = [
+            [{"status": "OK", "result": [{"n": 7}]}],
+            [{"status": "OK", "result": []}],
+        ]
+
+        self.assertEqual(surreal_db.purge_expired_kv_cache(), 7)
+        self.assertEqual(mock_run.call_count, 2)
+        count_sql = mock_run.call_args_list[0].args[0]
+        delete_sql = mock_run.call_args_list[1].args[0]
+        for sql in (count_sql, delete_sql):
+            self.assertIn("kv_cache", sql)
+            self.assertIn("expires_at < time::now()", sql)
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run")
+    def test_purge_expired_rate_limits_counts_and_deletes_only_expired(self, mock_run):
+        mock_run.side_effect = [
+            [{"status": "OK", "result": [{"n": 3}]}],
+            [{"status": "OK", "result": []}],
+        ]
+
+        self.assertEqual(surreal_db.purge_expired_rate_limits(), 3)
+        count_sql = mock_run.call_args_list[0].args[0]
+        delete_sql = mock_run.call_args_list[1].args[0]
+        for sql in (count_sql, delete_sql):
+            self.assertIn("rate_limits", sql)
+            self.assertIn("expires_at < time::now()", sql)
+
     def test_update_document_offline_nonexistent(self):
         res = surreal_db._update_document_offline("00000000-0000-0000-0000-000000000000", {"title": "New Title"})
         self.assertEqual(res, {})

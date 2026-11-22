@@ -1943,6 +1943,25 @@ def purge_all_rag_cache() -> None:
     _run("DELETE FROM rag_cache;")
 
 
+def _purge_expired_table(table: str) -> int:
+    """Delete expired rows from a table; rows with expires_at NONE are retained."""
+    count_sql = f"SELECT count() AS n FROM {table} WHERE expires_at < time::now() GROUP ALL;"  # nosec B608 # noqa: S608 -- table is a static literal
+    count_rows = _first_result(_run(count_sql))
+    count = count_rows[0].get("n", 0) if count_rows else 0
+    _run(f"DELETE FROM {table} WHERE expires_at < time::now();")  # nosec B608 # noqa: S608 -- table is a static literal
+    return count
+
+
+def purge_expired_kv_cache() -> int:
+    """Delete expired kv_cache rows (e.g. 24h RAG search cache); permanent entries are kept."""
+    return _purge_expired_table("kv_cache")
+
+
+def purge_expired_rate_limits() -> int:
+    """Delete expired rate_limits windows for keys that are never reused."""
+    return _purge_expired_table("rate_limits")
+
+
 def delete_rag_cache_for_document(doc_uuid: str) -> None:
     """Delete semantic-cache rows whose sources include the given document.
 
