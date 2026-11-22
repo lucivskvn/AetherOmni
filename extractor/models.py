@@ -391,7 +391,7 @@ def purge_rag_cache():
     try:
         from extractor import surreal_db
 
-        surreal_db.kv_cache_delete_pattern("rag_search_cache:")
+        surreal_db.kv_cache_delete_pattern(surreal_db.RAG_SEARCH_CACHE_PREFIX)
         surreal_db.purge_all_rag_cache()
     except Exception as exc:
         logger.warning("[Cache] Failed to purge SurrealDB RAG cache: %s", exc)
