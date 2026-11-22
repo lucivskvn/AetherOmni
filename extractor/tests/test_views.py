@@ -2010,6 +2010,34 @@ class SupabaseSessionExchangeTestCase(TestCase):
         data = response.json()
         self.assertEqual(data.get("error"), "Invalid JSON payload.")
 
+    def test_supabase_session_exchange_body_at_size_limit_allowed(self):
+        """A body of exactly MAX_JSON_BODY_BYTES passes the size gate and reaches JSON parsing."""
+        from extractor.views import MAX_JSON_BODY_BYTES
+
+        pad_len = MAX_JSON_BODY_BYTES - len(b'{"pad":""}')
+        payload = b'{"pad":"' + b"x" * pad_len + b'"}'
+        self.assertEqual(len(payload), MAX_JSON_BODY_BYTES)
+        response = self.client.post(
+            reverse("supabase_session_exchange"),
+            data=payload,
+            content_type="application/json",
+        )
+        self.assertNotEqual(response.status_code, 413)
+
+    def test_supabase_session_exchange_body_over_size_limit_rejected(self):
+        """A body one byte over MAX_JSON_BODY_BYTES returns 413 before parsing."""
+        from extractor.views import MAX_JSON_BODY_BYTES
+
+        payload = b'{"pad":"' + b"x" * (MAX_JSON_BODY_BYTES - len(b'{"pad":""}') + 1) + b'"}'
+        self.assertEqual(len(payload), MAX_JSON_BODY_BYTES + 1)
+        response = self.client.post(
+            reverse("supabase_session_exchange"),
+            data=payload,
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json().get("error"), "Request body too large.")
+
 
 class ViewsExceptionPathsTestCase(TestCase):
     """Direct unit tests for helper functions and exception paths in views.py."""
