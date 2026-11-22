@@ -76,8 +76,7 @@ def _project_crystals_for_prompt(crystals: list[dict[str, Any]]) -> str:
 def _record_quiz_generation_spend(model_name: str, response: Any) -> None:
     """Itemize quiz-generation LLM spend into the monthly budget ledger."""
     usage = getattr(response, "usage_metadata", None)
-    in_tok = int(getattr(usage, "prompt_token_count", 0) or 0)
-    out_tok = int(getattr(usage, "candidates_token_count", 0) or 0)
+    in_tok, out_tok = llm_gateway.usage_token_counts(usage)
     if not in_tok and not out_tok:
         return
     try:

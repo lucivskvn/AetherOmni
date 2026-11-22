@@ -319,6 +319,14 @@ def _soft_match_pricing(model_name: str, pricing_map: dict) -> tuple[Decimal, De
     return None
 
 
+def usage_token_counts(usage: Any) -> tuple[int, int]:
+    """Return (input, output) token counts from a provider usage_metadata object."""
+    return (
+        int(getattr(usage, "prompt_token_count", 0) or 0),
+        int(getattr(usage, "candidates_token_count", 0) or 0),
+    )
+
+
 def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int) -> Decimal:
     model_name = model_name.lower().strip()
     input_tokens = max(0, int(input_tokens))
@@ -815,8 +823,7 @@ def _record_stream_usage_spend(model_name: str, usage: Any) -> None:
     try:
         from extractor.models import MonthlySpendLog
 
-        in_tok = getattr(usage, "prompt_token_count", 0) or 0
-        out_tok = getattr(usage, "candidates_token_count", 0) or 0
+        in_tok, out_tok = usage_token_counts(usage)
         if in_tok <= 0 and out_tok <= 0:
             return
         cost = calculate_gemini_cost(model_name, in_tok, out_tok)
@@ -1754,8 +1761,8 @@ def _parse_anchor_extraction_response(
         "title": str(parsed.get("title") or doc_slug or "Untitled"),
         "anchors": anchors,
         "model_used": model_name,
-        "input_tokens": getattr(usage, "prompt_token_count", 0) or 0,
-        "output_tokens": getattr(usage, "candidates_token_count", 0) or 0,
+        "input_tokens": usage_token_counts(usage)[0],
+        "output_tokens": usage_token_counts(usage)[1],
     }
 
 

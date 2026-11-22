@@ -1717,13 +1717,13 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
 def _record_memory_distill_spend(model_used: str, response: Any) -> None:
     """Persist token spend for the memory-distillation LLM call to the monthly ledger."""
     try:
+        from extractor.llm_gateway import calculate_gemini_cost, usage_token_counts
+        from extractor.models import MonthlySpendLog
+
         usage = getattr(response, "usage_metadata", None)
-        in_tok = int(getattr(usage, "prompt_token_count", 0) or 0)
-        out_tok = int(getattr(usage, "candidates_token_count", 0) or 0)
+        in_tok, out_tok = usage_token_counts(usage)
         if in_tok <= 0 and out_tok <= 0:
             return
-        from extractor.llm_gateway import calculate_gemini_cost
-        from extractor.models import MonthlySpendLog
 
         cost = calculate_gemini_cost(str(model_used or ""), in_tok, out_tok)
         if not MonthlySpendLog.add_cost(timezone.now(), cost, in_tok=in_tok, out_tok=out_tok):
