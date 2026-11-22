@@ -896,6 +896,10 @@ def _get_offline_uuids(user, document_ids):
 
     if document_ids:
         uuids, ids_int = _parse_offline_document_ids(document_ids)
+        if not uuids and not ids_int:
+            # An explicit filter that resolves to nothing must not widen the
+            # search to every document the user can see.
+            return []
         q_filter = Q()
         if uuids:
             q_filter |= Q(uuid__in=uuids)
@@ -964,9 +968,12 @@ def _get_surreal_uuids(user, document_ids, actor_id: str | None = None):
 
     if document_ids:
         resolved_uuids = _resolve_allowed_uuids_filter(document_ids)
-        if resolved_uuids:
-            where_clauses.append("doc_uuid INSIDE $document_ids")
-            params["document_ids"] = resolved_uuids
+        if not resolved_uuids:
+            # An explicit filter that resolves to nothing must not widen the
+            # search to every document the user can see.
+            return []
+        where_clauses.append("doc_uuid INSIDE $document_ids")
+        params["document_ids"] = resolved_uuids
 
     sql = "SELECT doc_uuid FROM documents"
     if where_clauses:
