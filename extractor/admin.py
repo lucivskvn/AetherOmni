@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from extractor.models import AuditLog, MonthlySpendLog, SourceDocument, SystemSettings
+from extractor.utils import KEY_CSRF_TRUSTED_ORIGINS
 
 
 @admin.register(SourceDocument)
@@ -40,6 +41,10 @@ class SourceDocumentAdmin(admin.ModelAdmin):
 @admin.register(SystemSettings)
 class SystemSettingsAdmin(admin.ModelAdmin):
     list_display = ("id", "monthly_budget_usd", "selected_model")
+    # Settings must flow through SaveSettingsView, which enforces the model
+    # whitelist, budget bounds, and HTTPS-only CSRF origin validation. Direct
+    # admin edits would bypass those guards.
+    readonly_fields = ("monthly_budget_usd", "selected_model", "currency", KEY_CSRF_TRUSTED_ORIGINS)
 
 
 @admin.register(MonthlySpendLog)
