@@ -1304,6 +1304,12 @@ def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], exis
         return -1
 
     embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
+    # Re-check after the embedding call: the document may have been deleted or
+    # cancelled while provider latency elapsed. Without this guard,
+    # recreate_chunks would write orphaned vector chunks for a dead document.
+    if not _check_pipeline_active(doc_uuid):
+        logger.info("[Worker] Document %s deleted during re-embedding, aborting.", doc_uuid)
+        return -1
     doc_language = doc.get("language") or ""
     chunk_payloads = [
         _build_chunk_payload(i, ct, emb, doc_language)[0] for i, (ct, emb) in enumerate(zip(chunks, embeddings))
