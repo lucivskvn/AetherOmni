@@ -202,7 +202,7 @@ def broadcast_status_change(doc_uuid: str, status: str, owner_id: str | None = N
         # public (anon key), so scope the topic per owner — a shared topic would
         # leak every tenant's document UUIDs, statuses, and owner IDs to any
         # subscriber. Unowned (public-corpus) documents use the shared topic.
-        owner_topic = str(owner_id).strip() if owner_id else "shared"
+        owner_topic = (str(owner_id).strip() if owner_id else "") or "shared"
         broadcast_url = f"{supabase_url.rstrip('/')}/realtime/v1/api/broadcast"
         validate_url_scheme(broadcast_url)
         payload = json.dumps(
