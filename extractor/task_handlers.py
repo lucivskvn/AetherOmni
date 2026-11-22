@@ -404,12 +404,13 @@ def _record_korda_spend(model_used: str, input_tokens: int, output_tokens: int) 
         from .models import MonthlySpendLog
 
         cost = llm_gateway.calculate_gemini_cost(model_used, input_tokens, output_tokens)
-        MonthlySpendLog.add_cost(
+        if not MonthlySpendLog.add_cost(
             datetime.now(UTC),
             cost,
             in_tok=int(input_tokens),
             out_tok=int(output_tokens),
-        )
+        ):
+            logger.warning("[KORDA Spend] Spend ledger write returned False.")
     except Exception as exc:
         logger.warning("[KORDA Spend] Failed to record spend: %s", exc)
 
