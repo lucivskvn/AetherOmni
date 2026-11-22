@@ -2993,10 +2993,9 @@ class SupabaseSessionExchangeView(View):
         if self._rate_limited(request):
             return JsonResponse({"error": "Too many authentication attempts. Please wait and try again."}, status=429)
 
-        try:
-            body = json.loads(request.body.decode("utf-8")) if request.body else {}
-        except json.JSONDecodeError, UnicodeDecodeError:
-            return JsonResponse({"error": "Malformed JSON payload."}, status=400)
+        body, parse_err = _parse_json_dict_body(request)
+        if parse_err is not None:
+            return parse_err
 
         try:
             access_token = body.get("access_token", "").strip() if isinstance(body, dict) else ""
@@ -3129,8 +3128,15 @@ ERR_SERVICE_UNAVAILABLE = "Service temporarily unavailable."
 ERR_RATE_LIMIT = "Rate limit exceeded."
 
 
+MAX_JSON_BODY_BYTES = 1024 * 1024
+
+
 def _parse_json_dict_body(request) -> tuple[dict | None, JsonResponse | None]:
     import json
+
+    content_length = request.META.get("CONTENT_LENGTH", "")
+    if content_length.isdigit() and int(content_length) > MAX_JSON_BODY_BYTES:
+        return None, JsonResponse({"error": "Request body too large."}, status=413)
 
     try:
         body = json.loads(request.body) if request.body else {}
