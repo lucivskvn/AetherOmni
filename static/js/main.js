@@ -1557,8 +1557,13 @@ function initializeSupabaseRealtime() {
         .on(
             'broadcast',
             { event: 'status-changed' },
-            () => {
+            (message) => {
                 console.debug('[Realtime] Received document update broadcast event');
+                // Hints are owner-scoped: ignore events for other tenants' documents
+                // so one user's activity cannot trigger refreshes for everyone.
+                const payload = message || {};
+                const viewerId = document.body.dataset.supabaseUserId || '';
+                if (payload.owner_id && viewerId && payload.owner_id !== viewerId) return;
                 void poller.refresh();
             }
         )

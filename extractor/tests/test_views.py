@@ -1,5 +1,5 @@
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -2379,7 +2379,7 @@ class ViewsExceptionPathsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data.get("status"), "success")
-        mock_broadcast.assert_called_once_with(str(doc.uuid), "FAILED")
+        mock_broadcast.assert_called_once_with(str(doc.uuid), "FAILED", owner_id=ANY)
 
     def test_reset_password_confirm_cache_headers(self):
         """Verify reset_password_confirm view has no-cache headers."""
