@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 
 from extractor.cloud_tasks import enqueue
@@ -15,6 +15,14 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         import datetime
+
+        from django.conf import settings
+
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            raise CommandError(
+                "backfill_metadata resets the Django ORM mirror only; production document state lives in "
+                "SurrealDB and is untouched by this command. Run it only with SURREALDB_OFFLINE=True."
+            )
 
         # Target documents created before the deployment date (e.g., July 16, 2026) to guarantee idempotency
         # and prevent perpetual re-queueing of genuinely missing DOI records.
