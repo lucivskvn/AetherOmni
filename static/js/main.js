@@ -1551,33 +1551,41 @@ function initializeSupabaseRealtime() {
     try {
         const client = supabase.createClient(supabaseUrl, supabaseKey);
 
-    // Gap D-7: Subscribe to broadcast events on 'document-updates' channel
-        const channel = client
-        .channel('document-updates')
-        .on(
-            'broadcast',
-            { event: 'status-changed' },
-            (message) => {
-                console.debug('[Realtime] Received document update broadcast event');
-                // Hints are owner-scoped: ignore events for other tenants' documents
-                // so one user's activity cannot trigger refreshes for everyone.
-                const payload = message || {};
-                const viewerId = document.body.dataset.supabaseUserId || '';
-                if (payload.owner_id && viewerId && payload.owner_id !== viewerId) return;
-                void poller.refresh();
-            }
-        )
-        .subscribe((status) => {
-            console.debug('[Realtime] Subscription status:', status);
-            if (status === 'SUBSCRIBED') void poller.refresh();
-        });
-        globalThis.addEventListener('pagehide', () => {
+    // Gap D-7: Subscribe to broadcast events. The backend scopes topics per
+    // owner (document-updates:<owner_id>) because the channel is public; the
+    // shared topic carries only unowned public-corpus documents.
+    const viewerId = document.body.dataset.supabaseUserId || '';
+    const topics = ['document-updates:shared'];
+    if (viewerId) topics.unshift(`document-updates:${viewerId}`);
+    const channels = topics.map((topic) =>
+        client
+            .channel(topic)
+            .on(
+                'broadcast',
+                { event: 'status-changed' },
+                (message) => {
+                    console.debug('[Realtime] Received document update broadcast event');
+                    // Hints are owner-scoped: ignore events for other tenants' documents
+                    // so one user's activity cannot trigger refreshes for everyone.
+                    const payload = message || {};
+                    if (payload.owner_id && viewerId && payload.owner_id !== viewerId) return;
+                    void poller.refresh();
+                }
+            )
+            .subscribe((status) => {
+                console.debug('[Realtime] Subscription status:', status);
+                if (status === 'SUBSCRIBED') void poller.refresh();
+            })
+    );
+    globalThis.addEventListener('pagehide', () => {
+        for (const ch of channels) {
             try {
-                void client.removeChannel(channel);
+                void client.removeChannel(ch);
             } catch (teardownErr) {
                 console.debug('[Realtime] Teardown error on pagehide:', teardownErr);
             }
-        });
+        }
+    });
         globalThis.addEventListener('pageshow', (event) => {
             if (event.persisted) {
                 void poller.refresh();
