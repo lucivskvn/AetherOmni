@@ -2076,7 +2076,7 @@ def search_user_memories(user_id: str, query_embedding: list[float], limit: int 
     knn_k = min(max(int(limit), 1) * 3, 50)
     # knn_k is a bounded integer derived from limit; never user-controlled text.
     sql = (
-        "SELECT memory_text, "
+        "SELECT memory_text, "  # nosec B608 # noqa: S608 -- knn_k is a bounded integer; values are bound params
         "vector::distance::knn() AS score "
         "FROM user_memories "
         "WHERE user_id = $user_id AND embedding != NONE "
