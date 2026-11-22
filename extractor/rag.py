@@ -533,14 +533,22 @@ def _retrieve_matching_chunks(
 
 
 def _get_query_embedding(query_cleaned: str) -> list[float]:
+    from django.conf import settings
+
     from extractor.llm_gateway import execute_embed_content_with_fallback
 
     try:
         query_emb_resp = execute_embed_content_with_fallback(model_name="text-embedding-004", contents=[query_cleaned])
         return query_emb_resp.embeddings[0].values
     except Exception as e:
-        logger.warning("[RAG Query] Embedding API unavailable, using deterministic embedding fallback: %s", e)
-        return generate_deterministic_embedding(query_cleaned)
+        # Deterministic pseudo-embeddings live in a different vector space than
+        # provider embeddings; using them against a production corpus returns
+        # meaningless neighbours presented as grounded answers. Only degrade in
+        # offline mode where the whole corpus shares the deterministic space.
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            logger.warning("[RAG Query] Embedding API unavailable, using deterministic embedding fallback: %s", e)
+            return generate_deterministic_embedding(query_cleaned)
+        raise
 
 
 def _enqueue_user_preference_memory(user: Any, actor_id: str | None, query_cleaned: str) -> None:
@@ -750,7 +758,12 @@ def _stream_query_rag_events(
         yield f"data: {json.dumps({'done': True})}\n\n"
         return
 
-    query_embedding = _get_query_embedding(query_cleaned)
+    try:
+        query_embedding = _get_query_embedding(query_cleaned)
+    except Exception as exc:
+        logger.warning("[Stream RAG] Query embedding unavailable: %s", exc)
+        yield f"data: {json.dumps({'error': 'Search is temporarily unavailable. Please retry.'})}\n\n"
+        return
 
     # 2. Semantic cache lookup
     cached_semantic = _lookup_semantic_cache(
