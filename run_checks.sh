@@ -457,6 +457,20 @@ else
     exit 1
 fi
 
+echo -e "\n${YELLOW}[Dependency Drift] Verifying requirements.txt matches uv.lock export...${NC}"
+if ! command -v uv &> /dev/null; then
+    echo -e "${RED}✗ uv is required to verify the requirements.txt/uv.lock export contract.${NC}" >&2
+    exit 1
+fi
+uv export --frozen --no-dev --format requirements-txt -o "$TMPDIR_AET/requirements_export.txt"
+# The generated header embeds the output path; compare package bodies only.
+if ! diff <(tail -n +3 "$TMPDIR_AET/requirements_export.txt") <(tail -n +3 requirements.txt) > /dev/null; then
+    echo -e "${RED}✗ requirements.txt is out of sync with uv.lock.${NC}" >&2
+    echo "  Regenerate it with: uv export --frozen --no-dev --format requirements-txt -o requirements.txt" >&2
+    exit 1
+fi
+echo -e "${GREEN}✓ requirements.txt is an exact uv.lock export (0 drift).${NC}"
+
 # ── PHASE 4: RUNTIME INTEGRITY & AUTOMATED VERIFICATION ──────────────────────
 
 echo -e "\n${YELLOW}[System Integrity] Verifying Django Application Configuration...${NC}"
