@@ -2008,7 +2008,7 @@ class SupabaseSessionExchangeTestCase(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         data = response.json()
-        self.assertEqual(data.get("error"), "Malformed JSON payload.")
+        self.assertEqual(data.get("error"), "Invalid JSON payload.")
 
 
 class ViewsExceptionPathsTestCase(TestCase):
