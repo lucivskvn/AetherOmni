@@ -179,7 +179,7 @@ def validate_url_scheme(url: str) -> None:
         raise ValueError("Insecure URL scheme. Production environments require https.")
 
 
-def broadcast_status_change(doc_uuid: str, status: str) -> None:
+def broadcast_status_change(doc_uuid: str, status: str, owner_id: str | None = None) -> None:
     """
     Broadcast a document status change event over Supabase Realtime.
     Gracefully handles missing/invalid Supabase credentials without crashing.
@@ -207,7 +207,7 @@ def broadcast_status_change(doc_uuid: str, status: str) -> None:
                     {
                         "topic": "document-updates",
                         "event": "status-changed",
-                        "payload": {"uuid": doc_uuid, "status": status},
+                        "payload": {"uuid": doc_uuid, "status": status, "owner_id": owner_id},
                     }
                 ]
             }

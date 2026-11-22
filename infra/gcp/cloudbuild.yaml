@@ -400,7 +400,8 @@ steps:
         WORKER_URL="https://korda-worker-${PROJECT_NUMBER}.${_REGION}.run.app"
         # Only domains routed to korda-web belong in ALLOWED_HOSTS; the region
         # may host unrelated services' mappings (e.g. lead-exporter proxies).
-        CUSTOM_DOMAINS="$$(gcloud beta run domain-mappings list --region=${_REGION} --format=json 2>/dev/null | python3 -c 'import json,sys; print(",".join(sorted({str(m.get("metadata",{}).get("name","")) for m in json.load(sys.stdin) if m.get("spec",{}).get("routeName")=="korda-web"})))')"
+        DOMAIN_FILTER='import json,sys;print(",".join(sorted({m["metadata"]["name"] for m in json.load(sys.stdin) if m.get("spec",{}).get("routeName")=="korda-web"})))'
+        CUSTOM_DOMAINS="$$(gcloud beta run domain-mappings list --region=${_REGION} --format=json 2>/dev/null | python3 -c "$${DOMAIN_FILTER}")"
         APP_URL='${_APP_URL}'
         if [ -z "$${APP_URL}" ] && [ -n "$${CUSTOM_DOMAINS}" ]; then
           PRIMARY_CUSTOM_DOMAIN="$$(echo "$${CUSTOM_DOMAINS}" | cut -d',' -f1)"
