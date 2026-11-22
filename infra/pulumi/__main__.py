@@ -118,7 +118,6 @@ task_invoker_account = gcp.serviceaccount.Account(
 RUN_INVOKER_ROLE = "roles/run.invoker"
 iam_roles = [
     "roles/aiplatform.user",
-    "roles/secretmanager.secretAccessor",
     "roles/cloudtasks.enqueuer",
     "roles/run.viewer",
     "roles/eventarc.eventReceiver",
@@ -352,6 +351,17 @@ secret_envs = [
     )
     for key in secret_keys
 ]
+
+# Scope secret reads to exactly the secrets mounted into the services instead
+# of a project-wide secretAccessor grant.
+for idx, key in enumerate(secret_keys):
+    gcp.secretmanager.SecretIamMember(
+        f"korda-secret-access-{idx}",
+        secret_id=key,
+        role="roles/secretmanager.secretAccessor",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+        opts=pulumi.ResourceOptions(provider=gcp_provider),
+    )
 
 # 5. Cloud Run Worker Service (korda-worker, private, scale-to-zero)
 worker_component = ScaleToZeroWorker(
