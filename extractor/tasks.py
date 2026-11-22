@@ -1791,8 +1791,8 @@ def store_user_memory_task(payload: dict) -> None:
 
     try:
         response, model_used = execute_generate_content_with_fallback(client, model, contents=[distill_prompt])
-        distilled = response.text.strip().strip("\"'").rstrip(".")
         _record_memory_distill_spend(model_used, response)
+        distilled = (response.text or "").strip().strip("\"'").rstrip(".")
     except Exception as exc:
         logger.warning("[Memory Task] Gemini preference distillation failed: %s. Using raw query.", exc)
         distilled = raw_text.rstrip(".")
