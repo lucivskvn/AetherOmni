@@ -135,6 +135,11 @@ def check_budget_and_api_limit() -> None:
         from extractor import surreal_db
         from extractor.tasks import format_datetime
 
+        # Fail closed: MonthlySpendLog.total_for_month treats a failed ledger
+        # read as zero spend, which would silently bypass the monthly budget.
+        if surreal_db.monthly_spend_ledger_total(now.year, now.month) is None:
+            raise RuntimeError("Monthly spend ledger is unavailable; failing closed on budget check.")
+
         # EDGE-03 / Q2 decision: SurrealDB BEGIN TRANSACTION block for atomic budget evaluation
         transaction_sql = """
         BEGIN TRANSACTION;
@@ -153,14 +158,14 @@ def check_budget_and_api_limit() -> None:
                 {"first_of_month": format_datetime(first_of_month), "year": now.year, "month": now.month},
             )
         )
-        if res and isinstance(res, dict):
-            live_spent = Decimal(str(res.get("live_spent") or 0.0))
-            deleted_spent = Decimal(str(res.get("deleted_spent") or 0.0))
-            monthly_cap = Decimal(str(res.get("cap") or 10.0))
-        else:
-            live_spent = Decimal("0.0")
-            deleted_spent = Decimal("0.0")
-            monthly_cap = Decimal("10.0")
+        # Fail closed: a malformed result must not silently zero out spend.
+        if not isinstance(res, dict) or not {"live_spent", "deleted_spent", "cap"}.issubset(res):
+            raise RuntimeError("SurrealDB budget evaluation returned an unexpected result; failing closed.")
+        live_spent = Decimal(str(res.get("live_spent") or 0.0))
+        deleted_spent = Decimal(str(res.get("deleted_spent") or 0.0))
+        # A configured cap of 0 must halt spend; only a missing value defaults.
+        cap_value = res.get("cap")
+        monthly_cap = Decimal(str(10.0 if cap_value is None else cap_value))
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         deleted_spent = Decimal("0.0")
