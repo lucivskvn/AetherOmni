@@ -319,6 +319,14 @@ def _soft_match_pricing(model_name: str, pricing_map: dict) -> tuple[Decimal, De
     return None
 
 
+def usage_token_counts(usage: Any) -> tuple[int, int]:
+    """Return (input, output) token counts from a provider usage_metadata object."""
+    return (
+        int(getattr(usage, "prompt_token_count", 0) or 0),
+        int(getattr(usage, "candidates_token_count", 0) or 0),
+    )
+
+
 def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int) -> Decimal:
     model_name = model_name.lower().strip()
     input_tokens = max(0, int(input_tokens))
@@ -815,12 +823,12 @@ def _record_stream_usage_spend(model_name: str, usage: Any) -> None:
     try:
         from extractor.models import MonthlySpendLog
 
-        in_tok = getattr(usage, "prompt_token_count", 0) or 0
-        out_tok = getattr(usage, "candidates_token_count", 0) or 0
+        in_tok, out_tok = usage_token_counts(usage)
         if in_tok <= 0 and out_tok <= 0:
             return
         cost = calculate_gemini_cost(model_name, in_tok, out_tok)
-        MonthlySpendLog.add_cost(datetime.now(UTC), cost, in_tok=in_tok, out_tok=out_tok)
+        if not MonthlySpendLog.add_cost(datetime.now(UTC), cost, in_tok=in_tok, out_tok=out_tok):
+            logger.warning("[Gateway Stream] Spend ledger write returned False.")
     except Exception as exc:
         logger.warning("[Gateway Stream] Failed to record stream spend: %s", exc)
 
@@ -1693,12 +1701,31 @@ def generate_multimodal_vision_ocr(
         client, _is_vertex = _init_ocr_client()
         if client:
             part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-            response, _ = execute_generate_content_with_fallback(client, MODEL_GEMINI_FLASH, contents=[part, prompt])
+            response, actual_model = execute_generate_content_with_fallback(
+                client, MODEL_GEMINI_FLASH, contents=[part, prompt]
+            )
+            _record_vision_ocr_spend(actual_model, response)
             if response and response.text:
                 return response.text.strip()
     except Exception as exc:
         logger.warning("[Vision OCR] Multi-Modal Diagram OCR failed: %s", exc)
     return ""
+
+
+def _record_vision_ocr_spend(model_used: str, response: Any) -> None:
+    """Persist token spend for a vision-OCR call; never breaks the caller."""
+    try:
+        usage = getattr(response, "usage_metadata", None)
+        in_tok, out_tok = usage_token_counts(usage)
+        if in_tok <= 0 and out_tok <= 0:
+            return
+        from extractor.models import MonthlySpendLog
+
+        cost = calculate_gemini_cost(str(model_used or ""), in_tok, out_tok)
+        if not MonthlySpendLog.add_cost(datetime.now(UTC), cost, in_tok=in_tok, out_tok=out_tok):
+            logger.warning("[Vision OCR] Spend ledger write returned False.")
+    except Exception as exc:
+        logger.warning("[Vision OCR] Failed to record spend: %s", exc)
 
 
 MODEL_TIER_LITE = os.getenv("GEMINI_MODEL_LITE", "gemini-2.5-flash-lite")
@@ -1754,8 +1781,8 @@ def _parse_anchor_extraction_response(
         "title": str(parsed.get("title") or doc_slug or "Untitled"),
         "anchors": anchors,
         "model_used": model_name,
-        "input_tokens": getattr(usage, "prompt_token_count", 0) or 0,
-        "output_tokens": getattr(usage, "candidates_token_count", 0) or 0,
+        "input_tokens": usage_token_counts(usage)[0],
+        "output_tokens": usage_token_counts(usage)[1],
     }
 
 
