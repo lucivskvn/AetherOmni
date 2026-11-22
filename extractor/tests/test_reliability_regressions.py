@@ -390,13 +390,14 @@ class DurableDeliveryTests(SimpleTestCase):
 
         mock_doc = MagicMock()
         mock_doc.status = "EXTRACTING"
+        mock_doc.uploaded_by_id = "owner-42"
         mock_surreal = MagicMock()
         mock_surreal.get_document.return_value = {"status": "EXTRACTING", "cloud_task_name": "task-abc"}
 
         with patch("extractor.views.broadcast_status_change") as mock_broadcast:
             _abort_inflight_processing(mock_doc, "doc-uuid-999", mock_surreal)
             mock_cancel.assert_called_once_with("doc-uuid-999", {"status": "EXTRACTING", "cloud_task_name": "task-abc"})
-            mock_broadcast.assert_called_once_with("doc-uuid-999", "FAILED")
+            mock_broadcast.assert_called_once_with("doc-uuid-999", "FAILED", owner_id="owner-42")
 
     @patch("extractor.cloud_tasks.enqueue")
     @patch("extractor.surreal_db.update_document_if_status")

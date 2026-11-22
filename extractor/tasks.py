@@ -215,7 +215,7 @@ def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: b
 
     # Broadcast failure outside transaction
     try:
-        broadcast_status_change(doc_uuid, "FAILED")
+        broadcast_status_change(doc_uuid, "FAILED", owner_id=doc.get("uploaded_by_id"))
     except Exception as exc:
         logger.debug("[Worker] Failed to broadcast status failure: %s", exc)
 
@@ -285,7 +285,7 @@ def _prepare_document_for_processing(doc_uuid: str) -> dict | None:
     )
 
     try:
-        broadcast_status_change(doc_uuid, "EXTRACTING")
+        broadcast_status_change(doc_uuid, "EXTRACTING", owner_id=doc.get("uploaded_by_id"))
     except Exception as exc:
         logger.debug("[Task/Prepare] Failed to broadcast EXTRACTING status: %s", exc)
     return doc
@@ -594,7 +594,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
     if getattr(settings, "SURREALDB_OFFLINE", False):
         doc_ref, saved = _save_stage1_offline(document_id, doc, stage1_result)
         if saved:
-            broadcast_status_change(str(doc_ref.uuid), "REFINING")
+            broadcast_status_change(str(doc_ref.uuid), "REFINING", owner_id=doc.get("uploaded_by_id"))
         return doc_ref
 
     (
@@ -619,7 +619,7 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
         "status": "REFINING",
     }
     surreal_db.update_document(str(doc.get("doc_uuid")), updated_data)
-    broadcast_status_change(str(doc.get("doc_uuid")), "REFINING")
+    broadcast_status_change(str(doc.get("doc_uuid")), "REFINING", owner_id=doc.get("uploaded_by_id"))
     return doc
 
 
@@ -1045,7 +1045,7 @@ def _persist_stage2_results(
         },
     )
 
-    broadcast_status_change(doc_uuid, "EMBEDDING")
+    broadcast_status_change(doc_uuid, "EMBEDDING", owner_id=doc.get("uploaded_by_id"))
     return updated
 
 
@@ -1152,7 +1152,7 @@ def _run_stage3(text_for_chunks: str, doc_uuid: str) -> dict | None:
 
     if not updated:
         return None
-    broadcast_status_change(doc_uuid, "COMPLETED")
+    broadcast_status_change(doc_uuid, "COMPLETED", owner_id=doc.get("uploaded_by_id"))
     return updated
 
 
@@ -1307,7 +1307,7 @@ def _claim_for_reembedding(doc_uuid: str) -> dict | None:
         logger.warning("[Worker] reembed_edited_document_task: failed to claim doc %s. Aborting.", doc_uuid)
         return None
 
-    broadcast_status_change(doc_uuid, "EMBEDDING")
+    broadcast_status_change(doc_uuid, "EMBEDDING", owner_id=claimed.get("uploaded_by_id"))
     return claimed
 
 
@@ -1376,7 +1376,7 @@ def reembed_edited_document_task(payload: dict) -> None:
                 details=f"Re-embedding completed successfully for '{doc.get('original_filename')}' (Pages: {final_page_count}).",
             )
         )
-        broadcast_status_change(doc_uuid, "COMPLETED")
+        broadcast_status_change(doc_uuid, "COMPLETED", owner_id=doc.get("uploaded_by_id"))
 
     except BudgetExceededException as exc:
         logger.warning("[Worker] Budget exceeded during re-embedding for doc %s: %s", doc_uuid, exc)
@@ -1437,7 +1437,7 @@ def _abort_inflight_expired_doc(doc: dict, doc_uuid: str, surreal_db) -> None:
 
             raw_surreal_doc = surreal_db.get_document(doc_uuid) if hasattr(surreal_db, "get_document") else {}
             cancel_document_task(doc_uuid, raw_surreal_doc or doc)
-            broadcast_status_change(str(doc_uuid), "FAILED")
+            broadcast_status_change(str(doc_uuid), "FAILED", owner_id=doc.get("uploaded_by_id"))
         except Exception as abort_err:
             logger.debug("[Cron] Could not cancel in-flight expired doc %s: %s", doc_uuid, abort_err)
 
@@ -1496,7 +1496,7 @@ def _cleanup_single_expired_doc(doc: dict, hash_counts: dict, surreal_db) -> boo
         logger.debug("[Cron] SQLite cleanup for doc_uuid=%s skipped: %s", doc_uuid, sqlite_cleanup_err)
 
     try:
-        broadcast_status_change(str(doc_uuid), "DELETED")
+        broadcast_status_change(str(doc_uuid), "DELETED", owner_id=doc.get("uploaded_by_id"))
     except Exception as bcast_err:
         logger.debug("[Cron] Failed to broadcast status DELETED for %s: %s", doc_uuid, bcast_err)
     return True
@@ -1631,7 +1631,7 @@ def _reap_single_stale_doc(doc: dict) -> bool:
             else:
                 cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
             try:
-                broadcast_status_change(str(doc_uuid), "PENDING")
+                broadcast_status_change(str(doc_uuid), "PENDING", owner_id=doc.get("uploaded_by_id"))
             except Exception as bcast_err:
                 logger.debug("[Reaper] Failed to broadcast status PENDING: %s", bcast_err)
             logger.info("[Reaper] Successfully auto-re-enqueued document %s", doc_uuid)
@@ -1686,7 +1686,7 @@ def _reap_single_stale_doc(doc: dict) -> bool:
 
     # Broadcast status update so dashboard updates without hard reload
     try:
-        broadcast_status_change(doc_uuid, "FAILED")
+        broadcast_status_change(doc_uuid, "FAILED", owner_id=doc.get("uploaded_by_id"))
     except Exception as exc:
         logger.debug("[Reaper] Failed to broadcast status failure: %s", exc)
 
