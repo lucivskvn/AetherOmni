@@ -863,6 +863,9 @@ def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
         cloud_tasks.enqueue("process_document", {"document_id": doc_id})
     else:
         cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+
+    # Reprocessing may change derived content; drop cached answers built on it.
+    _invalidate_doc_rag_caches(doc_uuid, existing_doc.get("uploaded_by_id") if isinstance(existing_doc, dict) else None)
     broadcast_status_change(str(doc_uuid), "PENDING")
     return {"status": "success", "name": f"{orig_name} (re-enqueued)"}
 
