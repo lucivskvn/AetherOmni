@@ -40,6 +40,10 @@ class SourceDocumentAdmin(admin.ModelAdmin):
 @admin.register(SystemSettings)
 class SystemSettingsAdmin(admin.ModelAdmin):
     list_display = ("id", "monthly_budget_usd", "selected_model")
+    # Settings must flow through SaveSettingsView, which enforces the model
+    # whitelist, budget bounds, and HTTPS-only CSRF origin validation. Direct
+    # admin edits would bypass those guards.
+    readonly_fields = ("monthly_budget_usd", "selected_model", "currency", "csrf_trusted_origins")
 
 
 @admin.register(MonthlySpendLog)
