@@ -131,6 +131,44 @@ class HybridRAGTestCase(TestCase):
         self.assertEqual(len(embeddings), 1)
         self.assertEqual(embeddings[0], _EMBEDDING_FAILED_SENTINEL)
 
+    @override_settings(SURREALDB_OFFLINE=True)
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
+    def test_fetch_missing_embeddings_empty_values_become_none(self, mock_embed):
+        from types import SimpleNamespace
+
+        from extractor.rag import _fetch_missing_embeddings
+
+        mock_embed.return_value = SimpleNamespace(
+            embeddings=[SimpleNamespace(values=[]), SimpleNamespace(values=[0.1] * 768)]
+        )
+        result = _fetch_missing_embeddings([0, 1], ["Empty chunk", "Good chunk"], "text-embedding-004")
+
+        self.assertIsNone(result[0])
+        self.assertEqual(result[1], [0.1] * 768)
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
+    def test_fill_missing_fallbacks_empty_values_become_sentinel(self, mock_embed):
+        from types import SimpleNamespace
+
+        from extractor.rag import _fill_missing_fallbacks
+
+        mock_embed.return_value = SimpleNamespace(embeddings=[SimpleNamespace(values=[])])
+        final_embeddings = [None]
+        _fill_missing_fallbacks(final_embeddings, ["Filtered chunk"], "text-embedding-004")
+        self.assertIsNone(final_embeddings[0])
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
+    def test_get_query_embedding_empty_values_raises(self, mock_embed):
+        from types import SimpleNamespace
+
+        from extractor.rag import _get_query_embedding
+
+        mock_embed.return_value = SimpleNamespace(embeddings=[SimpleNamespace(values=[])])
+        with self.assertRaises(ValueError):
+            _get_query_embedding("query")
+
     @patch("extractor.rag._get_allowed_doc_uuids")
     def test_rag_cache_lookups_forward_actor_id(self, mock_allowed_uuids):
         from extractor.rag import _lookup_kv_cache, _lookup_semantic_cache

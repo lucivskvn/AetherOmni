@@ -143,7 +143,7 @@ def _fetch_missing_embeddings(
     missing_indices: list[int],
     missing_texts: list[str],
     model_name: str,
-) -> dict[int, list[float]]:
+) -> dict[int, list[float] | None]:
     """Batch-fetch embeddings for texts not found in the SurrealDB cache."""
     from django.conf import settings
 
@@ -152,13 +152,15 @@ def _fetch_missing_embeddings(
     is_offline = getattr(settings, "SURREALDB_OFFLINE", False)
     logger.info("[Embeddings] Fetching %s new embeddings from API...", len(missing_texts))
     batch_size = 20
-    generated_embeddings = []
+    generated_embeddings: list[list[float] | None] = []
     for i in range(0, len(missing_texts), batch_size):
         batch = missing_texts[i : i + batch_size]
         try:
             response = execute_embed_content_with_fallback(model_name=model_name, contents=batch)
             for embedding_obj in response.embeddings:
-                generated_embeddings.append(embedding_obj.values)
+                # Empty values keep positional alignment but route to the
+                # per-chunk fallback instead of storing a corrupt [] vector.
+                generated_embeddings.append(embedding_obj.values or None)
         except Exception as e:
             generated_embeddings.extend(_fallback_batch_embeddings(batch, e, is_offline))
 
@@ -251,7 +253,7 @@ def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
 
             try:
                 response = execute_embed_content_with_fallback(model_name=model_name, contents=[chunks_list[idx]])
-                final_embeddings[idx] = response.embeddings[0].values
+                final_embeddings[idx] = response.embeddings[0].values or None
             except RuntimeError, ValueError, AttributeError:
                 logger.warning(
                     "[Embeddings] Live embedding failed for chunk %s — storing sentinel value to exclude from HNSW queries.",
@@ -539,7 +541,10 @@ def _get_query_embedding(query_cleaned: str) -> list[float]:
 
     try:
         query_emb_resp = execute_embed_content_with_fallback(model_name="text-embedding-004", contents=[query_cleaned])
-        return query_emb_resp.embeddings[0].values
+        values = query_emb_resp.embeddings[0].values if query_emb_resp.embeddings else None
+        if not values:
+            raise ValueError("Embedding provider returned an empty vector.")
+        return values
     except Exception as e:
         # Deterministic pseudo-embeddings live in a different vector space than
         # provider embeddings; using them against a production corpus returns
