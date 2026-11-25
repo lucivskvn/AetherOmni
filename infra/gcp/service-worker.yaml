@@ -53,6 +53,8 @@ spec:
           value: "${EVENTARC_SERVICE_ACCOUNT}"
         - name: GUNICORN_TIMEOUT
           value: "900"
+        - name: GUNICORN_WORKERS
+          value: "1"
         - name: RUN_MIGRATIONS_ON_STARTUP
           value: "False"
         - name: SURREAL_NS
