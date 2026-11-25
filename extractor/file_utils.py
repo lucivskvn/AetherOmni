@@ -1187,13 +1187,31 @@ def _insert_sqlite_document(cursor: Any, doc: Any) -> str:
     return doc_uuid
 
 
+def _sqlite_chunk_rows(chunk: Any, doc_uuid: str, title: str, author: str) -> tuple[tuple, tuple] | None:
+    content_str = str(chunk.get("content") or "").strip()
+    if not content_str:
+        return None
+    p_num = int(chunk.get("page_number") or 1)
+    anch = str(chunk.get("anchor_id") or f"page-{p_num}")
+    c_idx = int(chunk.get("chunk_index") or 0)
+    chunk_row = (doc_uuid, c_idx, p_num, str(chunk.get("chapter_title") or ""), anch, content_str)
+    fts_row = (content_str, title, author, doc_uuid, str(p_num), anch)
+    return chunk_row, fts_row
+
+
+def _charge_export_byte_budget(byte_budget: dict[str, int], content_str: str) -> None:
+    byte_budget["used"] += len(content_str.encode("utf-8"))
+    if byte_budget["used"] > EXPORT_MAX_TOTAL_CONTENT_BYTES:
+        raise ValueError(EXPORT_TOO_LARGE_MSG)
+
+
 def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str, byte_budget: dict[str, int] | None = None) -> None:
     byte_budget = byte_budget if byte_budget is not None else {"used": 0}
     title = str(getattr(doc, "title", None) or "Untitled")
     author = str(getattr(doc, "author", None) or "Unknown")
     chunks = _get_doc_chunks(doc, doc_uuid, limit=500)
-    chunk_rows: list[tuple[str, int, int, str, str, str]] = []
-    fts_rows: list[tuple[str, str, str, str, str, str]] = []
+    chunk_rows: list[tuple] = []
+    fts_rows: list[tuple] = []
     batch_size = 500
     insert_chunks_sql = """
         INSERT INTO chunks (
@@ -1215,19 +1233,12 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str, byte_budget: dic
         fts_rows.clear()
 
     for chunk in chunks:
-        content_str = str(chunk.get("content") or "").strip()
-        if not content_str:
+        rows = _sqlite_chunk_rows(chunk, doc_uuid, title, author)
+        if rows is None:
             continue
-        byte_budget["used"] += len(content_str.encode("utf-8"))
-        if byte_budget["used"] > EXPORT_MAX_TOTAL_CONTENT_BYTES:
-            raise ValueError(EXPORT_TOO_LARGE_MSG)
-        p_num = int(chunk.get("page_number") or 1)
-        chap = str(chunk.get("chapter_title") or "")
-        anch = str(chunk.get("anchor_id") or f"page-{p_num}")
-        c_idx = int(chunk.get("chunk_index") or 0)
-
-        chunk_rows.append((doc_uuid, c_idx, p_num, chap, anch, content_str))
-        fts_rows.append((content_str, title, author, doc_uuid, str(p_num), anch))
+        _charge_export_byte_budget(byte_budget, rows[0][5])
+        chunk_rows.append(rows[0])
+        fts_rows.append(rows[1])
         if len(chunk_rows) == batch_size:
             flush_batch()
     flush_batch()
