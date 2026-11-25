@@ -471,6 +471,34 @@ if ! diff <(tail -n +3 "$TMPDIR_AET/requirements_export.txt") <(tail -n +3 requi
 fi
 echo -e "${GREEN}✓ requirements.txt is an exact uv.lock export (0 drift).${NC}"
 
+# requirements-dev.txt pins the dev tools on top of `-r requirements.txt`;
+# verify each pin matches the locked --extra dev resolution.
+uv export --frozen --extra dev --format requirements-txt -o "$TMPDIR_AET/requirements_dev_export.txt"
+DEV_DRIFT=$("$PYTHON_BIN" - "$TMPDIR_AET/requirements_dev_export.txt" <<'PYEOF'
+import re, sys
+locked = {}
+for line in open(sys.argv[1]):
+    m = re.match(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", line)
+    if m:
+        locked[m.group(1).lower()] = m.group(2)
+pinned = {}
+for line in open("requirements-dev.txt"):
+    m = re.match(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", line.strip())
+    if m:
+        pinned[m.group(1).lower()] = m.group(2)
+bad = {k: (pinned[k], locked.get(k)) for k in pinned if locked.get(k) != pinned[k]}
+for k, (p, l) in bad.items():
+    print(f"{k}: pinned {p}, locked {l}")
+sys.exit(1 if bad else 0)
+PYEOF
+) || {
+    echo -e "${RED}✗ requirements-dev.txt pins drifted from uv.lock:${NC}" >&2
+    echo "$DEV_DRIFT" >&2
+    echo "  Sync pins with: uv export --frozen --extra dev --format requirements-txt | grep -E '^(mypy|bandit|pip-audit|coverage)=='" >&2
+    exit 1
+}
+echo -e "${GREEN}✓ requirements-dev.txt pins match uv.lock (0 drift).${NC}"
+
 # ── PHASE 4: RUNTIME INTEGRITY & AUTOMATED VERIFICATION ──────────────────────
 
 echo -e "\n${YELLOW}[System Integrity] Verifying Django Application Configuration...${NC}"
