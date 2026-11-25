@@ -15,11 +15,14 @@ services:
     container_name: korda-web
     restart: always
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     env_file:
       - .env
     environment:
       - PORT=8080
+      # DEBUG=True is required: surreal_db rejects unencrypted ws transport
+      # when DEBUG is false, which would crash the web container on startup.
+      - DJANGO_DEBUG=True
       - SURREAL_URL=http://surrealdb:8000
     volumes:
       - ./db.sqlite3:/app/db.sqlite3
