@@ -826,10 +826,11 @@ def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
             continue
 
         uploaded_by_id = raw_doc.get("uploaded_by_id")
-        owner_id = actor_id or str(user.id)
         # Non-staff users can only export documents they own; unowned docs (uploaded_by_id is None) are excluded
-        if user and not (user.is_staff or user.is_superuser) and (not uploaded_by_id or uploaded_by_id != owner_id):
-            continue
+        if user and not (user.is_staff or user.is_superuser):
+            owner_id = actor_id or str(user.id)
+            if not uploaded_by_id or uploaded_by_id != owner_id:
+                continue
 
         doc = _wrap_surreal_doc(raw_doc, users_map)
         if doc is not None:
@@ -1445,15 +1446,24 @@ def build_gcs_prefix_path(user_id: str, doc_slug: str, filename: str, *, ephemer
 
 
 def _resolve_currency_and_symbol(accept_language: str) -> tuple[str, str]:
-    if "id" in accept_language:
+    import re
+
+    # Parse the highest-weighted language tag: naive substring checks misfire on
+    # region subtags (e.g. "es-AR" contains "ar" and would wrongly pick SAR).
+    first_tag = (accept_language or "").split(",")[0].split(";")[0].strip().lower()
+    parts = [p for p in re.split(r"[-_]", first_tag) if p]
+    lang = parts[0] if parts else ""
+    region = parts[1] if len(parts) > 1 else ""
+
+    if lang == "id":
         return "IDR", "Rp "
-    if "ar" in accept_language:
+    if lang == "ar":
         return "SAR", "SR "
-    if any(lang in accept_language for lang in ["de", "fr", "es", "it", "nl", "pt"]):
+    if lang in {"de", "fr", "es", "it", "nl", "pt"}:
         return "EUR", "€"
-    if "gb" in accept_language:
+    if region == "gb":
         return "GBP", "£"
-    if "tr" in accept_language:
+    if lang == "tr":
         return "TRY", "₺"
     return "USD", "$"
 
@@ -1499,6 +1509,12 @@ def _get_exchange_rates():
 
     if not rates:
         rates = _fetch_live_rates_with_fallback()
+        try:
+            from django.core.cache import cache
+
+            cache.set("usd_exchange_rates", rates, 3600)
+        except Exception as exc:
+            logger.debug("[Exchange Rates] Failed to populate local cache: %s", exc)
     return rates
 
 
