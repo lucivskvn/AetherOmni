@@ -524,54 +524,75 @@ def process_pdf_local(file_path: str) -> tuple[str, int]:
     return "", 0
 
 
+_BLEACH_ALLOWED_TAGS = [
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "p",
+    "b",
+    "i",
+    "strong",
+    "em",
+    "u",
+    "ul",
+    "ol",
+    "li",
+    "br",
+    "hr",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "code",
+    "pre",
+    "blockquote",
+    "a",
+    "span",
+    "div",  # required for <div dir="rtl"> Arabic script wrappers
+]
+_BLEACH_ALLOWED_ATTRS = {
+    "a": ["href", "title", "target"],
+    "*": ["id", "class", "dir"],
+}
+
+
+def _add_noopener_rel(source):
+    """Bleach token filter: add rel="noopener noreferrer" to <a> tags with target.
+
+    bleach permits target= but strips rel: without noopener a target="_blank"
+    link keeps window.opener access to this origin (reverse tabnabbing). Runs
+    on parsed tokens, so attribute values containing '>', quotes, or the text
+    'rel='/'target=' cannot confuse it.
+    """
+    for token in source:
+        if token.get("type") == "StartTag" and token.get("name") == "a":
+            data = token.get("data")
+            if isinstance(data, dict) and any(attr == "target" for _, attr in data):
+                data[(None, "rel")] = "noopener noreferrer"
+        yield token
+
+
+_BLEACH_CLEANER = bleach.Cleaner(
+    tags=_BLEACH_ALLOWED_TAGS,
+    attributes=_BLEACH_ALLOWED_ATTRS,
+    protocols=["http", "https", "mailto"],
+    strip=True,
+    filters=[_add_noopener_rel],
+)
+
+
 def clean_html_content(raw_html: str) -> str:
     """
     Sanitizes HTML content using bleach to shield against XSS.
     This is ONLY called on already-compiled HTML, NOT on raw Markdown text.
     Preserves RTL wrappers (div, dir attribute) required for Arabic script rendering.
     """
-    allowed_tags = [
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-        "p",
-        "b",
-        "i",
-        "strong",
-        "em",
-        "u",
-        "ul",
-        "ol",
-        "li",
-        "br",
-        "hr",
-        "table",
-        "thead",
-        "tbody",
-        "tr",
-        "th",
-        "td",
-        "code",
-        "pre",
-        "blockquote",
-        "a",
-        "span",
-        "div",  # required for <div dir="rtl"> Arabic script wrappers
-    ]
-    allowed_attrs = {
-        "a": ["href", "title", "target"],
-        "*": ["id", "class", "dir"],
-    }
-    return bleach.clean(
-        raw_html,
-        tags=allowed_tags,
-        attributes=allowed_attrs,
-        protocols=["http", "https", "mailto"],
-        strip=True,
-    )
+    return _BLEACH_CLEANER.clean(raw_html)
 
 
 def _detect_first_strong(text_content, latin_chars, arabic_chars):
@@ -635,22 +656,8 @@ def render_markdown_to_html(markdown_text: str) -> str:
     """
     Converts Markdown to HTML safely and applies first-strong-character Arabic layout logic.
     """
-    import re
-
     html = md_lib.markdown(markdown_text, extensions=["tables", "fenced_code", "nl2br"])
     sanitized = clean_html_content(html)
-    # bleach permits target= but strips rel: without noopener a target="_blank"
-    # link in user content keeps window.opener access to this origin (reverse
-    # tabnabbing). Inject rel post-sanitization. The target=" match is safe
-    # because html5lib escapes '"' inside attribute values, so it can only be a
-    # real attribute; a 'rel=' substring check would be bypassable via e.g.
-    # title="rel=". rel can never legitimately exist here (bleach strips it), so
-    # it is always appended when a target attribute is present.
-    sanitized = re.sub(
-        r"<a\b[^>]*?\btarget\s*=\s*\"[^>]*>",
-        lambda m: m.group(0)[:-1] + ' rel="noopener noreferrer">',
-        sanitized,
-    )
     return parse_arabic_layout(sanitized)
 
 
