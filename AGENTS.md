@@ -186,6 +186,7 @@ explicitly before applying them.
 - Use `concurrent.futures.ThreadPoolExecutor` worker dispatch in sync/async boundaries instead of monkeypatching event loops with `nest_asyncio`.
 - Set `SURREAL_EXECUTOR_WORKERS` per deployment when tuning bounded SurrealDB RPC concurrency; it must be a positive integer.
 - Keep `scripts/check_reliability_contracts.py` blocking in local and CI gates. It protects task ownership/cancellation, recovery-token lifetime, YAML export escaping, and dashboard polling lifecycle against regressions found by review tools.
+- Keep `scripts/check_security_boundaries.py` blocking in local gates. It asserts the Phase-0 trust boundaries documented in `docs/security-phase0.md` (least-privilege IAM, UBLA buckets, private worker, wss-only SurrealDB transport).
 
 1. **Multi-Language Code Quality & Eco-Design**:
    - Python: Target Python 3.14+ across Docker, CI, local checks, and SonarQube, with `ruff` (target-version = py314, PEP 758 syntax), `mypy`, and `bandit`.
