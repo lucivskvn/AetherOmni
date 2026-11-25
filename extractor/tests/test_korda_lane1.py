@@ -125,6 +125,17 @@ class KordaLane1Tests(TestCase):
             self.assertIn("[SRC: src-1 |", bundle)
             self.assertIn("> ", bundle)
 
+    def test_format_anchor_coord_tolerates_non_numeric_timestamps(self):
+        coord = compiler.format_anchor_coord(
+            {"start_sec": "12.5", "end_sec": "not-a-number", "page_num": 2, "section_heading": "Intro"}
+        )
+        self.assertIn("p.2", coord)
+        self.assertIn("Intro", coord)
+        self.assertIn("12.5s", coord)
+        self.assertNotIn("nan", coord)
+        self.assertEqual(compiler.format_anchor_coord({"start_sec": True}), "loc:unindexed")
+        self.assertEqual(compiler.format_anchor_coord({}), "loc:unindexed")
+
     @override_settings(DEBUG=False)
     def test_eventarc_gcs_raw_view_ignores_non_raw_prefix_with_valid_oidc(self):
         payload = json.dumps({"bucket": "b", "name": "exports/out.md"}).encode("utf-8")
