@@ -812,9 +812,25 @@ def _get_offline_docs(document_ids, user):
     return list(docs)
 
 
+def _surreal_doc_to_export(raw_doc, user, actor_id: str | None, users_map):
+    from extractor.views import _wrap_surreal_doc
+
+    if not raw_doc or raw_doc.get("status") != "COMPLETED":
+        return None
+
+    uploaded_by_id = raw_doc.get("uploaded_by_id")
+    # Non-staff users can only export documents they own; unowned docs (uploaded_by_id is None) are excluded
+    if user and not (user.is_staff or user.is_superuser):
+        owner_id = actor_id or str(user.id)
+        if not uploaded_by_id or uploaded_by_id != owner_id:
+            return None
+
+    return _wrap_surreal_doc(raw_doc, users_map)
+
+
 def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
     from extractor import surreal_db
-    from extractor.views import _build_users_map, _wrap_surreal_doc
+    from extractor.views import _build_users_map
 
     docs_list = []
     raw_docs = surreal_db.get_documents(document_ids)
@@ -822,17 +838,7 @@ def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
     users_map = _build_users_map(user_ids, fallback_user=user)
 
     for raw_doc in raw_docs:
-        if not raw_doc or raw_doc.get("status") != "COMPLETED":
-            continue
-
-        uploaded_by_id = raw_doc.get("uploaded_by_id")
-        # Non-staff users can only export documents they own; unowned docs (uploaded_by_id is None) are excluded
-        if user and not (user.is_staff or user.is_superuser):
-            owner_id = actor_id or str(user.id)
-            if not uploaded_by_id or uploaded_by_id != owner_id:
-                continue
-
-        doc = _wrap_surreal_doc(raw_doc, users_map)
+        doc = _surreal_doc_to_export(raw_doc, user, actor_id, users_map)
         if doc is not None:
             docs_list.append(doc)
     return docs_list
