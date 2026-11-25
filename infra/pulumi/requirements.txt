@@ -1,5 +1,5 @@
 # Pulumi IaC dependencies — exact pins for reproducible previews/applies.
 # Regenerate deliberately: python -m venv .venv && .venv/bin/pip install -r requirements.txt
 pulumi==3.277.0
-pulumi-gcp==9.35.0
+pulumi-gcp==10.3.0
 pulumi-policy==1.21.0
