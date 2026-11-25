@@ -639,12 +639,16 @@ def render_markdown_to_html(markdown_text: str) -> str:
 
     html = md_lib.markdown(markdown_text, extensions=["tables", "fenced_code", "nl2br"])
     sanitized = clean_html_content(html)
-    # bleach permits target= but cannot inject rel: without noopener a
-    # target="_blank" link in user content keeps window.opener access to this
-    # origin (reverse tabnabbing). Add the attribute post-sanitization.
+    # bleach permits target= but strips rel: without noopener a target="_blank"
+    # link in user content keeps window.opener access to this origin (reverse
+    # tabnabbing). Inject rel post-sanitization. The target=" match is safe
+    # because html5lib escapes '"' inside attribute values, so it can only be a
+    # real attribute; a 'rel=' substring check would be bypassable via e.g.
+    # title="rel=". rel can never legitimately exist here (bleach strips it), so
+    # it is always appended when a target attribute is present.
     sanitized = re.sub(
-        r"<a\b[^>]*\btarget=[^>]*>",
-        lambda m: m.group(0) if "rel=" in m.group(0) else m.group(0)[:-1] + ' rel="noopener noreferrer">',
+        r"<a\b[^>]*?\btarget\s*=\s*\"[^>]*>",
+        lambda m: m.group(0)[:-1] + ' rel="noopener noreferrer">',
         sanitized,
     )
     return parse_arabic_layout(sanitized)
