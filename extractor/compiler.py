@@ -11,6 +11,16 @@ DEFAULT_MAX_WORDS_PER_BUNDLE = 450_000
 FIELD_SECTION_HEADING = "section_heading"
 
 
+def _coerce_seconds(value: Any) -> float | None:
+    """Anchor timestamps come from stored JSON; tolerate numeric strings, reject the rest."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except TypeError, ValueError:
+        return None
+
+
 def format_anchor_coord(anchor: dict[str, Any]) -> str:
     """Format deterministic anchor coordinates into a concise citation string."""
     parts: list[str] = []
@@ -18,12 +28,13 @@ def format_anchor_coord(anchor: dict[str, Any]) -> str:
         parts.append(f"p.{anchor['page_num']}")
     if anchor.get(FIELD_SECTION_HEADING):
         parts.append(str(anchor[FIELD_SECTION_HEADING]).strip())
-    if anchor.get("start_sec") is not None:
-        end_sec = anchor.get("end_sec")
+    start_sec = _coerce_seconds(anchor.get("start_sec"))
+    if start_sec is not None:
+        end_sec = _coerce_seconds(anchor.get("end_sec"))
         if end_sec is not None:
-            parts.append(f"{anchor['start_sec']:.1f}s-{end_sec:.1f}s")
+            parts.append(f"{start_sec:.1f}s-{end_sec:.1f}s")
         else:
-            parts.append(f"{anchor['start_sec']:.1f}s")
+            parts.append(f"{start_sec:.1f}s")
     if anchor.get("figure_id"):
         parts.append(f"fig:{anchor['figure_id']}")
     return " | ".join(parts) if parts else "loc:unindexed"
