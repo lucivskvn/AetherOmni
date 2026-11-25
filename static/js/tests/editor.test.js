@@ -217,7 +217,7 @@ describe('compileMarkdown', () => {
   });
 
   it('renders blockquote', () => {
-    // blockquote requires '> ' (with trailing space) per CommonMark spec
+    // input is HTML-escaped before parsing, so '>' arrives as '&gt;'
     expect(compileMarkdown('> quoted')).toContain('<p>');
     expect(compileMarkdown('> quoted text')).toContain('quoted');
   });
@@ -464,5 +464,58 @@ describe('compileMarkdown security regressions', () => {
     const out = compileMarkdown('```html\n<div class="x">hello</div>\n```');
     expect(out).toContain('&lt;div class="x"&gt;hello&lt;/div&gt;');
     expect(out).not.toContain('<div class="x">');
+  });
+});
+
+describe('compileMarkdown parser hardening', () => {
+  it('emits balanced table tags when a table has no divider row', () => {
+    const html = compileMarkdown('| a | b |\n| c | d |');
+    expect(html).toContain('</thead>');
+    expect(html).toContain('</tbody></table>');
+    expect(html).not.toContain('</tbody></table></div>\n</tbody>');
+  });
+
+  it('does not treat "---notahr" as a horizontal rule', () => {
+    const html = compileMarkdown('---notahr');
+    expect(html).not.toContain('<hr>');
+    expect(html).toContain('---notahr');
+  });
+
+  it('still renders a real "---" line as a horizontal rule', () => {
+    expect(compileMarkdown('text\n\n---\n\nmore')).toContain('<hr>');
+  });
+
+  it('renders ">text" blockquotes without requiring a space', () => {
+    const html = compileMarkdown('>quoted');
+    expect(html).toContain('<blockquote>');
+    expect(html).toContain('quoted');
+  });
+
+  it('does not italicize inside snake_case identifiers', () => {
+    const html = compileMarkdown('use document_uuid and user_id fields');
+    expect(html).not.toContain('<em>');
+    expect(html).toContain('document_uuid');
+  });
+
+  it('still italicizes _text_ at word boundaries', () => {
+    expect(compileMarkdown('this is _italic_ text')).toContain('<em>italic</em>');
+  });
+
+  it('deduplicates heading ids for repeated headings', () => {
+    const html = compileMarkdown('# Overview\n\ntext\n\n# Overview');
+    expect(html).toContain('id="overview"');
+    expect(html).toContain('id="overview-2"');
+  });
+
+  it('restores safe-HTML tags whose attribute values contain entities', () => {
+    const html = compileMarkdown('<span class="x & y">hi</span>');
+    expect(html).toContain('class="x &amp; y"');
+    expect(html).not.toContain('&lt;span');
+  });
+
+  it('still strips non-whitelisted attributes during safe-HTML restore', () => {
+    const html = compileMarkdown('<span onclick="alert(1)" class="ok">hi</span>');
+    expect(html).not.toContain('onclick');
+    expect(html).toContain('class="ok"');
   });
 });
