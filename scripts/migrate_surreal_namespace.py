@@ -232,10 +232,10 @@ class SurrealNamespaceMigrator:
                 idx = len(insert_statements)
                 content_clause = f" CONTENT {fields_content}" if formatted_fields else ""
                 rel_sql = (
-                    f"LET $rel_{idx} = (SELECT VALUE id FROM {table} "  # noqa: S608 -- table whitelisted; in/out validated
+                    f"LET $rel_{idx} = (SELECT VALUE id FROM {table} "  # noqa: S608 -- table whitelisted; in/out validated  # nosec B608
                     f"WHERE `in` = {in_val} AND `out` = {out_val} LIMIT 1)[0]; "
                     f"IF $rel_{idx} == NONE {{ RELATE {in_val}->{table}->{out_val}{content_clause}; }};"
-                )  # nosec B608
+                )
                 insert_statements.append(rel_sql)
             elif rec_id:
                 clean_id = str(rec_id).strip()
