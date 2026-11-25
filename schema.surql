@@ -384,8 +384,8 @@ DEFINE INDEX IF NOT EXISTS idx_attempt_session_item ON attempt FIELDS session_id
 DEFINE EVENT IF NOT EXISTS evt_attempt_fsrs_update ON attempt WHEN $event IN ["CREATE", "UPDATE"] THEN {
     LET $item = (SELECT fsrs_stability, fsrs_difficulty FROM exam_item WHERE item_id = $after.item_id AND owner_id = $after.owner_id LIMIT 1)[0];
     IF $item != NONE {
-        LET $base_stability = $after.pre_stability ?? $item.fsrs_stability;
-        LET $base_difficulty = $after.pre_difficulty ?? $item.fsrs_difficulty;
+        LET $base_stability = $after.pre_stability ?? $item.fsrs_stability ?? 1.0;
+        LET $base_difficulty = $after.pre_difficulty ?? $item.fsrs_difficulty ?? 5.0;
         LET $passed = $after.is_correct AND $after.rating >= 2;
         LET $next_stability = IF $passed THEN
             math::min([$base_stability * (1.2 + ($after.rating * 0.35)), 365.0])

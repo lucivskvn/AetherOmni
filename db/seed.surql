@@ -8,6 +8,11 @@
 -- timestamps), typed RELATE edges, FSRS exam items, and attempts.
 -- Embeddings are intentionally omitted (option fields) — run the
 -- ingestion pipeline to populate real vectors.
+--
+-- NOTE: `surreal import` runs under OPTION IMPORT, which skips field
+-- DEFAULT processing — so every typed/defaulted field used by events
+-- or ordering (fsrs_*, created_at, submitted_at, gcs_status, ...) is
+-- set explicitly below.
 -- ============================================================
 
 LET $owner = "00000000-0000-4000-8000-0000000000aa";
@@ -24,6 +29,7 @@ LET $src_pdf = (CREATE source CONTENT {
     sha256: "seed-sha256-pdf-0001",
     version: 1,
     status: "active",
+    created_at: time::now(),
 }).id;
 
 LET $src_video = (CREATE source CONTENT {
@@ -37,6 +43,7 @@ LET $src_video = (CREATE source CONTENT {
     sha256: "seed-sha256-video-0001",
     version: 1,
     status: "active",
+    created_at: time::now(),
 }).id;
 
 -- ── Anchors: verbatim quotes with page/slide/video provenance ──
@@ -96,7 +103,7 @@ LET $crystal = (CREATE crystal CONTENT {
 RELATE $crystal->grounded_in->$a_pdf  SET confidence = 0.95;
 RELATE $crystal->grounded_in->$a_pdf2 SET confidence = 0.90;
 
--- ── Concept entity + edge (knowledge graph) ─────────────────
+-- ── Concept entities + inter-concept edge (knowledge graph) ──
 LET $concept = (CREATE entities CONTENT {
     name: "Limit (calculus)",
     category: "CONCEPT",
@@ -104,7 +111,17 @@ LET $concept = (CREATE entities CONTENT {
     tenant_id: $owner,
 }).id;
 
-RELATE $a_pdf->chunk_references->$concept SET relevance_score = 0.9;
+LET $concept2 = (CREATE entities CONTENT {
+    name: "Derivative (calculus)",
+    category: "CONCEPT",
+    description: "The limit of the difference quotient; slope of the tangent line.",
+    tenant_id: $owner,
+}).id;
+
+-- entity_relations is FROM entities TO entities; chunk_references is
+-- FROM chunks TO entities, so anchors must not be its source.
+RELATE $concept->entity_relations->$concept2
+    SET relation_type = "PART_OF", tenant_id = $owner, confidence = 0.85;
 
 -- ── Exam items (FSRS-scheduled) + attempts ──────────────────
 LET $item1 = (CREATE exam_item CONTENT {
@@ -123,6 +140,10 @@ LET $item1 = (CREATE exam_item CONTENT {
     correct_answer: "The value f(x) approaches as x gets close to a",
     hint: "Think about 'approaches', not 'equals'.",
     anchor_ids: ["seed-anc-pdf-limit-1"],
+    fsrs_stability: 1.0,
+    fsrs_difficulty: 5.0,
+    fsrs_due_at: time::now() - 1h,
+    created_at: time::now(),
 }).id;
 
 LET $item2 = (CREATE exam_item CONTENT {
@@ -140,6 +161,10 @@ LET $item2 = (CREATE exam_item CONTENT {
     ],
     correct_answer: "g(x), so that du = g'(x)dx",
     anchor_ids: ["seed-anc-vid-u-sub-1"],
+    fsrs_stability: 1.0,
+    fsrs_difficulty: 5.0,
+    fsrs_due_at: time::now() - 1h,
+    created_at: time::now(),
 }).id;
 
 LET $attempt = (CREATE attempt CONTENT {
@@ -150,6 +175,7 @@ LET $attempt = (CREATE attempt CONTENT {
     is_correct: true,
     rating: 3,
     response_ms: 8400,
+    submitted_at: time::now(),
 }).id;
 
 -- exam_item -> crystal (tests), attempt -> exam_item (attempted_on)
