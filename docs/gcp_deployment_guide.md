@@ -75,12 +75,19 @@ pulumi config set korda-infra:queue_region "$GCP_QUEUE_REGION"
 pulumi config set korda-infra:release_version "$RELEASE_VERSION"
 pulumi config set korda-infra:image_tag "$IMAGE_TAG"
 
-# Preview resource topology
-pulumi preview --stack prod
+# Preview resource topology (CrossGuard policy pack is mandatory)
+pulumi preview --stack prod --policy-pack ./policy
 
-# Deploy infrastructure
-pulumi up --stack prod --yes
+# Deploy infrastructure (policy pack re-validated on apply)
+pulumi up --stack prod --yes --policy-pack ./policy
 ```
+
+The `policy/` directory contains the CrossGuard compliance pack
+(`ephemeral-bucket-zero-soft-delete`, `cloud-run-scale-to-zero`,
+`private-worker-no-all-users`). Without `--policy-pack` those invariants
+are documentation only — always pass the flag so `pulumi up` fails on
+violations such as a nonzero `min_instance_count` or a public worker IAM
+grant. `pulumi-policy` is already pinned in `infra/pulumi/requirements.txt`.
 
 Cloud Tasks may run in a different region from Cloud Run. Set `_QUEUE_REGION`
 in Cloud Build and `queue_region` in Pulumi to the existing queue's location;
