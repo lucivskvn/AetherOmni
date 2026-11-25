@@ -306,8 +306,8 @@
         const btnGithub = document.getElementById('btn-github-register');
         if (btnGithub) {
             btnGithub.addEventListener('click', async () => {
-                const supabaseUrl = '{{ SUPABASE_URL|default:"" }}';
-                const supabaseKey = '{{ SUPABASE_PUBLIC_KEY|default:"" }}';
+                const supabaseUrl = '{{ SUPABASE_URL|default:""|escapejs }}';
+                const supabaseKey = '{{ SUPABASE_PUBLIC_KEY|default:""|escapejs }}';
 
                 if (!supabaseUrl || !supabaseKey) {
                     if (typeof globalThis.showClientSideAlert === 'function') {
