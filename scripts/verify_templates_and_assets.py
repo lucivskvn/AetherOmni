@@ -99,7 +99,7 @@ def verify_named_urls() -> list[str]:
     errors: list[str] = []
     registered = _get_registered_url_names()
     if not registered:
-        return errors
+        return ["URL resolver returned no named routes; cannot verify {% url %} references (fail-closed)."]
 
     for root, _, files in os.walk(TEMPLATES_DIR):
         for file in files:

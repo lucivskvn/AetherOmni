@@ -21,9 +21,8 @@ WHAT IS UPDATED
 ---------------
   README.md              — quality badges, test count, and desloppify scores.
                            Runtime release identity is intentionally not written here.
-  docs/gcp_deployment_guide.md — guide version heading
-  infra/gcp/service.yaml           — RELEASE_VERSION env var
-  infra/gcp/service-worker.yaml    — RELEASE_VERSION env var
+  infra/gcp/service.yaml           — RELEASE_VERSION placeholder validation
+  infra/gcp/service-worker.yaml    — RELEASE_VERSION placeholder validation
 
 HOW IT IS TRIGGERED
 -------------------
