@@ -63,46 +63,47 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Found {len(files_to_ingest)} candidate document(s) to process.\n"))
 
         for idx, file_path in enumerate(files_to_ingest, 1):
-            filename = os.path.basename(file_path)
-            self.stdout.write(f"[{idx}/{len(files_to_ingest)}] Analyzing: {filename}")
-
-            try:
-                with open(file_path, "rb") as f:
-                    file_hash = calculate_file_sha256(f)
-                self.stdout.write(f"   - SHA-256 Hash: {file_hash}")
-
-                existing_doc = SourceDocument.objects.filter(file_hash=file_hash, status="COMPLETED").first()
-                exact_name_match = SourceDocument.objects.filter(
-                    file_hash=file_hash, original_filename=filename
-                ).exists()
-
-                if existing_doc and exact_name_match and not force_mode:
-                    self.stdout.write(
-                        self.style.WARNING("   - [SKIPPED] Already fully ingested and indexed in the knowledge base.")
-                    )
-                    continue
-
-                if existing_doc and not exact_name_match and not force_mode:
-                    self._handle_duplicate_document(filename, file_hash, existing_doc)
-                    continue
-
-                self.stdout.write("   - Status: Preparing fresh ingestion...")
-
-                try:
-                    check_budget_and_api_limit()
-                except Exception as budget_err:
-                    self.stdout.write(
-                        self.style.ERROR(f"   - [HALTED] Monthly budget limit reached. Cannot proceed: {budget_err}\n")
-                    )
-                    continue
-
-                doc = self._create_pending_document(file_path, filename, file_hash, force_mode)
-                self._process_document(doc, sync_mode)
-
-            except Exception as exc:
-                self.stdout.write(self.style.ERROR(f"   - [ERROR] Failed to ingest {filename}: {exc!s}\n"))
+            self._ingest_one(file_path, idx, len(files_to_ingest), sync_mode, force_mode)
 
         self.stdout.write(self.style.SUCCESS("=== Document Ingestion Process Completed ==="))
+
+    def _ingest_one(self, file_path, idx, total, sync_mode, force_mode):
+        filename = os.path.basename(file_path)
+        self.stdout.write(f"[{idx}/{total}] Analyzing: {filename}")
+
+        try:
+            with open(file_path, "rb") as f:
+                file_hash = calculate_file_sha256(f)
+            self.stdout.write(f"   - SHA-256 Hash: {file_hash}")
+
+            existing_doc = SourceDocument.objects.filter(file_hash=file_hash, status="COMPLETED").first()
+            exact_name_match = SourceDocument.objects.filter(file_hash=file_hash, original_filename=filename).exists()
+
+            if existing_doc and exact_name_match and not force_mode:
+                self.stdout.write(
+                    self.style.WARNING("   - [SKIPPED] Already fully ingested and indexed in the knowledge base.")
+                )
+                return
+
+            if existing_doc and not exact_name_match and not force_mode:
+                self._handle_duplicate_document(filename, file_hash, existing_doc)
+                return
+
+            self.stdout.write("   - Status: Preparing fresh ingestion...")
+
+            try:
+                check_budget_and_api_limit()
+            except Exception as budget_err:
+                self.stdout.write(
+                    self.style.ERROR(f"   - [HALTED] Monthly budget limit reached. Cannot proceed: {budget_err}\n")
+                )
+                return
+
+            doc = self._create_pending_document(file_path, filename, file_hash, force_mode)
+            self._process_document(doc, sync_mode)
+
+        except Exception as exc:
+            self.stdout.write(self.style.ERROR(f"   - [ERROR] Failed to ingest {filename}: {exc!s}\n"))
 
     def _find_files(self, sources_dir):
         """Scan for supported document files."""

@@ -100,6 +100,8 @@ def _get_registered_url_names() -> set[str]:
 def verify_named_urls() -> list[str]:
     errors: list[str] = []
     registered = _get_registered_url_names()
+    if not registered:
+        return ["URL resolver returned no named routes; cannot verify {% url %} references (fail-closed)."]
 
     referenced: list[tuple[Path, str]] = []
     for root, _, files in os.walk(TEMPLATES_DIR):
@@ -110,15 +112,6 @@ def verify_named_urls() -> list[str]:
             content = path.read_text(encoding="utf-8")
             for match in URL_PATTERN.finditer(content):
                 referenced.append((path, match.group(1)))
-
-    if not registered:
-        # Fail closed: an unresolvable URLconf must not silently pass the
-        # named-route gate while templates still reference {% url %} tags.
-        if referenced:
-            errors.append(
-                f"URL resolver unavailable; cannot verify {len(referenced)} named route reference(s) across templates"
-            )
-        return errors
 
     for path, url_name in referenced:
         rel_path = path.relative_to(ROOT)
