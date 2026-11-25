@@ -37,6 +37,17 @@ logger = logging.getLogger(__name__)
 MODEL_GEMINI_FLASH_LITE = "gemini-2.5-flash-lite"
 MODEL_GEMINI_FLASH = "gemini-2.5-flash"
 MODEL_GEMINI_PRO = "gemini-2.5-pro"
+
+# Canonical video upload extensions (dotted, lowercase) and their Gemini MIME types.
+# Single source of truth: views.py allowlist, tasks.py routing, and MIME mapping
+# all derive from this so the sets cannot drift apart.
+VIDEO_FILE_EXTENSIONS: tuple[str, ...] = (".mp4", ".mov", ".m4v", ".webm")
+VIDEO_MIME_TYPES: dict[str, str] = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".m4v": "video/mp4",
+    ".webm": "video/webm",
+}
 MODEL_OPENROUTER_FREE = "openrouter/free"
 _NOT_FOUND = "not found"
 PREFIX_GOOGLE = "google/"
@@ -1099,13 +1110,7 @@ def _get_mime_type(file_path: str) -> str:
     import mimetypes
 
     lowered = file_path.lower()
-    video_mimes = {
-        ".mp4": "video/mp4",
-        ".mov": "video/quicktime",
-        ".m4v": "video/mp4",
-        ".webm": "video/webm",
-    }
-    for ext, mime in video_mimes.items():
+    for ext, mime in VIDEO_MIME_TYPES.items():
         if lowered.endswith(ext):
             return mime
     mime_type, _ = mimetypes.guess_type(file_path)
@@ -1421,7 +1426,7 @@ def run_stage1_multimodal_ocr(file_path: str, model_name: str = MODEL_GEMINI_FLA
 
     client, use_vertex_directly = _init_ocr_client()
 
-    if file_path.lower().endswith((".mp4", ".mov", ".m4v", ".webm")):
+    if file_path.lower().endswith(VIDEO_FILE_EXTENSIONS):
         ocr_prompt = """
     You are an expert video transcription and lecture indexing engine.
     Your task is to convert the attached video into clean, readable Markdown

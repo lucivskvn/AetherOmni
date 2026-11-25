@@ -35,6 +35,7 @@ _MAX_SIG_LEN = 255
 from extractor import surreal_db
 from extractor.models import AuditAction
 from extractor.utils import (
+    VIDEO_FILE_EXTENSIONS,
     AuditEvent,
     broadcast_status_change,
     check_budget_and_api_limit,
@@ -436,14 +437,11 @@ def _get_doc_info_stage1(document_id):
         return doc, doc.get("original_filename", "").lower(), doc.get("doc_uuid")
 
 
-_VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v", ".webm")
-
-
 def _fallback_doc_type(lower_name: str) -> str:
     """Best-effort document type label when none was persisted."""
     if lower_name.endswith(".pdf"):
         return "PDF"
-    if lower_name.endswith(_VIDEO_EXTENSIONS):
+    if lower_name.endswith(VIDEO_FILE_EXTENSIONS):
         return "VIDEO"
     return "IMAGE"
 
