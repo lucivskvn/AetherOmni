@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime
 from typing import Any
@@ -24,11 +25,15 @@ import httpx
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("surreal_migrator")
 
+# Must cover every DEFINE TABLE in schema.surql; check_reliability_contracts.py
+# fails when this list drifts from the schema.
 TABLES_TO_MIGRATE = [
     "documents",
     "chunks",
     "rag_cache",
     "kv_cache",
+    "document_spend_reconciliations",
+    "monthly_spend_ledger",
     "audit_logs",
     "user_memories",
     "system_settings",
@@ -37,6 +42,15 @@ TABLES_TO_MIGRATE = [
     "entities",
     "chunk_references",
     "entity_relations",
+    "source",
+    "anchor",
+    "crystal",
+    "anchored_in",
+    "grounded_in",
+    "exam_item",
+    "attempt",
+    "tests",
+    "attempted_on",
 ]
 
 SCHEMA_FILENAME = "schema.surql"
@@ -158,6 +172,10 @@ class SurrealNamespaceMigrator:
             fields_content = "{" + ", ".join(formatted_fields) + "}"
             if rec_id:
                 clean_id = str(rec_id).strip()
+                # Record ids originate from SurrealDB but are interpolated into
+                # SQL; reject anything that could break out of the identifier.
+                if not re.fullmatch(r"[A-Za-z0-9_]+:[A-Za-z0-9_⟨⟩\-]+", clean_id):
+                    raise ValueError(f"Refusing to migrate record with unsafe id: {clean_id!r}")
                 insert_statements.append(f"UPSERT {clean_id} CONTENT {fields_content};")
             else:
                 insert_statements.append(f"CREATE {table} CONTENT {fields_content};")
