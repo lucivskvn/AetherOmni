@@ -992,6 +992,11 @@ class BroadcastTopicTestCase(TestCase):
         req = mock_urlopen.call_args[0][0]
         payload = json.loads(req.data.decode("utf-8"))
         self.assertEqual(payload["messages"][0]["topic"], "document-updates:owner-uuid-1")
+        # The channel is public: the payload must stay a content-free hint and
+        # never carry doc UUIDs or owner identifiers to arbitrary subscribers.
+        inner = payload["messages"][0]["payload"]
+        self.assertNotIn("uuid", inner)
+        self.assertNotIn("owner_id", inner)
 
     @override_settings(SUPABASE_URL="https://example.supabase.co", SUPABASE_PUBLIC_KEY="anon-key")
     @patch("urllib.request.urlopen")
