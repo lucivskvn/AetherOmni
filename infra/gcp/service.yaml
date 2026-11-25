@@ -31,6 +31,8 @@ spec:
           value: "False"
         - name: GUNICORN_TIMEOUT
           value: "900"
+        - name: GUNICORN_WORKERS
+          value: "2"
         - name: SECURE_SSL_REDIRECT
           value: "True"
         - name: SESSION_COOKIE_SECURE
