@@ -43,7 +43,10 @@ Main components:
   handling, AI gateway, retrieval, models, templates, and tests.
 - <code>schema.surql</code> and <code>extractor/surreal_db.py</code>: vector
   search, cache, user memory, settings, and audit retention in SurrealDB.
-- <code>infra/gcp/</code>: Cloud Run and build configuration.
+- <code>infra/gcp/</code>: Cloud Run service manifests and Cloud Build
+  configuration.
+- <code>infra/pulumi/</code>: declarative GCP provisioning (buckets, Cloud
+  Tasks, IAM, Cloud Run services, Eventarc, Scheduler, backup job).
 - <code>run_checks.sh</code>: local quality and security verification.
 
 The normal document path is upload, hash-based deduplication, background
