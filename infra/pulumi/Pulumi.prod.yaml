@@ -9,3 +9,7 @@ config:
   korda-infra:worker_max_instances: "5"
   korda-infra:resource_region: asia-southeast1
   korda-infra:queue_region: asia-southeast2
+  # Registerable Cloudflare Access wildcards must be explicit per environment;
+  # settings.py no longer ships them as defaults.
+  korda-infra:extra_allowed_hosts: ".cloudflareaccess.com,.fainko.my.id,.fainko.id"
+  korda-infra:extra_csrf_origins: "https://*.cloudflareaccess.com"
