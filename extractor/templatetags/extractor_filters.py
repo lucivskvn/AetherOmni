@@ -308,8 +308,12 @@ def cache_bust(static_url: str) -> str:
         return ""
 
     bust_val = get_cache_bust_version()
+    # Keep any URL fragment last: a v= parameter appended after "#" would be
+    # swallowed into the fragment and never reach the server.
+    base, hash_sep, fragment = static_url.partition("#")
     # Strip any existing v= parameter if present to avoid duplication
-    cleaned_url = re.sub(r"([?&])v=[^&#]*", r"\1", static_url)
+    cleaned_url = re.sub(r"([?&])v=[^&#]*", r"\1", base)
     cleaned_url = cleaned_url.replace("??", "?").replace("?&", "?").rstrip("?&")
     separator = "&" if "?" in cleaned_url else "?"
-    return f"{cleaned_url}{separator}v={bust_val}"
+    result = f"{cleaned_url}{separator}v={bust_val}"
+    return f"{result}{hash_sep}{fragment}" if hash_sep else result

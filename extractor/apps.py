@@ -35,12 +35,38 @@ class ExtractorConfig(AppConfig):
         if os.environ.get("RUN_MAIN") == "true" or os.environ.get("GUNICORN_WORKER") or "test" in sys.argv:
             return
 
-        # Mark that we are the main process so child gunicorn workers don't
-        # re-schedule.
-        os.environ["GUNICORN_WORKER"] = "1"
+        # Gunicorn workers each import the app post-fork, so an env marker set
+        # here cannot propagate to siblings. Hold an advisory lock for the
+        # process lifetime instead: the first process wins, the rest skip.
+        lock_fd = self._acquire_maintenance_lock()
+        if lock_fd is None:
+            return
+        type(self)._maintenance_lock_fd = lock_fd
 
         self._start_periodic_reaper()
         self._start_periodic_cleanup()
+
+    _maintenance_lock_fd: int | None = None
+
+    @classmethod
+    def _acquire_maintenance_lock(cls) -> int | None:
+        try:
+            import fcntl
+            import os
+            import tempfile
+
+            lock_path = os.path.join(tempfile.gettempdir(), "korda-periodic-maintenance.lock")
+            fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                os.close(fd)
+                return None
+            return fd
+        except ImportError, OSError:
+            # Platforms without fcntl (or unwritable temp dirs) keep the
+            # previous single-process behaviour rather than disabling maintenance.
+            return -1
 
     # ──────────────────────────────────────────────────────────────────────────
 
