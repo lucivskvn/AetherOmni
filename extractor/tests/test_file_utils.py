@@ -443,6 +443,29 @@ class FileUtilsTestCase(TestCase):
             file_utils.generate_sft_dataset_pairs(["doc"] * 1001)
         self.assertIn("Export batch exceeds maximum document limit of 1000 items.", str(ctx.exception))
 
+    @override_settings(SURREALDB_OFFLINE=True)
+    @patch("extractor.file_utils._get_offline_docs")
+    def test_export_total_content_byte_budget_enforced(self, mock_get_docs):
+        """Cumulative uncompressed content must stay under the memory budget."""
+        big_doc = MagicMock(cost_usd=0.0, page_count=1)
+        big_doc.refined_markdown = "x" * 2048
+        big_doc.raw_markdown = None
+        big_doc.id = 1
+        mock_get_docs.return_value = [big_doc]
+
+        with (
+            patch.object(file_utils, "EXPORT_MAX_TOTAL_CONTENT_BYTES", 1024),
+            self.assertRaises(ValueError) as ctx,
+        ):
+            file_utils.generate_curated_zip_bundle(["doc"])
+        self.assertIn("maximum total content size", str(ctx.exception))
+
+        with (
+            patch.object(file_utils, "EXPORT_MAX_TOTAL_CONTENT_BYTES", 1024),
+            self.assertRaises(ValueError),
+        ):
+            file_utils.generate_curated_sqlite_bundle(["doc"])
+
     def test_csv_rendered_output_budget_enforced(self):
         """Pathological CSVs must not exhaust worker memory building markdown."""
         import os

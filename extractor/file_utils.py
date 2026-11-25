@@ -60,6 +60,13 @@ APPLICATION_JSON = "application/json"
 NO_COMPLETED_DOCS_MSG = "No completed documents selected for export bundle."
 EXPORT_MAX_DOCUMENTS_LIMIT = 1000
 EXPORT_MAX_LIMIT_MSG = f"Export batch exceeds maximum document limit of {EXPORT_MAX_DOCUMENTS_LIMIT} items."
+# Cumulative uncompressed source-content budget. The document-count cap alone
+# does not bound memory: the ZIP path stores each document ~4x (documents/,
+# Language/, Author/, master_content) and the SQLite path holds every chunk plus
+# its FTS index in RAM. 64 MiB of source text keeps worst-case amplification
+# well under the 1Gi web-service memory floor.
+EXPORT_MAX_TOTAL_CONTENT_BYTES = 64 * 1024 * 1024
+EXPORT_TOO_LARGE_MSG = "Export exceeds the maximum total content size; select fewer documents."
 
 
 # ── Fallback exchange rates (used if the external API is offline) ─────────────
@@ -865,6 +872,22 @@ def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
     return docs_list
 
 
+def _doc_export_content_bytes(doc: Any) -> int:
+    content = (
+        getattr(doc, "refined_markdown", None)
+        or getattr(doc, "cleaned_markdown", None)
+        or getattr(doc, "raw_markdown", None)
+        or ""
+    )
+    return len(str(content).encode("utf-8"))
+
+
+def _enforce_export_doc_budget(docs_list: list) -> None:
+    total = sum(_doc_export_content_bytes(d) for d in docs_list)
+    if total > EXPORT_MAX_TOTAL_CONTENT_BYTES:
+        raise ValueError(EXPORT_TOO_LARGE_MSG)
+
+
 def generate_curated_zip_bundle(
     document_ids: list[int] | list[str],
     user: Any = None,
@@ -889,6 +912,8 @@ def generate_curated_zip_bundle(
 
     if len(docs_list) > EXPORT_MAX_DOCUMENTS_LIMIT:
         raise ValueError(EXPORT_MAX_LIMIT_MSG)
+
+    _enforce_export_doc_budget(docs_list)
 
     zip_buffer = BytesIO()
 
@@ -1055,8 +1080,13 @@ def generate_sft_dataset_pairs(
         raise ValueError(EXPORT_MAX_LIMIT_MSG)
 
     pairs: list[dict[str, Any]] = []
+    total_pair_bytes = 0
     for doc in docs_list:
         doc_pairs = _collect_pairs_for_document(doc, limit, len(pairs))
+        for pair in doc_pairs:
+            total_pair_bytes += len(json.dumps(pair, ensure_ascii=False).encode("utf-8"))
+            if total_pair_bytes > EXPORT_MAX_TOTAL_CONTENT_BYTES:
+                raise ValueError(EXPORT_TOO_LARGE_MSG)
         pairs.extend(doc_pairs)
         if len(pairs) >= limit:
             break
@@ -1157,7 +1187,8 @@ def _insert_sqlite_document(cursor: Any, doc: Any) -> str:
     return doc_uuid
 
 
-def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str) -> None:
+def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str, byte_budget: dict[str, int] | None = None) -> None:
+    byte_budget = byte_budget if byte_budget is not None else {"used": 0}
     title = str(getattr(doc, "title", None) or "Untitled")
     author = str(getattr(doc, "author", None) or "Unknown")
     chunks = _get_doc_chunks(doc, doc_uuid, limit=500)
@@ -1187,6 +1218,9 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str) -> None:
         content_str = str(chunk.get("content") or "").strip()
         if not content_str:
             continue
+        byte_budget["used"] += len(content_str.encode("utf-8"))
+        if byte_budget["used"] > EXPORT_MAX_TOTAL_CONTENT_BYTES:
+            raise ValueError(EXPORT_TOO_LARGE_MSG)
         p_num = int(chunk.get("page_number") or 1)
         chap = str(chunk.get("chapter_title") or "")
         anch = str(chunk.get("anchor_id") or f"page-{p_num}")
@@ -1261,9 +1295,10 @@ def generate_curated_sqlite_bundle(
     cursor = conn.cursor()
     _init_sqlite_export_schema(cursor)
 
+    byte_budget = {"used": 0}
     for doc in docs_list:
         doc_uuid = _insert_sqlite_document(cursor, doc)
-        _insert_sqlite_chunks(cursor, doc, doc_uuid)
+        _insert_sqlite_chunks(cursor, doc, doc_uuid, byte_budget)
 
     conn.commit()
     return _serialize_sqlite_conn(conn)
