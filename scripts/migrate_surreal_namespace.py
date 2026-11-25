@@ -88,6 +88,11 @@ class SurrealNamespaceMigrator:
         elif url.startswith(wss_pfx):
             url = "https://" + url[len(wss_pfx) :]
         url = url.removesuffix("/rpc").rstrip("/")
+        # Credentials and table data traverse this endpoint; require TLS for
+        # any non-loopback target (mirrors init_surreal.py's wss/https rule).
+        host = url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        if not url.startswith("https://") and host not in ("localhost", "127.0.0.1", "::1"):
+            raise ValueError("SURREAL_URL must use wss:// or https:// for non-local targets.")
         self.surreal_url = url
         self.user = user
         self.password = password
@@ -396,8 +401,8 @@ def main() -> int:
     )
 
     try:
-        migrator.run_migration(schema_file=args.schema, dry_run=args.dry_run)
-        return 0
+        success = migrator.run_migration(schema_file=args.schema, dry_run=args.dry_run)
+        return 0 if success else 1
     except Exception as e:
         logger.exception("[Migration Aborted] %s", e)
         return 1
