@@ -162,6 +162,24 @@ jobs:
           uv export --frozen --no-dev --format requirements-txt -o /tmp/requirements_export.txt
           # The generated header embeds the output path; compare package bodies only.
           diff <(tail -n +3 /tmp/requirements_export.txt) <(tail -n +3 requirements.txt)
+          uv export --frozen --extra dev --format requirements-txt -o /tmp/requirements_dev_export.txt
+          python - /tmp/requirements_dev_export.txt <<'PYEOF'
+          import re, sys
+          locked = {}
+          for line in open(sys.argv[1]):
+              m = re.match(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", line)
+              if m:
+                  locked[m.group(1).lower()] = m.group(2)
+          pinned = {}
+          for line in open("requirements-dev.txt"):
+              m = re.match(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", line.strip())
+              if m:
+                  pinned[m.group(1).lower()] = m.group(2)
+          bad = {k: (pinned[k], locked.get(k)) for k in pinned if locked.get(k) != pinned[k]}
+          for k, (p, l) in bad.items():
+              print(f"{k}: pinned {p}, locked {l}")
+          sys.exit(1 if bad else 0)
+          PYEOF
 
       - name: Install Node Dependencies
         run: |
