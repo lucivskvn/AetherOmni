@@ -545,8 +545,20 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
             db = await _ensure_shared_db(url, auth)
             ns, _ = _get_surreal_ns_db()
             await _use_ns_db_if_needed(db, ns, db_name)
-            result = await db.query(sql, params)
-            return [x for x in result if isinstance(x, dict)] if isinstance(result, list) else []
+            # query_raw returns every per-statement result; db.query()
+            # collapses to response["result"][0] and would hide later
+            # statements (RETURN values, COMMIT, RELATE rows) — which
+            # broke transaction callers that parse statement results.
+            response = await db.query_raw(sql, params)
+            if not isinstance(response, dict):
+                return []
+            rpc_error = response.get("error")
+            if rpc_error is not None:
+                raise RuntimeError(f"SurrealDB RPC error: {rpc_error}")
+            stmts = response.get("result")
+            if not isinstance(stmts, list):
+                return []
+            return [s for s in stmts if isinstance(s, dict)]
         except Exception as exc:
             last_exc = exc
             # Drop the shared connection so the next attempt re-establishes a
