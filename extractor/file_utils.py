@@ -635,8 +635,18 @@ def render_markdown_to_html(markdown_text: str) -> str:
     """
     Converts Markdown to HTML safely and applies first-strong-character Arabic layout logic.
     """
+    import re
+
     html = md_lib.markdown(markdown_text, extensions=["tables", "fenced_code", "nl2br"])
     sanitized = clean_html_content(html)
+    # bleach permits target= but cannot inject rel: without noopener a
+    # target="_blank" link in user content keeps window.opener access to this
+    # origin (reverse tabnabbing). Add the attribute post-sanitization.
+    sanitized = re.sub(
+        r"<a\b[^>]*\btarget=[^>]*>",
+        lambda m: m.group(0) if "rel=" in m.group(0) else m.group(0)[:-1] + ' rel="noopener noreferrer">',
+        sanitized,
+    )
     return parse_arabic_layout(sanitized)
 
 
