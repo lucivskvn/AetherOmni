@@ -138,7 +138,12 @@ if app_url:
     if parsed_host and parsed_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(parsed_host)
 
-extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", ".cloudflareaccess.com,.fainko.my.id,.fainko.id")
+# Extra allowed hosts are deployment-specific and must be supplied via env.
+# Never default to registerable wildcards: *.cloudflareaccess.com subdomains
+# are claimable by any Cloudflare Zero Trust team, which would let an
+# attacker-controlled Host pass validation and become a CSRF-trusted origin
+# (CSRF_TRUSTED_ORIGINS is derived from ALLOWED_HOSTS below).
+extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", ".fainko.my.id,.fainko.id")
 for extra_host in [h.strip() for h in extra_hosts_env.split(",") if h.strip()]:
     if extra_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(extra_host)
