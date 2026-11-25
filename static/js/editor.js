@@ -15,9 +15,10 @@ function parseInline(text) {
         t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
 
-        // Italic *text* or _text_
+        // Italic *text* or _text_ — '_' must not open/close emphasis inside a
+        // word (snake_case identifiers like a_b_c must stay literal).
         t = t.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
-        t = t.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+        t = t.replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '<em>$1</em>');
 
         // Image: ![alt](src)
         t = t.replace(/!\[([^\]]*)\]\(([^()]+)\)/g, (match, alt, src) => {
@@ -355,9 +356,7 @@ function initDeepLinkScroll(container) {
     try {
         const decodedHash = decodeURIComponent(rawHash).toLowerCase();
         const escaped = _escapeCssIdentifier(decodedHash);
-        const target = (container || document).querySelector(
-            `#${escaped}, [id*="${escaped}"]`
-        );
+        const target = (container || document).querySelector(`#${escaped}`);
         if (target) {
             setTimeout(() => {
                 target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -390,16 +389,23 @@ function _handleHeading(line, state, pushHtml) {
     const level = hMatch[1].length;
     const headingText = hMatch[2];
     const pageMatch = headingText.match(/^Page\s+(\d+)/i);
-    const slug = pageMatch ? `page-${pageMatch[1]}` : _slugifyHeading(headingText);
+    let slug = pageMatch ? `page-${pageMatch[1]}` : _slugifyHeading(headingText);
+    if (slug) {
+        const usedSlugs = state.usedSlugs || (state.usedSlugs = {});
+        const seen = (usedSlugs[slug] || 0) + 1;
+        usedSlugs[slug] = seen;
+        if (seen > 1) slug = `${slug}-${seen}`;
+    }
     const idAttr = slug ? ` id="${slug}" class="heading-anchor"` : '';
     pushHtml(`<h${level}${idAttr}>${parseInline(headingText)}</h${level}>`);
     return true;
 }
 
 function _handleBlockquote(line, state, pushHtml) {
-    if (line.startsWith('> ')) {
+    // Input is HTML-escaped before block parsing, so '>' arrives as '&gt;'.
+    if (line.startsWith('&gt;')) {
         if (!state.inBlockquote) { pushHtml('<blockquote>'); state.inBlockquote = true; }
-        pushHtml('<p>' + parseInline(line.substring(2)) + '</p>');
+        pushHtml('<p>' + parseInline(line.replace(/^&gt; ?/, '')) + '</p>');
         return true;
     } else if (state.inBlockquote) {
         pushHtml('</blockquote>'); state.inBlockquote = false;
@@ -433,15 +439,21 @@ function _handleTable(line, state, pushHtml) {
             pushHtml('<div class="table-container"><table>');
             state.inTable = true;
             state.tableHasHead = false;
+            state.tableHeadEmitted = false;
         }
         const isDivider = line.replace(/[|\s-:]/g, '').length === 0;
         if (isDivider) {
-            if (!state.tableHasHead) { pushHtml('</thead><tbody>'); state.tableHasHead = true; }
+            if (!state.tableHasHead) {
+                if (state.tableHeadEmitted) pushHtml('</thead>');
+                pushHtml('<tbody>');
+                state.tableHasHead = true;
+            }
             return true;
         }
         const cells = line.split('|').map(s => s.trim()).filter((s, i, arr) => !(i === 0 && s === '') && !(i === arr.length - 1 && s === ''));
         if (!state.tableHasHead) {
             pushHtml('<thead><tr>');
+            state.tableHeadEmitted = true;
             cells.forEach(c => pushHtml('<th>' + parseInline(c) + '</th>'));
             pushHtml('</tr>');
         } else {
@@ -451,15 +463,21 @@ function _handleTable(line, state, pushHtml) {
         }
         return true;
     } else if (state.inTable) {
-        pushHtml('</tbody></table></div>'); state.inTable = false; state.tableHasHead = false;
+        pushHtml(_closeTableTags(state)); state.inTable = false; state.tableHasHead = false; state.tableHeadEmitted = false;
     }
     return false;
+}
+
+function _closeTableTags(state) {
+    // A table without a divider row never opened <tbody> or closed <thead>;
+    // emit balanced tags either way so the DOM stays well-formed.
+    return state.tableHasHead ? '</tbody></table></div>' : '</thead><tbody></tbody></table></div>';
 }
 
 function _closeOpenBlocks(state, pushHtml) {
     if (state.inList) { pushHtml('</' + state.listType + '>'); state.inList = false; state.listType = null; }
     if (state.inBlockquote) { pushHtml('</blockquote>'); state.inBlockquote = false; }
-    if (state.inTable) { pushHtml('</tbody></table></div>'); state.inTable = false; state.tableHasHead = false; }
+    if (state.inTable) { pushHtml(_closeTableTags(state)); state.inTable = false; state.tableHasHead = false; state.tableHeadEmitted = false; }
 }
 
 function processBlockElement(line, state, htmlBuilder) {
@@ -470,7 +488,7 @@ function processBlockElement(line, state, htmlBuilder) {
         return;
     }
 
-    if (line.startsWith('---')) {
+    if (/^-{3,}\s*$/.test(line)) {
         pushHtml('<hr>');
         return;
     }
@@ -536,11 +554,14 @@ function _restoreSafeHtmlSegment(segment) {
     return segment
         .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
         .replace(/&lt;hr\s*\/?&gt;/gi, '<hr>')
-        .replace(/&lt;(\/)?([a-z]+)\b([^&]*)&gt;/gi, (match, closeSlash, tagName, attrs) => {
+        .replace(/&lt;(\/)?([a-z]+)\b((?:(?!&gt;)[\s\S])*?)&gt;/gi, (match, closeSlash, tagName, attrs) => {
             if (!SAFE_HTML_TAGS.has(tagName.toLowerCase())) return match;
             let cleanAttrs = '';
             if (attrs) {
-                const decodedAttrs = attrs.replaceAll('&quot;', '"').replaceAll('&#x27;', "'");
+                const decodedAttrs = attrs
+                    .replaceAll('&quot;', '"')
+                    .replaceAll('&#x27;', "'")
+                    .replaceAll('&#039;', "'");
                 const attrRegex = /\b([a-z]+)\s*=\s*["']([^"']*)["']/gi;
                 let m;
                 while ((m = attrRegex.exec(decodedAttrs)) !== null) {
@@ -619,7 +640,9 @@ function compileMarkdown(markdown) {
         inCodeBlock: false,
         codeLang: '',
         inTable: false,
-        tableHasHead: false
+        tableHasHead: false,
+        tableHeadEmitted: false,
+        usedSlugs: {}
     };
 
     const htmlBuilder = { html: '' };
