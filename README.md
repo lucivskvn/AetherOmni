@@ -13,7 +13,7 @@ Supabase database secret while preserving the configured memory floors.
 
 ## What it does
 
-- Ingests PDF, office documents, images, text, structured data, and ZIP batches.
+- Ingests PDF, office documents, images, lecture/walkthrough videos, text, structured data, and ZIP batches.
 - Tracks asynchronous extraction, curation, embedding, and cancellation safely.
 - Provides tenant-scoped semantic search with grounded source references.
 - Exports curated document bundles and dataset-ready formats.
@@ -61,7 +61,7 @@ KORDA is useful before model evaluation or dataset curation: it transforms mixed
 
 | Area | Available now |
 | --- | --- |
-| Document intake | PDF, office files, images, text, JSON, CSV, spreadsheets, and recursive ZIP batches. |
+| Document intake | PDF, office files, images, lecture/walkthrough videos (mp4/mov/m4v/webm with timestamped transcripts), text, JSON, CSV, spreadsheets, and recursive ZIP batches. |
 | Processing | Queued worker execution with durable task identity, cancellation fencing, retry controls, and safe failure handling. |
 | Knowledge retrieval | Tenant-scoped hybrid retrieval, grounded source references, and streaming answers with a safe JSON fallback. |
 | Curation and export | Editable document detail views plus Markdown ZIP, SFT JSONL, SQLite FTS, and CSV exports. |
@@ -114,6 +114,15 @@ python manage.py runserver
 ```
 
 For offline development, set `SURREALDB_OFFLINE=True`; this uses the local SQLite database `db.sqlite3` and does not require `DATABASE_URL` or SurrealDB credentials. Production configuration is documented in the [GCP deployment guide](docs/gcp_deployment_guide.md).
+
+To run the full local stack (web + SurrealDB) with Docker Compose instead:
+
+```bash
+cp .env.example .env   # set SURREAL_PASS and DJANGO_SECRET_KEY
+docker compose up --build
+```
+
+The compose stack mirrors the production architecture: `DJANGO_DEBUG=True` is set on the web service so the unencrypted ws-scheme SurrealDB transport is permitted locally, and port `8080` is bound to localhost only.
 
 ## Quality and security
 

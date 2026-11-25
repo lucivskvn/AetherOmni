@@ -194,6 +194,9 @@ jobs:
       - name: Reliability Contract Gate
         run: python scripts/check_reliability_contracts.py
 
+      - name: Security Boundary Gate
+        run: python scripts/check_security_boundaries.py
+
       - name: Bandit Python Security Audit
         run: python -m bandit -c bandit.yaml -r extractor/ core/ scripts/ -ll
 

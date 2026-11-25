@@ -319,6 +319,7 @@ from extractor.utils import (
     KNATIVE_MIN_SCALE,
     REEMBED_DOCUMENT_TASK,
     VALUE_XML_HTTP_REQUEST,
+    VIDEO_FILE_EXTENSIONS,
     broadcast_status_change,
     calculate_file_sha256,
     format_localized_cost,
@@ -732,6 +733,7 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     "doc",
     "xlsx",
     "xls",
+    *(ext.lstrip(".") for ext in VIDEO_FILE_EXTENSIONS),
 }
 
 
@@ -895,6 +897,8 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
     ip = get_client_ip(request)
     title_guess = _upload_title_from_filename(orig_name)
     ext_guess = os.path.splitext(orig_name)[1].replace(".", "").upper() or "PDF"
+    if ext_guess in {ext.lstrip(".").upper() for ext in VIDEO_FILE_EXTENSIONS}:
+        ext_guess = "VIDEO"
 
     file_id = str(uuid.uuid4())
     ext = os.path.splitext(orig_name)[1].lower()

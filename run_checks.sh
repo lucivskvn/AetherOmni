@@ -55,6 +55,9 @@ echo -e "${GREEN}✓ Python bytecode compiled cleanly with 0 syntax errors.${NC}
 echo -e "${YELLOW}[Reliability Contracts] Verifying task, recovery, export, and polling controls...${NC}"
 "$PYTHON_BIN" scripts/check_reliability_contracts.py
 
+echo -e "${YELLOW}[Security Boundaries] Verifying Phase-0 IAM, bucket, and transport controls...${NC}"
+"$PYTHON_BIN" scripts/check_security_boundaries.py
+
 APP_VERSION=$("$PYTHON_BIN" scripts/update_docs.py --print-version 2>/dev/null || echo "0.0.0")
 
 echo -e "${CYAN}======================================================================${NC}"
