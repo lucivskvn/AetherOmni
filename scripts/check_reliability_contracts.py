@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -283,6 +284,14 @@ def main() -> int:
         ('parser.add_argument("--apply"', "Dry run only", "has_retired_field", "postcondition failed"),
         "System-settings normalization must remain dry-run by default and verify retired-field removal explicitly.",
     )
+    migrator = _read("scripts/migrate_surreal_namespace.py")
+    schema_tables = set(re.findall(r"DEFINE TABLE IF NOT EXISTS (\w+)", surreal_schema))
+    listed_tables = set(re.findall(r'^\s+"(\w+)",\s*$', migrator.split("TABLES_TO_MIGRATE")[1].split("]")[0], re.M))
+    if schema_tables != listed_tables:
+        errors.append(
+            "Namespace migration table list must cover every schema.surql table "
+            f"(missing: {sorted(schema_tables - listed_tables)}, extra: {sorted(listed_tables - schema_tables)})."
+        )
     _check_infra_contracts(errors, service_manifest, worker_manifest, cloudbuild, pulumi, sonar_autoscan)
     _check_deployment_identity(errors, (service_manifest, worker_manifest), cloudbuild)
 
