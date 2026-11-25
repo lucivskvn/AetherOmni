@@ -218,6 +218,18 @@ jobs:
           python -m ruff check infra/pulumi/
           python -m ruff format --check infra/pulumi/
 
+      - name: Install SurrealDB CLI (live contract tests)
+        run: |
+          archive="$RUNNER_TEMP/surreal-v3.3.4.linux-amd64.tgz"
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 \
+            https://download.surrealdb.com/v3.3.4/surreal-v3.3.4.linux-amd64.tgz \
+            -o "$archive"
+          echo "6593071833ad9c85cf533cf70b1643eb08966c868f8624001e30839ea29a2689  $archive" \
+            | sha256sum --check --status
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          chmod +x "$RUNNER_TEMP/surreal"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       - name: Python Tests → coverage.xml
         run: |
           export DJANGO_SECRET_KEY="ci-test-key-50-chars-long-for-local-testing-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df"
@@ -270,6 +282,7 @@ jobs:
           coverage xml -o coverage.xml
         env:
           SURREALDB_OFFLINE: "True"
+          SURREAL_LIVE_TEST: "1"
           DATABASE_URL: "sqlite:///:memory:"
           MALLOC_ARENA_MAX: "2"
 
