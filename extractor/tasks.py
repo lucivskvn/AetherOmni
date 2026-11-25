@@ -1590,8 +1590,17 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
 
     purged_count = 0
     for doc in expired_docs:
-        if _cleanup_single_expired_doc(doc, hash_counts, surreal_db):
-            purged_count += 1
+        try:
+            if _cleanup_single_expired_doc(doc, hash_counts, surreal_db):
+                purged_count += 1
+        except Exception as doc_err:
+            # One persistently-failing document must not poison the whole
+            # sweep: log it and continue so later expired docs still purge.
+            logger.exception(
+                "[Cron] Expired-document cleanup failed for %s: %s",
+                doc.get("doc_uuid"),
+                doc_err,
+            )
 
     # Purge expired SurrealDB RAG cache entries
     try:
@@ -1760,8 +1769,17 @@ def reap_stale_tasks(_payload: dict | None = None) -> int:
     reaped_count = 0
 
     for doc in stale_docs or []:
-        if _reap_single_stale_doc(doc):
-            reaped_count += 1
+        try:
+            if _reap_single_stale_doc(doc):
+                reaped_count += 1
+        except Exception as reap_err:
+            # A single malformed/stuck document must not abort the scan for
+            # every other stale document behind it in the result set.
+            logger.exception(
+                "[Reaper] Failed to evaluate stale document %s: %s",
+                doc.get("doc_uuid"),
+                reap_err,
+            )
 
     if reaped_count > 0:
         logger.info("[Reaper] Successfully recovered or reaped %s stuck tasks.", reaped_count)
