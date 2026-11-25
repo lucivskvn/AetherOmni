@@ -59,6 +59,18 @@ def _check_infra_contracts(
         errors.append("Cloud Run service manifests must not deploy :latest container images.")
     _require(
         errors,
+        service_manifest,
+        ('name: GUNICORN_WORKERS\n          value: "2"',),
+        "Web Cloud Run manifest must pin the contracted Gunicorn worker count.",
+    )
+    _require(
+        errors,
+        worker_manifest,
+        ('name: GUNICORN_WORKERS\n          value: "1"',),
+        "Worker Cloud Run manifest must pin the contracted single Gunicorn worker.",
+    )
+    _require(
+        errors,
         cloudbuild,
         ("--memory=1Gi", "--memory=2Gi", "--no-allow-unauthenticated", "DATABASE_URL=SUPABASE_DATABASE_URL:latest"),
         "Cloud Build must retain memory floors, a private worker, and a required Supabase database secret.",
