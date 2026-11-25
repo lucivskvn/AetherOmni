@@ -138,6 +138,8 @@ class DynamicCsrfTrustedOriginsMiddleware:
     """
 
     _base_origins = None
+    _base_allowed_hosts = None
+    _db_allowed_hosts: set = set()
     _db_origins_loaded: bool = False
     _last_query_time: float = 0.0
     _cached_db_origins: tuple[str, ...] = ()
@@ -152,21 +154,25 @@ class DynamicCsrfTrustedOriginsMiddleware:
         # 1. Capture base static origins from settings if not already cached
         if DynamicCsrfTrustedOriginsMiddleware._base_origins is None:
             DynamicCsrfTrustedOriginsMiddleware._base_origins = list(settings.CSRF_TRUSTED_ORIGINS)
+        if DynamicCsrfTrustedOriginsMiddleware._base_allowed_hosts is None:
+            DynamicCsrfTrustedOriginsMiddleware._base_allowed_hosts = list(settings.ALLOWED_HOSTS)
 
         # 2. Reset the trusted origins to the base configuration to prevent stale whitelist buildup
         settings.CSRF_TRUSTED_ORIGINS = list(DynamicCsrfTrustedOriginsMiddleware._base_origins)
 
-        # 3. Trust the host origin (derived from the current request Host header)
+        # 3. Load and append current database-configured origins BEFORE any
+        # get_host() call: host validation must already see DB-derived hosts,
+        # and the 60s cache makes reloads cheap.
+        self._trust_database_origins()
+
+        # 4. Trust the host origin (derived from the current request Host header)
         # only in DEBUG mode to support local tunnels/dev servers.
         # Enforcing static/configured origins in production prevents CSRF bypass.
         if settings.DEBUG:
             self._trust_host_origin(request)
 
-        # 4. Trust headers if DEBUG is enabled, or if they point to a local loopback interface
+        # 5. Trust headers if DEBUG is enabled, or if they point to a local loopback interface
         self._trust_header_origins_if_safe(request)
-
-        # 5. Load and append current database-configured origins
-        self._trust_database_origins()
 
         return self.get_response(request)
 
@@ -183,12 +189,29 @@ class DynamicCsrfTrustedOriginsMiddleware:
             DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = True
             DynamicCsrfTrustedOriginsMiddleware._last_query_time = now
 
+        db_hosts = set()
         for origin in DynamicCsrfTrustedOriginsMiddleware._cached_db_origins:
             if origin not in settings.CSRF_TRUSTED_ORIGINS:
                 settings.CSRF_TRUSTED_ORIGINS.append(origin)
             origin_host = _extract_host_from_origin(origin)
-            if origin_host and origin_host not in settings.ALLOWED_HOSTS:
-                settings.ALLOWED_HOSTS.append(origin_host)
+            if origin_host:
+                db_hosts.add(origin_host)
+
+        # Reconcile ALLOWED_HOSTS: drop hosts previously appended from DB
+        # origins that are no longer configured, without touching static or
+        # test-overridden entries. Previously this list only ever grew, so a
+        # removed origin stayed a valid Host header target until restart.
+        base_hosts = DynamicCsrfTrustedOriginsMiddleware._base_allowed_hosts or []
+        previous_db_hosts = DynamicCsrfTrustedOriginsMiddleware._db_allowed_hosts
+        settings.ALLOWED_HOSTS = [
+            host
+            for host in settings.ALLOWED_HOSTS
+            if host not in previous_db_hosts or host in base_hosts or host in db_hosts
+        ]
+        for host in db_hosts:
+            if host not in settings.ALLOWED_HOSTS:
+                settings.ALLOWED_HOSTS.append(host)
+        DynamicCsrfTrustedOriginsMiddleware._db_allowed_hosts = db_hosts
 
     def _trust_host_origin(self, request):
         host = request.get_host()
