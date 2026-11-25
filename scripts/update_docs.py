@@ -19,11 +19,15 @@ VERSION SCHEME
 
 WHAT IS UPDATED
 ---------------
-  README.md              — quality badges, test count, and desloppify scores.
-                           Runtime release identity is intentionally not written here.
-  docs/gcp_deployment_guide.md — guide version heading
-  infra/gcp/service.yaml           — RELEASE_VERSION env var
-  infra/gcp/service-worker.yaml    — RELEASE_VERSION env var
+  README.md              — legacy badge/test-count/score sentinels only.
+                           The current README uses dynamic badges and no
+                           auto:* sentinels, so this is normally a no-op;
+                           kept for repos that still carry the old markers.
+  infra/gcp/service.yaml            — RELEASE_VERSION placeholder validated
+  infra/gcp/service-worker.yaml     — RELEASE_VERSION placeholder validated
+
+  The version itself is never written into tracked docs (zero-stale-numbers
+  policy); consumers read it via --print-version / --print-release.
 
 HOW IT IS TRIGGERED
 -------------------

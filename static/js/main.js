@@ -123,8 +123,12 @@ async function executeRagStream(url, onEvent) {
         if (!dataLine) return;
         const rawData = dataLine.slice(5).trim();
         if (!rawData || rawData === '[DONE]') return;
-        const payload = JSON.parse(rawData);
-        onEvent(payload);
+        try {
+            onEvent(JSON.parse(rawData));
+        } catch (parseErr) {
+            // A single malformed event must not abort the whole stream.
+            console.warn('[RAG Stream] Skipping malformed SSE event:', parseErr);
+        }
     };
 
     try {
@@ -532,7 +536,6 @@ function initializeFormSubmitSpinners() {
                     btn.innerHTML = btn.dataset.originalHtml;
                     btn.removeAttribute('aria-disabled');
                     btn.disabled = btn.dataset.originalDisabled === 'true';
-                    delete btn.dataset.originalDisabled;
                     btn.style.pointerEvents = '';
                     btn.style.opacity = '';
                 }
@@ -1186,8 +1189,13 @@ function initializeRAGSearch() {
     }
 
     async function runStrictLibrarianSearch(query, librarianUrl) {
+        // Same-origin guard, matching the compile-KB fetch hardening above.
+        const librarianBase = new URL(librarianUrl, globalThis.location.origin);
+        if (librarianBase.origin !== globalThis.location.origin) {
+            throw new Error('Strict Librarian endpoint must be same-origin.');
+        }
         const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
-        const resp = await fetch(librarianUrl, {
+        const resp = await fetch(librarianBase.pathname + librarianBase.search, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1269,7 +1277,9 @@ function initializeRAGSearch() {
             const checkedAnchors = Array.from(document.querySelectorAll('.korda-anchor-select:checked'));
             const anchorInput = document.getElementById('crystal-anchor-ids');
             const slugInput = document.getElementById('crystal-doc-slug');
-            if (anchorInput && checkedAnchors.length) {
+            if (anchorInput) {
+                // Always sync: a stale value from a previous open would submit
+                // anchor ids the user can no longer see or uncheck.
                 anchorInput.value = checkedAnchors.map(el => el.value).join(', ');
             }
             if (slugInput && !slugInput.value && checkedAnchors[0]?.dataset?.docSlug) {
@@ -1621,7 +1631,7 @@ function _updateTokenMetricCard(stats) {
 
 function _updateBudgetCard(stats) {
     const spendVal = document.querySelector('.metrics-row .metric-card:first-child .metric-value');
-    if (spendVal) spendVal.textContent = stats.formatted_monthly_spent;
+    if (spendVal) spendVal.textContent = stats.formatted_monthly_spent ?? '';
 
     const budgetSub = document.querySelector('.metrics-row .metric-card:first-child .metric-sub');
     if (!budgetSub) return;
@@ -1641,11 +1651,13 @@ function updateDashboardStats(stats) {
     _updateBudgetCard(stats);
 
     const pagesVal = document.querySelector('.metrics-row .metric-card:nth-child(2) .metric-value');
-    if (pagesVal) pagesVal.textContent = stats.total_pages;
+    if (pagesVal) pagesVal.textContent = stats.total_pages ?? 0;
 
     const activeCount = document.getElementById('active-tasks-count');
     if (activeCount) {
-        activeCount.textContent = stats.PENDING + stats.EXTRACTING + stats.REFINING + stats.EMBEDDING;
+        activeCount.textContent =
+            (Number(stats.PENDING) || 0) + (Number(stats.EXTRACTING) || 0) +
+            (Number(stats.REFINING) || 0) + (Number(stats.EMBEDDING) || 0);
     }
 
     _updateTokenMetricCard(stats);
@@ -1662,7 +1674,8 @@ function updateDashboardStats(stats) {
 
 
 function _findTableRowForDoc(tbody, doc) {
-    let row = tbody.querySelector(`tr[data-doc-id="${doc.id}"]`);
+    const escapedDocId = typeof globalThis.CSS?.escape === 'function' ? globalThis.CSS.escape(String(doc.id)) : String(doc.id);
+    let row = tbody.querySelector(`tr[data-doc-id="${escapedDocId}"]`);
     if (row) return row;
 
     const chk = document.getElementById(`chk-doc-${doc.id}`);
@@ -1705,7 +1718,7 @@ function updateDocumentsTable(documents, complete = false, visibleIds = []) {
         const costTd = row.querySelector('td:nth-child(4)');
         if (costTd) {
             const costVal = costTd.querySelector('div');
-            if (costVal) costVal.textContent = doc.formatted_cost;
+            if (costVal) costVal.textContent = doc.formatted_cost ?? '';
             const costSub = costTd.querySelector('.doc-cost-sub');
             if (costSub && doc.input_tokens !== undefined && doc.output_tokens !== undefined) {
                 costSub.textContent = `In: ${formatCompact(doc.input_tokens)} / Out: ${formatCompact(doc.output_tokens)}`;
@@ -1743,7 +1756,7 @@ function updateDocumentsTable(documents, complete = false, visibleIds = []) {
 
 function _updateDetailMetaFields(currentDoc, currentStatus) {
     const detailCost = document.getElementById('detail-cost');
-    if (detailCost) detailCost.textContent = currentDoc.formatted_cost;
+    if (detailCost) detailCost.textContent = currentDoc.formatted_cost ?? '';
 
     const detailLang = document.getElementById('detail-lang');
     if (detailLang) {

@@ -20,7 +20,7 @@ MAX_COGNITIVE_COMPLEXITY = 15
 
 # Directories to scan (production core and extractor source trees)
 SOURCE_DIRS = [ROOT / "core", ROOT / "extractor"]
-EXCLUDE_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "migrations", "tests", "management"}
+EXCLUDE_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "migrations", "tests"}
 
 ALLOWED_LITERALS = {
     "Content-Disposition",
@@ -71,6 +71,7 @@ ALLOWED_LITERALS = {
     "cf-turnstile-response",
     "CF_TURNSTILE_SITE_KEY",
     "RELEASE_VERSION",
+    "DATA_RETENTION_DAYS",
 }
 
 

@@ -29,7 +29,7 @@ def _run_sql(endpoint: str, namespace: str, database: str, query: str) -> list[d
     response = httpx.post(
         endpoint,
         content=query,
-        headers={"Accept": "application/json", "NS": namespace, "DB": database},
+        headers={"Accept": "application/json", "surreal-ns": namespace, "surreal-db": database},
         auth=(username, password) if username and password else None,
         timeout=30.0,
     )

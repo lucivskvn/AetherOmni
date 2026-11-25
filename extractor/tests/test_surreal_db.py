@@ -30,6 +30,7 @@ class SurrealDBClientTestCase(TestCase):
         mock_db.signin = AsyncMock()
         mock_db.use = AsyncMock()
         mock_db.query = AsyncMock(return_value=return_value or [])
+        mock_db.query_raw = AsyncMock(return_value={"result": return_value or []})
         return mock_db
 
     @override_settings(
@@ -151,8 +152,8 @@ class SurrealDBClientTestCase(TestCase):
         chunks = [{"chunk_index": 0, "content": "Text", "embedding": [0.1] * 768}]
 
         surreal_db.recreate_chunks(doc_uuid, chunks)
-        self.assertEqual(mock_db.query.call_count, 2)
-        mock_db.query.assert_any_call(
+        self.assertEqual(mock_db.query_raw.call_count, 2)
+        mock_db.query_raw.assert_any_call(
             "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
             {"doc_uuid": "00000000-0000-0000-0000-000000000000"},
         )
@@ -179,7 +180,7 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(results[0]["content"], "Found text content")
         self.assertEqual(results[0]["chunk_index"], 0)
         self.assertEqual(results[0]["doc_uuid"], "00000000-0000-0000-0000-000000000000")
-        mock_db.query.assert_called_once()
+        mock_db.query_raw.assert_called_once()
 
     @patch("extractor.surreal_db._run", return_value=[{"result": [{"memory_text": "prefers detail", "score": 0.1}]}])
     def test_search_user_memories_uses_knn_operator(self, mock_run):
@@ -199,7 +200,7 @@ class SurrealDBClientTestCase(TestCase):
 
         val = surreal_db.kv_cache_get("my-key")
         self.assertEqual(val, {"answer": "cached response"})
-        mock_db.query.assert_called()
+        mock_db.query_raw.assert_called()
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
@@ -217,9 +218,9 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(res, {"doc_uuid": "123", "title": "Test"})
 
         # Check that the payload parameters do not contain malicious_key
-        call_args = mock_db.query.call_args[0]
+        call_args = mock_db.query_raw.call_args[0]
         sql = call_args[0]
-        params = call_args[1] if len(call_args) > 1 else mock_db.query.call_args[1].get("params", {})
+        params = call_args[1] if len(call_args) > 1 else mock_db.query_raw.call_args[1].get("params", {})
         payload = params.get("payload", params)
         self.assertNotIn("malicious_key", str(sql))
         self.assertNotIn("malicious_key", payload)
@@ -241,7 +242,7 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(res, {"doc_uuid": "123", "title": "Test Updated"})
 
         # Check that the sql does not contain malicious_key
-        call_args = mock_db.query.call_args[0]
+        call_args = mock_db.query_raw.call_args[0]
         sql = call_args[0]
         self.assertNotIn("malicious_key", sql)
         self.assertIn("title", sql)
@@ -360,8 +361,8 @@ class SurrealDBClientTestCase(TestCase):
         }
         surreal_db.create_document(data)
 
-        call_args = mock_db.query.call_args[0]
-        params = call_args[1] if len(call_args) > 1 else mock_db.query.call_args[1].get("params", {})
+        call_args = mock_db.query_raw.call_args[0]
+        params = call_args[1] if len(call_args) > 1 else mock_db.query_raw.call_args[1].get("params", {})
         payload = params.get("payload", params)
 
         self.assertIsInstance(payload["created_at"], datetime)
@@ -424,6 +425,27 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(mock_surreal.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
         mock_sleep.assert_has_calls([call(1), call(2)])
+
+    @override_settings(DEBUG=True)
+    @patch("extractor.surreal_db.AsyncSurreal")
+    def test_async_run_returns_every_statement_result(self, mock_surreal):
+        """Regression: db.query() collapses to the first statement result,
+        hiding RETURN/COMMIT values inside transactions. _run must use
+        query_raw so callers can read every per-statement result."""
+        surreal_db._detected_ns = "korda"
+        stmts = [
+            {"status": "OK", "result": None},
+            {"status": "OK", "result": True},
+            {"status": "OK", "result": None},
+        ]
+        mock_db = self._create_mock_db(stmts)
+        mock_surreal.return_value = mock_db
+
+        res = surreal_db._run("BEGIN TRANSACTION; RETURN true; COMMIT TRANSACTION;")
+
+        self.assertEqual(res, stmts)
+        mock_db.query_raw.assert_called_once()
+        mock_db.query.assert_not_called()
 
     @override_settings(SURREALDB_OFFLINE=False)
     @patch("extractor.surreal_db.recreate_chunks")

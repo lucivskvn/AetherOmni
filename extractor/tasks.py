@@ -35,6 +35,7 @@ _MAX_SIG_LEN = 255
 from extractor import surreal_db
 from extractor.models import AuditAction
 from extractor.utils import (
+    VIDEO_FILE_EXTENSIONS,
     AuditEvent,
     broadcast_status_change,
     check_budget_and_api_limit,
@@ -135,6 +136,8 @@ def _count_pages_pass2(working_path, chunk_size, overlap):
 
 def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
     """Helper to parse the PDF file structures and extract page count using regex without loading the entire file into memory."""
+    if doc_type == "VIDEO":
+        return 0
     if doc_type != "PDF":
         return 1
     try:
@@ -436,6 +439,15 @@ def _get_doc_info_stage1(document_id):
         return doc, doc.get("original_filename", "").lower(), doc.get("doc_uuid")
 
 
+def _fallback_doc_type(lower_name: str) -> str:
+    """Best-effort document type label when none was persisted."""
+    if lower_name.endswith(".pdf"):
+        return "PDF"
+    if lower_name.endswith(VIDEO_FILE_EXTENSIONS):
+        return "VIDEO"
+    return "IMAGE"
+
+
 def _extract_existing_raw(
     doc: Any, doc_id_display: str, working_path: str, lower_name: str
 ) -> tuple[str, str, int, Decimal, int, int] | None:
@@ -443,7 +455,7 @@ def _extract_existing_raw(
     if len(existing_raw.strip()) > 20:
         logger.info("[Worker/Stage 1] Reusing existing raw_markdown for Document ID: %s", doc_id_display)
         doc_type = (doc.get("document_type") if isinstance(doc, dict) else getattr(doc, "document_type", None)) or (
-            "PDF" if lower_name.endswith(".pdf") else "IMAGE"
+            _fallback_doc_type(lower_name)
         )
         page_cnt = (
             doc.get("page_count") if isinstance(doc, dict) else getattr(doc, "page_count", 0)
@@ -466,7 +478,7 @@ def _extract_cached_ocr(
     )
     if isinstance(cached_ocr, dict) and cached_ocr.get("raw_markdown"):
         logger.info("[Worker/Stage 1] Found cached OCR result in KV Cache for file_hash %s", file_hash)
-        doc_type = cached_ocr.get("document_type") or ("PDF" if lower_name.endswith(".pdf") else "IMAGE")
+        doc_type = cached_ocr.get("document_type") or _fallback_doc_type(lower_name)
         page_cnt = cached_ocr.get("page_count") or _determine_actual_page_count(working_path, doc_type)
         return cached_ocr["raw_markdown"], doc_type, page_cnt, Decimal("0.0"), 0, 0
     return None
@@ -524,8 +536,13 @@ def _acquire_stage1_raw_markdown(
             )
             return local_pdf_text, "PDF", pdf_pages, Decimal("0.0"), 0, 0
 
-    # Multimodal OCR fallback for scanned PDFs or images
-    doc_type = "PDF" if lower_name.endswith(".pdf") else "IMAGE"
+    # Multimodal OCR fallback for scanned PDFs, images, and videos
+    doc_type = _fallback_doc_type(lower_name)
+    if doc_type == "VIDEO":
+        logger.info(
+            "[Worker/Stage 1] Video ingestion for %s — token cost scales with duration; budget gate applies.",
+            doc_id_display,
+        )
     from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
 
     ocr_res = run_stage1_multimodal_ocr(

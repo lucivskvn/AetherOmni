@@ -556,3 +556,29 @@ class CleanupExpiredDocumentsTestCase(TestCase):
             self.assertEqual(reaped, 0)
             mock_run.assert_called_once()
             mock_first_res.assert_called_once()
+
+
+class VideoIngestionRoutingTestCase(TestCase):
+    """Verifies video uploads route through the VIDEO document type and MIME map."""
+
+    def test_fallback_doc_type_recognizes_video_extensions(self):
+        from extractor.tasks import _fallback_doc_type
+
+        for ext in (".mp4", ".mov", ".m4v", ".webm"):
+            self.assertEqual(_fallback_doc_type(f"lecture{ext}"), "VIDEO")
+        self.assertEqual(_fallback_doc_type("paper.pdf"), "PDF")
+        self.assertEqual(_fallback_doc_type("photo.png"), "IMAGE")
+
+    def test_upload_allowlist_accepts_video_extensions(self):
+        from extractor.views import ALLOWED_UPLOAD_EXTENSIONS
+
+        for ext in ("mp4", "mov", "m4v", "webm"):
+            self.assertIn(ext, ALLOWED_UPLOAD_EXTENSIONS)
+
+    def test_video_mime_types_resolve_for_gemini(self):
+        from extractor.llm_gateway import _get_mime_type
+
+        self.assertEqual(_get_mime_type("/tmp/clip.mp4"), "video/mp4")
+        self.assertEqual(_get_mime_type("/tmp/clip.mov"), "video/quicktime")
+        self.assertEqual(_get_mime_type("/tmp/clip.m4v"), "video/mp4")
+        self.assertEqual(_get_mime_type("/tmp/clip.webm"), "video/webm")

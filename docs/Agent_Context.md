@@ -41,12 +41,18 @@ Main components:
 - <code>core/</code>: Django configuration, routing, and middleware.
 - <code>extractor/</code>: document workflows, authentication, background task
   handling, AI gateway, retrieval, models, templates, and tests.
-- <code>schema.surql</code> and <code>extractor/surreal_db.py</code>: vector
-  search, cache, user memory, settings, and audit retention in SurrealDB.
+- <code>schema.surql</code>, <code>db/seed.surql</code>,
+  <code>db/queries.surql</code>, and <code>extractor/surreal_db.py</code>:
+  vector search, cache, user memory, settings, audit retention, and the
+  canonical seed/query suite in SurrealDB.
 - <code>infra/gcp/</code>: Cloud Run service manifests and Cloud Build
   configuration.
 - <code>infra/pulumi/</code>: declarative GCP provisioning (buckets, Cloud
   Tasks, IAM, Cloud Run services, Eventarc, Scheduler, backup job).
+- <code>docs/security-phase0.md</code> and
+  <code>scripts/check_security_boundaries.py</code>: Phase-0 trust-boundary
+  documentation and its blocking static gate.
+- <code>docs/triage-runbook.md</code>: production log-triage field guide.
 - <code>run_checks.sh</code>: local quality and security verification.
 
 The normal document path is upload, hash-based deduplication, background
