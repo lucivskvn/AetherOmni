@@ -55,6 +55,19 @@ TABLES_TO_MIGRATE = [
 
 SCHEMA_FILENAME = "schema.surql"
 
+# TYPE RELATION tables whose `in`/`out` fields are record-typed. SurrealDB
+# returns them as "table:id" strings; they must be emitted unquoted or the
+# record<> coercion fails (verified against SurrealDB 3.x).
+RELATION_TABLES = {
+    "chunk_references",
+    "entity_relations",
+    "anchored_in",
+    "grounded_in",
+    "tests",
+    "attempted_on",
+}
+_RECORD_ID_VALUE = re.compile(r"^[A-Za-z0-9_]+:[A-Za-z0-9_.\-\u27e8\u27e9]+$")
+
 
 class SurrealNamespaceMigrator:
     def __init__(
@@ -81,13 +94,15 @@ class SurrealNamespaceMigrator:
         self.db_name = db_name
         self.source_ns = source_ns
         self.target_ns = target_ns
+        self._integrity_failures: list[str] = []
 
-    def _execute_sql(self, ns: str, sql_query: str) -> list[dict[str, Any]]:
+    def _execute_sql(self, ns: str, sql_query: str, include_db: bool = True) -> list[dict[str, Any]]:
         headers = {
             "Accept": "application/json",
-            "NS": ns,
-            "DB": self.db_name,
+            "surreal-ns": ns,
         }
+        if include_db:
+            headers["surreal-db"] = self.db_name
         endpoint = f"{self.surreal_url}/sql"
         try:
             with httpx.Client(timeout=60.0) as client:
@@ -101,11 +116,26 @@ class SurrealNamespaceMigrator:
             logger.exception("[Migration] SQL execution failed on NS '%s'", ns)
             raise
 
+    @staticmethod
+    def _statement_errors(result: list[dict[str, Any]]) -> list[str]:
+        return [
+            str(item.get("result") or item.get("details") or "unknown error")
+            for item in result
+            if isinstance(item, dict) and item.get("status") == "ERR"
+        ]
+
     def count_records(self, ns: str, table: str) -> int:
         if table not in TABLES_TO_MIGRATE:
             raise ValueError(f"Invalid table name '{table}' not in whitelist.")
         query = f"SELECT count() FROM {table} GROUP ALL;"  # nosec B608 # noqa: S608
         result = self._execute_sql(ns, query)
+        errors = self._statement_errors(result)
+        if errors:
+            # A missing table means zero records to migrate; a missing
+            # namespace/database or any other error must stay fatal.
+            if all(re.search(r"The table '.*' does not exist", e) for e in errors):
+                return 0
+            raise RuntimeError(f"Count query failed on '{table}': {errors[0]}")
         if result and isinstance(result, list) and "result" in result[0]:
             data = result[0]["result"]
             if data and isinstance(data, list) and "count" in data[0]:
@@ -126,6 +156,17 @@ class SurrealNamespaceMigrator:
 
         if not os.path.exists(safe_schema_path):
             raise FileNotFoundError(f"Schema file '{safe_schema_path}' does not exist.")
+
+        # The /sql endpoint does not auto-create databases; the first
+        # schema statement fails with "database does not exist" otherwise.
+        db_ensure = self._execute_sql(
+            self.target_ns,
+            f"DEFINE DATABASE IF NOT EXISTS `{self.db_name}`;",
+            include_db=False,
+        )
+        db_errors = self._statement_errors(db_ensure)
+        if db_errors:
+            raise RuntimeError(f"Target database setup failed: {db_errors[0]}")
 
         with open(safe_schema_path, encoding="utf-8") as f:
             schema_sql = f.read()
@@ -160,9 +201,22 @@ class SurrealNamespaceMigrator:
             clean_record = dict(record)
 
             # Format record dictionary, converting ISO datetime strings to SurrealQL type::datetime()
+            is_relation = table in RELATION_TABLES
+            in_val = clean_record.get("in")
+            out_val = clean_record.get("out")
+            if is_relation and not (
+                isinstance(in_val, str)
+                and _RECORD_ID_VALUE.match(in_val)
+                and isinstance(out_val, str)
+                and _RECORD_ID_VALUE.match(out_val)
+            ):
+                raise ValueError(
+                    f"Refusing to migrate {table} record with unsafe in/out ids: {in_val!r} -> {out_val!r}"
+                )
+
             formatted_fields: list[str] = []
             for k, v in clean_record.items():
-                if k == "id":
+                if k == "id" or (is_relation and k in ("in", "out")):
                     continue
                 if self._is_iso_datetime_string(v):
                     formatted_fields.append(f"{k}: type::datetime({json.dumps(v)})")
@@ -170,13 +224,29 @@ class SurrealNamespaceMigrator:
                     formatted_fields.append(f"{k}: {json.dumps(v, default=str)}")
 
             fields_content = "{" + ", ".join(formatted_fields) + "}"
-            if rec_id:
+            if is_relation:
+                # SCHEMAFULL TYPE RELATION tables reject CREATE/UPSERT
+                # ("not a relation"); only RELATE registers graph edges.
+                # Edge ids cannot be preserved — RELATE assigns new ones —
+                # so dedupe on (in, out) to keep re-runs idempotent.
+                idx = len(insert_statements)
+                content_clause = f" CONTENT {fields_content}" if formatted_fields else ""
+                rel_sql = (
+                    f"LET $rel_{idx} = (SELECT VALUE id FROM {table} "  # noqa: S608 -- table whitelisted; in/out validated
+                    f"WHERE `in` = {in_val} AND `out` = {out_val} LIMIT 1)[0]; "
+                    f"IF $rel_{idx} == NONE {{ RELATE {in_val}->{table}->{out_val}{content_clause}; }};"
+                )  # nosec B608
+                insert_statements.append(rel_sql)
+            elif rec_id:
                 clean_id = str(rec_id).strip()
                 # Record ids originate from SurrealDB but are interpolated into
                 # SQL; reject anything that could break out of the identifier.
                 if not re.fullmatch(r"[A-Za-z0-9_]+:[A-Za-z0-9_⟨⟩\-]+", clean_id):
                     raise ValueError(f"Refusing to migrate record with unsafe id: {clean_id!r}")
-                insert_statements.append(f"UPSERT {clean_id} CONTENT {fields_content};")
+                # MERGE (not CONTENT) so re-runs preserve fields the source
+                # lacks and UPSERT stays idempotent; CONTENT nulls fields
+                # absent from the payload (verified against SurrealDB 3.x).
+                insert_statements.append(f"UPSERT {clean_id} MERGE {fields_content};")
             else:
                 insert_statements.append(f"CREATE {table} CONTENT {fields_content};")
         return insert_statements
@@ -203,7 +273,8 @@ class SurrealNamespaceMigrator:
         effective_batch_size = 50 if table in ("chunks", "rag_cache", "context_cache") else batch_size
         migrated_total = self._copy_table_batches(table, src_count, effective_batch_size)
 
-        self._log_count_validation(table, src_count)
+        if not self._log_count_validation(table, src_count) or migrated_total != src_count:
+            self._integrity_failures.append(table)
         return migrated_total
 
     def _copy_table_batches(self, table: str, src_count: int, batch_size: int) -> int:
@@ -214,6 +285,9 @@ class SurrealNamespaceMigrator:
         while True:
             fetch_query = f"SELECT * FROM {table} ORDER BY id START {offset} LIMIT {batch_size};"  # nosec B608 # noqa: S608
             src_records_resp = self._execute_sql(self.source_ns, fetch_query)
+            fetch_errors = self._statement_errors(src_records_resp)
+            if fetch_errors:
+                raise RuntimeError(f"Fetch query failed for '{table}': {fetch_errors[0]}")
             if not src_records_resp or "result" not in src_records_resp[0]:
                 break
 
@@ -223,7 +297,10 @@ class SurrealNamespaceMigrator:
 
             insert_statements = self._build_batch_statements(table, records)
             batch_sql = "BEGIN TRANSACTION;\n" + "\n".join(insert_statements) + "\nCOMMIT TRANSACTION;"
-            self._execute_sql(self.target_ns, batch_sql)
+            batch_result = self._execute_sql(self.target_ns, batch_sql)
+            batch_errors = self._statement_errors(batch_result)
+            if batch_errors:
+                raise RuntimeError(f"Batch insert failed for '{table}' at offset {offset}: {batch_errors[0]}")
 
             migrated_total += len(records)
             offset += len(records)
@@ -237,7 +314,7 @@ class SurrealNamespaceMigrator:
                 break
         return migrated_total
 
-    def _log_count_validation(self, table: str, src_count: int) -> None:
+    def _log_count_validation(self, table: str, src_count: int) -> bool:
         """Log source/target count consistency after a table copy."""
         dst_count = self.count_records(self.target_ns, table)
         if dst_count >= src_count:
@@ -247,13 +324,14 @@ class SurrealNamespaceMigrator:
                 src_count,
                 dst_count,
             )
-        else:
-            logger.error(
-                "✗ [Integrity Mismatch] Table '%s': Source has %d, Target has %d.",
-                table,
-                src_count,
-                dst_count,
-            )
+            return True
+        logger.error(
+            "✗ [Integrity Mismatch] Table '%s': Source has %d, Target has %d.",
+            table,
+            src_count,
+            dst_count,
+        )
+        return False
 
     def run_migration(self, schema_file: str, dry_run: bool = False) -> bool:
         logger.info(
@@ -272,8 +350,9 @@ class SurrealNamespaceMigrator:
             dry_run,
         )
 
-        if not dry_run:
-            self.apply_schema_to_target(schema_file)
+        if not dry_run and not self.apply_schema_to_target(schema_file):
+            logger.error("[Migration] Aborting: target schema application reported errors.")
+            return False
 
         total_migrated = 0
         for table in TABLES_TO_MIGRATE:
@@ -285,6 +364,12 @@ class SurrealNamespaceMigrator:
             "==========================================================",
             total_migrated,
         )
+        if self._integrity_failures:
+            logger.error(
+                "[Migration] Integrity validation failed for tables: %s",
+                ", ".join(self._integrity_failures),
+            )
+            return False
         return True
 
 
