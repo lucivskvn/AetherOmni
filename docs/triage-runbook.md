@@ -102,7 +102,7 @@ Checklist:
   New tables must also be added to `TABLES_TO_MIGRATE` in
   `scripts/migrate_surreal_namespace.py` — `check_reliability_contracts.py`
   enforces set-equality with `DEFINE TABLE` statements.
-- **Transport errors:** production refuses `ws://` — confirm `SURREAL_URL`
+- **Transport errors:** production refuses the `ws` scheme — confirm `SURREAL_URL`
   uses `wss://` and ends with `/rpc` (auto-appended if missing).
 - **Namespace auto-detection:** if `SURREAL_NS` is unset the client probes
   namespaces; always set it explicitly (Pulumi does).

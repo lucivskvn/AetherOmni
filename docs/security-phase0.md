@@ -51,7 +51,7 @@ prefixes. Same intent — hot data expires, cold data is versioned.
 ## 3. SurrealDB network & auth
 
 - Transport: production requires `wss://`; `extractor/surreal_db.py`
-  `_get_ws_url` raises when `DEBUG=False` and the URL is `ws://`/`http://`.
+  `_get_ws_url` raises when `DEBUG=False` and the URL uses the `ws` or `http` scheme.
   Plaintext is permitted only in debug/offline (`SURREALDB_OFFLINE=True`,
   `TESTING`).
 - Credentials: `SURREAL_USER`/`SURREAL_PASS` are mandatory outside debug; empty

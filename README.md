@@ -122,7 +122,7 @@ cp .env.example .env   # set SURREAL_PASS and DJANGO_SECRET_KEY
 docker compose up --build
 ```
 
-The compose stack mirrors the production architecture: `DJANGO_DEBUG=True` is set on the web service so the unencrypted `ws://` SurrealDB transport is permitted locally, and port `8080` is bound to localhost only.
+The compose stack mirrors the production architecture: `DJANGO_DEBUG=True` is set on the web service so the unencrypted ws-scheme SurrealDB transport is permitted locally, and port `8080` is bound to localhost only.
 
 ## Quality and security
 
