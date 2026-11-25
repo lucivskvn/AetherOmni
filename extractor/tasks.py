@@ -136,6 +136,8 @@ def _count_pages_pass2(working_path, chunk_size, overlap):
 
 def _determine_actual_page_count(working_path: str, doc_type: str) -> int:
     """Helper to parse the PDF file structures and extract page count using regex without loading the entire file into memory."""
+    if doc_type == "VIDEO":
+        return 0
     if doc_type != "PDF":
         return 1
     try:
@@ -536,6 +538,11 @@ def _acquire_stage1_raw_markdown(
 
     # Multimodal OCR fallback for scanned PDFs, images, and videos
     doc_type = _fallback_doc_type(lower_name)
+    if doc_type == "VIDEO":
+        logger.info(
+            "[Worker/Stage 1] Video ingestion for %s — token cost scales with duration; budget gate applies.",
+            doc_id_display,
+        )
     from extractor.llm_gateway import MODEL_GEMINI_FLASH_LITE
 
     ocr_res = run_stage1_multimodal_ocr(

@@ -1379,7 +1379,7 @@ def _run_ocr_with_upload(client: Any, file_path: str, model_name: str, ocr_promp
     file_ref = None
     try:
         logger.info("[OCR Stage 1] Uploading %s to Gemini Files API...", os.path.basename(file_path))
-        file_ref = client.files.upload(file=file_path)
+        file_ref = client.files.upload(file=file_path, config={"mime_type": _get_mime_type(file_path)})
 
         # Poll file processing status
         logger.info("[OCR Stage 1] Polling processing state for %s...", file_ref.name)
