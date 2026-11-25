@@ -732,6 +732,10 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     "doc",
     "xlsx",
     "xls",
+    "mp4",
+    "mov",
+    "m4v",
+    "webm",
 }
 
 
@@ -895,6 +899,8 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
     ip = get_client_ip(request)
     title_guess = _upload_title_from_filename(orig_name)
     ext_guess = os.path.splitext(orig_name)[1].replace(".", "").upper() or "PDF"
+    if ext_guess in {"MP4", "MOV", "M4V", "WEBM"}:
+        ext_guess = "VIDEO"
 
     file_id = str(uuid.uuid4())
     ext = os.path.splitext(orig_name)[1].lower()

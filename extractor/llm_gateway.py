@@ -1098,10 +1098,19 @@ def _get_mime_type(file_path: str) -> str:
     """Resolve MIME type from file extension, falling back if mimetypes fails."""
     import mimetypes
 
+    lowered = file_path.lower()
+    video_mimes = {
+        ".mp4": "video/mp4",
+        ".mov": "video/quicktime",
+        ".m4v": "video/mp4",
+        ".webm": "video/webm",
+    }
+    for ext, mime in video_mimes.items():
+        if lowered.endswith(ext):
+            return mime
     mime_type, _ = mimetypes.guess_type(file_path)
     if mime_type:
         return mime_type
-    lowered = file_path.lower()
     if lowered.endswith(".pdf"):
         return MIME_PDF
     if lowered.endswith((".png", ".jpg", ".jpeg", ".webp")):
@@ -1330,16 +1339,7 @@ def _init_ocr_client() -> tuple[Any, bool]:
 
 
 def _run_ocr_vertex(client: Any, file_path: str, model_name: str, ocr_prompt: str) -> tuple[Any, str]:
-    import mimetypes
-
-    mime_type, _ = mimetypes.guess_type(file_path)
-    if not mime_type:
-        if file_path.lower().endswith(".pdf"):
-            mime_type = MIME_PDF
-        elif file_path.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-            mime_type = "image/" + file_path.lower().split(".")[-1].replace("jpg", "jpeg")
-        else:
-            mime_type = MIME_OCTET_STREAM
+    mime_type = _get_mime_type(file_path)
 
     with open(file_path, "rb") as f:
         file_bytes = f.read()
@@ -1421,7 +1421,26 @@ def run_stage1_multimodal_ocr(file_path: str, model_name: str = MODEL_GEMINI_FLA
 
     client, use_vertex_directly = _init_ocr_client()
 
-    ocr_prompt = """
+    if file_path.lower().endswith((".mp4", ".mov", ".m4v", ".webm")):
+        ocr_prompt = """
+    You are an expert video transcription and lecture indexing engine.
+    Your task is to convert the attached video into clean, readable Markdown
+    with precise temporal provenance.
+
+    Rules:
+    1. Transcribe all spoken content verbatim, preserving the original language
+       and any diacritics. Do not translate or summarize.
+    2. Segment the transcript by topic. Prefix EVERY segment with its start
+       timestamp in [HH:MM:SS] format (e.g. [00:12:34]).
+    3. For each segment add a short Markdown heading describing the topic.
+    4. Briefly note relevant visuals (slides, diagrams, code on screen) in
+       italics on their own line, with the timestamp they appear at.
+    5. Do NOT invent timestamps — only mark boundaries you can ground in the
+       audio/visual stream.
+    6. Output ONLY the Markdown transcript. No commentary.
+    """
+    else:
+        ocr_prompt = """
     You are an expert OCR and document layout conversion engine.
     Your task is to transcribe the attached document into clean, readable Markdown.
 
