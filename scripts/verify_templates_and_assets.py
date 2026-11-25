@@ -28,7 +28,9 @@ HTML_SUFFIX = ".html"
 STATIC_PATTERN = re.compile(r"{%\s*static\s+['\"]([^'\"\s]+)['\"](?:\s+as\s+\w+)?\s*%}")
 URL_PATTERN = re.compile(r"{%\s*url\s+['\"]([^'\"\s]+)['\"]")
 SCRIPT_OPEN_PATTERN = re.compile(r"<script\b([^>]*)>", re.IGNORECASE)
-SRC_ATTR_PATTERN = re.compile(r'(?:^|\s)src\s*=\s*["\'](https?://[^"\'\s>]+)["\']', re.IGNORECASE)
+# Matches absolute (https?://) and protocol-relative (//host/...) sources;
+# a protocol-relative external script is just as SRI-relevant.
+SRC_ATTR_PATTERN = re.compile(r'(?:^|\s)src\s*=\s*["\']((?:https?:)?//[^"\'\s>]+)["\']', re.IGNORECASE)
 INTEGRITY_ATTR_PATTERN = re.compile(r'\bintegrity\s*=\s*["\'][^"\'\s>]+["\']', re.IGNORECASE)
 
 
@@ -98,22 +100,32 @@ def _get_registered_url_names() -> set[str]:
 def verify_named_urls() -> list[str]:
     errors: list[str] = []
     registered = _get_registered_url_names()
-    if not registered:
-        return errors
 
+    referenced: list[tuple[Path, str]] = []
     for root, _, files in os.walk(TEMPLATES_DIR):
         for file in files:
             if not file.endswith(HTML_SUFFIX):
                 continue
             path = Path(root) / file
-            rel_path = path.relative_to(ROOT)
             content = path.read_text(encoding="utf-8")
             for match in URL_PATTERN.finditer(content):
-                url_name = match.group(1)
-                # Allow standard admin routes or check in registered set
-                if url_name.startswith("admin:") or url_name in registered:
-                    continue
-                errors.append(f"{rel_path}: Referenced named URL '{url_name}' is not defined in urlpatterns")
+                referenced.append((path, match.group(1)))
+
+    if not registered:
+        # Fail closed: an unresolvable URLconf must not silently pass the
+        # named-route gate while templates still reference {% url %} tags.
+        if referenced:
+            errors.append(
+                f"URL resolver unavailable; cannot verify {len(referenced)} named route reference(s) across templates"
+            )
+        return errors
+
+    for path, url_name in referenced:
+        rel_path = path.relative_to(ROOT)
+        # Allow standard admin routes or check in registered set
+        if url_name.startswith("admin:") or url_name in registered:
+            continue
+        errors.append(f"{rel_path}: Referenced named URL '{url_name}' is not defined in urlpatterns")
     return errors
 
 
