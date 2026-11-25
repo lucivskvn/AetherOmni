@@ -23,3 +23,12 @@ updates:
     open-pull-requests-limit: 2
     cooldown:
       default-days: 7
+
+  # infra/pulumi has no lockfile; its requirements.txt is the manifest.
+  - package-ecosystem: pip
+    directory: /infra/pulumi
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
