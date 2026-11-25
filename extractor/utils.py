@@ -213,7 +213,14 @@ def broadcast_status_change(doc_uuid: str, status: str, owner_id: str | None = N
                     {
                         "topic": f"document-updates:{owner_topic}",
                         "event": "status-changed",
-                        "payload": {"uuid": doc_uuid, "status": status, "owner_id": owner_id},
+                        # The Realtime channel is public: any holder of the anon
+                        # key can subscribe to any topic name, so topic-scoping is
+                        # not authorization. Keep the payload a content-free hint —
+                        # clients only need a wake-up signal and fetch real state
+                        # through the authenticated polling endpoint. Do not add
+                        # doc_uuid/owner_id identifiers here without first
+                        # enabling Supabase Realtime private-channel authorization.
+                        "payload": {"status": status},
                     }
                 ]
             }
