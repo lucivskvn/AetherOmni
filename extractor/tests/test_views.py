@@ -750,6 +750,41 @@ class DynamicCsrfMiddlewareTestCase(TestCase):
             settings_obj.csrf_trusted_origins = ""
             settings_obj.save()
 
+    def test_dynamic_csrf_middleware_allowed_hosts_reconciles_db_origins(self):
+        """DB-configured origin hosts must leave ALLOWED_HOSTS once removed from settings."""
+        original_hosts = list(settings.ALLOWED_HOSTS)
+        from core.middleware import DynamicCsrfTrustedOriginsMiddleware
+
+        try:
+            DynamicCsrfTrustedOriginsMiddleware._db_origins_loaded = False
+            DynamicCsrfTrustedOriginsMiddleware._last_query_time = 0.0
+            DynamicCsrfTrustedOriginsMiddleware._db_allowed_hosts = set()
+
+            settings_obj = SystemSettings.get_settings()
+            settings_obj.csrf_trusted_origins = "https://temporary-domain.com"
+            settings_obj.save()
+
+            factory = RequestFactory()
+            middleware = DynamicCsrfTrustedOriginsMiddleware(lambda req: None)
+            middleware(factory.post("/"))
+            self.assertIn("temporary-domain.com", settings.ALLOWED_HOSTS)
+
+            # Removing the origin from settings must evict the host on the next reload.
+            settings_obj.csrf_trusted_origins = ""
+            settings_obj.save()
+            DynamicCsrfTrustedOriginsMiddleware._last_query_time = 0.0
+            import time
+
+            DynamicCsrfTrustedOriginsMiddleware._last_query_time = time.time() - 61.0
+            middleware(factory.post("/"))
+            self.assertNotIn("temporary-domain.com", settings.ALLOWED_HOSTS)
+        finally:
+            settings.ALLOWED_HOSTS = original_hosts
+            settings_obj = SystemSettings.get_settings()
+            settings_obj.csrf_trusted_origins = ""
+            settings_obj.save()
+            DynamicCsrfTrustedOriginsMiddleware._db_allowed_hosts = set()
+
     def test_dynamic_csrf_middleware_adds_loopback_in_production(self):
         # Backup the current CSRF_TRUSTED_ORIGINS
         original_origins = list(settings.CSRF_TRUSTED_ORIGINS)
