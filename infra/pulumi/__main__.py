@@ -465,6 +465,32 @@ if custom_domain:
     )
 
 # 7. Cloud Run Job for Scheduled Off-Host SurrealDB Backups
+# The job only reads SurrealDB and writes to the backup bucket; mounting
+# every service secret would over-provision it. It needs the Django secret
+# key (settings fail closed without it), the SurrealDB credentials, and the
+# common env (bucket names, GCP_PROJECT_ID, SURREAL_NS/DB).
+# SUPABASE_DATABASE_URL is kept defensively: if Cloud Run ever sets
+# K_SERVICE for jobs, settings require DATABASE_URL to be configured.
+backup_secret_keys = [
+    "DJANGO_SECRET_KEY",
+    "SUPABASE_DATABASE_URL",
+    "SURREAL_URL",
+    "SURREAL_USER",
+    "SURREAL_PASS",
+]
+backup_secret_envs = [
+    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
+        name=key,
+        value_source=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceArgs(
+            secret_key_ref=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceSecretKeyRefArgs(
+                secret=key,
+                version="latest",
+            )
+        ),
+    )
+    for key in backup_secret_keys
+]
+
 backup_job = gcp.cloudrunv2.Job(
     "korda-backup-job",
     name="korda-backup-job",
@@ -478,7 +504,7 @@ backup_job = gcp.cloudrunv2.Job(
                 gcp.cloudrunv2.JobTemplateTemplateContainerArgs(
                     image=container_image,
                     args=["manage.py", "backup_surreal"],
-                    envs=common_env + secret_envs,
+                    envs=common_env + backup_secret_envs,
                     resources=gcp.cloudrunv2.JobTemplateTemplateContainerResourcesArgs(
                         limits={"cpu": "1000m", "memory": "1Gi"}
                     ),
