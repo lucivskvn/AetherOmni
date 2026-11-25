@@ -466,7 +466,12 @@ if not DEBUG:
         CSRF_TRUSTED_ORIGINS.append("https://*.run.app")
 
     # Cloudflare Access & Extra trusted origins dynamically sourced
-    cf_access_origins_env = os.getenv("EXTRA_CSRF_ORIGINS", "https://*.cloudflareaccess.com")
+    # Cloudflare Access origins must be opted into per deployment: any
+    # <team>.cloudflareaccess.com subdomain is claimable by an unrelated
+    # Cloudflare Zero Trust team, so a wildcard here trusts attacker-
+    # controlled origins. Deployments that need it set EXTRA_CSRF_ORIGINS
+    # explicitly (cloudbuild.yaml / Pulumi config do so for prod).
+    cf_access_origins_env = os.getenv("EXTRA_CSRF_ORIGINS", "")
     for o in [x.strip() for x in cf_access_origins_env.split(",") if x.strip()]:
         if o not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(o)

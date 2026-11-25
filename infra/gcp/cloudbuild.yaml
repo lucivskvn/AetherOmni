@@ -420,6 +420,10 @@ steps:
         # EXTRA_ALLOWED_HOSTS replaces the settings.py defaults when set, so the
         # default suffixes must be re-included alongside discovered custom domains.
         ENV_VARS="$${ENV_VARS};APP_URL=$${APP_URL};WORKER_URL=$${WORKER_URL};EXTRA_ALLOWED_HOSTS=$${CUSTOM_DOMAINS},.cloudflareaccess.com,.fainko.my.id,.fainko.id"
+        # Cloudflare Access preview hosts are registerable by any Zero Trust
+        # team; keep the wildcard out of settings.py defaults and opt prod in
+        # explicitly here (mirrors the EXTRA_ALLOWED_HOSTS treatment above).
+        ENV_VARS="$${ENV_VARS};EXTRA_CSRF_ORIGINS=https://*.cloudflareaccess.com"
         ENV_VARS="$${ENV_VARS};SURREAL_NS=korda;SURREAL_DB=extractor;SURREALDB_OFFLINE=False"
         ENV_VARS="$${ENV_VARS};GEMINI_MODEL=gemini-2.5-flash;GEMINI_MODEL_BATCH=gemini-2.5-flash-lite"
         ENV_VARS="$${ENV_VARS};GEMINI_MODEL_LITE=gemini-2.5-flash-lite;GEMINI_MODEL_PRO=gemini-2.5-flash"
