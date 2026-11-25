@@ -266,3 +266,6 @@ coverage/js/*.css
 coverage/js/*.js
 coverage/js/*.png
 # Keep coverage/js/lcov.info tracked for SonarCloud (generated in CI)
+
+# SurrealDB CLI session history (written to cwd by `surreal sql`/`import`)
+history.txt
