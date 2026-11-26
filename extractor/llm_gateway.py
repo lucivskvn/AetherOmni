@@ -1987,6 +1987,13 @@ def extract_anchors_from_gcs_uri(
     return _parse_anchor_extraction_response(response, model_name, doc_slug, gcs_uri)
 
 
+# HNSW vector indexes in schema.surql are fixed at 768 dimensions; an
+# env-overridden embedding model returning any other width would fail every
+# vector write, so mismatched output is rejected here and callers degrade to
+# BM25-only instead of poisoning the ingest pipeline.
+EMBEDDING_DIMENSION = 768
+
+
 def generate_query_embedding(text: str) -> list[float]:
     """Generate a 768-dim embedding for Strict Librarian HNSW queries and anchor indexing."""
     clean = (text or "").strip()
@@ -1999,7 +2006,16 @@ def generate_query_embedding(text: str) -> list[float]:
         )
         embeddings = getattr(resp, "embeddings", None) or []
         if embeddings and getattr(embeddings[0], "values", None):
-            return [float(x) for x in embeddings[0].values]
+            values = [float(x) for x in embeddings[0].values]
+            if len(values) != EMBEDDING_DIMENSION:
+                logger.warning(
+                    "[Embedding] Model returned %d dims, expected %d; falling back to BM25-only. "
+                    "Check GEMINI_EMBEDDING_MODEL output dimensionality.",
+                    len(values),
+                    EMBEDDING_DIMENSION,
+                )
+                return []
+            return values
     except Exception as exc:
         logger.warning("[Embedding] Falling back to BM25-only (embedding unavailable): %s", exc)
     return []

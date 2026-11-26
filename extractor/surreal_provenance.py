@@ -11,9 +11,12 @@ semantics.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from django.conf import settings
+
+_ANCHOR_ID_SAFE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 
 # ── KORDA Lane 1: Provenance Graph & Hybrid Anchor Retrieval ─────────────────
 
@@ -120,11 +123,23 @@ def upsert_source(
 
 def _build_anchor_payloads(source_id: str, ver: int, anchors: list[dict[str, Any]]) -> list[dict[str, Any]]:
     payload_anchors = []
+    seen_ids: set[str] = set()
     for idx, anc in enumerate(anchors):
         item: dict[str, Any] = {
-            "anchor_id": str(anc.get("anchor_id") or f"{source_id}:v{ver}:{idx}"),
             "quote": str(anc.get("quote") or ""),
         }
+        # anchor_id doubles as the SurrealDB record id and the lookup key used by
+        # crystals/exam items, so it must be globally unique and record-id safe.
+        # Model-supplied ids are namespaced under this source; anything unsafe or
+        # duplicated within the batch falls back to the deterministic default.
+        raw_aid = str(anc.get("anchor_id") or "").strip()[:200]
+        if raw_aid and not raw_aid.startswith(f"{source_id}:"):
+            raw_aid = f"{source_id}:{raw_aid}"
+        aid = raw_aid if raw_aid and _ANCHOR_ID_SAFE_RE.fullmatch(raw_aid) else ""
+        if not aid or aid in seen_ids:
+            aid = f"{source_id}:v{ver}:{idx}"
+        seen_ids.add(aid)
+        item["anchor_id"] = aid
         for opt_key in ("page_num", "section_" + "heading", "start_sec", "end_sec", "figure_id", "embedding"):
             if anc.get(opt_key) is not None:
                 item[opt_key] = anc[opt_key]
