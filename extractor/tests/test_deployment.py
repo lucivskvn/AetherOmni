@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
+from extractor import deployment
 from extractor.deployment import (
     check_service_dependencies_health,
     get_gcp_access_token,
@@ -17,6 +18,12 @@ from extractor.deployment import (
 
 class DeploymentFunctionsTestCase(TestCase):
     """Verifies internal functions in extractor/deployment.py."""
+
+    def setUp(self):
+        # _detect_production_gcp_project caches metadata lookups per process;
+        # each test mocks different metadata responses, so start cache-cold.
+        deployment._PRODUCTION_GCP_CACHE = None
+        super().setUp()
 
     @patch.dict("os.environ", {"SUPABASE_URL": "file:///tmp", "SUPABASE_PUBLIC_KEY": "test-key"})
     @patch("urllib.request.urlopen")

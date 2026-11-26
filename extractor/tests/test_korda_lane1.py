@@ -342,16 +342,22 @@ class KordaLane1Tests(TestCase):
 
         mock_resp = MagicMock()
         mock_resp.iter_bytes.return_value = iter([b""])
+        mock_resp.raise_for_status.return_value = None
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        mock_client = MagicMock()
-        mock_client.stream.return_value = mock_resp
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_writer = MagicMock()
+        mock_writer_ctx = MagicMock()
+        mock_writer_ctx.__enter__ = MagicMock(return_value=mock_writer)
+        mock_writer_ctx.__exit__ = MagicMock(return_value=False)
+        mock_blob = MagicMock()
+        mock_blob.open.return_value = mock_writer_ctx
+        mock_storage = MagicMock()
+        mock_storage.bucket.return_value.blob.return_value = mock_blob
 
         with (
-            patch("httpx.Client", return_value=mock_client),
+            patch("httpx.stream", return_value=mock_resp),
+            patch("extractor.management.commands.backup_surreal.storage.Client", return_value=mock_storage),
             patch.dict(
                 "os.environ",
                 {
