@@ -226,3 +226,13 @@ class HybridRAGTestCase(TestCase):
         self.assertTrue(events[0].startswith("data: "))
         payload = json.loads(events[0][len("data: ") :].strip())
         self.assertIn("error", payload)
+
+    def test_rag_scope_key_distinguishes_document_scopes(self):
+        """Scoped and unscoped RAG searches must not share cache entries (AUD-154)."""
+        from extractor.rag import _rag_scope_key
+
+        self.assertEqual(_rag_scope_key(None), "all")
+        self.assertEqual(_rag_scope_key(["b", "a"]), _rag_scope_key(["a", "b"]))
+        self.assertNotEqual(_rag_scope_key(["a"]), _rag_scope_key(["a", "b"]))
+        self.assertNotEqual(_rag_scope_key(["a"]), _rag_scope_key(None))
+        self.assertNotEqual(_rag_scope_key([]), _rag_scope_key(None))
