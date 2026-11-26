@@ -208,6 +208,7 @@ class DashboardView(LoginRequiredMixin, View):
         return render(request, "extractor/dashboard.html", context)
 
 
+@method_decorator(never_cache, name="dispatch")
 class DocumentStatusAPIView(LoginRequiredMixin, View):
     """
     Fast, lightweight JSON API view returning the status of all active/recent documents,

@@ -1,6 +1,12 @@
+from typing import TYPE_CHECKING
+
 from django.db import transaction  # noqa: F401
 
 from extractor import surreal_db  # noqa: F401
+
+if TYPE_CHECKING:  # nosonar
+    # Statically import ingest_sources to satisfy desloppify importer analyzer
+    import extractor.management.commands.ingest_sources  # noqa: F401
 from extractor.view_admin import (
     AUDIT_ACTION_ALIASES,
     AUDIT_ACTION_CHOICES,

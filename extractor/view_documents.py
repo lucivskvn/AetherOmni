@@ -8,7 +8,9 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.cache import never_cache
 
 from extractor import surreal_db, view_common
 from extractor.models import AuditAction
@@ -31,6 +33,7 @@ DOCUMENT_DELETE_FAILURE_MSG = "Document deletion could not be completed. Please 
 DOCUMENT_CANCEL_FAILURE_MSG = "Document processing could not be stopped. Please try again later."
 
 
+@method_decorator(never_cache, name="dispatch")
 class DocumentDetailView(LoginRequiredMixin, View):
     """
     Renders details for a single document, incorporating a dual-screen Markdown Split-Editor

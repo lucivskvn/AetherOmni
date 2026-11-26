@@ -10,6 +10,7 @@ from extractor.context_processors import resolve_commit_sha, resolve_release_ver
 logger = logging.getLogger(view_common.VIEWS_LOGGER_NAME)
 
 
+@require_http_methods(["GET", "HEAD"])
 def favicon_view(_request):
     """Serve a lightweight transparent 204 No Content for favicon.ico requests."""
     return HttpResponse(status=204, content_type="image/x-icon")
@@ -24,6 +25,7 @@ def release_metadata_view(_request):
     )
 
 
+@require_http_methods(["GET"])
 def sentry_debug_view(request):
     """Verification endpoint for testing Sentry exception and trace ingestion during development."""
     user = getattr(request, "user", None)
