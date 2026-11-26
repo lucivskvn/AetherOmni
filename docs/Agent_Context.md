@@ -44,8 +44,13 @@ Main components:
 - <code>schema.surql</code>, <code>db/seed.surql</code>,
   <code>db/queries.surql</code>, and <code>extractor/surreal_db.py</code>:
   vector search, cache, user memory, settings, audit retention, and the
-  canonical seed/query suite in SurrealDB. Exam/FSRS persistence lives in
-  <code>extractor/surreal_exam.py</code>; <code>extractor/views.py</code>,
+  canonical seed/query suite in SurrealDB. Satellite adapters split by
+  concern: <code>surreal_exam.py</code> (exam/FSRS),
+  <code>surreal_provenance.py</code> (sources/anchors/crystals),
+  <code>surreal_cache.py</code> (RAG/KV/context cache, rate limits),
+  <code>surreal_audit.py</code> (audit log, spend ledger),
+  <code>surreal_memory.py</code> (user memories), and
+  <code>surreal_kg.py</code> (knowledge graph). <code>extractor/views.py</code>,
   <code>extractor/file_utils.py</code>, and <code>extractor/surreal_db.py</code>
   are compatibility facades over the focused <code>view_*</code>,
   <code>file_*</code>/<code>export_*</code>, and <code>surreal_*</code>
