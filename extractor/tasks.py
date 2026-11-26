@@ -12,6 +12,8 @@ import logging
 import os
 import re
 import tempfile
+import threading
+import time
 import traceback
 from datetime import UTC, timedelta
 from decimal import Decimal
@@ -1193,6 +1195,36 @@ def _check_pipeline_active(doc_uuid: str) -> bool:
     return True
 
 
+_HEARTBEAT_INTERVAL_SECONDS = 60.0
+# Cloud Tasks HTTP dispatch deadlines top out near 30 minutes; a pipeline that
+# has run longer than this is treated as dead and allowed to go stale again.
+_HEARTBEAT_MAX_SECONDS = 1500.0
+
+
+def _start_pipeline_heartbeat(doc_uuid: str) -> threading.Event:
+    """Refresh document.updated_at while pipeline stages run.
+
+    The stale-task reaper keys off updated_at; without a heartbeat a single
+    long-but-healthy stage (>5 min) looks identical to a dead worker and gets
+    re-enqueued, duplicating LLM spend and churning the task-identity fence.
+    The beat is fenced to this delivery's cloud_task_name so a superseded
+    worker cannot keep a dead document looking alive.
+    """
+    stop = threading.Event()
+    expected_task = surreal_db.document_task_name.get()
+    deadline = time.monotonic() + _HEARTBEAT_MAX_SECONDS
+
+    def _beat() -> None:
+        while not stop.wait(_HEARTBEAT_INTERVAL_SECONDS) and time.monotonic() < deadline:
+            try:
+                surreal_db.touch_document(doc_uuid, expected_task=expected_task)
+            except Exception as exc:
+                logger.debug("[Worker] Heartbeat touch failed for %s: %s", doc_uuid, exc)
+
+    threading.Thread(target=_beat, daemon=True, name=f"doc-hb-{doc_uuid}").start()
+    return stop
+
+
 def _run_pipeline_stages(initial_doc: dict, working_path: str, doc_uuid: str) -> bool:
     from extractor.surreal_db import _model_to_dict
 
@@ -1292,12 +1324,14 @@ def process_document_task(payload: dict) -> None:
         if not doc:
             return
 
+        heartbeat_stop = _start_pipeline_heartbeat(doc_uuid)
         temp_local_path = None
         try:
             working_path = _get_working_path(doc)
             temp_local_path = working_path[0] if isinstance(working_path, tuple) else working_path
             _run_pipeline_stages(doc, temp_local_path, doc_uuid)
         finally:
+            heartbeat_stop.set()
             if temp_local_path and os.path.exists(temp_local_path):
                 try:
                     os.unlink(temp_local_path)
@@ -1375,6 +1409,7 @@ def reembed_edited_document_task(payload: dict) -> None:
     if not doc:
         return
 
+    heartbeat_stop = _start_pipeline_heartbeat(doc_uuid)
     try:
         from extractor.llm_gateway import BudgetExceededException
 
@@ -1420,6 +1455,8 @@ def reembed_edited_document_task(payload: dict) -> None:
             details=f"Re-embedding failed: {exc!s}",
             log_audit=False,
         )
+    finally:
+        heartbeat_stop.set()
 
 
 def _resolve_local_doc_obj(doc_uuid):

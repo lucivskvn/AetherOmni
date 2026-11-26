@@ -974,6 +974,34 @@ def update_document(doc_uuid: str, data: dict) -> dict:
     return _update_document_surreal(doc_uuid, data)
 
 
+def touch_document(doc_uuid: str, expected_task: str = "") -> bool:
+    """Refresh updated_at as a worker-liveness heartbeat for the stale-task reaper.
+
+    When expected_task is given, the write is fenced to the owning Cloud Task
+    identity so a superseded worker cannot keep a dead document looking alive.
+    """
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+    from django.utils import timezone
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        from extractor.models import SourceDocument
+
+        try:
+            lookup = _offline_document_lookup(doc_uuid)
+        except TypeError, ValueError:
+            return False
+        return SourceDocument.objects.filter(**lookup).update(updated_at=timezone.now()) == 1
+
+    params: dict[str, Any] = {"doc_uuid": doc_uuid}
+    condition = ""
+    if expected_task:
+        condition = " AND cloud_task_name = $expected_task AND cancel_requested != true"
+        params["expected_task"] = expected_task
+    sql = f"UPDATE documents SET updated_at = time::now() WHERE doc_uuid = $doc_uuid{condition};"  # nosec B608 # noqa: S608
+    return bool(_first_result(_run(sql, params)))
+
+
 def _conditional_update_document_offline(doc_uuid, data, allowed_statuses):
     """Atomic compare-and-swap update guarded by the document's current status."""
     from django.utils import timezone
