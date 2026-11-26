@@ -6,7 +6,7 @@ from django.test import RequestFactory, TestCase, override_settings
 from extractor import compiler, file_utils, llm_gateway, rag, task_handlers
 
 
-class KordaLane1Tests(TestCase):
+class ProvenanceIngestTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
