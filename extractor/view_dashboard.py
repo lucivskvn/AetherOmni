@@ -122,16 +122,22 @@ def _filter_dashboard_docs(docs: list[Any], query: str) -> list[Any]:
     if not query:
         return docs
     q = query[:200].lower()
+
+    def _text(value: Any) -> str:
+        # SurrealDB fields are schema-less: publication_year et al. can arrive
+        # as ints, which would make `q in <int>` raise TypeError and 500 the page.
+        return str(value).lower() if value is not None else ""
+
     return [
         d
         for d in docs
-        if q in (d.title or "").lower()
-        or q in (d.author or "").lower()
-        or q in (d.language or "").lower()
-        or q in (d.document_type or "").lower()
-        or q in (getattr(d, "publisher", "") or "").lower()
-        or q in (getattr(d, "publication_year", "") or "").lower()
-        or q in (getattr(d, "doi", "") or "").lower()
+        if q in _text(d.title)
+        or q in _text(d.author)
+        or q in _text(d.language)
+        or q in _text(d.document_type)
+        or q in _text(getattr(d, "publisher", ""))
+        or q in _text(getattr(d, "publication_year", ""))
+        or q in _text(getattr(d, "doi", ""))
     ]
 
 
