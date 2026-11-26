@@ -128,7 +128,8 @@ def generate_and_persist_quiz(
         f"Context crystals:\n{context_json}"
     )
 
-    response = client.models.generate_content(
+    response = llm_gateway.execute_with_backoff(
+        client.models.generate_content,
         model=model_name,
         contents=[prompt],
         config=llm_gateway.types.GenerateContentConfig(
