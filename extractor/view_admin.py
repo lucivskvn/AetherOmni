@@ -36,6 +36,7 @@ AUDIT_ACTION_CHOICES = (
     (AuditAction.PURGE_ALL, "Purge all records"),
     (AuditAction.DOCUMENT_EDITED, "Document edited"),
     (AuditAction.DOCUMENT_REQUEUED, "Document requeued"),
+    (AuditAction.DOCUMENT_CANCELLED, "Document cancelled"),
     (AuditAction.SYSTEM_CONTROL, "System control"),
     (AuditAction.EXPORT, "Export dataset"),
 )
