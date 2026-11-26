@@ -849,7 +849,7 @@ class DocumentCancelView(LoginRequiredMixin, View):
 
         view_common._record_view_audit(
             request,
-            AuditAction.DOCUMENT_EDITED,
+            AuditAction.DOCUMENT_CANCELLED,
             f"User manually stopped curation for document '{doc.original_filename}'.",
             document=doc,
         )
