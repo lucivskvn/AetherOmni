@@ -337,8 +337,16 @@ class UploadView(LoginRequiredMixin, View):
             messages.error(request, "No file uploaded.")
             return redirect("dashboard")
 
+        # Per-user throttle: batches can contain up to DATA_UPLOAD_MAX_NUMBER_FILES
+        # files, so unbounded upload POSTs could flood storage and the task queue.
+        actor_id = view_common.get_request_actor_id(request)
+        rl_key = f"upload:{actor_id}"
+        if not view_common._enforce_distributed_rate_limit(rl_key, rl_key, max_requests=10, window_seconds=60):
+            messages.error(request, view_common.ERR_RATE_LIMIT)
+            return redirect("dashboard")
+
         # Budget pre-check: block new LLM processing when monthly budget is exhausted
-        if view_common._is_budget_exceeded(request.user, view_common.get_request_actor_id(request)):
+        if view_common._is_budget_exceeded(request.user, actor_id):
             messages.error(
                 request,
                 "Monthly AI budget has been reached. New document processing is paused until the budget resets "
