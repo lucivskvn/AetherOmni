@@ -146,12 +146,21 @@ def _register_supabase_user(
     )
 
 
+def _auth_post_rate_limited(request, scope: str, max_requests: int = 5) -> bool:
+    """Throttle anonymous credential endpoints by source IP (fails closed in production)."""
+    key = f"{scope}:{get_client_ip(request)}"
+    return not view_common._enforce_distributed_rate_limit(key, key, max_requests=max_requests, window_seconds=60)
+
+
 @require_http_methods(["GET", "POST"])
 def register_view(request):
     """
     Handles new user signups via Supabase Auth.
     """
     if request.method == "POST":
+        if _auth_post_rate_limited(request, "register"):
+            messages.error(request, "Too many attempts. Please wait a minute and try again.")
+            return render(request, TEMPLATE_REGISTER)
         email = request.POST.get("email", "").strip()
         password = request.POST.get("password", "")
         confirm_password = request.POST.get("confirm_password", "")
@@ -208,6 +217,9 @@ def forgot_password_view(request):
     Dispatches a password recovery email via Supabase Auth.
     """
     if request.method == "POST":
+        if _auth_post_rate_limited(request, "password_recovery"):
+            messages.error(request, "Too many attempts. Please wait a minute and try again.")
+            return render(request, TEMPLATE_FORGOT_PASSWORD)
         email = request.POST.get("email", "").strip()
         if not email:
             messages.error(request, "Email is required.")
