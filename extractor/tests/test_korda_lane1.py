@@ -125,6 +125,39 @@ class KordaLane1Tests(TestCase):
             self.assertIn("[SRC: src-1 |", bundle)
             self.assertIn("> ", bundle)
 
+    def test_oversized_crystal_split_preserves_markdown_structure(self):
+        """Splitting an oversized section must keep line breaks — collapsing all
+        whitespace destroys headings, blockquotes, and lists."""
+        from extractor.compiler import _split_oversized_section
+
+        section = "## Heading\n\n- item one\n- item two\n\n> quoted evidence\n" + "word " * 30
+        chunks = _split_oversized_section(section, max_words=20)
+        self.assertGreater(len(chunks), 1)
+        for chunk in chunks:
+            self.assertNotIn("## Heading - item", chunk)
+        joined = "\n".join(chunks)
+        self.assertIn("## Heading", joined)
+        self.assertIn("- item one", joined)
+        self.assertIn("> quoted evidence", joined)
+
+    def test_crystal_title_newlines_cannot_inject_headings(self):
+        from extractor.compiler import compile_markdown_bundles
+
+        bundles = compile_markdown_bundles(
+            [
+                {
+                    "crystal_id": "c1",
+                    "title": "Legit\n## Injected Heading\nmore",
+                    "summary": "s",
+                    "doc_slug": "d",
+                    "anchors": [],
+                }
+            ]
+        )
+        body = bundles[0]
+        self.assertIn("## Legit ## Injected Heading more", body)
+        self.assertNotIn("\n## Injected Heading\n", body)
+
     def test_format_anchor_coord_tolerates_non_numeric_timestamps(self):
         coord = compiler.format_anchor_coord(
             {"start_sec": "12.5", "end_sec": "not-a-number", "page_num": 2, "section_heading": "Intro"}
