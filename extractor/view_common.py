@@ -387,8 +387,13 @@ def _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned: bool = False):
     is_owner = (doc.uploaded_by is not None and doc.uploaded_by == request.user) or (
         getattr(doc, "uploaded_by_id", None) and doc.uploaded_by_id == actor_id
     )
+    # "Unowned" must key off the recorded owner id, not the resolved User:
+    # uploaded_by is None whenever the owner key cannot be mapped to a Django
+    # user (e.g. another tenant's Supabase subject), which would otherwise
+    # make allow_unowned=True grant access to every other user's document.
+    is_unowned = not raw_doc.get("uploaded_by_id")
     is_authorized = (
-        request.user.is_staff or request.user.is_superuser or (allow_unowned and doc.uploaded_by is None) or is_owner
+        request.user.is_staff or request.user.is_superuser or (allow_unowned and is_unowned) or is_owner
     )
     return raw_doc, doc, is_authorized, users_map
 

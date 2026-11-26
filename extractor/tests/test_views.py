@@ -2619,3 +2619,33 @@ class DashboardFilterRobustnessTest(TestCase):
         self.assertEqual(_filter_dashboard_docs([doc], "2024"), [doc])
         self.assertEqual(_filter_dashboard_docs([doc], "ada"), [doc])
         self.assertEqual(_filter_dashboard_docs([doc], "nomatch"), [])
+
+
+class AuthorizedWrappedDocTest(TestCase):
+    """allow_unowned must key off the recorded owner id, not user resolution."""
+
+    def _check(self, uploaded_by_id, allow_unowned=True):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from extractor import view_common
+
+        request = SimpleNamespace(user=SimpleNamespace(is_authenticated=True, is_staff=False, is_superuser=False, id=1))
+        raw = {"doc_uuid": "doc-1", "uploaded_by_id": uploaded_by_id, "title": "Secret"}
+        with patch("extractor.view_common.surreal_db.get_document", return_value=raw):
+            return view_common._get_authorized_wrapped_doc(request, "doc-1", allow_unowned=allow_unowned)
+
+    def test_other_tenants_doc_is_not_treated_as_unowned(self):
+        """Regression: an owner id that cannot resolve to a Django user must NOT
+        count as 'unowned' — otherwise allow_unowned exposes it to everyone."""
+        _raw, _doc, is_authorized, _ = self._check("other-tenant-uuid")
+        self.assertFalse(is_authorized)
+
+    def test_genuinely_unowned_doc_still_viewable(self):
+        _raw, _doc, is_authorized, _ = self._check(None)
+        self.assertTrue(is_authorized)
+
+    def test_owner_doc_viewable(self):
+        # Offline actor id is str(user.id) == "1"
+        _raw, _doc, is_authorized, _ = self._check("1")
+        self.assertTrue(is_authorized)
