@@ -124,8 +124,21 @@ def _fetch_gcp_region():
     return None
 
 
+# GCP project identity is immutable for the lifetime of a Cloud Run instance;
+# cache the metadata-server lookups so per-task callers (e.g. every Cloud Tasks
+# enqueue) do not pay an extra HTTP round-trip each time.
+_PRODUCTION_GCP_CACHE: dict | None = None
+
+
 def _detect_production_gcp_project(project_id, region):
-    project_number = None
+    global _PRODUCTION_GCP_CACHE
+    if _PRODUCTION_GCP_CACHE is not None:
+        return (
+            _PRODUCTION_GCP_CACHE["project_id"],
+            _PRODUCTION_GCP_CACHE["region"],
+            _PRODUCTION_GCP_CACHE["project_number"],
+        )
+
     if not project_id:
         project_id = _query_metadata_server("project/project-id") or ""
         if not project_id:
@@ -135,6 +148,7 @@ def _detect_production_gcp_project(project_id, region):
         region = _fetch_gcp_region() or region
 
     project_number = _query_metadata_server("project/numeric-project-id")
+    _PRODUCTION_GCP_CACHE = {"project_id": project_id, "region": region, "project_number": project_number}
     return project_id, region, project_number
 
 

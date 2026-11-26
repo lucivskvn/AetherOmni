@@ -500,6 +500,13 @@
                             tomb.textContent = 'Tombstone · sha256: ' + (ev.sha256 || 'archived');
                             evBox.appendChild(tomb);
                         }
+                        if (ev.anchor_status && ev.anchor_status !== 'active') {
+                            const stale = document.createElement('span');
+                            stale.className = 'badge badge-secondary';
+                            stale.style.marginLeft = '0.5rem';
+                            stale.textContent = 'Superseded anchor';
+                            evBox.appendChild(stale);
+                        }
                         card.appendChild(evBox);
                     });
 

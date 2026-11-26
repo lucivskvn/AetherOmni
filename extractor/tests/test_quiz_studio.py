@@ -6,7 +6,7 @@ from django.test import SimpleTestCase
 from extractor import quiz_studio
 
 
-class KordaLane2QuizStudioTests(SimpleTestCase):
+class QuizStudioTests(SimpleTestCase):
     def test_generate_quiz_items_persists_hints_rationales_and_mandatory_anchors(self):
         fake_crystals = [
             {

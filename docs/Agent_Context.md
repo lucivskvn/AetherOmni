@@ -49,8 +49,7 @@ Main components:
   <code>surreal_provenance.py</code> (sources/anchors/crystals),
   <code>surreal_cache.py</code> (RAG/KV/context cache, rate limits),
   <code>surreal_audit.py</code> (audit log, spend ledger),
-  <code>surreal_memory.py</code> (user memories), and
-  <code>surreal_kg.py</code> (knowledge graph). <code>extractor/views.py</code>,
+  <code>surreal_memory.py</code> (user memories). <code>extractor/views.py</code>,
   <code>extractor/file_utils.py</code>, and <code>extractor/surreal_db.py</code>
   are compatibility facades over the focused <code>view_*</code>,
   <code>file_*</code>/<code>export_*</code>, and <code>surreal_*</code>

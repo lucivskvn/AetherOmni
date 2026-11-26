@@ -154,6 +154,15 @@ class DocumentSaveView(LoginRequiredMixin, View):
             messages.error(request, "Edited markdown exceeds maximum 5MB size limit.")
             return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
 
+        # Every save enqueues a re-embed Cloud Task; bound save frequency so
+        # repeated edits cannot flood the queue with embedding spend.
+        save_rl_key = f"doc_save:{view_common.get_request_actor_id(request)}"
+        if not view_common._enforce_distributed_rate_limit(
+            save_rl_key, save_rl_key, max_requests=30, window_seconds=60
+        ):
+            messages.error(request, view_common.ERR_RATE_LIMIT)
+            return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
+
         # Strip control null bytes and normalize unicode without destroying raw Markdown link/comparison syntax
         cleaned_markdown = new_markdown.replace("\x00", "").strip()
         payload = _build_document_save_payload(request, cleaned_markdown)
@@ -678,6 +687,14 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
             messages.error(request, "No documents selected.")
             return redirect("dashboard")
         if action == "restart":
+            actor_id = view_common.get_request_actor_id(request)
+            if view_common._is_budget_exceeded(request.user, actor_id):
+                messages.error(request, view_common.ERR_BUDGET_EXCEEDED)
+                return redirect("dashboard")
+            rl_key = f"bulk_restart:{actor_id}"
+            if not view_common._enforce_distributed_rate_limit(rl_key, rl_key, max_requests=5, window_seconds=300):
+                messages.error(request, view_common.ERR_RATE_LIMIT)
+                return redirect("dashboard")
             _handle_bulk_restart(request, document_ids)
         elif action == "delete":
             _handle_bulk_delete(request, document_ids)
@@ -744,6 +761,23 @@ class DocumentRetryView(LoginRequiredMixin, View):
             getattr(doc_wrapped, "uploaded_by_id", None) or view_common.get_request_actor_id(request),
         )
 
+    @staticmethod
+    def _requeue_spend_gate(request, is_ajax):
+        """Budget + rate-limit gate for re-enqueueing the full pipeline."""
+        actor_id = view_common.get_request_actor_id(request)
+        if view_common._is_budget_exceeded(request.user, actor_id):
+            if is_ajax:
+                return JsonResponse({"error": view_common.ERR_BUDGET_EXCEEDED}, status=402)
+            messages.error(request, view_common.ERR_BUDGET_EXCEEDED)
+            return redirect("dashboard")
+        rl_key = f"doc_retry:{actor_id}"
+        if not view_common._enforce_distributed_rate_limit(rl_key, rl_key, max_requests=10, window_seconds=300):
+            if is_ajax:
+                return JsonResponse({"error": view_common.ERR_RATE_LIMIT}, status=429)
+            messages.error(request, view_common.ERR_RATE_LIMIT)
+            return redirect("dashboard")
+        return None
+
     def post(self, request, doc_uuid):
         raw_doc = surreal_db.get_document(doc_uuid)
         is_ajax = (
@@ -767,6 +801,12 @@ class DocumentRetryView(LoginRequiredMixin, View):
                 return JsonResponse({"error": err_msg}, status=status_code)
             messages.error(request, err_msg)
             return redirect("dashboard")
+
+        # Retry/restart of terminal-state documents is not bounded by
+        # retry_count, so gate re-enqueue spend and task volume explicitly.
+        gate_response = self._requeue_spend_gate(request, is_ajax)
+        if gate_response is not None:
+            return gate_response
 
         is_restart = doc.status in ["COMPLETED", "PENDING"]
         retry_cnt = doc.retry_count
@@ -849,7 +889,7 @@ class DocumentCancelView(LoginRequiredMixin, View):
 
         view_common._record_view_audit(
             request,
-            AuditAction.DOCUMENT_EDITED,
+            AuditAction.DOCUMENT_CANCELLED,
             f"User manually stopped curation for document '{doc.original_filename}'.",
             document=doc,
         )

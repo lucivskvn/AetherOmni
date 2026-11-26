@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import os
-import tempfile
 from datetime import UTC, datetime
 
 import httpx
@@ -36,11 +36,13 @@ class Command(BaseCommand):
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         blob_name = f"backups/{surreal_ns}/{surreal_db}/{stamp}.surql.gz"
 
-        with tempfile.NamedTemporaryFile(suffix=".surql.gz", delete=False) as tmp:
-            tmp_path = tmp.name
-
+        client = storage.Client()
+        blob = client.bucket(backup_bucket).blob(blob_name)
+        # Stream gzip -> GCS directly: Cloud Run /tmp is memory-backed, so
+        # spooling a large export through a temp file can OOM the 1Gi job.
+        total_bytes = 0
+        digest = hashlib.sha256()
         try:
-            total_bytes = 0
             with (
                 httpx.stream(
                     "GET",
@@ -49,23 +51,37 @@ class Command(BaseCommand):
                     headers={"surreal-ns": surreal_ns, "surreal-db": surreal_db},
                     timeout=300.0,
                 ) as resp,
-                gzip.open(tmp_path, "wb") as gz_out,
+                blob.open("wb", content_type="application/gzip", timeout=300) as raw_out,
+                gzip.GzipFile(fileobj=raw_out, mode="wb") as gz_out,
             ):
                 resp.raise_for_status()
                 for chunk in resp.iter_bytes(chunk_size=65536):
                     total_bytes += len(chunk)
+                    digest.update(chunk)
                     gz_out.write(chunk)
             if total_bytes == 0:
                 raise CommandError("SurrealDB /export returned an empty snapshot; aborting backup upload.")
-
-            client = storage.Client()
-            blob = client.bucket(backup_bucket).blob(blob_name)
-            blob.upload_from_filename(tmp_path, content_type="application/gzip", timeout=300)
-            self.stdout.write(f"Uploaded SurrealDB backup to gs://{backup_bucket}/{blob_name}")
         except CommandError:
             raise
         except Exception as exc:
             raise CommandError(f"SurrealDB backup failed: {exc}") from exc
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+
+        # Record integrity metadata so a truncated-but-nonempty export is
+        # detectable during restore drills without re-downloading the object.
+        blob.metadata = {
+            "surreal_ns": surreal_ns,
+            "surreal_db": surreal_db,
+            "exported_at": stamp,
+            "uncompressed_bytes": str(total_bytes),
+            "uncompressed_sha256": digest.hexdigest(),
+        }
+        try:
+            blob.patch()
+        except Exception as exc:
+            # The payload is already stored; a metadata failure must not fail
+            # the backup job — log and report success with the caveat.
+            self.stderr.write(f"Backup uploaded but metadata patch failed: {exc}")
+        self.stdout.write(
+            f"Uploaded SurrealDB backup to gs://{backup_bucket}/{blob_name} "
+            f"({total_bytes} uncompressed bytes, sha256:{digest.hexdigest()[:12]}…)"
+        )

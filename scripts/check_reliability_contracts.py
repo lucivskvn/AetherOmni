@@ -134,7 +134,9 @@ def _check_task_authentication(errors: list[str], cloudbuild: str) -> None:
             "korda-task-invoker-account",
             "korda-task-creator-act-as",
             "korda-task-agent-act-as",
-            'worker_task_base_url = f"https://korda-worker-{project_info.number}.{region}.run.app"',
+            'worker_service_name = "korda-worker"',
+            'worker_task_base_url = f"https://{worker_service_name}-{project_info.number}.{region}.run.app"',
+            "service_name=worker_service_name",
         ),
         "Pulumi must provision scoped task identities and bootstrap the worker self URL.",
     )
@@ -158,7 +160,6 @@ def main() -> int:
                 "extractor/surreal_audit.py",
                 "extractor/surreal_cache.py",
                 "extractor/surreal_exam.py",
-                "extractor/surreal_kg.py",
                 "extractor/surreal_memory.py",
                 "extractor/surreal_provenance.py",
             )

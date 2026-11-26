@@ -128,7 +128,8 @@ def generate_and_persist_quiz(
         f"Context crystals:\n{context_json}"
     )
 
-    response = client.models.generate_content(
+    response = llm_gateway.execute_with_backoff(
+        client.models.generate_content,
         model=model_name,
         contents=[prompt],
         config=llm_gateway.types.GenerateContentConfig(
@@ -257,6 +258,7 @@ def _build_evidence_card(anchor: dict[str, Any]) -> dict[str, Any]:
     return {
         "anchor_id": anchor.get("anchor_id"),
         "source_id": anchor.get("source_id"),
+        "anchor_status": anchor.get("status") or "active",
         "coord": compiler.format_anchor_coord(anchor),
         "quote": anchor.get("quote", ""),
         "card_type": "tombstone" if is_purged else "live_gcs",

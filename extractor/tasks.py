@@ -1670,6 +1670,7 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
     for purge_fn, label in (
         (surreal_db.purge_expired_kv_cache, "kv_cache"),
         (surreal_db.purge_expired_rate_limits, "rate_limits"),
+        (surreal_db.purge_expired_user_memories, "user_memories"),
     ):
         try:
             pruned = purge_fn()
@@ -1678,7 +1679,58 @@ def cleanup_expired_documents_task(_payload: dict | None = None) -> None:
         except Exception as exc:
             logger.warning("[Cron] Failed to purge expired %s rows: %s", label, exc)
 
+    _reconcile_source_assets(surreal_db)
+
     logger.info("[Cron] Cleanup finished. Deleted %s expired records.", purged_count)
+
+
+def _reconcile_source_assets(surreal_db, limit: int = 200) -> None:
+    """Tombstone provenance sources whose backing GCS object no longer exists.
+
+    raw/ephemeral objects are deleted by the bucket lifecycle rule without any
+    delete event reaching the app, so sources would otherwise keep reporting
+    gcs_status="active" and evidence cards would mint signed URLs for missing
+    objects. Bounded per run; tombstoned rows leave the active set so the
+    oldest-first scan rotates through the corpus.
+    """
+    from django.conf import settings
+    from django.core.files.storage import default_storage
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return
+
+    try:
+        sources = surreal_db.list_active_gcs_sources(limit=limit)
+    except Exception as exc:
+        logger.warning("[Cron] Failed to list active provenance sources: %s", exc)
+        return
+
+    tombstoned = 0
+    for src in sources:
+        try:
+            if _tombstone_source_if_missing(src, surreal_db, default_storage):
+                tombstoned += 1
+        except Exception as exc:
+            logger.warning("[Cron] Failed to reconcile provenance source %s: %s", src.get("source_id"), exc)
+    if tombstoned:
+        logger.info("[Cron] Tombstoned %s provenance sources with missing GCS assets.", tombstoned)
+
+
+def _tombstone_source_if_missing(src: dict, surreal_db, default_storage) -> bool:
+    """Return True when the source's GCS object is gone and it was tombstoned."""
+    gcs_uri = str(src.get("gcs_uri") or "")
+    # gs://<bucket>/<key> -> storage key; skip unparsable URIs rather than
+    # risk tombstoning a live source on a format we do not recognize.
+    key = gcs_uri.split("/", 3)[-1] if gcs_uri.startswith("gs://") and gcs_uri.count("/") >= 3 else ""
+    if not key:
+        return False
+    try:
+        if default_storage.exists(key):
+            return False
+    except Exception as exc:
+        logger.debug("[Cron] GCS existence check failed for %s: %s", gcs_uri, exc)
+        return False
+    return bool(surreal_db.tombstone_source(str(src["source_id"]), str(src.get("owner_id") or "")))
 
 
 _IN_FLIGHT_STATUSES = ["PENDING", "EXTRACTING", "REFINING", "EMBEDDING"]

@@ -100,6 +100,7 @@ steps:
         required_secrets="DJANGO_SECRET_KEY GEMINI_API_KEY SURREAL_URL SURREAL_USER"
         required_secrets="$${required_secrets} SURREAL_PASS ADMIN_EMAIL SUPABASE_URL"
         required_secrets="$${required_secrets} SUPABASE_PUBLIC_KEY SUPABASE_SERVICE_ROLE_KEY SUPABASE_DATABASE_URL CF_TURNSTILE_SITE_KEY"
+        required_secrets="$${required_secrets} SENTRY_DSN"
         require_enabled_secret() {
           local secret="$$1"
           local state
@@ -115,9 +116,6 @@ steps:
         for secret in $${required_secrets}; do
           require_enabled_secret "$${secret}"
         done
-        if gcloud secrets describe SENTRY_DSN --project="${PROJECT_ID}" >/dev/null 2>&1; then
-          require_enabled_secret SENTRY_DSN
-        fi
         echo "Required Secret Manager version metadata verified."
 
   # 2. Kaniko Container Build with Layer Caching
@@ -154,7 +152,7 @@ steps:
           --reproducible \
           --cleanup
 
-  # 2. Resolve the pushed image once so the SBOM scan and attachment share one immutable target.
+  # 3. Resolve the pushed image once so the SBOM scan and attachment share one immutable target.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'resolve-image-digest'
     waitFor: ['build-image']
@@ -170,7 +168,7 @@ steps:
         test "$${REMOTE_DIGEST}" = "$${DIGEST}"
         printf 'registry:%s@%s' "$${IMAGE_URI}" "$${DIGEST}" > /workspace/korda.image.reference
 
-  # 3. Prepare a narrow writable directory for Syft's non-root debug image.
+  # 4. Prepare a narrow writable directory for Syft's non-root debug image.
   # Cloud Build's workspace is root-owned; retaining the broader workspace mode
   # avoids granting Syft write access to unrelated build inputs.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
@@ -183,7 +181,7 @@ steps:
         install -d -m 0777 /workspace/sbom
         install -m 0644 /workspace/korda.image.reference /workspace/sbom/korda.image.reference
 
-  # 4. Generate an SPDX SBOM without enabling billed Artifact Analysis scanning.
+  # 5. Generate an SPDX SBOM without enabling billed Artifact Analysis scanning.
   # Syft's default image is shell-less and its debug image runs as non-root, so
   # write only to the prepared directory while reading the immutable digest.
   - name: 'docker.io/anchore/syft@sha256:00e5ae9840b64eab10d45b821549a01b45b8da452da5059d9240f44323087a45'
@@ -194,6 +192,7 @@ steps:
       - '-ec'
       - '/syft "$$(cat /workspace/sbom/korda.image.reference)" -o spdx-json=/workspace/sbom/korda.sbom.spdx.json'
 
+  # 6. Attach the SPDX SBOM to the same Artifact Registry version.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'attach-sbom'
     waitFor: ['generate-sbom']
@@ -214,7 +213,7 @@ steps:
           --attachment-namespace='dev.aetheromni.sbom' \
           --files=/workspace/sbom/korda.sbom.spdx.json
 
-  # 4. Do not deploy until GitHub Actions reports a successful mainline SonarQube gate
+  # 7. Do not deploy until GitHub Actions reports a successful mainline SonarQube gate
   # for this exact commit. Container construction may run in parallel with analysis,
   # but production mutation remains blocked on the authoritative quality result.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
@@ -312,7 +311,7 @@ steps:
         raise SystemExit(1)
         PY
 
-  # 5. Validate Pulumi-managed infrastructure before deployment.
+  # 8. Validate Pulumi-managed infrastructure before deployment.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'validate-prerequisites'
     waitFor: ['compute-version']
@@ -324,7 +323,7 @@ steps:
           --project="${PROJECT_ID}" --project-number="${PROJECT_NUMBER}" \
           --region="${_REGION}" --queue-region="${_QUEUE_REGION}"
 
-  # 4. Production GCP Cloud Run Worker Service Deployment
+  # 9. Production GCP Cloud Run Worker Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-worker'
     waitFor: ['validate-prerequisites', 'wait-for-quality-gate', 'attach-sbom']
@@ -364,10 +363,7 @@ steps:
         SECRETS="$${SECRETS},SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
         gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null
-        SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
-        if gcloud secrets describe SENTRY_DSN --project="${PROJECT_ID}" >/dev/null 2>&1; then
-          SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
-        fi
+        SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest,SENTRY_DSN=SENTRY_DSN:latest"
         gcloud run deploy korda-worker \
           --image="$${IMAGE_REFERENCE}" \
           --region=${_REGION} \
@@ -381,7 +377,7 @@ steps:
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 
-  # 5. Production GCP Cloud Run Web Service Deployment
+  # 10. Production GCP Cloud Run Web Service Deployment
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'deploy-web'
     waitFor: ['deploy-worker']
@@ -435,10 +431,7 @@ steps:
         SECRETS="$${SECRETS},SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest"
         SECRETS="$${SECRETS},CF_TURNSTILE_SITE_KEY=CF_TURNSTILE_SITE_KEY:latest"
         gcloud secrets describe SUPABASE_DATABASE_URL --project="${PROJECT_ID}" >/dev/null
-        SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest"
-        if gcloud secrets describe SENTRY_DSN --project="${PROJECT_ID}" >/dev/null 2>&1; then
-          SECRETS="$${SECRETS},SENTRY_DSN=SENTRY_DSN:latest"
-        fi
+        SECRETS="$${SECRETS},DATABASE_URL=SUPABASE_DATABASE_URL:latest,SENTRY_DSN=SENTRY_DSN:latest"
         gcloud run deploy korda-web \
           --image="$${IMAGE_REFERENCE}" \
           --region=${_REGION} \
@@ -452,7 +445,7 @@ steps:
           --set-env-vars="^;^$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
 
-  # 6. Verify the public runtime reports the exact Cloud Build release identity.
+  # 11. Verify the public runtime reports the exact Cloud Build release identity.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'verify-release-identity'
     waitFor: ['deploy-web']
@@ -494,7 +487,7 @@ steps:
         raise SystemExit(f"Runtime release identity verification failed for {url}: {last_error}")
         PY
 
-  # 7. Automated Google-Managed Custom Domain Mapping
+  # 12. Automated Google-Managed Custom Domain Mapping
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:11901dc1a8e6da464f2a7259d503166ab7c55092dbc41373b65c7c676ff6f8f4'
     id: 'bind-custom-domain'
     waitFor: ['verify-release-identity']
