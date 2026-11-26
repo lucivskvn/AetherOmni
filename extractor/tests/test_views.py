@@ -2597,3 +2597,25 @@ class ViewsExceptionPathsTestCase(TestCase):
             self.assertEqual(fallback_doc.status, "DELETED")
             self.assertTrue(callable(getattr(fallback_doc, "get_status_display", None)))
             self.assertEqual(fallback_doc.get_status_display(), "Deleted")
+
+
+class DashboardFilterRobustnessTest(TestCase):
+    """Schema-less SurrealDB fields must not crash dashboard search."""
+
+    def test_filter_dashboard_docs_tolerates_non_string_fields(self):
+        from types import SimpleNamespace
+
+        from extractor.view_dashboard import _filter_dashboard_docs
+
+        doc = SimpleNamespace(
+            title="Report",
+            author="Ada",
+            language="en",
+            document_type="PDF",
+            publisher="Pub",
+            publication_year=2024,
+            doi="10.1/x",
+        )
+        self.assertEqual(_filter_dashboard_docs([doc], "2024"), [doc])
+        self.assertEqual(_filter_dashboard_docs([doc], "ada"), [doc])
+        self.assertEqual(_filter_dashboard_docs([doc], "nomatch"), [])
