@@ -23,6 +23,8 @@ from typing import Any
 
 from django.conf import settings
 
+# ── KORDA Lane 2: Quiz Studio & FSRS Attempt Persistence ─────────────────────
+
 FIELD_FSRS_DIFFICULTY = "fsrs_difficulty"
 
 

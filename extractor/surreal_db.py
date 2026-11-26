@@ -2811,8 +2811,6 @@ def list_crystals_for_user(
     return _first_result(_run(sql, params))
 
 
-# ── KORDA Lane 2: Quiz Studio & FSRS Attempt Persistence ─────────────────────
-
 from extractor.surreal_exam import (  # noqa: F401
     FIELD_FSRS_DIFFICULTY,
     _apply_offline_fsrs,
