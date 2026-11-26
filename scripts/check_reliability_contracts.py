@@ -158,6 +158,7 @@ def main() -> int:
                 "extractor/surreal_audit.py",
                 "extractor/surreal_cache.py",
                 "extractor/surreal_exam.py",
+                "extractor/surreal_kg.py",
                 "extractor/surreal_memory.py",
                 "extractor/surreal_provenance.py",
             )

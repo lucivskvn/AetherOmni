@@ -1715,95 +1715,6 @@ def search_chunks_bm25(query_text: str, limit: int = 10, allowed_doc_uuids: list
     return _first_result(_run(sql, params))
 
 
-# ── Knowledge Graph RAG & Graph-Relational Methods ───────────────────────────
-
-
-def upsert_entity(
-    name: str,
-    tenant_id: str,
-    category: str = "CONCEPT",
-    description: str = "",
-    embedding: list[float] | None = None,
-) -> dict[str, Any] | None:
-    """
-    Upserts an entity node in SurrealDB with optional HNSW embedding vector.
-    """
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        return {"name": name, "tenant_id": tenant_id, "category": category, "description": description}
-
-    sql = """
-    UPSERT entities:[ $name, $tenant_id ] SET
-        name = $name,
-        tenant_id = $tenant_id,
-        category = $category,
-        description = $description,
-        embedding = $embedding,
-        created_at = time::now();
-    """
-    params = {
-        "name": name,
-        "tenant_id": str(tenant_id),
-        "category": category,
-        "description": description,
-        "embedding": embedding,
-    }
-    rows = _first_result(_run(sql, params))
-    return rows[0] if rows and isinstance(rows, list) else None
-
-
-def relate_chunk_to_entity(
-    chunk_id: str,
-    entity_name: str,
-    tenant_id: str,
-    relevance_score: float = 1.0,
-) -> None:
-    """
-    Creates a directed graph relation edge from a text chunk to a knowledge entity.
-    """
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        return
-
-    sql = """
-    RELATE $chunk_id->chunk_references->(SELECT id FROM entities WHERE name = $entity_name AND tenant_id = $tenant_id LIMIT 1)
-    SET relevance_score = $relevance_score, extracted_at = time::now();
-    """
-    params = {
-        "chunk_id": chunk_id,
-        "entity_name": entity_name,
-        "tenant_id": str(tenant_id),
-        "relevance_score": float(relevance_score),
-    }
-    _check_surreal_error(_run(sql, params))
-
-
-def query_knowledge_graph(
-    tenant_id: str,
-    entity_name: str,
-) -> dict[str, Any]:
-    """
-    Executes a 2-hop Graph Relational query returning connected documents, chunks, and related concepts.
-    """
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        return {"entity": entity_name, "connected_documents": [], "related_concepts": []}
-
-    sql = """
-    SELECT 
-        name,
-        category,
-        description,
-        <-chunk_references<-chunks.doc_uuid AS connected_documents,
-        ->entity_relations->entities.name AS related_concepts
-    FROM entities
-    WHERE tenant_id = $tenant_id 
-      AND name = $entity_name
-    LIMIT 1;
-    """
-    rows = _first_result(_run(sql, {"tenant_id": str(tenant_id), "entity_name": entity_name}))
-    if rows and isinstance(rows, list) and len(rows) > 0:
-        return rows[0]
-    return {"entity": entity_name, "connected_documents": [], "related_concepts": []}
-
-
 from extractor.surreal_audit import (  # noqa: F401
     _flush_document_cost,
     _record_document_spend,
@@ -1846,6 +1757,11 @@ from extractor.surreal_exam import (  # noqa: F401
     record_attempt,
     save_exam_items,
     update_attempt_rating,
+)
+from extractor.surreal_kg import (  # noqa: F401
+    query_knowledge_graph,
+    relate_chunk_to_entity,
+    upsert_entity,
 )
 from extractor.surreal_memory import (  # noqa: F401
     add_user_memory,
