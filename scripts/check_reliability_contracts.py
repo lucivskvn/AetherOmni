@@ -151,7 +151,17 @@ def main() -> int:
     errors: list[str] = []
     try:
         settings = _read("core/settings.py")
-        surreal = _read("extractor/surreal_db.py")
+        surreal = "\n".join(
+            _read(path)
+            for path in (
+                "extractor/surreal_db.py",
+                "extractor/surreal_audit.py",
+                "extractor/surreal_cache.py",
+                "extractor/surreal_exam.py",
+                "extractor/surreal_memory.py",
+                "extractor/surreal_provenance.py",
+            )
+        )
         exports = "\n".join(
             _read(path)
             for path in (
