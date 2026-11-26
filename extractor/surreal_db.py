@@ -1284,6 +1284,94 @@ def list_documents(user_id: str | None = None, limit: int | None = None) -> list
     return _first_result(_run("SELECT * FROM documents ORDER BY created_at DESC;"))
 
 
+# Fields rendered by the dashboard/status snapshot views. Excludes the heavy
+# content blobs (raw_markdown, refined_markdown, yaml_metadata, qa_dataset) so
+# polling endpoints do not ship megabytes per document per request.
+_STATUS_DOC_FIELDS = (
+    "id",
+    "doc_uuid",
+    "uploaded_by_id",
+    "status",
+    "error_message",
+    "title",
+    "original_filename",
+    "author",
+    "language",
+    "document_type",
+    "publisher",
+    "publication_year",
+    "license_type",
+    "doi",
+    "page_count",
+    "cost_usd",
+    "input_tokens",
+    "output_tokens",
+    "created_at",
+    "updated_at",
+)
+
+
+def _offline_document_statuses(user_id: str | None, limit: int | None) -> list[dict]:
+    from extractor.models import SourceDocument
+
+    if user_id:
+        from django.db.models import Q
+
+        qs = SourceDocument.objects.filter(Q(uploaded_by_id=user_id) | Q(uploaded_by__isnull=True))
+    else:
+        qs = SourceDocument.objects.all()
+    if limit is not None:
+        qs = qs[: max(1, int(limit))]
+    return [
+        {
+            "id": doc.id,
+            "doc_uuid": str(doc.uuid),
+            "uploaded_by_id": str(doc.uploaded_by_id) if doc.uploaded_by_id else None,
+            "status": doc.status,
+            "error_message": doc.error_message,
+            "title": doc.title,
+            "original_filename": doc.original_filename,
+            "author": doc.author,
+            "language": doc.language,
+            "document_type": doc.document_type,
+            "page_count": doc.page_count,
+            "cost_usd": float(doc.cost_usd),
+            "input_tokens": doc.input_tokens,
+            "output_tokens": doc.output_tokens,
+            "created_at": doc.created_at if doc.created_at else None,
+            "updated_at": doc.updated_at if doc.updated_at else None,
+        }
+        for doc in qs
+    ]
+
+
+def list_document_statuses(user_id: str | None = None, limit: int | None = None) -> list[dict]:
+    """Lightweight document listing for dashboard/status snapshots.
+
+    Same tenant scoping and ordering as ``list_documents`` but projects only
+    the fields the dashboard views render, avoiding full-content blobs.
+    """
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return _offline_document_statuses(user_id, limit)
+
+    field_list = ", ".join(_STATUS_DOC_FIELDS)
+    if user_id:
+        scope = "WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE "
+        params: dict[str, Any] = {"user_id": str(user_id)}
+    else:
+        scope = ""
+        params = {}
+    sql = f"SELECT {field_list} FROM documents {scope}ORDER BY created_at DESC"  # nosec B608 # noqa: S608 -- static field list and scope clause
+    if limit is not None:
+        sql += " LIMIT $limit;"
+        params["limit"] = max(1, int(limit))
+    else:
+        sql += ";"
+    return _first_result(_run(sql, params))
+
+
 def get_user_total_spend(user_id: str | None = None, since: datetime | None = None):
     """Aggregate monthly/live document spend in SurrealDB without loading document blobs."""
     from decimal import Decimal

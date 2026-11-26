@@ -450,3 +450,21 @@ class SurrealDBClientTestCase(TestCase):
         self.assertEqual(target_uuid, "target")
         self.assertEqual(len(cloned_chunks), 501)
         self.assertEqual(cloned_chunks[-1]["chunk_index"], 500)
+
+    @override_settings(SURREALDB_OFFLINE=False)
+    @patch("extractor.surreal_db._run", return_value=[{"result": []}])
+    def test_list_document_statuses_projects_light_fields(self, mock_run):
+        self.assertEqual(surreal_db.list_document_statuses(user_id="user-1", limit=25), [])
+        sql, params = mock_run.call_args.args
+        self.assertIn("SELECT id, doc_uuid, uploaded_by_id, status", sql)
+        self.assertIn("WHERE uploaded_by_id = $user_id OR uploaded_by_id = NONE", sql)
+        self.assertIn("LIMIT $limit", sql)
+        self.assertEqual(params, {"user_id": "user-1", "limit": 25})
+        for heavy_field in ("raw_markdown", "refined_markdown", "yaml_metadata", "qa_dataset"):
+            self.assertNotIn(heavy_field, sql)
+
+        mock_run.reset_mock()
+        surreal_db.list_document_statuses(limit=10)
+        sql, params = mock_run.call_args.args
+        self.assertNotIn("WHERE", sql)
+        self.assertEqual(params, {"limit": 10})

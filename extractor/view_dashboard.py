@@ -33,9 +33,9 @@ def _get_dashboard_stats(request, document_limit: int | None = None):
 
     user = request.user
     if user.is_staff or user.is_superuser:
-        raw_docs = surreal_db.list_documents(limit=document_limit)
+        raw_docs = surreal_db.list_document_statuses(limit=document_limit)
     else:
-        raw_docs = surreal_db.list_documents(view_common.get_request_actor_id(request), limit=document_limit)
+        raw_docs = surreal_db.list_document_statuses(view_common.get_request_actor_id(request), limit=document_limit)
     snapshot_capped = bool(document_limit and len(raw_docs) == document_limit)
     if snapshot_capped:
         raw_docs = raw_docs[:-1]
