@@ -164,7 +164,10 @@ def render_markdown_to_html(markdown_text: str) -> str:
 
 def _escape_yaml_val(val: Any) -> str:
     s = str(val or "")
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n")
+    # YAML double-quoted scalars must escape C0 control characters and DEL;
+    # leaving them raw produces frontmatter that yaml.safe_load rejects.
+    escaped = s.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n")
+    return "".join(ch if ord(ch) >= 0x20 and ord(ch) != 0x7F else f"\\x{ord(ch):02x}" for ch in escaped)
 
 
 def _build_yaml_frontmatter(doc: Any) -> str:

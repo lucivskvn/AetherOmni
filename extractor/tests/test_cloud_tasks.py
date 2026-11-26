@@ -25,7 +25,7 @@ class CloudTasksTestCase(TestCase):
             # to verify it gets invoked inside the fallback thread
             mock_target = MagicMock()
             document = SourceDocument.objects.create(original_filename="local-queued.txt")
-            with patch.dict("extractor.cloud_tasks._LOCAL_TASK_REGISTRY", {"process_document": mock_target}):
+            with patch("extractor.task_handlers.get_task_registry", return_value={"process_document": mock_target}):
                 cloud_tasks.enqueue("process_document", {"document_id": document.id})
 
                 # Wait for local thread pool execution to complete (we join or sleep a brief moment)
