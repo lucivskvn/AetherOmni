@@ -285,60 +285,7 @@ def find_chunk_embeddings_batch(texts: list[str]) -> dict[str, list[float]]:
     return mapping
 
 
-# ── Context Caching & High-Throughput Rate Limits ───────────────────────────
-
-
-def context_cache_get(context_hash: str) -> dict[str, Any] | None:
-    from extractor import surreal_db
-
-    """Retrieve cached context prefix or prompt by hash and increment hit counter."""
-    sql = "SELECT * FROM context_cache WHERE context_hash = $context_hash AND expires_at > time::now() LIMIT 1;"
-    rows = surreal_db._first_result(surreal_db._run(sql, {"context_hash": context_hash}))
-    if rows and isinstance(rows, list) and len(rows) > 0:
-        surreal_db._run(
-            "UPDATE context_cache SET hit_count += 1, updated_at = time::now() WHERE context_hash = $context_hash;",
-            {"context_hash": context_hash},
-        )
-        return rows[0]
-    return None
-
-
-def context_cache_set(
-    context_hash: str,
-    context_text: str,
-    token_count: int = 0,
-    doc_uuid: str | None = None,
-    user_id: str | None = None,
-    ttl_hours: int = 1,
-) -> None:
-    from extractor import surreal_db
-
-    """Store or update context cache entry with TTL.
-
-    BUG-10 fix: context_cache_get queries WHERE expires_at > time::now().
-    Without an explicit expires_at, SurrealDB evaluates NONE > time::now()
-    as false, causing a 100% cache miss rate. Default TTL is 1 hour.
-    """
-    from datetime import timedelta
-
-    from django.utils import timezone as tz
-
-    payload = {
-        "context_hash": context_hash,
-        "context_text": context_text,
-        "token_count": token_count,
-        "doc_uuid": doc_uuid,
-        "user_id": user_id,
-        "hit_count": 0,
-        "expires_at": tz.now() + timedelta(hours=ttl_hours),
-    }
-    sql = (
-        "BEGIN TRANSACTION;"
-        "DELETE FROM context_cache WHERE context_hash = $context_hash;"
-        "INSERT INTO context_cache $payload;"
-        "COMMIT TRANSACTION;"
-    )
-    surreal_db._run(sql, {"context_hash": context_hash, "payload": payload})
+# ── High-Throughput Rate Limits ──────────────────────────────────────────────
 
 
 def check_rate_limit_atomic(key: str, max_requests: int, window_seconds: int = 3600) -> bool:
