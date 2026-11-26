@@ -1463,9 +1463,11 @@ def delete_document(doc_uuid: str) -> None:
             )
 
     sql = (
+        "BEGIN TRANSACTION;"
         "DELETE FROM documents WHERE doc_uuid = $doc_uuid;"
         "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;"
         "DELETE FROM rag_cache WHERE $doc_uuid INSIDE sources;"
+        "COMMIT TRANSACTION;"
     )
     _run(sql, {"doc_uuid": doc_uuid})
 
@@ -1495,11 +1497,13 @@ def _write_worker_chunks(doc_uuid: str, payloads: list[dict] | None = None) -> N
 
 def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     """
-    Atomically replace all chunks for a document using a SurrealDB transaction.
-    Deletes existing chunks first, then bulk-inserts new ones.
+    Replace all chunks for a document.
 
-    BUG-05 fix: Wrapped in BEGIN/COMMIT TRANSACTION so a failed batch insert
-    rolls back the preceding delete, preventing partial chunk corruption.
+    The delete commits first, then new chunks are inserted in small batches —
+    each batch its own transaction — because large serialized vector payloads
+    exceed the HTTP request size limit in a single call. On any batch failure
+    the document's chunks are deleted again so a partial set is never left
+    behind for RAG to serve as complete.
     """
     doc_uuid = str(doc_uuid)
     from django.conf import settings
@@ -1530,15 +1534,36 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     if not chunk_payloads:
         return
 
-    for i in range(0, len(chunk_payloads), batch_size):
-        batch = chunk_payloads[i : i + batch_size]
-        if document_task_name.get():
-            _write_worker_chunks(doc_uuid, batch)
-        else:
-            _run(
-                "BEGIN TRANSACTION; INSERT INTO chunks $payloads; COMMIT TRANSACTION;",
-                {"payloads": batch},
+    try:
+        for i in range(0, len(chunk_payloads), batch_size):
+            batch = chunk_payloads[i : i + batch_size]
+            if document_task_name.get():
+                _write_worker_chunks(doc_uuid, batch)
+            else:
+                _run(
+                    "BEGIN TRANSACTION; INSERT INTO chunks $payloads; COMMIT TRANSACTION;",
+                    {"payloads": batch},
+                )
+    except Exception:
+        # Batches commit independently (payload-size limit prevents a single
+        # transaction), so a mid-loop failure would otherwise leave a partial
+        # chunk set that RAG silently serves as complete. Compensate by
+        # removing this document's chunks before propagating the failure.
+        try:
+            if document_task_name.get():
+                _write_worker_chunks(doc_uuid)
+            else:
+                _run(
+                    "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
+                    {"doc_uuid": doc_uuid},
+                )
+        except Exception as cleanup_err:
+            logger.warning(
+                "[Chunks] Compensating delete failed for %s after batch insert failure: %s",
+                doc_uuid,
+                cleanup_err,
             )
+        raise
 
 
 def delete_chunks(doc_uuid: str) -> None:
