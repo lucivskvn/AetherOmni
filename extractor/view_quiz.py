@@ -111,7 +111,7 @@ class QuizGenerateAPIView(LoginRequiredMixin, View):
 
         actor_id = view_common.get_request_actor_id(request)
         if view_common._is_budget_exceeded(request.user, actor_id):
-            return JsonResponse({"error": "Monthly spend budget exceeded."}, status=402)
+            return JsonResponse({"error": view_common.ERR_BUDGET_EXCEEDED}, status=402)
         rl_key = f"quiz_gen:{actor_id}"
         if not view_common._enforce_distributed_rate_limit(rl_key, rl_key, max_requests=10, window_seconds=60):
             return JsonResponse({"error": view_common.ERR_RATE_LIMIT}, status=429)
