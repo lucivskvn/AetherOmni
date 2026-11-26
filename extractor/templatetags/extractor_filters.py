@@ -288,13 +288,13 @@ _CACHE_BUST_VAL: str | None = None
 
 
 def get_cache_bust_version() -> str:
-    """Returns the current cache busting string, prioritizing _resolve_release_version(), then server startup timestamp."""
+    """Returns the current cache busting string, prioritizing resolve_release_version(), then server startup timestamp."""
     global _CACHE_BUST_VAL
     if _CACHE_BUST_VAL is None:
         try:
-            from extractor.context_processors import _resolve_release_version
+            from extractor.context_processors import resolve_release_version
 
-            ver = _resolve_release_version()
+            ver = resolve_release_version()
             _CACHE_BUST_VAL = ver if ver != "0.0.0" else str(int(time.time()))
         except Exception:
             _CACHE_BUST_VAL = str(int(time.time()))

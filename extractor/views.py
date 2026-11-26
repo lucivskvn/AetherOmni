@@ -30,7 +30,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
-from extractor.context_processors import _resolve_commit_sha, _resolve_release_version
+from extractor.context_processors import resolve_commit_sha, resolve_release_version
 from extractor.task_state import CANCEL_REQUESTED
 
 if TYPE_CHECKING:  # nosonar
@@ -96,7 +96,7 @@ def favicon_view(_request):
 def release_metadata_view(_request):
     """Expose the release identity injected into this running Cloud Run revision."""
     return JsonResponse(
-        {"release_version": _resolve_release_version(), "commit_sha": _resolve_commit_sha()},
+        {"release_version": resolve_release_version(), "commit_sha": resolve_commit_sha()},
         headers={"Cache-Control": "no-store"},
     )
 
@@ -440,18 +440,6 @@ def _enforce_distributed_rate_limit(
         except Exception as surreal_err:
             logger.warning("[RateLimit] SurrealDB fallback error for %s: %s", surreal_key, surreal_err)
             return False
-
-
-def _parse_dt(value):
-    """Safely parse a datetime string; returns None on any error."""
-    if value is None:
-        return None
-    try:
-        from extractor.utils import parse_datetime
-
-        return parse_datetime(str(value))
-    except Exception:
-        return None
 
 
 def _safe_metadata_source_link(value: object) -> str:

@@ -13,7 +13,7 @@ def _read_file_version(file_path: str) -> str | None:
         return None
 
 
-def _resolve_release_version() -> str:
+def resolve_release_version() -> str:
     if env_ver := os.environ.get("RELEASE_VERSION"):
         return env_ver.lstrip("v")
 
@@ -74,7 +74,7 @@ def _read_git_head_sha(git_dir: str) -> str | None:
     return _resolve_ref_from_loose_file(git_dir, clean_target) or _resolve_ref_from_packed_refs(git_dir, clean_target)
 
 
-def _resolve_commit_sha() -> str:
+def resolve_commit_sha() -> str:
     if env_sha := os.environ.get("COMMIT_SHA") or os.environ.get("SHORT_SHA") or os.environ.get("BUILD_SHA"):
         return env_sha[:7]
 
@@ -97,7 +97,7 @@ def system_settings(request: HttpRequest) -> dict[str, Any]:
         "system_settings": SystemSettings.get_settings(),
         "SUPABASE_URL": getattr(settings, "SUPABASE_URL", ""),
         "SUPABASE_PUBLIC_KEY": getattr(settings, "SUPABASE_PUBLIC_KEY", ""),
-        "RELEASE_VERSION": _resolve_release_version(),
-        "COMMIT_SHA": _resolve_commit_sha(),
+        "RELEASE_VERSION": resolve_release_version(),
+        "COMMIT_SHA": resolve_commit_sha(),
         "CF_TURNSTILE_SITE_KEY": getattr(settings, "CF_TURNSTILE_SITE_KEY", ""),
     }
