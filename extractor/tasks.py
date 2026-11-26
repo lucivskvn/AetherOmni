@@ -466,15 +466,33 @@ def _extract_existing_raw(
     return None
 
 
+def _ocr_cache_owner(doc: Any) -> str:
+    """Tenant scope for the content-addressed OCR cache.
+
+    Dedup is tenant-only per policy: identical file bytes uploaded by
+    different owners must not share derived OCR output. Unowned uploads
+    share a single 'unowned' bucket since those records are already
+    world-readable.
+    """
+    owner = doc.get("uploaded_by_id") if isinstance(doc, dict) else getattr(doc, "uploaded_by_id", None)
+    return str(owner) if owner else "unowned"
+
+
+def _ocr_cache_key(file_hash: str, doc: Any) -> str:
+    return f"ocr:{_ocr_cache_owner(doc)}:{file_hash}"
+
+
 def _extract_cached_ocr(
-    file_hash: str, working_path: str, lower_name: str
+    file_hash: str, working_path: str, lower_name: str, doc: Any = None
 ) -> tuple[str, str, int, Decimal, int, int] | None:
     from django.conf import settings
 
     from extractor import surreal_db
 
+    if doc is None:
+        return None
     cached_ocr = (
-        surreal_db.kv_cache_get(f"ocr:{file_hash}")
+        surreal_db.kv_cache_get(_ocr_cache_key(file_hash, doc))
         if (file_hash and not getattr(settings, "SURREALDB_OFFLINE", False))
         else None
     )
@@ -493,7 +511,7 @@ def _get_existing_or_cached_markdown(
     if existing_res:
         return existing_res
 
-    cached_res = _extract_cached_ocr(file_hash, working_path, lower_name)
+    cached_res = _extract_cached_ocr(file_hash, working_path, lower_name, doc)
     if cached_res:
         return cached_res
     return None
@@ -555,7 +573,7 @@ def _acquire_stage1_raw_markdown(
 
     if file_hash and raw_md and not getattr(settings, "SURREALDB_OFFLINE", False):
         surreal_db.kv_cache_set(
-            f"ocr:{file_hash}",
+            _ocr_cache_key(file_hash, doc),
             {"raw_markdown": raw_md, "document_type": doc_type, "page_count": page_cnt},
         )
 

@@ -7,7 +7,6 @@ and async-to-sync boundaries for thread safety and high-throughput execution.
 Capabilities:
   - Document metadata storage & transactional CRUD
   - Vector embeddings & chunk storage with HNSW 768 cosine similarity index
-  - Tokenized prompt context cache (`context_cache`)
   - Distributed atomic sliding-window rate limiting (`rate_limits`)
   - Semantic user memories (`user_memories`)
   - Offline fallback integration for unit testing and local development
@@ -1758,8 +1757,6 @@ from extractor.surreal_cache import (  # noqa: F401
     _parse_rate_limit_transaction_result,
     _purge_expired_table,
     check_rate_limit_atomic,
-    context_cache_get,
-    context_cache_set,
     delete_rag_cache_for_document,
     find_chunk_embedding,
     find_chunk_embeddings_batch,
