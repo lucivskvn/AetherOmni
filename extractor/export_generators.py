@@ -48,6 +48,21 @@ EXPORT_MAX_TOTAL_CONTENT_BYTES = 64 * 1024 * 1024
 EXPORT_TOO_LARGE_MSG = "Export exceeds the maximum total content size; select fewer documents."
 
 
+def _safe_int(val: Any, default: int = 0) -> int:
+    """Coerce a schema-less SurrealDB numeric field without failing the export."""
+    try:
+        return int(val)
+    except TypeError, ValueError:
+        return default
+
+
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    try:
+        return float(val)
+    except TypeError, ValueError:
+        return default
+
+
 @dataclass
 class ZipExportContext:
     seen_lang_paths: set[str]
@@ -154,8 +169,8 @@ def _process_zip_doc(idx: int, doc: Any, ctx: ZipExportContext):
             "publication_year": _get_doc_field_str(doc, "publication_year"),
             "doi": _get_doc_field_str(doc, "doi"),
             "license_type": _get_doc_field_str(doc, "license_type"),
-            "page_count": int(getattr(doc, "page_count", 1) or 1),
-            "cost_usd": float(getattr(doc, "cost_usd", 0.0) or 0.0),
+            "page_count": _safe_int(getattr(doc, "page_count", 1) or 1, 1),
+            "cost_usd": _safe_float(getattr(doc, "cost_usd", 0.0) or 0.0),
             "hash": doc.file_hash,
             "export_path": doc_path,
         }
@@ -519,8 +534,8 @@ def _insert_sqlite_document(cursor: Any, doc: Any) -> str:
             _get_doc_field_str(doc, "doi"),
             _get_doc_field_str(doc, "license_type"),
             _get_doc_field_str(doc, "file_hash"),
-            int(getattr(doc, "page_count", 1) or 1),
-            float(getattr(doc, "cost_usd", 0.0) or 0.0),
+            _safe_int(getattr(doc, "page_count", 1) or 1, 1),
+            _safe_float(getattr(doc, "cost_usd", 0.0) or 0.0),
             created_at_val,
         ),
     )
@@ -531,9 +546,9 @@ def _sqlite_chunk_rows(chunk: Any, doc_uuid: str, title: str, author: str) -> tu
     content_str = str(chunk.get("content") or "").strip()
     if not content_str:
         return None
-    p_num = int(chunk.get("page_number") or 1)
+    p_num = _safe_int(chunk.get("page_number") or 1, 1)
     anch = str(chunk.get("anchor_id") or f"page-{p_num}")
-    c_idx = int(chunk.get("chunk_index") or 0)
+    c_idx = _safe_int(chunk.get("chunk_index") or 0)
     chunk_row = (doc_uuid, c_idx, p_num, str(chunk.get("chapter_title") or ""), anch, content_str)
     fts_row = (content_str, title, author, doc_uuid, str(p_num), anch)
     return chunk_row, fts_row
@@ -682,10 +697,10 @@ def _build_csv_row_for_doc(doc: Any) -> list[Any]:
         _get_doc_field_str(doc, "doi"),
         _get_doc_field_str(doc, "license_type"),
         _get_doc_field_str(doc, "file_hash"),
-        int(getattr(doc, "page_count", 1) or 1),
-        float(getattr(doc, "cost_usd", 0.0) or 0.0),
-        int(getattr(doc, "input_tokens", 0) or 0),
-        int(getattr(doc, "output_tokens", 0) or 0),
+        _safe_int(getattr(doc, "page_count", 1) or 1, 1),
+        _safe_float(getattr(doc, "cost_usd", 0.0) or 0.0),
+        _safe_int(getattr(doc, "input_tokens", 0) or 0),
+        _safe_int(getattr(doc, "output_tokens", 0) or 0),
         _get_doc_field_str(doc, "created_at"),
         _extract_doc_excerpt(doc),
     ]
