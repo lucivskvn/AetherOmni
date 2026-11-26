@@ -75,6 +75,7 @@ backup_bucket = ComplianceBucket(
     location=region,
     project=project,
     ephemeral=False,
+    backup_retention_days=90,
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
@@ -104,6 +105,8 @@ service_account = gcp.serviceaccount.Account(
     "korda-service-account",
     account_id="korda-runtime",
     display_name="KORDA Cloud Run Runtime Service Account",
+    project=project,
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
 # Keep task tokens separate from the runtime identity's data-access permissions.
@@ -179,7 +182,7 @@ gcp.cloudtasks.QueueIamMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-gcp.storage.BucketIAMMember(
+media_bucket_object_admin = gcp.storage.BucketIAMMember(
     "korda-bucket-object-admin",
     bucket=media_bucket.name,
     role="roles/storage.objectAdmin",
@@ -187,7 +190,7 @@ gcp.storage.BucketIAMMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-gcp.storage.BucketIAMMember(
+backup_bucket_object_creator = gcp.storage.BucketIAMMember(
     "korda-backup-bucket-object-creator",
     bucket=backup_bucket.name,
     role="roles/storage.objectCreator",
@@ -285,8 +288,11 @@ extra_allowed_hosts = config.get("extra_allowed_hosts") or ""
 extra_csrf_origins = config.get("extra_csrf_origins") or ""
 
 # The task handler verifies OIDC audience against this WORKER_URL value, so
-# scheduler dispatches must target the same project-number URL form.
-worker_task_base_url = f"https://korda-worker-{project_info.number}.{region}.run.app"
+# scheduler dispatches must target the same project-number URL form. Derive it
+# from the single service-name constant so a rename cannot desync the env var,
+# the OIDC audience, and the Cloud Run service itself.
+worker_service_name = "korda-worker"
+worker_task_base_url = f"https://{worker_service_name}-{project_info.number}.{region}.run.app"
 
 common_env = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="WORKER_URL", value=worker_task_base_url),
@@ -353,20 +359,24 @@ secret_envs = [
 ]
 
 # Scope secret reads to exactly the secrets mounted into the services instead
-# of a project-wide secretAccessor grant.
+# of a project-wide secretAccessor grant. Cloud Run validates secret access at
+# revision creation, so these bindings must exist before the services apply.
+secret_access_members = []
 for idx, key in enumerate(secret_keys):
-    gcp.secretmanager.SecretIamMember(
-        f"korda-secret-access-{idx}",
-        secret_id=key,
-        role="roles/secretmanager.secretAccessor",
-        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
-        opts=pulumi.ResourceOptions(provider=gcp_provider),
+    secret_access_members.append(
+        gcp.secretmanager.SecretIamMember(
+            f"korda-secret-access-{idx}",
+            secret_id=key,
+            role="roles/secretmanager.secretAccessor",
+            member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+            opts=pulumi.ResourceOptions(provider=gcp_provider),
+        )
     )
 
 # 5. Cloud Run Worker Service (korda-worker, private, scale-to-zero)
 worker_component = ScaleToZeroWorker(
     "korda-worker",
-    service_name="korda-worker",
+    service_name=worker_service_name,
     location=region,
     project=project,
     image=container_image,
@@ -386,7 +396,15 @@ worker_component = ScaleToZeroWorker(
     ),
     is_public=False,
     legacy_name="korda-worker",
-    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
+    opts=pulumi.ResourceOptions(
+        provider=gcp_provider,
+        depends_on=[
+            *iam_members,
+            *secret_access_members,
+            media_bucket_object_admin,
+            backup_bucket_object_creator,
+        ],
+    ),
 )
 worker_service = worker_component.service
 
@@ -401,7 +419,7 @@ worker_invoker_binding = gcp.cloudrunv2.ServiceIamMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-gcp.cloudrunv2.ServiceIamMember(
+worker_runtime_invoker = gcp.cloudrunv2.ServiceIamMember(
     "korda-worker-runtime-invoker",
     name=worker_service.name,
     location=region,
@@ -420,7 +438,9 @@ raw_trigger = EventarcRawTrigger(
     bucket_name=media_bucket.name,
     worker_service_name=worker_service.name,
     service_account_email=service_account.email,
-    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
+    opts=pulumi.ResourceOptions(
+        provider=gcp_provider, depends_on=[*iam_members, worker_runtime_invoker, worker_invoker_binding]
+    ),
 )
 
 # 6. Cloud Run Web Service (korda-web, public, scale-to-zero)
@@ -449,7 +469,10 @@ web_component = ScaleToZeroWorker(
     ),
     is_public=True,
     legacy_name="korda-web",
-    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=[*iam_members, worker_invoker_binding]),
+    opts=pulumi.ResourceOptions(
+        provider=gcp_provider,
+        depends_on=[*iam_members, *secret_access_members, media_bucket_object_admin, worker_invoker_binding],
+    ),
 )
 web_service = web_component.service
 
@@ -469,8 +492,8 @@ if custom_domain:
 # every service secret would over-provision it. It needs the Django secret
 # key (settings fail closed without it), the SurrealDB credentials, and the
 # common env (bucket names, GCP_PROJECT_ID, SURREAL_NS/DB).
-# SUPABASE_DATABASE_URL is kept defensively: if Cloud Run ever sets
-# K_SERVICE for jobs, settings require DATABASE_URL to be configured.
+# SUPABASE_DATABASE_URL is mounted as DATABASE_URL defensively: if Cloud Run
+# ever sets K_SERVICE for jobs, settings require DATABASE_URL to be configured.
 backup_secret_keys = [
     "DJANGO_SECRET_KEY",
     "SUPABASE_DATABASE_URL",
@@ -478,9 +501,10 @@ backup_secret_keys = [
     "SURREAL_USER",
     "SURREAL_PASS",
 ]
+# Mirror the service remap: settings read DATABASE_URL, not the secret's name.
 backup_secret_envs = [
     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(
-        name=key,
+        name="DATABASE_URL" if key == "SUPABASE_DATABASE_URL" else key,
         value_source=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceArgs(
             secret_key_ref=gcp.cloudrunv2.ServiceTemplateContainerEnvValueSourceSecretKeyRefArgs(
                 secret=key,
@@ -512,7 +536,10 @@ backup_job = gcp.cloudrunv2.Job(
             ],
         )
     ),
-    opts=pulumi.ResourceOptions(provider=gcp_provider, depends_on=iam_members),
+    opts=pulumi.ResourceOptions(
+        provider=gcp_provider,
+        depends_on=[*iam_members, *secret_access_members, backup_bucket_object_creator],
+    ),
 )
 
 gcp.cloudrunv2.JobIamMember(

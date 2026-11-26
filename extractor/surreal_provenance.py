@@ -431,3 +431,28 @@ def list_crystals_for_user(
         "ORDER BY updated_at DESC LIMIT $limit;"
     )
     return surreal_db._first_result(surreal_db._run(sql, params))
+
+
+def list_active_gcs_sources(limit: int = 100) -> list[dict[str, Any]]:
+    """List sources still marked active with a GCS asset, for asset reconciliation."""
+    from extractor import surreal_db
+
+    k_limit = max(1, min(int(limit), 500))
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return [
+            {
+                "source_id": src.get("source_id"),
+                "owner_id": src.get("owner_id"),
+                "doc_slug": src.get("doc_slug"),
+                "gcs_uri": src.get("gcs_uri", ""),
+            }
+            for src in surreal_db._test_korda_sources.values()
+            if src.get("gcs_status", "active") == "active" and src.get("gcs_uri")
+        ][:k_limit]
+    sql = (
+        "SELECT source_id, owner_id, doc_slug, gcs_uri FROM source "
+        "WHERE gcs_status = 'active' AND gcs_uri != '' "
+        "ORDER BY updated_at ASC LIMIT $limit;"
+    )
+    rows = surreal_db._first_result(surreal_db._run(sql, {"limit": k_limit}))
+    return [r for r in rows if isinstance(r, dict) and r.get("source_id")]

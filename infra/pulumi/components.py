@@ -18,6 +18,7 @@ class ComplianceBucket(pulumi.ComponentResource):
         project: str,
         ephemeral: bool = True,
         export_retention_days: int = 14,
+        backup_retention_days: int | None = None,
         legacy_name: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
@@ -57,6 +58,18 @@ class ComplianceBucket(pulumi.ComponentResource):
                     condition=gcp.storage.BucketLifecycleRuleConditionArgs(age=1),
                 ),
             ]
+            if backup_retention_days is not None:
+                # Daily backup exports accumulate forever without an age-based
+                # rule; bound retention independently of soft-delete/versioning.
+                lifecycle_rules.append(
+                    gcp.storage.BucketLifecycleRuleArgs(
+                        action=gcp.storage.BucketLifecycleRuleActionArgs(type="Delete"),
+                        condition=gcp.storage.BucketLifecycleRuleConditionArgs(
+                            matches_prefixes=["backups/"],
+                            age=backup_retention_days,
+                        ),
+                    )
+                )
 
         self.bucket = gcp.storage.Bucket(
             f"{name}-bucket",

@@ -16,6 +16,25 @@ logger = logging.getLogger(view_common.VIEWS_LOGGER_NAME)
 RAG_RATE_LIMIT_MSG = "Search rate limit reached. Please wait a moment before sending another query."
 
 
+def _parse_rag_document_ids(document_ids_str: str | None) -> list[Any] | None:
+    """Parse a comma-separated document_ids filter into ints/UUID strings (max 50)."""
+    if not document_ids_str:
+        return None
+    ids: list[Any] = []
+    for raw in document_ids_str.split(",")[:50]:
+        item = raw.strip()
+        if not item:
+            continue
+        if ":" in item:
+            item = item.split(":", 1)[1]
+        item = item[:64]
+        try:
+            ids.append(int(item))
+        except ValueError:
+            ids.append(item)
+    return ids[:50] or None
+
+
 class DocumentRAGSearchView(LoginRequiredMixin, View):
     """
     AJAX endpoint running global semantic search.
@@ -39,19 +58,7 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
         return None
 
     def _parse_document_ids(self, document_ids_str):
-        if not document_ids_str:
-            return None
-        document_ids = []
-        for i in document_ids_str.split(",")[:50]:
-            i_clean = i.strip()[:64]
-            if i_clean:
-                if ":" in i_clean:
-                    i_clean = i_clean.split(":", 1)[1]
-                try:
-                    document_ids.append(int(i_clean))
-                except ValueError:
-                    document_ids.append(i_clean)
-        return document_ids[:50]
+        return _parse_rag_document_ids(document_ids_str)
 
     def get(self, request):
         query = request.GET.get("q", "").strip()[:1000]
@@ -116,21 +123,7 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
         return None
 
     def _parse_doc_ids(self, document_ids_str: str) -> list[Any] | None:
-        if not document_ids_str:
-            return None
-        ids: list[Any] = []
-        for i in document_ids_str.split(","):
-            i_clean = i.strip()
-            if not i_clean:
-                continue
-            if ":" in i_clean:
-                i_clean = i_clean.split(":", 1)[1]
-            i_clean = i_clean[:64]
-            try:
-                ids.append(int(i_clean))
-            except ValueError:
-                ids.append(i_clean)
-        return ids[:50]
+        return _parse_rag_document_ids(document_ids_str)
 
     def get(self, request):
         from extractor.rag import stream_query_rag

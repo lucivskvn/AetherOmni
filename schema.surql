@@ -164,9 +164,11 @@ DEFINE FIELD IF NOT EXISTS confidence       ON user_memories TYPE float DEFAULT 
 DEFINE FIELD IF NOT EXISTS embedding        ON user_memories TYPE array<float>;
 DEFINE FIELD IF NOT EXISTS last_accessed_at ON user_memories TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS created_at       ON user_memories TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS expires_at       ON user_memories TYPE option<datetime>;
 
 DEFINE INDEX IF NOT EXISTS idx_mem_user     ON user_memories FIELDS user_id;
 DEFINE INDEX IF NOT EXISTS idx_mem_cat      ON user_memories FIELDS category;
+DEFINE INDEX IF NOT EXISTS idx_mem_exp      ON user_memories FIELDS expires_at;
 DEFINE INDEX IF NOT EXISTS idx_mem_hnsw     ON user_memories FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
 
 
@@ -354,6 +356,7 @@ DEFINE FIELD IF NOT EXISTS distractor_rationales ON exam_item TYPE option<object
 DEFINE FIELD IF NOT EXISTS anchor_ids            ON exam_item TYPE array<string> DEFAULT [];
 DEFINE FIELD IF NOT EXISTS fsrs_stability        ON exam_item TYPE float DEFAULT 1.0;
 DEFINE FIELD IF NOT EXISTS fsrs_difficulty       ON exam_item TYPE float DEFAULT 5.0;
+DEFINE FIELD IF NOT EXISTS fsrs_reps             ON exam_item TYPE int   DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS fsrs_due_at           ON exam_item TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS created_at            ON exam_item TYPE datetime DEFAULT time::now();
 

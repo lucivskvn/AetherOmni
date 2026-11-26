@@ -35,25 +35,39 @@ from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME
 logger = logging.getLogger(__name__)
 document_task_name: ContextVar[str] = ContextVar("document_task_name", default="")
 
+# Canonical allowlist of writable documents fields; must match schema.surql.
+# create_document and _update_document_surreal both filter payloads through it.
 VALID_DOCUMENT_FIELDS = {
-    "title",
+    "doc_uuid",
+    "file",
+    "original_filename",
+    "file_hash",
     "status",
+    "error_message",
+    CLOUD_TASK_NAME,
+    CANCEL_REQUESTED,
+    "uploaded_by_id",
     "language",
     "author",
+    "title",
+    "document_type",
+    "page_count",
+    "raw_markdown",
+    "refined_markdown",
+    "yaml_metadata",
+    "qa_dataset",
+    "cost_usd",
+    "semantic_signature",
+    "retry_count",
+    "created_at",
+    "updated_at",
+    "expires_at",
+    "input_tokens",
+    "output_tokens",
     "publisher",
     "publication_year",
     "license_type",
     "doi",
-    "metadata_json",
-    "original_filename",
-    "file_hash",
-    "file_path",
-    "file_size",
-    "expires_at",
-    "created_at",
-    "updated_at",
-    "uuid",
-    "doc_uuid",
 }
 
 
@@ -524,12 +538,16 @@ async def _use_ns_db_if_needed(db, ns: str, db_name: str) -> None:
     _RPC_DB_NAME = db_name
 
 
+class _SurrealStatementError(RuntimeError):
+    """Deterministic SurrealDB statement/protocol error; retrying cannot succeed."""
+
+
 def _extract_statement_results(response: Any) -> list[dict]:
     if not isinstance(response, dict):
         return []
     rpc_error = response.get("error")
     if rpc_error is not None:
-        raise RuntimeError(f"SurrealDB RPC error: {rpc_error}")
+        raise _SurrealStatementError(f"SurrealDB RPC error: {rpc_error}")
     stmts = response.get("result")
     if not isinstance(stmts, list):
         return []
@@ -560,6 +578,10 @@ async def _async_run(sql: str, params: dict | None = None) -> list[dict]:
             # statements (RETURN values, COMMIT, RELATE rows) — which
             # broke transaction callers that parse statement results.
             return _extract_statement_results(await db.query_raw(sql, params))
+        except _SurrealStatementError:
+            # Semantic/protocol errors are deterministic — retrying the same
+            # statement cannot succeed and may double-apply ambiguous commits.
+            raise
         except Exception as exc:
             last_exc = exc
             # Drop the shared connection so the next attempt re-establishes a
@@ -738,37 +760,6 @@ def create_document(data: dict) -> dict:
             doc.save()
         return _model_to_dict(doc)
 
-    # Add definition for VALID_DOCUMENT_FIELDS if not present
-    VALID_DOCUMENT_FIELDS = {
-        "doc_uuid",
-        "file",
-        "original_filename",
-        "file_hash",
-        "status",
-        "uploaded_by_id",
-        "language",
-        "author",
-        "title",
-        "document_type",
-        "page_count",
-        "raw_markdown",
-        "refined_markdown",
-        "yaml_metadata",
-        "qa_dataset",
-        "cost_usd",
-        "semantic_signature",
-        "retry_count",
-        "created_at",
-        "updated_at",
-        "expires_at",
-        "input_tokens",
-        "output_tokens",
-        "publisher",
-        "publication_year",
-        "license_type",
-        "doi",
-    }
-
     payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
     # Cast datetime-typed fields from ISO-8601 strings to Python datetime objects so that
     # the SurrealDB driver serialises them as the SurrealDB `datetime` type rather than
@@ -917,39 +908,6 @@ def _update_document_offline(doc_uuid, data):
 
 
 def _update_document_surreal(doc_uuid, data):
-    VALID_DOCUMENT_FIELDS = {
-        "doc_uuid",
-        "file",
-        "original_filename",
-        "file_hash",
-        "status",
-        "error_message",
-        CLOUD_TASK_NAME,
-        CANCEL_REQUESTED,
-        "uploaded_by_id",
-        "language",
-        "author",
-        "title",
-        "document_type",
-        "page_count",
-        "raw_markdown",
-        "refined_markdown",
-        "yaml_metadata",
-        "qa_dataset",
-        "cost_usd",
-        "semantic_signature",
-        "retry_count",
-        "created_at",
-        "updated_at",
-        "expires_at",
-        "input_tokens",
-        "output_tokens",
-        "publisher",
-        "publication_year",
-        "license_type",
-        "doi",
-    }
-
     payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
     if not payload:
         return get_document(doc_uuid) or {}
@@ -1334,6 +1292,10 @@ def _offline_document_statuses(user_id: str | None, limit: int | None) -> list[d
             "author": doc.author,
             "language": doc.language,
             "document_type": doc.document_type,
+            "publisher": doc.publisher,
+            "publication_year": doc.publication_year,
+            "license_type": doc.license_type,
+            "doi": doc.doi,
             "page_count": doc.page_count,
             "cost_usd": float(doc.cost_usd),
             "input_tokens": doc.input_tokens,
@@ -1569,6 +1531,7 @@ def delete_document(doc_uuid: str) -> None:
         "DELETE FROM documents WHERE doc_uuid = $doc_uuid;"
         "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;"
         "DELETE FROM rag_cache WHERE $doc_uuid INSIDE sources;"
+        "DELETE FROM context_cache WHERE doc_uuid = $doc_uuid;"
     )
     _run(sql, {"doc_uuid": doc_uuid})
 
@@ -1598,11 +1561,13 @@ def _write_worker_chunks(doc_uuid: str, payloads: list[dict] | None = None) -> N
 
 def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     """
-    Atomically replace all chunks for a document using a SurrealDB transaction.
-    Deletes existing chunks first, then bulk-inserts new ones.
+    Replace all chunks for a document.
 
-    BUG-05 fix: Wrapped in BEGIN/COMMIT TRANSACTION so a failed batch insert
-    rolls back the preceding delete, preventing partial chunk corruption.
+    Existing chunks are deleted in a single transaction, then new chunks are
+    inserted in batches of 15 — each batch is its own transaction so a failed
+    batch does not roll back earlier batches (and the preceding delete is not
+    re-run). A mid-loop failure can therefore leave a partial chunk set; the
+    worker path fences on task identity instead.
     """
     doc_uuid = str(doc_uuid)
     from django.conf import settings
@@ -1886,15 +1851,11 @@ from extractor.surreal_exam import (  # noqa: F401
     save_exam_items,
     update_attempt_rating,
 )
-from extractor.surreal_kg import (  # noqa: F401
-    query_knowledge_graph,
-    relate_chunk_to_entity,
-    upsert_entity,
-)
 from extractor.surreal_memory import (  # noqa: F401
     add_user_memory,
     clear_user_memories,
     count_user_memories,
+    purge_expired_user_memories,
     search_user_memories,
 )
 from extractor.surreal_provenance import (  # noqa: F401
@@ -1904,6 +1865,7 @@ from extractor.surreal_provenance import (  # noqa: F401
     create_anchors_with_provenance,
     create_crystal_with_provenance,
     get_next_source_version,
+    list_active_gcs_sources,
     list_crystals_for_user,
     search_anchors_hybrid,
     tombstone_source,

@@ -151,8 +151,9 @@ def purge_all() -> None:
     """Delete all user-derived knowledge records, retaining financial and audit data.
 
     Covers the full derived corpus — documents, chunks, rag_cache, sources,
-    anchors, crystals, exam items/attempts, entity graph, context cache, and
-    user memories — while preserving monthly_spend_ledger,
+    anchors, crystals, exam items/attempts (including their tests and
+    attempted_on graph edges), entity graph, context cache, and user
+    memories — while preserving monthly_spend_ledger,
     document_spend_reconciliations, audit_logs, system_settings, and kv_cache
     (which carries spend/settings state required for budget accounting).
     """
@@ -177,7 +178,7 @@ def purge_all() -> None:
         "DELETE FROM documents; DELETE FROM chunks; DELETE FROM rag_cache; DELETE FROM user_memories; "
         "DELETE FROM source; DELETE FROM anchor; DELETE FROM anchored_in; "
         "DELETE FROM crystal; DELETE FROM grounded_in; "
-        "DELETE FROM exam_item; DELETE FROM attempt; "
+        "DELETE FROM exam_item; DELETE FROM attempt; DELETE FROM tests; DELETE FROM attempted_on; "
         "DELETE FROM entities; DELETE FROM chunk_references; DELETE FROM entity_relations; "
         "DELETE FROM context_cache;"
     )

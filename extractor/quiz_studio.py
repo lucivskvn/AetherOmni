@@ -257,6 +257,7 @@ def _build_evidence_card(anchor: dict[str, Any]) -> dict[str, Any]:
     return {
         "anchor_id": anchor.get("anchor_id"),
         "source_id": anchor.get("source_id"),
+        "anchor_status": anchor.get("status") or "active",
         "coord": compiler.format_anchor_coord(anchor),
         "quote": anchor.get("quote", ""),
         "card_type": "tombstone" if is_purged else "live_gcs",
