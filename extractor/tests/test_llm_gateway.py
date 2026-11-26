@@ -303,3 +303,54 @@ class LLMGatewayTestCase(TestCase):
 
         self.assertEqual(chunks, ["chunk"])
         mock_add_cost.assert_not_called()
+
+    @patch("extractor.llm_gateway.resolve_realtime_pricing", return_value=None)
+    def test_openrouter_cost_free_suffix_only(self, _mock_pricing):
+        """Only genuine OpenRouter free markers yield $0; 'free' substrings in paid
+        slugs must still bill so the monthly budget ledger stays honest."""
+        self.assertEqual(calculate_openrouter_cost("openrouter/free", 1000, 500), Decimal("0.0"))
+        self.assertEqual(calculate_openrouter_cost("vendor/model:free", 1000, 500), Decimal("0.0"))
+        self.assertGreater(calculate_openrouter_cost("vendor/freedom-70b", 1000, 500), Decimal("0"))
+
+    @patch("extractor.llm_gateway.get_vertex_client_for_location")
+    @patch("extractor.llm_gateway.VERTEX_REGION_FALLBACK_CHAIN", ["r1", "r2"])
+    def test_stream_vertex_chain_aborts_after_partial_yield(self, mock_client_for):
+        """A mid-stream region failure after yielding chunks must NOT fail over to
+        the next region — that would restart generation and duplicate content."""
+        from extractor.llm_gateway import _try_stream_vertex_fallback_chain
+
+        def flaky_stream():
+            yield MagicMock(text="partial ", usage_metadata=None)
+            raise RuntimeError("connection reset")
+
+        good_client = MagicMock()
+        good_client.models.generate_content_stream.return_value = iter(
+            [MagicMock(text="full response", usage_metadata=None)]
+        )
+        bad_client = MagicMock()
+        bad_client.models.generate_content_stream.return_value = flaky_stream()
+        mock_client_for.side_effect = [bad_client, good_client]
+
+        chunks = list(_try_stream_vertex_fallback_chain("gemini-2.5-flash", ["p"], MagicMock(), None))
+
+        self.assertEqual(chunks, ["partial "])
+        good_client.models.generate_content_stream.assert_not_called()
+
+    @patch("extractor.llm_gateway._try_stream_ai_studio")
+    @patch("extractor.llm_gateway._try_stream_vertex_fallback_chain")
+    def test_stream_direct_aborts_fallback_after_partial_vertex_yield(self, mock_vertex, mock_studio):
+        """If the Vertex chain already yielded chunks then failed, AI Studio must
+        not restart the response and duplicate content for the client."""
+        from extractor.llm_gateway import _stream_gemini_direct
+
+        def partial_then_fail(*_a, **_k):
+            yield "partial "
+            raise RuntimeError("stream dropped")
+
+        mock_vertex.side_effect = partial_then_fail
+        mock_studio.return_value = iter(["full response"])
+
+        chunks = list(_stream_gemini_direct("gemini-2.5-flash", "p", None, None))
+
+        self.assertEqual(chunks, ["partial "])
+        mock_studio.assert_not_called()
