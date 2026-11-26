@@ -374,7 +374,11 @@ def calculate_openrouter_cost(model_name: str, input_tokens: int, output_tokens:
     input_tokens = max(0, int(input_tokens))
     output_tokens = max(0, int(output_tokens))
 
-    if ":free" in model_name or "free" in model_name:
+    # OpenRouter marks free-tier models with a ":free" suffix or the "openrouter/free"
+    # router. A bare "free" substring must not zero out paid models whose slug
+    # happens to contain it, or spend would be under-recorded and the monthly
+    # budget check bypassed.
+    if model_name == "openrouter/free" or model_name.endswith(":free"):
         return Decimal("0.0")
 
     # Try resolving real-time pricing first
@@ -779,6 +783,29 @@ def _capture_stream_usage(usage_sink: dict | None, chunk: Any) -> None:
         usage_sink["usage"] = usage
 
 
+class _RegionStreamFailed(Exception):
+    """A region stream failed before emitting chunks; failing over is safe."""
+
+
+class _PartialStreamYielded(Exception):
+    """A stream failed after emitting chunks; failover would duplicate content."""
+
+
+def _stream_vertex_region(client: Any, model_name: str, contents: list[Any], config: Any, usage_sink: dict | None):
+    """Yield text chunks for a single Vertex region, classifying failures."""
+    emitted = False
+    try:
+        stream_resp = client.models.generate_content_stream(model=model_name, contents=contents, config=config)
+        for chunk in stream_resp:
+            _capture_stream_usage(usage_sink, chunk)
+            if chunk.text:
+                emitted = True
+                yield chunk.text
+    except Exception as e:
+        logger.warning("[Gateway Stream] Vertex AI streaming failed: %s.", e)
+        raise (_PartialStreamYielded() if emitted else _RegionStreamFailed()) from e
+
+
 def _try_stream_vertex_fallback_chain(
     model_name: str,
     contents: list[Any],
@@ -788,23 +815,22 @@ def _try_stream_vertex_fallback_chain(
     """Attempt streaming content across regional Vertex AI endpoints."""
     for region in VERTEX_REGION_FALLBACK_CHAIN:
         vertex_client = get_vertex_client_for_location(region)
-        if vertex_client:
-            try:
-                logger.info(
-                    "[Gateway Stream] Attempting streaming on Vertex AI in %s using model %s...",
-                    region,
-                    model_name,
-                )
-                stream_resp = vertex_client.models.generate_content_stream(
-                    model=model_name, contents=contents, config=config
-                )
-                for chunk in stream_resp:
-                    _capture_stream_usage(usage_sink, chunk)
-                    if chunk.text:
-                        yield chunk.text
-                return
-            except Exception as e:
-                logger.warning("[Gateway Stream] Vertex AI streaming in region %s failed: %s.", region, e)
+        if not vertex_client:
+            continue
+        try:
+            logger.info(
+                "[Gateway Stream] Attempting streaming on Vertex AI in %s using model %s...",
+                region,
+                model_name,
+            )
+            yield from _stream_vertex_region(vertex_client, model_name, contents, config, usage_sink)
+            return
+        except _RegionStreamFailed:
+            continue
+        except _PartialStreamYielded:
+            # Partial content was already sent to the client; trying the next
+            # region would restart generation and duplicate it.
+            return
 
 
 def _try_stream_ai_studio(
@@ -879,6 +905,10 @@ def _stream_gemini_direct(model_name: str, prompt: str, system_instruction: str 
             return
     except Exception as err:
         logger.warning("[Gateway Stream] Vertex streaming encountered error: %s", err)
+        if yielded_any:
+            # Partial content was already sent to the client; restarting with
+            # AI Studio would duplicate it. Abort the stream instead.
+            return
 
     # 2. Try AI Studio streaming
     try:
