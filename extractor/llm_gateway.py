@@ -232,16 +232,27 @@ def _parse_openrouter_pricing_response(data: dict) -> dict[str, dict[str, str]]:
     return pricing_map
 
 
+# Negative-cache window for failed pricing fetches. Without it every cost
+# calculation (including each embedding batch) would block on a fresh 5s
+# OpenRouter request whenever the endpoint is unreachable.
+_PRICING_FETCH_RETRY_AFTER = 300.0
+_pricing_fetch_failed_at = 0.0
+
+
 def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
     """
     Fetches real-time model pricing from OpenRouter API and caches it for 24 hours.
     Returns a dictionary mapping lowercased model IDs/names to prompt/completion Decimal rates per token.
     """
+    global _pricing_fetch_failed_at
     from django.core.cache import cache
 
     cached = _get_cached_realtime_pricing(cache)
     if cached:
         return cached
+
+    if time.time() - _pricing_fetch_failed_at < _PRICING_FETCH_RETRY_AFTER:
+        return None
 
     # SEC-05 fix: Fetch live pricing using httpx with explicit SSL verification
     try:
@@ -269,6 +280,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
             }
     except (httpx.HTTPError, httpx.InvalidURL, ValueError, TypeError, KeyError, OSError) as exc:
         logger.exception("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
+        _pricing_fetch_failed_at = time.time()
 
     return None
 
@@ -338,6 +350,48 @@ def usage_token_counts(usage: Any) -> tuple[int, int]:
     )
 
 
+# Embedding models are billed per input token but EmbedContentResponse carries
+# no usage_metadata, so spend is estimated from input size. Default rate covers
+# gemini-embedding-001 ($0.15/1M); text-embedding-004 is cheaper, so this errs
+# toward over-counting which is the safe direction for a budget cap.
+try:
+    _EMBEDDING_INPUT_COST_PER_1M = Decimal(os.getenv("GEMINI_EMBEDDING_COST_PER_1M", "0.15"))
+except Exception:
+    _EMBEDDING_INPUT_COST_PER_1M = Decimal("0.15")
+
+
+def _estimate_embedding_tokens(contents: Any) -> int:
+    """Rough token estimate (~4 chars/token) for embed_content inputs."""
+    texts = contents if isinstance(contents, list) else [contents]
+    total_chars = sum(len(str(t)) for t in texts if t)
+    return (total_chars + 3) // 4 if total_chars else 0
+
+
+def calculate_embedding_cost(model_name: str, input_tokens: int) -> Decimal:
+    """Cost for embedding calls: realtime pricing first, static per-1M fallback."""
+    input_tokens = max(0, int(input_tokens))
+    rt_pricing = resolve_realtime_pricing(model_name)
+    if rt_pricing:
+        prompt_rate, _completion_rate = rt_pricing
+        return Decimal(input_tokens) * prompt_rate
+    return Decimal(input_tokens) / Decimal(1000000) * _EMBEDDING_INPUT_COST_PER_1M
+
+
+def _record_embedding_spend(model_name: str, contents: Any) -> None:
+    """Ledger estimated embedding spend; never breaks the caller."""
+    try:
+        est_tokens = _estimate_embedding_tokens(contents)
+        if est_tokens <= 0:
+            return
+        from extractor.models import MonthlySpendLog
+
+        cost = calculate_embedding_cost(model_name, est_tokens)
+        if not MonthlySpendLog.add_cost(datetime.now(UTC), cost, in_tok=est_tokens, out_tok=0):
+            logger.warning("[Embed Gateway] Spend ledger write returned False.")
+    except Exception as exc:
+        logger.warning("[Embed Gateway] Failed to record embedding spend: %s", exc)
+
+
 def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int) -> Decimal:
     model_name = model_name.lower().strip()
     input_tokens = max(0, int(input_tokens))
@@ -349,7 +403,7 @@ def calculate_gemini_cost(model_name: str, input_tokens: int, output_tokens: int
         return (Decimal(input_tokens) * prompt_rate) + (Decimal(output_tokens) * completion_rate)
 
     if "embedding" in model_name or "embed" in model_name:
-        return Decimal("0.00")
+        return calculate_embedding_cost(model_name, input_tokens)
     if "lite" in model_name:
         in_rate = Decimal("0.25")
         out_rate = Decimal("1.50")
@@ -467,6 +521,11 @@ def _try_vertex_fallback_chain(model_name, contents, config):
                 cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
                 return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
             except Exception as e:
+                if is_quota_cap_error(e):
+                    # All fallback-chain regions share the same project quota;
+                    # further regions cannot succeed. Return None so the caller
+                    # can still try the independent AI Studio quota pool.
+                    return None
                 logger.warning("[Gateway] Vertex AI generation in region %s failed: %s.", region, e)
     return None
 
@@ -825,7 +884,11 @@ def _try_stream_vertex_fallback_chain(
             )
             yield from _stream_vertex_region(vertex_client, model_name, contents, config, usage_sink)
             return
-        except _RegionStreamFailed:
+        except _RegionStreamFailed as stream_err:
+            cause = stream_err.__cause__
+            if cause is not None and is_quota_cap_error(cause):
+                # All regions share the project quota; failover cannot succeed.
+                return
             continue
         except _PartialStreamYielded:
             # Partial content was already sent to the client; trying the next
@@ -982,6 +1045,27 @@ def extract_retry_delay(exception: Exception) -> float | None:
     return None
 
 
+# Non-transient quota/billing exhaustion: retrying or cascading models and
+# regions cannot help because they share the same project quota. Matched
+# separately from is_rate_limit_error so execute_with_backoff fails fast
+# instead of burning the task deadline on pointless sleeps.
+_QUOTA_CAP_TERMS = (
+    "per_day",
+    "daily quota",
+    "daily limit",
+    "billing",
+    "budget",
+    "spend cap",
+    "exceeded your current quota",
+)
+
+
+def is_quota_cap_error(exception: Exception) -> bool:
+    """True when the error signals exhausted daily/billing quota, not a transient rate limit."""
+    err_msg = str(exception).lower()
+    return any(term in err_msg for term in _QUOTA_CAP_TERMS)
+
+
 def is_rate_limit_error(exception: Exception) -> bool:
     """
     Check if an exception represents a rate limit / RESOURCE_EXHAUSTED / quota exceeded error.
@@ -1079,7 +1163,9 @@ def execute_embed_content_with_fallback(
         if vertex_client:
             try:
                 logger.info(f"[Embed Gateway] Fetching embeddings using Vertex AI in {region}...")
-                return execute_with_backoff(vertex_client.models.embed_content, model=model_name, contents=contents)
+                response = execute_with_backoff(vertex_client.models.embed_content, model=model_name, contents=contents)
+                _record_embedding_spend(model_name, contents)
+                return response
             except Exception as e:
                 logger.warning(f"[Embed Gateway] Vertex AI embedding in region {region} failed: {e}.")
 
@@ -1092,7 +1178,9 @@ def execute_embed_content_with_fallback(
         try:
             logger.info("[Embed Gateway] Fetching embeddings using AI Studio fallback...")
             client = genai.Client(api_key=api_key)
-            return execute_with_backoff(client.models.embed_content, model=model_name, contents=contents)
+            response = execute_with_backoff(client.models.embed_content, model=model_name, contents=contents)
+            _record_embedding_spend(model_name, contents)
+            return response
         except Exception as e:
             logger.warning(f"[Embed Gateway] AI Studio embedding failed: {e}.")
 
@@ -1109,6 +1197,10 @@ def execute_with_backoff(func: Any, *args: Any, max_retries: int = 5, initial_de
         try:
             return func(*args, **kwargs)
         except Exception as e:
+            if is_quota_cap_error(e):
+                # Daily/billing quota exhaustion is not transient; sleeping and
+                # retrying only burns the task deadline.
+                raise e
             is_rate_limit = is_rate_limit_error(e)
             if attempt == max_retries or not is_rate_limit:
                 raise e
@@ -1193,6 +1285,40 @@ def _prepare_vertex_contents(contents: list[Any], file_path_for_vertex: str | No
         return contents
 
 
+_VERTEX_NOT_FOUND_SIGNALS = ("not found", "not_found", "404", "does not have access", "not available in")
+
+
+def _attempt_vertex_model(
+    region_client: Any, region: str, attempt_model: str, vertex_contents: list[Any], config: Any
+) -> Any:
+    logger.info("[Gateway/Vertex] Trying model '%s' in region '%s'.", attempt_model, region)
+    response = execute_with_backoff(
+        region_client.models.generate_content,
+        model=attempt_model,
+        contents=vertex_contents,
+        config=config,
+    )
+    logger.info("[Gateway/Vertex] Success: model '%s' in region '%s'!", attempt_model, region)
+    return response
+
+
+def _log_vertex_model_failure(attempt_model: str, region: str, ve: Exception) -> None:
+    err_str = str(ve).lower()
+    if any(sig in err_str for sig in _VERTEX_NOT_FOUND_SIGNALS):
+        logger.warning(
+            "[Gateway/Vertex] Model '%s' not available in '%s' — trying next model.",
+            attempt_model,
+            region,
+        )
+    else:
+        logger.warning(
+            "[Gateway/Vertex] Model '%s' failed in '%s': %s — trying next model.",
+            attempt_model,
+            region,
+            ve,
+        )
+
+
 def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_contents: list[Any]) -> tuple[Any, str]:
     """
     Attempts generate_content across both model names AND Vertex AI regions.
@@ -1204,8 +1330,6 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
           - If NOT_FOUND / region-unavailable → try next region for that model.
           - Other errors (rate limit, quota) → try next model in same region.
     """
-    NOT_FOUND_SIGNALS = ("not found", "not_found", "404", "does not have access", "not available in")
-
     last_error: Exception | None = None
 
     for region in VERTEX_REGION_FALLBACK_CHAIN:
@@ -1216,35 +1340,16 @@ def _execute_vertex_fallback(fallback_list: list[str], config: Any, vertex_conte
 
         for attempt_model in fallback_list:
             try:
-                logger.info("[Gateway/Vertex] Trying model '%s' in region '%s'.", attempt_model, region)
-                response = execute_with_backoff(
-                    region_client.models.generate_content,
-                    model=attempt_model,
-                    contents=vertex_contents,
-                    config=config,
-                )
-                logger.info("[Gateway/Vertex] Success: model '%s' in region '%s'!", attempt_model, region)
-                return response, attempt_model
+                return _attempt_vertex_model(
+                    region_client, region, attempt_model, vertex_contents, config
+                ), attempt_model
             except Exception as ve:
-                err_str = str(ve).lower()
-                is_region_gap = any(sig in err_str for sig in NOT_FOUND_SIGNALS)
-                if is_region_gap:
-                    logger.warning(
-                        "[Gateway/Vertex] Model '%s' not available in '%s' — trying next model.",
-                        attempt_model,
-                        region,
-                    )
-                    last_error = ve
-                    continue
-                else:
-                    logger.warning(
-                        "[Gateway/Vertex] Model '%s' failed in '%s': %s — trying next model.",
-                        attempt_model,
-                        region,
-                        ve,
-                    )
-                    last_error = ve
-                    continue
+                if is_quota_cap_error(ve):
+                    # Every region/model shares the same project quota; stop the
+                    # cascade instead of burning task deadline on doomed calls.
+                    raise ve
+                _log_vertex_model_failure(attempt_model, region, ve)
+                last_error = ve
 
     raise last_error or RuntimeError("All Vertex AI regions and models exhausted.")
 
@@ -1888,11 +1993,8 @@ def generate_query_embedding(text: str) -> list[float]:
     if not clean:
         return []
     try:
-        client, _is_vertex = _init_ocr_client()
-        if client is None:
-            return []
-        resp = client.models.embed_content(
-            model=os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004"),
+        resp = execute_embed_content_with_fallback(
+            model_name=os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004"),
             contents=[clean[:4000]],
         )
         embeddings = getattr(resp, "embeddings", None) or []
