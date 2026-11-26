@@ -168,7 +168,17 @@ class SupabaseAuthBackend(ModelBackend):
             return super(SupabaseAuthBackend, self).authenticate(request, username, password, **kwargs)
 
         if not supabase_url or not supabase_key:
-            return _fallback_local_auth()
+            # Local password auth is a development/offline escape hatch only.
+            # A partially or fully unconfigured production deployment must
+            # fail closed: falling back to ModelBackend would bypass the IdP
+            # and leave Turnstile tokens unverified (they are only checked
+            # for presence, never validated, on the local path).
+            if getattr(settings, "DEBUG", False) or getattr(settings, "SURREALDB_OFFLINE", False):
+                return _fallback_local_auth()
+            logger.warning(
+                "[Auth] Supabase is not fully configured; refusing local password authentication in production."
+            )
+            return None
 
         if not is_email:
             # A configured Supabase deployment accepts email identities only.
