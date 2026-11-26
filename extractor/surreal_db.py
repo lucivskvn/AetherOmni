@@ -708,7 +708,7 @@ def create_document(data: dict) -> dict:
         if uid:
             try:
                 uploaded_by = user_model.objects.get(id=uid)
-            except user_model.DoesNotExist:
+            except user_model.DoesNotExist, TypeError, ValueError:
                 uploaded_by = None
 
         doc = SourceDocument.objects.create(
@@ -787,7 +787,7 @@ def _apply_user_update(doc, v, user_model):
     if v:
         try:
             doc.uploaded_by = user_model.objects.get(id=v)
-        except user_model.DoesNotExist:
+        except user_model.DoesNotExist, TypeError, ValueError:
             pass
     else:
         doc.uploaded_by = None
@@ -839,6 +839,20 @@ def _retry_sqlite_lock(operation):
     raise RuntimeError("unreachable")
 
 
+def _resolve_offline_owner_id(value, user_model):
+    """Return value when it names an existing user PK, else None.
+
+    Schema-less callers may pass non-numeric owner ids; an unguarded
+    .filter(id=value) would raise ValueError and abort the whole update.
+    """
+    if not value:
+        return None
+    try:
+        return value if user_model.objects.filter(id=value).exists() else None
+    except TypeError, ValueError:
+        return None
+
+
 def _offline_update_values(data, user_model):
     from extractor.models import SourceDocument
 
@@ -846,7 +860,7 @@ def _offline_update_values(data, user_model):
     values = {}
     for key, value in data.items():
         if key == "uploaded_by_id":
-            values[key] = value if value and user_model.objects.filter(id=value).exists() else None
+            values[key] = _resolve_offline_owner_id(value, user_model)
         elif key == "expires_at":
             from django.utils.dateparse import parse_datetime
 
@@ -1220,7 +1234,8 @@ def get_documents(doc_uuids: list[str]) -> list[dict]:
 
             docs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs))
             return [_model_to_dict(doc) for doc in docs]
-        except Exception:
+        except Exception as exc:
+            logger.debug("[SurrealDB] Offline get_documents lookup failed: %s", exc)
             return []
 
     sql = "SELECT * FROM documents WHERE doc_uuid IN $doc_uuids;"

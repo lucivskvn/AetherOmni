@@ -275,7 +275,10 @@ def _format_markdown_table_sheet(
     if not rows:
         return ""
     headers = rows[0]
-    sheet_md = [f"### Sheet: {sheet_title}\n"]
+    # Sheet names come from attacker-controlled workbook metadata; collapse
+    # whitespace so they cannot inject Markdown structure into headings.
+    safe_title = " ".join(str(sheet_title).split())
+    sheet_md = [f"### Sheet: {safe_title}\n"]
     sheet_md.append("| " + " | ".join([h.replace("|", "\\|") for h in headers]) + " |")
     sheet_md.append("| " + " | ".join(["---" for _ in headers]) + " |")
     for r in rows[1:]:
