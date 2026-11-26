@@ -886,7 +886,7 @@ def _try_stream_vertex_fallback_chain(
             return
         except _RegionStreamFailed as stream_err:
             cause = stream_err.__cause__
-            if cause is not None and is_quota_cap_error(cause):
+            if isinstance(cause, Exception) and is_quota_cap_error(cause):
                 # All regions share the project quota; failover cannot succeed.
                 return
             continue
