@@ -188,6 +188,12 @@ explicitly before applying them.
 - Keep `scripts/check_reliability_contracts.py` blocking in local and CI gates. It protects task ownership/cancellation, recovery-token lifetime, YAML export escaping, and dashboard polling lifecycle against regressions found by review tools.
 - Keep `scripts/check_security_boundaries.py` blocking in local gates. It asserts the Phase-0 trust boundaries documented in `docs/security-phase0.md` (least-privilege IAM, UBLA buckets, private worker, wss-only SurrealDB transport).
 
+#### Module organization conventions (extractor/)
+
+- `extractor/` uses filename prefixes as informal namespaces: `view_*` (Django views behind the `views.py` facade), `surreal_*` (SurrealDB satellites behind the `surreal_db.py` facade), `file_*`/`export_*` (file pipeline behind the `file_utils.py` facade). Place new modules under the matching prefix; promote to a real subpackage only when a prefix group gains its own tests and stable boundary.
+- Facade modules (`views.py`, `surreal_db.py`, `file_utils.py`) re-export satellite symbols so `mock.patch("extractor.<facade>.X")` keeps working. Satellites MUST resolve shared infrastructure through function-level `from extractor import <facade>` imports — top-level imports would create a cycle with the facade's bottom re-exports and silently break patch targets.
+- Return-value convention: `None` for scalar "not found"/failure lookups, empty collections for list/dict results, `bool` for fallible writes whose callers must observe failure (e.g. `MonthlySpendLog.add_cost`). Do not introduce new sentinel types without updating this rule.
+
 1. **Multi-Language Code Quality & Eco-Design**:
    - Python: Target Python 3.14+ across Docker, CI, local checks, and SonarQube, with `ruff` (target-version = py314, PEP 758 syntax), `mypy`, and `bandit`.
    - JavaScript: ESLint 10 with SonarQube JS conventions (`?.` optional chaining, global scope checks, complexity ≤ 15).
