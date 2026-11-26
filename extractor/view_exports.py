@@ -75,13 +75,13 @@ class ExportZipView(LoginRequiredMixin, View):
 
     def post(self, request):
 
-        if not _reserve_export_rate_limit(request):
-            messages.error(request, EXPORT_RATE_LIMIT_MSG)
-            return redirect("dashboard")
-
         document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:1000]
         if not document_ids:
             messages.error(request, "No documents selected for export.")
+            return redirect("dashboard")
+
+        if not _reserve_export_rate_limit(request):
+            messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
         try:
@@ -164,13 +164,13 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
 
     def post(self, request):
 
-        if not _reserve_export_rate_limit(request):
-            messages.error(request, EXPORT_RATE_LIMIT_MSG)
-            return redirect("dashboard")
-
         document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:1000]
         if not document_ids:
             messages.error(request, "No documents selected for SFT JSONL export.")
+            return redirect("dashboard")
+
+        if not _reserve_export_rate_limit(request):
+            messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
         try:
@@ -201,13 +201,13 @@ class ExportSqliteView(LoginRequiredMixin, View):
 
     def post(self, request):
 
-        if not _reserve_export_rate_limit(request):
-            messages.error(request, EXPORT_RATE_LIMIT_MSG)
-            return redirect("dashboard")
-
         document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:1000]
         if not document_ids:
             messages.error(request, "No documents selected for SQLite database export.")
+            return redirect("dashboard")
+
+        if not _reserve_export_rate_limit(request):
+            messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
         try:
@@ -238,13 +238,13 @@ class ExportCsvView(LoginRequiredMixin, View):
 
     def post(self, request):
 
-        if not _reserve_export_rate_limit(request):
-            messages.error(request, EXPORT_RATE_LIMIT_MSG)
-            return redirect("dashboard")
-
         document_ids = [d.strip() for d in request.POST.getlist("selected_documents") if d.strip()][:1000]
         if not document_ids:
             messages.error(request, "No documents selected for CSV export.")
+            return redirect("dashboard")
+
+        if not _reserve_export_rate_limit(request):
+            messages.error(request, EXPORT_RATE_LIMIT_MSG)
             return redirect("dashboard")
 
         try:
