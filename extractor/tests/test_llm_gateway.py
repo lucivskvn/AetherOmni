@@ -9,19 +9,32 @@ from extractor.llm_gateway import (
     GeminiProcessingError,
     UnifiedResponse,
     _call_openrouter,
+    _estimate_embedding_tokens,
     _parse_refinement_output,
+    calculate_embedding_cost,
     calculate_gemini_cost,
     calculate_openrouter_cost,
     check_budget_and_api_limit,
+    execute_embed_content_with_fallback,
+    execute_with_backoff,
     extract_retry_delay,
     fetch_realtime_model_pricing,
     generate_llm_stream_unified,
+    generate_query_embedding,
+    is_quota_cap_error,
     is_rate_limit_error,
 )
 
 
 class LLMGatewayTestCase(TestCase):
     """Verifies LLM Gateway helper methods, budget limits, and cost calculations."""
+
+    def setUp(self):
+        # The pricing-fetch negative-cache timestamp is module-global; reset it
+        # so each test observes a clean fetch backoff window.
+        import extractor.llm_gateway as llm_gateway
+
+        llm_gateway._pricing_fetch_failed_at = 0.0
 
     def test_unified_response_properties(self):
         resp = UnifiedResponse(
@@ -354,3 +367,68 @@ class LLMGatewayTestCase(TestCase):
 
         self.assertEqual(chunks, ["partial "])
         mock_studio.assert_not_called()
+
+    def test_is_quota_cap_error_detects_permanent_exhaustion(self):
+        self.assertTrue(is_quota_cap_error(Exception("Quota exceeded for metric: generate_requests_per_model_per_day")))
+        self.assertTrue(is_quota_cap_error(Exception("Your billing account is exhausted")))
+        self.assertTrue(is_quota_cap_error(Exception("Monthly budget limit reached")))
+        self.assertFalse(is_quota_cap_error(Exception("429 RESOURCE_EXHAUSTED: rate limit")))
+        self.assertFalse(is_quota_cap_error(Exception("quota")))
+
+    @patch("extractor.llm_gateway.time.sleep")
+    def test_execute_with_backoff_fails_fast_on_quota_cap(self, mock_sleep):
+        calls = []
+
+        def boom():
+            calls.append(1)
+            raise RuntimeError("Quota exceeded for metric: requests_per_day, limit: 100")
+
+        with self.assertRaises(RuntimeError):
+            execute_with_backoff(boom, max_retries=5, initial_delay=1)
+        self.assertEqual(len(calls), 1)
+        mock_sleep.assert_not_called()
+
+    def test_estimate_embedding_tokens(self):
+        self.assertEqual(_estimate_embedding_tokens(["a" * 400]), 100)
+        self.assertEqual(_estimate_embedding_tokens("abcd" * 10), 10)
+        self.assertEqual(_estimate_embedding_tokens([]), 0)
+        self.assertEqual(_estimate_embedding_tokens(["", None]), 0)
+
+    @patch("extractor.llm_gateway.resolve_realtime_pricing", return_value=None)
+    def test_calculate_embedding_cost_static_fallback(self, _mock_pricing):
+        # 1M estimated tokens at the default $0.15/1M rate.
+        cost = calculate_embedding_cost("text-embedding-004", 1_000_000)
+        self.assertEqual(cost, Decimal("0.15"))
+        self.assertEqual(calculate_embedding_cost("text-embedding-004", 0), Decimal("0"))
+
+    @patch("extractor.models.MonthlySpendLog.add_cost", return_value=True)
+    @patch("extractor.llm_gateway.get_vertex_client_for_location")
+    def test_execute_embed_content_records_estimated_spend(self, mock_client_for, mock_add_cost):
+        vertex_client = MagicMock()
+        vertex_client.models.embed_content.return_value = MagicMock(embeddings=[MagicMock(values=[0.1] * 768)])
+        mock_client_for.return_value = vertex_client
+
+        resp = execute_embed_content_with_fallback(model_name="text-embedding-004", contents=["x" * 400])
+
+        self.assertIsNotNone(resp)
+        mock_add_cost.assert_called_once()
+        _args, kwargs = mock_add_cost.call_args
+        self.assertEqual(kwargs["in_tok"], 100)
+        self.assertEqual(kwargs["out_tok"], 0)
+        self.assertGreater(_args[1], Decimal("0"))
+
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
+    def test_generate_query_embedding_uses_fallback_chain(self, mock_embed):
+        mock_embed.return_value = MagicMock(embeddings=[MagicMock(values=[0.5, 0.25])])
+
+        vec = generate_query_embedding("  what is the capital of France?  ")
+
+        self.assertEqual(vec, [0.5, 0.25])
+        mock_embed.assert_called_once()
+        _args, kwargs = mock_embed.call_args
+        self.assertEqual(kwargs["contents"], ["what is the capital of France?"])
+
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback", side_effect=RuntimeError("down"))
+    def test_generate_query_embedding_degrades_to_empty(self, _mock_embed):
+        self.assertEqual(generate_query_embedding("query"), [])
+        self.assertEqual(generate_query_embedding("   "), [])
