@@ -397,6 +397,14 @@ def _hydrate_source_from_uuid(uuid_str: str) -> dict[str, Any]:
     }
 
 
+def _rag_scope_key(allowed_uuids: list[str] | None) -> str:
+    """Digest of the resolved document scope so cached answers cannot leak across scopes."""
+    if allowed_uuids is None:
+        return "all"
+    digest = hashlib.sha256(",".join(sorted(str(u) for u in allowed_uuids)).encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
 def _lookup_semantic_cache(
     user_part: str,
     cache_key: str,
@@ -404,15 +412,17 @@ def _lookup_semantic_cache(
     user: Any,
     document_ids: list[int] | None,
     actor_id: str | None = None,
+    allowed_uuids: list[str] | None = None,
 ) -> dict[str, Any] | None:
     from extractor import surreal_db
 
+    if allowed_uuids is None:
+        allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
     try:
         sem_hits = surreal_db.search_rag_cache_hnsw(user_part, query_embedding, threshold=0.15)
         if sem_hits:
             hit = sem_hits[0]
             # Verify all cited source UUIDs are accessible to this user
-            allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
             hit_sources = hit.get("sources", [])
             if allowed_uuids is None or all(s in allowed_uuids for s in hit_sources):
                 logger.info("[Semantic Cache Hit] Distance <= 0.15 ($0.00 LLM cost)")
@@ -458,12 +468,13 @@ def _save_caches(
         logger.debug("[Semantic Cache] Failed to KV-cache result: %s", exc)
 
 
-def _lookup_kv_cache(cache_key, user, document_ids, surreal_db, actor_id: str | None = None):
+def _lookup_kv_cache(cache_key, user, document_ids, surreal_db, actor_id: str | None = None, allowed_uuids=None):
     try:
         cached_result = surreal_db.kv_cache_get(cache_key)
         if cached_result:
             # Enforce access control and filter boundaries on cached KV result
-            allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
+            if allowed_uuids is None:
+                allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
             cached_sources = [s.get("uuid") for s in cached_result.get("sources", [])]
             if allowed_uuids is None or all(s in allowed_uuids for s in cached_sources):
                 logger.info("[Cache Hit] KV cache hit for key '%s' ($0.00 LLM cost)", cache_key)
@@ -601,10 +612,16 @@ def query_semantic_knowledge_rag(
     query_cleaned = query.strip()
     query_hash = hashlib.sha256(query_cleaned.lower().encode("utf-8")).hexdigest()
     user_part = actor_id or (str(user.id) if (user and user.is_authenticated) else "guest")
-    cache_key = f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{user_part}:{query_hash}"
+    # Resolve the document scope once: the cache key must distinguish scoped
+    # from unscoped searches or a subset-scoped answer leaks into broader queries.
+    allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
+    scope_part = f"{user_part}:{_rag_scope_key(allowed_uuids)}"
+    cache_key = f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{scope_part}:{query_hash}"
 
     # ── 1. Exact-match KV cache lookup (SurrealDB) ────────────────────────────
-    cached_result = _lookup_kv_cache(cache_key, user, document_ids, surreal_db, actor_id=actor_id)
+    cached_result = _lookup_kv_cache(
+        cache_key, user, document_ids, surreal_db, actor_id=actor_id, allowed_uuids=allowed_uuids
+    )
     if cached_result:
         return cached_result
 
@@ -618,12 +635,13 @@ def query_semantic_knowledge_rag(
     user_memories_block = _fetch_user_memories_block(user, query_embedding, actor_id=actor_id)
 
     # ── 5. Semantic cache lookup (SurrealDB HNSW) ─────────────────────────────
-    cached_res = _lookup_semantic_cache(user_part, cache_key, query_embedding, user, document_ids, actor_id=actor_id)
+    cached_res = _lookup_semantic_cache(
+        scope_part, cache_key, query_embedding, user, document_ids, actor_id=actor_id, allowed_uuids=allowed_uuids
+    )
     if cached_res:
         return cached_res
 
     # ── 6. SurrealDB Hybrid Dense-Sparse RAG chunk search (HNSW + BM25 RRF) ───
-    allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
     _ensure_chunks_loaded(allowed_uuids)
 
     matching_chunks = _retrieve_matching_chunks(surreal_db, query_embedding, query_cleaned, allowed_uuids, top_k)
@@ -639,7 +657,7 @@ def query_semantic_knowledge_rag(
     result = {"answer": response.text, "sources": sources}
 
     # ── 9. Save to caches ─────────────────────────────────────────────────────
-    _save_caches(user_part, cache_key, query_cleaned, query_embedding, result)
+    _save_caches(scope_part, cache_key, query_cleaned, query_embedding, result)
 
     return result
 
@@ -757,10 +775,14 @@ def _stream_query_rag_events(
     query_cleaned = query.strip()
     query_hash = hashlib.sha256(query_cleaned.lower().encode("utf-8")).hexdigest()
     user_part = actor_id or (str(user.id) if (user and user.is_authenticated) else "guest")
-    cache_key = f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{user_part}:{query_hash}"
+    allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
+    scope_part = f"{user_part}:{_rag_scope_key(allowed_uuids)}"
+    cache_key = f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{scope_part}:{query_hash}"
 
     # 1. Exact-match KV cache lookup
-    cached_result = _lookup_kv_cache(cache_key, user, document_ids, surreal_db, actor_id=actor_id)
+    cached_result = _lookup_kv_cache(
+        cache_key, user, document_ids, surreal_db, actor_id=actor_id, allowed_uuids=allowed_uuids
+    )
     if cached_result:
         yield f"data: {json.dumps({'sources': cached_result.get('sources', [])})}\n\n"
         yield f"data: {json.dumps({'token': cached_result.get('answer', '')})}\n\n"
@@ -776,7 +798,7 @@ def _stream_query_rag_events(
 
     # 2. Semantic cache lookup
     cached_semantic = _lookup_semantic_cache(
-        user_part, cache_key, query_embedding, user, document_ids, actor_id=actor_id
+        scope_part, cache_key, query_embedding, user, document_ids, actor_id=actor_id, allowed_uuids=allowed_uuids
     )
     if cached_semantic:
         yield f"data: {json.dumps({'sources': cached_semantic.get('sources', [])})}\n\n"
@@ -785,7 +807,6 @@ def _stream_query_rag_events(
         return
 
     user_memories_block = _fetch_user_memories_block(user, query_embedding, actor_id=actor_id)
-    allowed_uuids = _get_allowed_doc_uuids(user, document_ids, actor_id=actor_id)
     _ensure_chunks_loaded(allowed_uuids)
 
     matching_chunks = _retrieve_matching_chunks(surreal_db, query_embedding, query_cleaned, allowed_uuids, top_k)
@@ -832,7 +853,7 @@ def _stream_query_rag_events(
         full_answer = "".join(accumulated_tokens)
         if full_answer:
             _save_caches(
-                user_part, cache_key, query_cleaned, query_embedding, {"answer": full_answer, "sources": sources}
+                scope_part, cache_key, query_cleaned, query_embedding, {"answer": full_answer, "sources": sources}
             )
     except Exception as stream_err:
         logger.warning("[Stream RAG] Error during response generation: %s", stream_err)
