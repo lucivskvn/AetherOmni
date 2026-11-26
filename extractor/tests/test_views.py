@@ -165,7 +165,7 @@ class ViewsTestCase(TestCase):
         self.assertEqual(UserMemory.objects.count(), 0)
         self.assertEqual(MonthlySpendLog.objects.count(), 0)
 
-    @patch("extractor.views.query_semantic_knowledge_rag")
+    @patch("extractor.view_rag.query_semantic_knowledge_rag")
     def test_document_rag_search_view_success(self, mock_rag):
         mock_rag.return_value = {"answer": "This is a mock search answer.", "sources": []}
         response = self.client.get(reverse("rag_search") + "?q=test-query")
@@ -182,7 +182,7 @@ class ViewsTestCase(TestCase):
         response = self.client.post(reverse("export_zip"))
         self.assertEqual(response.status_code, 302)
 
-    @patch("extractor.views.generate_curated_zip_bundle")
+    @patch("extractor.view_exports.generate_curated_zip_bundle")
     def test_export_zip_view_success(self, mock_zip):
         from django.core.cache import cache
 
@@ -197,7 +197,7 @@ class ViewsTestCase(TestCase):
         response = self.client.post(reverse("export_sft_jsonl"))
         self.assertEqual(response.status_code, 302)
 
-    @patch("extractor.views.generate_sft_jsonl_bundle")
+    @patch("extractor.view_exports.generate_sft_jsonl_bundle")
     def test_export_sft_jsonl_success(self, mock_jsonl):
         from django.core.cache import cache
 
@@ -208,7 +208,7 @@ class ViewsTestCase(TestCase):
         self.assertEqual(response["Content-Type"], "application/x-jsonlines")
         self.assertIn(b'{"prompt": "Q"', response.content)
 
-    @patch("extractor.views.generate_sft_dataset_pairs")
+    @patch("extractor.view_exports.generate_sft_dataset_pairs")
     def test_sft_dataset_preview_success(self, mock_pairs):
         mock_pairs.return_value = [
             {"prompt": "Test Question", "completion": "Test Answer", "metadata": {"page_number": 1}}
@@ -220,7 +220,7 @@ class ViewsTestCase(TestCase):
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["pairs"][0]["prompt"], "Test Question")
 
-    @patch("extractor.views.generate_sft_dataset_pairs")
+    @patch("extractor.view_exports.generate_sft_dataset_pairs")
     def test_sft_dataset_preview_error(self, mock_pairs):
         mock_pairs.side_effect = ValueError("Document chunk not found")
         response = self.client.get(reverse("sft_dataset_preview", args=[self.doc.uuid]))
@@ -250,7 +250,7 @@ class ViewsTestCase(TestCase):
         response = self.client.post(reverse("upload_document"))
         self.assertEqual(response.status_code, 302)
 
-    @patch("extractor.views.calculate_file_sha256")
+    @patch("extractor.view_upload.calculate_file_sha256")
     @patch("extractor.cloud_tasks.enqueue")
     def test_upload_view_post_success(self, mock_enqueue, mock_sha256):
         mock_sha256.return_value = "mock-hash-fresh-upload"
@@ -265,7 +265,7 @@ class ViewsTestCase(TestCase):
             self.assertEqual(new_doc.status, "PENDING")
             mock_enqueue.assert_called_once_with("process_document", {"document_id": new_doc.id})
 
-    @patch("extractor.views.calculate_file_sha256")
+    @patch("extractor.view_upload.calculate_file_sha256")
     @patch("extractor.surreal_db.clone_chunks")
     @patch("extractor.cloud_tasks.enqueue")
     def test_upload_view_post_does_not_clone_an_unowned_duplicate(self, mock_enqueue, mock_clone_chunks, mock_sha256):
@@ -1105,7 +1105,7 @@ class StableSupabaseIdentityTestCase(TestCase):
             _parse_surreal_audit_details({"metadata": '{"details": "Serialized event"}'}), "Serialized event"
         )
 
-    @patch("extractor.views._build_users_map")
+    @patch("extractor.view_common._build_users_map")
     @patch("extractor.surreal_db._run")
     @patch("extractor.surreal_db._first_result")
     @patch("extractor.surreal_db.get_document")
@@ -1825,7 +1825,7 @@ class BulkDocumentActionTestCase(TestCase):
         # Verify they are deleted from DB
         self.assertEqual(SourceDocument.objects.filter(id__in=[self.doc1.id, self.doc2.id]).count(), 0)
 
-    @patch("extractor.views._delete_single_document", side_effect=[RuntimeError("storage unavailable"), None])
+    @patch("extractor.view_documents._delete_single_document", side_effect=[RuntimeError("storage unavailable"), None])
     def test_bulk_delete_continues_after_individual_failure(self, mock_delete):
         self.client.force_login(self.user)
 
@@ -1913,7 +1913,7 @@ class CoreDesignHardeningTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(hasattr(SystemSettings.get_settings(), "openrouter_api_key"))
 
-    @patch("extractor.views.query_semantic_knowledge_rag")
+    @patch("extractor.view_rag.query_semantic_knowledge_rag")
     def test_document_rag_search_view_with_document_ids(self, mock_rag):
         mock_rag.return_value = {"answer": "this is filtered answer", "sources": []}
         response = self.client.get(reverse("rag_search") + "?q=filtered-query&document_ids=5,12")
@@ -1922,7 +1922,7 @@ class CoreDesignHardeningTests(TestCase):
             "filtered-query", document_ids=[5, 12], top_k=5, user=self.user, actor_id=str(self.user.id)
         )
 
-    @patch("extractor.views.query_semantic_knowledge_rag")
+    @patch("extractor.view_rag.query_semantic_knowledge_rag")
     def test_document_rag_search_view_bounds_query_and_document_ids(self, mock_rag):
         mock_rag.return_value = {"answer": "bounded", "sources": []}
         many_ids = ",".join(str(i) for i in range(200))
@@ -2455,7 +2455,7 @@ class ViewsExceptionPathsTestCase(TestCase):
         data = response.json()
         self.assertIn("Cannot cancel document in terminal state", data.get("error", ""))
 
-    @patch("extractor.views.broadcast_status_change")
+    @patch("extractor.view_documents.broadcast_status_change")
     def test_document_cancel_inflight_success(self, mock_broadcast):
         """Verify DocumentCancelView cancels an in-flight extracting document."""
         user = User.objects.create_user(username="cancel_inflight_tester", password="Password123!")

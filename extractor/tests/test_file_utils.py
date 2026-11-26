@@ -50,7 +50,7 @@ class FileUtilsTestCase(TestCase):
     def test_yaml_frontmatter_escapes_line_breaks(self):
         self.assertEqual(file_utils._escape_yaml_val("A\r\nB"), r"A\r\nB")
 
-    @patch("extractor.file_utils.slugify")
+    @patch("extractor.export_generators.slugify")
     def test_process_zip_doc(self, mock_slugify):
         mock_slugify.side_effect = lambda x, **k: x.lower()
         seen_lang_paths = set()
@@ -124,7 +124,7 @@ class FileUtilsTestCase(TestCase):
         request.META = {}
         self.assertEqual(file_utils.get_client_ip(request), "127.0.0.1")
 
-    @patch("extractor.file_utils.slugify")
+    @patch("extractor.export_generators.slugify")
     @patch("extractor.models.SourceDocument.objects.filter")
     def test_generate_curated_zip_bundle(self, mock_filter, mock_slugify):
         mock_slugify.side_effect = lambda x, **k: x.lower()
@@ -381,7 +381,7 @@ class FileUtilsTestCase(TestCase):
 
         conn.close()
 
-    @patch("extractor.file_utils._get_doc_chunks")
+    @patch("extractor.export_generators._get_doc_chunks")
     def test_insert_sqlite_chunks_flushes_bounded_batches(self, get_doc_chunks):
         import sqlite3
 
@@ -422,7 +422,7 @@ class FileUtilsTestCase(TestCase):
         self.assertEqual(parsed.get("path"), "C:\\data\\documents")
 
     @override_settings(SURREALDB_OFFLINE=True)
-    @patch("extractor.file_utils._get_offline_docs")
+    @patch("extractor.export_generators._get_offline_docs")
     def test_export_max_documents_limit_enforced(self, mock_get_docs):
         dummy_docs = [MagicMock(cost_usd=0.0, page_count=1) for _ in range(1001)]
         mock_get_docs.return_value = dummy_docs
@@ -444,7 +444,7 @@ class FileUtilsTestCase(TestCase):
         self.assertIn("Export batch exceeds maximum document limit of 1000 items.", str(ctx.exception))
 
     @override_settings(SURREALDB_OFFLINE=True)
-    @patch("extractor.file_utils._get_offline_docs")
+    @patch("extractor.export_generators._get_offline_docs")
     def test_export_total_content_byte_budget_enforced(self, mock_get_docs):
         """Cumulative uncompressed content must stay under the memory budget."""
         big_doc = MagicMock(cost_usd=0.0, page_count=1)
@@ -454,14 +454,14 @@ class FileUtilsTestCase(TestCase):
         mock_get_docs.return_value = [big_doc]
 
         with (
-            patch.object(file_utils, "EXPORT_MAX_TOTAL_CONTENT_BYTES", 1024),
+            patch("extractor.export_generators.EXPORT_MAX_TOTAL_CONTENT_BYTES", 1024),
             self.assertRaises(ValueError) as ctx,
         ):
             file_utils.generate_curated_zip_bundle(["doc"])
         self.assertIn("maximum total content size", str(ctx.exception))
 
         with (
-            patch.object(file_utils, "EXPORT_MAX_TOTAL_CONTENT_BYTES", 1024),
+            patch("extractor.export_generators.EXPORT_MAX_TOTAL_CONTENT_BYTES", 1024),
             self.assertRaises(ValueError),
         ):
             file_utils.generate_curated_sqlite_bundle(["doc"])
@@ -478,7 +478,7 @@ class FileUtilsTestCase(TestCase):
             tmp_path = tmp.name
         try:
             with (
-                patch.object(file_utils, "_LOCAL_MAX_MARKDOWN_BYTES", 10_000),
+                patch("extractor.file_ingest._LOCAL_MAX_MARKDOWN_BYTES", 10_000),
                 self.assertRaises(ValueError),
             ):
                 file_utils.process_csv_local(tmp_path)

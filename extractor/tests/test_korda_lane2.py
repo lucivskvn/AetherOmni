@@ -159,7 +159,7 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
 
         from django.test import RequestFactory
 
-        from extractor import views
+        from extractor import view_common, views
 
         rf = RequestFactory()
         req = rf.post(
@@ -168,13 +168,13 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
             content_type="application/json",
         )
         req.user = SimpleNamespace(is_authenticated=True, id=1, username="u1")
-        with patch.object(views, "_is_budget_exceeded", return_value=True):
+        with patch.object(view_common, "_is_budget_exceeded", return_value=True):
             resp = views.QuizGenerateAPIView.as_view()(req)
         self.assertEqual(resp.status_code, 402)
 
         with (
-            patch.object(views, "_is_budget_exceeded", return_value=False),
-            patch.object(views, "_enforce_distributed_rate_limit", return_value=False),
+            patch.object(view_common, "_is_budget_exceeded", return_value=False),
+            patch.object(view_common, "_enforce_distributed_rate_limit", return_value=False),
         ):
             resp2 = views.QuizGenerateAPIView.as_view()(req)
         self.assertEqual(resp2.status_code, 429)
@@ -185,7 +185,7 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
 
         from django.test import RequestFactory
 
-        from extractor import views
+        from extractor import view_common, views
 
         rf = RequestFactory()
         user = SimpleNamespace(is_authenticated=True, id=1, username="u1")
@@ -197,8 +197,8 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
         )
         bad_req.user = user
         with (
-            patch.object(views, "_is_budget_exceeded", return_value=False),
-            patch.object(views, "_enforce_distributed_rate_limit", return_value=True),
+            patch.object(view_common, "_is_budget_exceeded", return_value=False),
+            patch.object(view_common, "_enforce_distributed_rate_limit", return_value=True),
         ):
             bad_resp = views.QuizGenerateAPIView.as_view()(bad_req)
         self.assertEqual(bad_resp.status_code, 400)
@@ -210,8 +210,8 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
         )
         unavail_req.user = user
         with (
-            patch.object(views, "_is_budget_exceeded", return_value=False),
-            patch.object(views, "_enforce_distributed_rate_limit", return_value=True),
+            patch.object(view_common, "_is_budget_exceeded", return_value=False),
+            patch.object(view_common, "_enforce_distributed_rate_limit", return_value=True),
             patch("extractor.quiz_studio.generate_and_persist_quiz", side_effect=ValueError("Vertex unavailable")),
         ):
             unavail_resp = views.QuizGenerateAPIView.as_view()(unavail_req)
@@ -223,7 +223,7 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
 
         from django.test import RequestFactory, override_settings
 
-        from extractor import surreal_db, views
+        from extractor import surreal_db, view_common, views
 
         surreal_db._test_korda_exam_items.clear()
         rf = RequestFactory()
@@ -252,7 +252,7 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
                 content_type="application/json",
             )
             req.user = user
-            with patch.object(views, "_enforce_distributed_rate_limit", return_value=True):
+            with patch.object(view_common, "_enforce_distributed_rate_limit", return_value=True):
                 resp = views.QuizSubmitAPIView.as_view()(req)
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
@@ -265,7 +265,7 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
 
         from django.test import RequestFactory, override_settings
 
-        from extractor import surreal_db, views
+        from extractor import surreal_db, view_common, views
 
         surreal_db._test_korda_exam_items.clear()
         surreal_db._test_korda_attempts.clear()
@@ -289,7 +289,7 @@ class KordaLane2QuizStudioTests(SimpleTestCase):
                     }
                 ],
             )
-            with patch.object(views, "_enforce_distributed_rate_limit", return_value=True):
+            with patch.object(view_common, "_enforce_distributed_rate_limit", return_value=True):
                 req1 = rf.post(
                     "/api/v1/quiz/submit/",
                     data=json.dumps(

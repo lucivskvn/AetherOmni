@@ -152,8 +152,31 @@ def main() -> int:
     try:
         settings = _read("core/settings.py")
         surreal = _read("extractor/surreal_db.py")
-        exports = _read("extractor/file_utils.py")
-        views = _read("extractor/views.py")
+        exports = "\n".join(
+            _read(path)
+            for path in (
+                "extractor/file_utils.py",
+                "extractor/file_ingest.py",
+                "extractor/file_markup.py",
+                "extractor/export_generators.py",
+            )
+        )
+        views = "\n".join(
+            _read(path)
+            for path in (
+                "extractor/views.py",
+                "extractor/view_common.py",
+                "extractor/view_dashboard.py",
+                "extractor/view_upload.py",
+                "extractor/view_documents.py",
+                "extractor/view_exports.py",
+                "extractor/view_rag.py",
+                "extractor/view_admin.py",
+                "extractor/view_auth.py",
+                "extractor/view_quiz.py",
+                "extractor/view_misc.py",
+            )
+        )
         dashboard = _read("static/js/main.js")
         login = _read("extractor/templates/extractor/login.html")
         recovery = _read("extractor/templates/extractor/reset_password_confirm.html")
