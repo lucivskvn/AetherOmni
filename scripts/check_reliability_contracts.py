@@ -286,8 +286,12 @@ def main() -> int:
     )
     migrator = _read("scripts/migrate_surreal_namespace.py")
     schema_tables = set(re.findall(r"DEFINE TABLE IF NOT EXISTS (\w+)", surreal_schema))
-    table_list_section = migrator.partition("TABLES_TO_MIGRATE")[2]
-    listed_tables = set(re.findall(r'^\s+"(\w+)",\s*$', table_list_section.split("]")[0], re.M)) if table_list_section else set()
+    _, marker, table_list_section = migrator.partition("TABLES_TO_MIGRATE")
+    if not marker:
+        errors.append("Namespace migration table list marker TABLES_TO_MIGRATE is missing.")
+        listed_tables: set[str] = set()
+    else:
+        listed_tables = set(re.findall(r'^\s+"(\w+)",\s*$', table_list_section.split("]")[0], re.M))
     if schema_tables != listed_tables:
         errors.append(
             "Namespace migration table list must cover every schema.surql table "
