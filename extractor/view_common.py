@@ -392,9 +392,7 @@ def _get_authorized_wrapped_doc(request, doc_uuid, allow_unowned: bool = False):
     # user (e.g. another tenant's Supabase subject), which would otherwise
     # make allow_unowned=True grant access to every other user's document.
     is_unowned = not raw_doc.get("uploaded_by_id")
-    is_authorized = (
-        request.user.is_staff or request.user.is_superuser or (allow_unowned and is_unowned) or is_owner
-    )
+    is_authorized = request.user.is_staff or request.user.is_superuser or (allow_unowned and is_unowned) or is_owner
     return raw_doc, doc, is_authorized, users_map
 
 
@@ -402,6 +400,7 @@ ERR_INVALID_JSON_PAYLOAD = "Invalid JSON payload."
 
 ERR_SERVICE_UNAVAILABLE = "Service temporarily unavailable."
 ERR_RATE_LIMIT = "Rate limit exceeded."
+ERR_BUDGET_EXCEEDED = "Monthly spend budget exceeded."
 
 MAX_JSON_BODY_BYTES = 1024 * 1024
 

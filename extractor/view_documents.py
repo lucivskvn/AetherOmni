@@ -689,7 +689,7 @@ class BulkDocumentActionView(LoginRequiredMixin, View):
         if action == "restart":
             actor_id = view_common.get_request_actor_id(request)
             if view_common._is_budget_exceeded(request.user, actor_id):
-                messages.error(request, "Monthly spend budget exceeded.")
+                messages.error(request, view_common.ERR_BUDGET_EXCEEDED)
                 return redirect("dashboard")
             rl_key = f"bulk_restart:{actor_id}"
             if not view_common._enforce_distributed_rate_limit(rl_key, rl_key, max_requests=5, window_seconds=300):
@@ -767,8 +767,8 @@ class DocumentRetryView(LoginRequiredMixin, View):
         actor_id = view_common.get_request_actor_id(request)
         if view_common._is_budget_exceeded(request.user, actor_id):
             if is_ajax:
-                return JsonResponse({"error": "Monthly spend budget exceeded."}, status=402)
-            messages.error(request, "Monthly spend budget exceeded.")
+                return JsonResponse({"error": view_common.ERR_BUDGET_EXCEEDED}, status=402)
+            messages.error(request, view_common.ERR_BUDGET_EXCEEDED)
             return redirect("dashboard")
         rl_key = f"doc_retry:{actor_id}"
         if not view_common._enforce_distributed_rate_limit(rl_key, rl_key, max_requests=10, window_seconds=300):
