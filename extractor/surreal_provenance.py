@@ -121,25 +121,32 @@ def upsert_source(
     return row if isinstance(row, dict) else {"source_id": source_id}
 
 
+def _resolve_anchor_id(source_id: str, ver: int, idx: int, raw: Any, seen_ids: set[str]) -> str:
+    """Return a globally unique, record-id-safe anchor id for this batch slot.
+
+    anchor_id doubles as the SurrealDB record id and the lookup key used by
+    crystals/exam items. Model-supplied ids are namespaced under this source;
+    anything unsafe or duplicated within the batch falls back to the
+    deterministic default.
+    """
+    raw_aid = str(raw or "").strip()[:200]
+    if raw_aid and not raw_aid.startswith(f"{source_id}:"):
+        raw_aid = f"{source_id}:{raw_aid}"
+    aid = raw_aid if raw_aid and _ANCHOR_ID_SAFE_RE.fullmatch(raw_aid) else ""
+    if not aid or aid in seen_ids:
+        aid = f"{source_id}:v{ver}:{idx}"
+    seen_ids.add(aid)
+    return aid
+
+
 def _build_anchor_payloads(source_id: str, ver: int, anchors: list[dict[str, Any]]) -> list[dict[str, Any]]:
     payload_anchors = []
     seen_ids: set[str] = set()
     for idx, anc in enumerate(anchors):
         item: dict[str, Any] = {
+            "anchor_id": _resolve_anchor_id(source_id, ver, idx, anc.get("anchor_id"), seen_ids),
             "quote": str(anc.get("quote") or ""),
         }
-        # anchor_id doubles as the SurrealDB record id and the lookup key used by
-        # crystals/exam items, so it must be globally unique and record-id safe.
-        # Model-supplied ids are namespaced under this source; anything unsafe or
-        # duplicated within the batch falls back to the deterministic default.
-        raw_aid = str(anc.get("anchor_id") or "").strip()[:200]
-        if raw_aid and not raw_aid.startswith(f"{source_id}:"):
-            raw_aid = f"{source_id}:{raw_aid}"
-        aid = raw_aid if raw_aid and _ANCHOR_ID_SAFE_RE.fullmatch(raw_aid) else ""
-        if not aid or aid in seen_ids:
-            aid = f"{source_id}:v{ver}:{idx}"
-        seen_ids.add(aid)
-        item["anchor_id"] = aid
         for opt_key in ("page_num", "section_" + "heading", "start_sec", "end_sec", "figure_id", "embedding"):
             if anc.get(opt_key) is not None:
                 item[opt_key] = anc[opt_key]
