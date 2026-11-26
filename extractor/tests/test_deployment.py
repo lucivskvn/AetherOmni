@@ -55,7 +55,11 @@ class DeploymentFunctionsTestCase(TestCase):
         mock_resp_region.read.return_value = b"projects/123/regions/us-west2"
         mock_resp_region.__enter__.return_value = mock_resp_region
 
-        mock_urlopen.side_effect = [mock_resp_project, mock_resp_region]
+        mock_resp_number = MagicMock()
+        mock_resp_number.read.return_value = b"12345"
+        mock_resp_number.__enter__.return_value = mock_resp_number
+
+        mock_urlopen.side_effect = [mock_resp_project, mock_resp_region, mock_resp_number]
 
         details = get_gcp_project_details()
         self.assertEqual(details["project_id"], "metadata-project")
@@ -68,7 +72,7 @@ class DeploymentFunctionsTestCase(TestCase):
         # Env vars don't exist, metadata server fails, gcloud fails
         mock_getenv.side_effect = lambda key, default=None: default
         mock_subproc.return_value = MagicMock(stdout="", returncode=1)
-        mock_urlopen.side_effect = Exception("Metadata server offline")
+        mock_urlopen.side_effect = OSError("Metadata server offline")
 
         details = get_gcp_project_details()
         self.assertIsNone(details["project_id"])
