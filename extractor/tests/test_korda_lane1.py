@@ -229,7 +229,7 @@ class KordaLane1Tests(TestCase):
 
         from django.test import RequestFactory, override_settings
 
-        from extractor import surreal_db, views
+        from extractor import surreal_db, view_common, views
 
         surreal_db._test_korda_sources.clear()
         surreal_db._test_korda_anchors.clear()
@@ -253,7 +253,7 @@ class KordaLane1Tests(TestCase):
                 owner_id="42",
                 anchors=[{"anchor_id": "a1", "quote": "Zero-copy GCS URI extraction", "page_num": 2}],
             )
-            with patch.object(views, "_enforce_distributed_rate_limit", return_value=True):
+            with patch.object(view_common, "_enforce_distributed_rate_limit", return_value=True):
                 req_lib = rf.post(
                     "/api/v1/librarian/",
                     data=json.dumps({"query": "Zero-copy GCS"}),

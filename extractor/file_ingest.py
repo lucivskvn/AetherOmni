@@ -21,6 +21,7 @@ import hashlib
 import json
 import logging
 import zipfile
+from typing import IO, Any
 
 logger = logging.getLogger(__name__)
 

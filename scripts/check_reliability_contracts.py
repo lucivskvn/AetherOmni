@@ -161,7 +161,22 @@ def main() -> int:
                 "extractor/export_generators.py",
             )
         )
-        views = _read("extractor/views.py")
+        views = "\n".join(
+            _read(path)
+            for path in (
+                "extractor/views.py",
+                "extractor/view_common.py",
+                "extractor/view_dashboard.py",
+                "extractor/view_upload.py",
+                "extractor/view_documents.py",
+                "extractor/view_exports.py",
+                "extractor/view_rag.py",
+                "extractor/view_admin.py",
+                "extractor/view_auth.py",
+                "extractor/view_quiz.py",
+                "extractor/view_misc.py",
+            )
+        )
         dashboard = _read("static/js/main.js")
         login = _read("extractor/templates/extractor/login.html")
         recovery = _read("extractor/templates/extractor/reset_password_confirm.html")

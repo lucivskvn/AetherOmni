@@ -110,6 +110,7 @@ ignore = [
 "core/settings.py" = ["S105", "S106"]
 "scripts/init_surreal.py" = ["S105", "S106"]
 "extractor/views.py" = ["S105"]  # S105 triggers on TEMPLATE_FORGOT_PASSWORD template path constant
+"extractor/view_auth.py" = ["S105"]  # TEMPLATE_FORGOT_PASSWORD moved here from views.py
 
 
 [tool.ruff.lint.mccabe]

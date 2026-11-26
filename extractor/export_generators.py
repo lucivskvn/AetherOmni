@@ -189,7 +189,7 @@ def _get_offline_docs(document_ids, user):
 
 
 def _surreal_doc_to_export(raw_doc, user, actor_id: str | None, users_map):
-    from extractor.views import _wrap_surreal_doc
+    from extractor.view_common import _wrap_surreal_doc
 
     if not raw_doc or raw_doc.get("status") != "COMPLETED":
         return None
@@ -206,7 +206,7 @@ def _surreal_doc_to_export(raw_doc, user, actor_id: str | None, users_map):
 
 def _get_surreal_docs(document_ids, user, actor_id: str | None = None):
     from extractor import surreal_db
-    from extractor.views import _build_users_map
+    from extractor.view_common import _build_users_map
 
     docs_list = []
     raw_docs = surreal_db.get_documents(document_ids)
