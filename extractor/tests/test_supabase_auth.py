@@ -68,6 +68,24 @@ class SupabaseAuthBackendSecurityTests(TestCase):
 
         self.assertEqual(authenticated.pk, self.user.pk)
 
+    @override_settings(
+        SUPABASE_URL="https://project.supabase.co",
+        SUPABASE_PUBLIC_KEY="",
+        DEBUG=False,
+        SURREALDB_OFFLINE=False,
+    )
+    def test_partial_supabase_config_fails_closed_in_production(self):
+        """A half-configured Supabase deployment must not silently enable local password auth."""
+        authenticated = SupabaseAuthBackend().authenticate(None, username=self.user.username, password=self.password)
+
+        self.assertIsNone(authenticated)
+
+    @override_settings(SUPABASE_URL="", SUPABASE_PUBLIC_KEY="", DEBUG=False, SURREALDB_OFFLINE=False)
+    def test_unconfigured_supabase_fails_closed_in_production(self):
+        authenticated = SupabaseAuthBackend().authenticate(None, username=self.user.username, password=self.password)
+
+        self.assertIsNone(authenticated)
+
     def test_emailless_supabase_identity_fails_closed(self):
         """Account sync must reject identities with no usable email instead of crashing on None."""
         from extractor.auth import _sync_supabase_user

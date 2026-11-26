@@ -170,18 +170,6 @@ def _create_local_superuser_full(admin_email, admin_password):
         user.set_password(admin_password)
         user.save()
         logger.info("Local Django superuser created successfully.")
-        if admin_password == "admin":  # nosec B105
-            from core.middleware import ForcePasswordChangeMiddleware
-
-            try:
-                import bcrypt
-
-                logger.info("Enforcing credential update flag for initial administrator account.")
-                ForcePasswordChangeMiddleware.set_force_reset_flag(
-                    user.id, bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
-                )
-            except ImportError:
-                logger.debug("Bcrypt module unavailable for credential update flag.")
     else:
         if not user.is_staff or not user.is_superuser:
             user.is_staff = True
