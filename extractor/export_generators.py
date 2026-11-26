@@ -363,7 +363,7 @@ def _build_sft_pair(
     }
 
 
-def _get_doc_chunks(doc: Any, doc_uuid: str, limit: int) -> list[dict[str, Any]]:
+def _get_doc_chunks(doc: Any, doc_uuid: str, limit: int, start: int = 0) -> list[dict[str, Any]]:
 
     from extractor import surreal_db
 
@@ -381,13 +381,13 @@ def _get_doc_chunks(doc: Any, doc_uuid: str, limit: int) -> list[dict[str, Any]]
 
         lang = str(getattr(doc, "language", None) or "en")
         chunks_payload = []
-        for idx, raw_text in enumerate(raw_chunks[:limit]):
+        for idx, raw_text in enumerate(raw_chunks[start : start + limit], start=start):
             payload, _, _ = _build_chunk_payload(idx, raw_text, None, lang)
             chunks_payload.append(payload)
         return chunks_payload
 
     try:
-        return surreal_db.get_document_chunks(doc_uuid, limit=limit)
+        return surreal_db.get_document_chunks(doc_uuid, limit=limit, start=start)
     except Exception as e:
         logger.warning("[SFT Dataset] Failed to retrieve chunks for %s: %s", doc_uuid, e)
         return []
@@ -560,14 +560,42 @@ def _charge_export_byte_budget(byte_budget: dict[str, int], content_str: str) ->
         raise ValueError(EXPORT_TOO_LARGE_MSG)
 
 
+def _collect_sqlite_chunk_rows(
+    doc: Any, doc_uuid: str, title: str, author: str, byte_budget: dict[str, int]
+) -> tuple[list[tuple], list[tuple]]:
+    """Page through all document chunks and build (chunks, chunks_fts) rows.
+
+    get_document_chunks clamps to 500 per call, so a single fetch would
+    silently truncate documents with more chunks.
+    """
+    chunk_rows: list[tuple] = []
+    fts_rows: list[tuple] = []
+    page_size = 500
+    chunk_start = 0
+    while True:
+        page = _get_doc_chunks(doc, doc_uuid, limit=page_size, start=chunk_start)
+        if not page:
+            break
+        for chunk in page:
+            rows = _sqlite_chunk_rows(chunk, doc_uuid, title, author)
+            if rows is None:
+                continue
+            # Content is stored twice (chunks.content + chunks_fts.content) plus
+            # per-row title/author in the FTS table, so charge ~2x plus metadata
+            # to keep the serialized bundle within the configured byte budget.
+            _charge_export_byte_budget(byte_budget, rows[0][5] + rows[1][0] + rows[1][1] + rows[1][2])
+            chunk_rows.append(rows[0])
+            fts_rows.append(rows[1])
+        if len(page) < page_size:
+            break
+        chunk_start += page_size
+    return chunk_rows, fts_rows
+
+
 def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str, byte_budget: dict[str, int] | None = None) -> None:
     byte_budget = byte_budget if byte_budget is not None else {"used": 0}
     title = str(getattr(doc, "title", None) or "Untitled")
     author = str(getattr(doc, "author", None) or "Unknown")
-    chunks = _get_doc_chunks(doc, doc_uuid, limit=500)
-    chunk_rows: list[tuple] = []
-    fts_rows: list[tuple] = []
-    batch_size = 500
     insert_chunks_sql = """
         INSERT INTO chunks (
             doc_uuid, chunk_index, page_number, chapter_title, anchor_id, content
@@ -579,24 +607,11 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str, byte_budget: dic
         ) VALUES (?, ?, ?, ?, ?, ?);
     """
 
-    def flush_batch() -> None:
-        if not chunk_rows:
-            return
-        cursor.executemany(insert_chunks_sql, chunk_rows)
-        cursor.executemany(insert_fts_sql, fts_rows)
-        chunk_rows.clear()
-        fts_rows.clear()
-
-    for chunk in chunks:
-        rows = _sqlite_chunk_rows(chunk, doc_uuid, title, author)
-        if rows is None:
-            continue
-        _charge_export_byte_budget(byte_budget, rows[0][5])
-        chunk_rows.append(rows[0])
-        fts_rows.append(rows[1])
-        if len(chunk_rows) == batch_size:
-            flush_batch()
-    flush_batch()
+    chunk_rows, fts_rows = _collect_sqlite_chunk_rows(doc, doc_uuid, title, author, byte_budget)
+    batch_size = 500
+    for i in range(0, len(chunk_rows), batch_size):
+        cursor.executemany(insert_chunks_sql, chunk_rows[i : i + batch_size])
+        cursor.executemany(insert_fts_sql, fts_rows[i : i + batch_size])
 
 
 def _serialize_sqlite_conn(conn: Any) -> bytes:

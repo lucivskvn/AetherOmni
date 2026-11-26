@@ -390,7 +390,12 @@ class FileUtilsTestCase(TestCase):
             title = "Bounded batches"
             author = "Test author"
 
-        get_doc_chunks.return_value = [{"chunk_index": index, "content": f"chunk {index}"} for index in range(501)]
+        all_chunks = [{"chunk_index": index, "content": f"chunk {index}"} for index in range(501)]
+
+        def _paged(_doc, _doc_uuid, limit, start=0):
+            return all_chunks[start : start + limit]
+
+        get_doc_chunks.side_effect = _paged
         conn = sqlite3.connect(":memory:")
         cursor = conn.cursor()
         file_utils._init_sqlite_export_schema(cursor)

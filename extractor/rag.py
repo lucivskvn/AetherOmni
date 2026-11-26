@@ -65,8 +65,10 @@ def _ingest_paragraph_into_chunks(
 def chunk_document_semantically(text: str, max_chunk_size: int = 1200) -> list[str]:
     """
     Chunks large documents on natural structural boundaries (chapters, Surahs, Hadiths,
-    page breaks, and complete sentences) to maintain context coherence and prevent cutting
-    in the middle of verses or paragraphs.
+    page breaks, and complete sentences) to maintain context coherence. Boundaries are
+    preferred, not guaranteed: a single sentence/verse longer than max_chunk_size is
+    hard-sliced, so Ayahs or paragraphs without trailing boundary punctuation can
+    still be split mid-unit.
     """
     if not text or not text.strip():
         return []

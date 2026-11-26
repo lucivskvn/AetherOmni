@@ -1043,6 +1043,73 @@ def update_document_if_status(doc_uuid: str, data: dict, *, allowed_statuses: li
     return _conditional_update_document_surreal(doc_uuid, data, allowed_statuses)
 
 
+def _conditional_update_document_content_offline(doc_uuid, data, allowed_statuses):
+    """Status-guarded update that persists arbitrary document fields (editor saves)."""
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+
+    from extractor.models import SourceDocument
+
+    try:
+        lookup = _offline_document_lookup(doc_uuid)
+    except TypeError, ValueError:
+        return None
+
+    values = _offline_update_values(data, get_user_model())
+    values["updated_at"] = timezone.now()
+    updated = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses), cancel_requested=False).update(
+        **values
+    )
+    if updated != 1:
+        return None
+    try:
+        return _model_to_dict(SourceDocument.objects.get(**lookup))
+    except SourceDocument.DoesNotExist:
+        return None
+
+
+def _conditional_update_document_content_surreal(doc_uuid, data, allowed_statuses):
+    """Status-guarded UPDATE ... WHERE status IN $allowed_statuses for content saves."""
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
+    if not payload:
+        return get_document(doc_uuid) or {}
+
+    set_parts = []
+    params: dict[str, Any] = {"doc_uuid": doc_uuid, "allowed_statuses": list(allowed_statuses)}
+    for k, v in payload.items():
+        _validate_field_name(k)
+        if k in ("created_at", "updated_at", "expires_at"):
+            set_parts.append(f"{k} = <datetime> ${k}")
+        else:
+            set_parts.append(f"{k} = ${k}")
+        params[k] = v
+    if "updated_at" not in payload:
+        set_parts.append("updated_at = time::now()")
+
+    sql = (
+        f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid "  # nosec B608 # noqa: S608 -- field names validated; values bound
+        "AND status IN $allowed_statuses AND cancel_requested != true RETURN AFTER;"
+    )
+    rows = _first_result(_run(sql, params))
+    return rows[0] if rows else None
+
+
+def update_document_content_if_status(doc_uuid: str, data: dict, *, allowed_statuses: list[str]) -> dict | None:
+    """Conditionally update document content only while status remains allowed.
+
+    Unlike update_document_if_status (restricted to status-ish fields for the
+    reaper/fail paths), this persists arbitrary VALID_DOCUMENT_FIELDS so the
+    editor save cannot land while a pipeline task has claimed the document.
+    Returns the updated row, or None when the guard rejected the write.
+    """
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return _conditional_update_document_content_offline(doc_uuid, data, allowed_statuses)
+    return _conditional_update_document_content_surreal(doc_uuid, data, allowed_statuses)
+
+
 def claim_document_for_processing(doc_uuid: str) -> dict | None:
     """Atomically claim a pending document for a single processing attempt."""
     doc_uuid = str(doc_uuid)
@@ -1082,7 +1149,7 @@ def claim_document_for_processing(doc_uuid: str) -> dict | None:
     params = {"doc_uuid": doc_uuid}
     sql = (
         "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now() "
-        "WHERE doc_uuid = $doc_uuid AND status = 'PENDING' RETURN AFTER;"
+        "WHERE doc_uuid = $doc_uuid AND status = 'PENDING' AND cancel_requested != true RETURN AFTER;"
     )
     if task_name := document_task_name.get():
         params["expected_task"] = task_name
@@ -1800,6 +1867,34 @@ def search_chunks_hnsw(
     return _first_result(_run(sql, params))
 
 
+def _bm25_scored_sql(allowed: bool) -> str:
+    """BM25-ranked chunk search using the idx_chunks_bm25 full-text index.
+
+    The @1@ predicate binds the match to highlight ref 1 so search::score(1)
+    resolves; ordering by score keeps LIMIT from returning an arbitrary subset
+    when more than `limit` chunks match.
+    """
+    fields = (
+        "id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id, "
+        "search::score(1) AS bm25_score"
+    )
+    scope = "doc_uuid INSIDE $allowed_doc_uuids AND " if allowed else ""
+    sql = (
+        f"SELECT {fields} FROM chunks "  # nosec B608 # noqa: S608 -- static fields/scope; values bound
+        f"WHERE {scope}content @1@ $query_text "
+        "ORDER BY bm25_score DESC LIMIT $limit;"
+    )
+    return sql
+
+
+def _bm25_contains_sql(allowed: bool) -> str:
+    """Legacy substring fallback used until idx_chunks_bm25 is applied."""
+    fields = "id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id"
+    scope = "doc_uuid INSIDE $allowed_doc_uuids AND " if allowed else ""
+    sql = f"SELECT {fields} FROM chunks WHERE {scope}content CONTAINS $query_text LIMIT $limit;"  # nosec B608 # noqa: S608 -- static fields/scope; values bound
+    return sql
+
+
 def search_chunks_bm25(query_text: str, limit: int = 10, allowed_doc_uuids: list[str] | None = None) -> list[dict]:
     """Execute keyword search over SurrealDB document chunks for sparse retrieval."""
     params: dict[str, Any] = {"query_text": query_text, "limit": limit}
@@ -1816,22 +1911,18 @@ def search_chunks_bm25(query_text: str, limit: int = 10, allowed_doc_uuids: list
         results = [c for c in chunks if query_text.lower() in c.get("content", "").lower()]
         return results[:limit]
 
-    if allowed_doc_uuids is not None:
+    allowed = allowed_doc_uuids is not None
+    if allowed:
         params["allowed_doc_uuids"] = allowed_doc_uuids
-        sql = (
-            "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id "
-            "FROM chunks "
-            "WHERE doc_uuid INSIDE $allowed_doc_uuids AND content CONTAINS $query_text "
-            "LIMIT $limit;"
-        )
-    else:
-        sql = (
-            "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id "
-            "FROM chunks "
-            "WHERE content CONTAINS $query_text "
-            "LIMIT $limit;"
-        )
-    return _first_result(_run(sql, params))
+
+    try:
+        return _first_result(_run(_bm25_scored_sql(allowed), params))
+    except Exception as exc:
+        # Pre-index deployments (or SurrealDB versions without the @ operator)
+        # fall back to the legacy substring scan rather than failing the
+        # whole hybrid retrieval leg.
+        logger.warning("[BM25] Scored search unavailable (%s); using CONTAINS fallback.", exc)
+        return _first_result(_run(_bm25_contains_sql(allowed), params))
 
 
 from extractor.surreal_audit import (  # noqa: F401

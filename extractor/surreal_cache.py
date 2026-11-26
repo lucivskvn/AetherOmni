@@ -94,11 +94,18 @@ def search_rag_cache_hnsw(
 def purge_expired_rag_cache() -> int:
     from extractor import surreal_db
 
-    """Delete all expired RAG cache entries. Returns count of deleted rows."""
-    sql = "SELECT count() AS n FROM rag_cache WHERE expires_at < time::now() GROUP ALL;"
+    """Delete all expired RAG cache entries. Returns count of deleted rows.
+
+    Rows with NULL/NONE expires_at are deleted too: upsert_rag_cache always
+    writes expires_at, so a NULL row is a legacy/manual orphan that would
+    otherwise never match `expires_at < time::now()` and grow the table
+    forever.
+    """
+    predicate = "expires_at < time::now() OR expires_at IS NONE"
+    sql = f"SELECT count() AS n FROM rag_cache WHERE {predicate} GROUP ALL;"  # nosec B608 # noqa: S608 -- static predicate
     count_rows = surreal_db._first_result(surreal_db._run(sql))
     count = count_rows[0].get("n", 0) if count_rows else 0
-    surreal_db._run("DELETE FROM rag_cache WHERE expires_at < time::now();")
+    surreal_db._run(f"DELETE FROM rag_cache WHERE {predicate};")  # nosec B608 # noqa: S608 -- static predicate
     return count
 
 
@@ -112,7 +119,12 @@ def purge_all_rag_cache() -> None:
 def _purge_expired_table(table: str) -> int:
     from extractor import surreal_db
 
-    """Delete expired rows from a table; rows with expires_at NONE are retained."""
+    """Delete expired rows from a table; rows with expires_at NONE are retained.
+
+    NULL expires_at means "permanent" here (kv_cache_set writes it for
+    non-expiring entries). rag_cache does NOT use this helper — its NULL
+    rows are orphans and are reaped by purge_expired_rag_cache instead.
+    """
     count_sql = f"SELECT count() AS n FROM {table} WHERE expires_at < time::now() GROUP ALL;"  # nosec B608 # noqa: S608 -- table is a static literal
     count_rows = surreal_db._first_result(surreal_db._run(count_sql))
     count = count_rows[0].get("n", 0) if count_rows else 0
@@ -253,6 +265,17 @@ def kv_cache_delete_pattern(prefix: str) -> None:
     surreal_db._run(sql, {"prefix": prefix})
 
 
+def _valid_embedding_dim(embedding: Any) -> bool:
+    """Accept only vectors matching the production embedding dimension.
+
+    Cached vectors bypass the generate_query_embedding dimension guard, so a
+    wrong-dim row written before that guard (or by any future path) would be
+    re-injected into new chunk sets forever. Reject anything that is not a
+    non-empty list of the expected length.
+    """
+    return isinstance(embedding, list) and len(embedding) == 768
+
+
 def find_chunk_embedding(text: str) -> list[float] | None:
     from extractor import surreal_db
 
@@ -260,7 +283,8 @@ def find_chunk_embedding(text: str) -> list[float] | None:
     sql = "SELECT embedding FROM chunks WHERE content = $text LIMIT 1;"
     results = surreal_db._first_result(surreal_db._run(sql, {"text": text}))
     if results and isinstance(results[0], dict) and "embedding" in results[0]:
-        return results[0]["embedding"]
+        emb = results[0]["embedding"]
+        return emb if _valid_embedding_dim(emb) else None
     return None
 
 
@@ -281,7 +305,12 @@ def find_chunk_embeddings_batch(texts: list[str]) -> dict[str, list[float]]:
     mapping: dict[str, list[float]] = {}
     if results and isinstance(results, list):
         for row in results:
-            if isinstance(row, dict) and "content" in row and "embedding" in row:
+            if (
+                isinstance(row, dict)
+                and "content" in row
+                and "embedding" in row
+                and _valid_embedding_dim(row["embedding"])
+            ):
                 mapping[row["content"]] = row["embedding"]
     return mapping
 

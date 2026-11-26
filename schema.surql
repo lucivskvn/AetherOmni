@@ -10,6 +10,11 @@
 --              schema.surql
 -- ============================================================
 
+-- Shared BM25 analyzer for all full-text indexes (chunks, anchor,
+-- crystal). Defined before the chunks table so idx_chunks_bm25 can
+-- reference it; IF NOT EXISTS keeps re-imports idempotent.
+DEFINE ANALYZER IF NOT EXISTS korda_bm25 TOKENIZERS class, blank FILTERS lowercase, snowball(english);
+
 -- ── 1. documents ─────────────────────────────────────────────
 DEFINE TABLE IF NOT EXISTS documents SCHEMAFULL;
 
@@ -69,6 +74,9 @@ DEFINE FIELD IF NOT EXISTS created_at      ON chunks TYPE datetime DEFAULT time:
 DEFINE INDEX IF NOT EXISTS idx_chunks_doc  ON chunks FIELDS doc_uuid;
 -- HNSW index (768 dims = embedding model output, cosine similarity)
 DEFINE INDEX IF NOT EXISTS idx_chunks_hnsw ON chunks FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
+-- BM25 full-text index for the sparse retrieval leg of hybrid RAG.
+-- search_chunks_bm25 orders by search::score(1) against this index.
+DEFINE INDEX IF NOT EXISTS idx_chunks_bm25 ON chunks FIELDS content FULLTEXT ANALYZER korda_bm25 BM25 HIGHLIGHTS;
 
 
 -- ── 3. rag_cache ──────────────────────────────────────────────
@@ -275,8 +283,6 @@ DEFINE INDEX IF NOT EXISTS idx_source_slug   ON source FIELDS doc_slug, owner_id
 DEFINE INDEX IF NOT EXISTS idx_source_sha256 ON source FIELDS sha256, owner_id;
 
 -- ── 14. anchor (Deterministic Verbatim Evidence Coordinates) ──
-DEFINE ANALYZER IF NOT EXISTS korda_bm25 TOKENIZERS class, blank FILTERS lowercase, snowball(english);
-
 DEFINE TABLE IF NOT EXISTS anchor SCHEMAFULL;
 
 DEFINE FIELD IF NOT EXISTS anchor_id       ON anchor TYPE string;

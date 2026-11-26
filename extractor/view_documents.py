@@ -167,18 +167,22 @@ class DocumentSaveView(LoginRequiredMixin, View):
         cleaned_markdown = new_markdown.replace("\x00", "").strip()
         payload = _build_document_save_payload(request, cleaned_markdown)
 
-        doc_ref = surreal_db.update_document(doc_uuid, payload)
+        # The earlier status check is only a snapshot; a pipeline task can
+        # claim the document in between. The conditional UPDATE is the
+        # authoritative guard so an edit cannot land mid-pipeline.
+        doc_ref = surreal_db.update_document_content_if_status(
+            doc_uuid, payload, allowed_statuses=["COMPLETED", "FAILED"]
+        )
+        if doc_ref is None:
+            messages.error(
+                request,
+                "Document state changed while saving (it may be processing now). Please retry.",
+            )
+            return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
         doc_wrapped = view_common._wrap_surreal_doc(doc_ref, users_map)
 
         # Invalidate cached RAG answers derived from the pre-edit content.
         view_common._invalidate_doc_rag_caches(str(doc_uuid), view_common.get_request_actor_id(request))
-
-        view_common._record_view_audit(
-            request,
-            AuditAction.DOCUMENT_EDITED,
-            f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
-            document=doc_wrapped,
-        )
 
         # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes
         from django.conf import settings
@@ -191,6 +195,15 @@ class DocumentSaveView(LoginRequiredMixin, View):
         else:
             cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid})
         broadcast_status_change(str(doc_uuid), "PENDING", owner_id=view_common._doc_owner_id(doc_wrapped))
+
+        # Audit only after the re-embed enqueue succeeds; otherwise the audit
+        # row would claim "re-indexing queued" for a save whose enqueue failed.
+        view_common._record_view_audit(
+            request,
+            AuditAction.DOCUMENT_EDITED,
+            f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
+            document=doc_wrapped,
+        )
 
         messages.success(request, "Changes saved and re-indexing queued successfully!")
         return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
@@ -432,6 +445,24 @@ def _enqueue_restarted_document(doc: dict, doc_uuid: str, cloud_tasks: Any) -> N
     broadcast_status_change(doc_uuid, "PENDING", owner_id=doc.get("uploaded_by_id"))
 
 
+def _flush_doc_spend_before_reset(doc) -> None:
+    """Ledger a document's accumulated spend before retry/restart zeroes its counters.
+
+    Document spend is otherwise only flushed at delete time, so resetting
+    cost_usd/tokens without flushing first permanently erases the failed
+    attempt's spend from MonthlySpendLog and under-counts the budget gate.
+    """
+    try:
+        doc_dict = doc if isinstance(doc, dict) else surreal_db._model_to_dict(doc)
+        if not surreal_db._flush_document_cost(doc_dict):
+            logger.warning(
+                "[Retry] Spend flush failed for doc %s before counter reset; proceeding anyway.",
+                doc_dict.get("doc_uuid"),
+            )
+    except Exception as exc:
+        logger.warning("[Retry] Spend flush raised for doc reset: %s", exc)
+
+
 def _restart_single_document(doc, request, cloud_tasks):
     doc_uuid = view_common._extract_clean_doc_uuid(doc)
     if not doc_uuid or not _is_doc_owner_or_staff(doc, request):
@@ -444,6 +475,7 @@ def _restart_single_document(doc, request, cloud_tasks):
     if status not in ["PENDING", "FAILED", "COMPLETED"]:
         return False
 
+    _flush_doc_spend_before_reset(doc)
     surreal_db.update_document(
         doc_uuid,
         {
@@ -477,6 +509,7 @@ def _handle_bulk_restart(request, document_ids):
     from extractor import cloud_tasks
 
     restarted_count = 0
+    failed_count = 0
     if getattr(settings, "SURREALDB_OFFLINE", False):
         from extractor.surreal_db import _model_to_dict
 
@@ -486,9 +519,21 @@ def _handle_bulk_restart(request, document_ids):
         docs = surreal_db.get_documents(clean_ids)
 
     for doc in docs:
-        if _restart_single_document(doc, request, cloud_tasks):
-            restarted_count += 1
-    messages.success(request, f"Successfully queued {restarted_count} tasks for reprocessing.")
+        try:
+            if _restart_single_document(doc, request, cloud_tasks):
+                restarted_count += 1
+        except Exception:
+            # One enqueue/update failure must not abort the whole batch;
+            # matches _handle_bulk_delete's per-document isolation.
+            failed_count += 1
+            logger.exception(
+                "[Bulk Restart] Failed to restart document %s",
+                view_common._extract_clean_doc_uuid(doc),
+            )
+    if restarted_count:
+        messages.success(request, f"Successfully queued {restarted_count} tasks for reprocessing.")
+    if failed_count:
+        messages.warning(request, f"{failed_count} documents could not be re-enqueued.")
 
 
 def _cleanup_file_storage(file_rel_path, shared_references: int, default_storage) -> None:
@@ -810,6 +855,11 @@ class DocumentRetryView(LoginRequiredMixin, View):
 
         is_restart = doc.status in ["COMPLETED", "PENDING"]
         retry_cnt = doc.retry_count
+
+        # Zeroing cost/token counters below would erase this attempt's spend
+        # from the monthly ledger; flush it first (delete-time path only
+        # fires for documents that are actually deleted).
+        _flush_doc_spend_before_reset(raw_doc)
 
         doc_ref = surreal_db.update_document(
             doc_uuid,
