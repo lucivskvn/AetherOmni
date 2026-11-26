@@ -95,7 +95,8 @@ def _query_metadata_server(path):
         )
         with urllib.request.urlopen(req, timeout=1) as response:  # nosec B310 # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- Fixed Google metadata host; path selected by internal callers.
             return response.read().decode("utf-8").strip()
-    except Exception:
+    except (OSError, TimeoutError) as meta_err:
+        logger.debug("[Deployment] Metadata server lookup for %s failed: %s", path, meta_err)
         return None
 
 
