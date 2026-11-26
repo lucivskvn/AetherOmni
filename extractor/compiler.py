@@ -27,7 +27,7 @@ def format_anchor_coord(anchor: dict[str, Any]) -> str:
     if anchor.get("page_num") is not None:
         parts.append(f"p.{anchor['page_num']}")
     if anchor.get(FIELD_SECTION_HEADING):
-        parts.append(str(anchor[FIELD_SECTION_HEADING]).strip())
+        parts.append(" ".join(str(anchor[FIELD_SECTION_HEADING]).split()))
     start_sec = _coerce_seconds(anchor.get("start_sec"))
     if start_sec is not None:
         end_sec = _coerce_seconds(anchor.get("end_sec"))
@@ -36,12 +36,14 @@ def format_anchor_coord(anchor: dict[str, Any]) -> str:
         else:
             parts.append(f"{start_sec:.1f}s")
     if anchor.get("figure_id"):
-        parts.append(f"fig:{anchor['figure_id']}")
+        parts.append(f"fig:{' '.join(str(anchor['figure_id']).split())}")
     return " | ".join(parts) if parts else "loc:unindexed"
 
 
 def _render_crystal_section(crystal: dict[str, Any]) -> str:
-    title = str(crystal.get("title") or "Untitled Concept").strip()
+    # Collapse whitespace so a title containing newlines cannot break out of
+    # the "## " heading or inject additional Markdown structure.
+    title = " ".join(str(crystal.get("title") or "Untitled Concept").split()) or "Untitled Concept"
     summary = str(crystal.get("summary") or "").strip()
     tags = [str(t).strip() for t in (crystal.get("tags") or []) if str(t).strip()]
     anchors = crystal.get("anchors") or []
@@ -83,9 +85,29 @@ def _render_bundle_header(bundle_title: str, part_index: int, doc_slugs: list[st
 
 
 def _split_oversized_section(section_md: str, max_words: int) -> list[str]:
-    """Split a single section exceeding max_words into word-bounded chunks."""
-    words = section_md.split()
-    return [" ".join(words[i : i + max_words]) for i in range(0, len(words), max_words)]
+    """Split a section exceeding max_words into chunks, preserving line structure.
+
+    Splitting on raw words collapses every newline, destroying headings,
+    blockquotes, and lists in oversized crystals. Chunk on line boundaries
+    instead, falling back to word-splitting only for a single over-long line.
+    """
+    chunks: list[str] = []
+    current: list[str] = []
+    current_words = 0
+    for line in section_md.splitlines(keepends=True):
+        line_words = len(line.split())
+        if current and current_words + line_words > max_words:
+            chunks.append("".join(current))
+            current, current_words = [], 0
+        if line_words > max_words:
+            words = line.split()
+            chunks.extend(" ".join(words[i : i + max_words]) + "\n" for i in range(0, len(words), max_words))
+            continue
+        current.append(line)
+        current_words += line_words
+    if current:
+        chunks.append("".join(current))
+    return chunks or [section_md]
 
 
 def _flush_bundle(
