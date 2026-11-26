@@ -135,11 +135,21 @@ def log_audit_event(event: AuditEvent) -> None:
 
     # Leg 1: Django ORM → SQLite
     try:
+        # Keep parity with the SurrealDB leg: fall back to metadata.details when
+        # the event carries no plain details, and record the actor id when no
+        # Django user object is linked so offline audit rows stay attributable.
+        details = event.details
+        meta = event.metadata or {}
+        if not details and meta.get("details"):
+            details = str(meta["details"])
+        has_user = bool(event.user and hasattr(event.user, "pk"))
+        if not has_user and event.actor_id:
+            details = f"{details} [actor_id={event.actor_id}]".strip()
         AuditLog.objects.create(
-            user=event.user if hasattr(event.user, "pk") else None,
+            user=event.user if has_user else None,
             action=event.action,
             document=event.document if hasattr(event.document, "pk") else None,
-            details=event.details,
+            details=details,
             ip_address=event.ip_address,
         )
     except Exception as exc:
