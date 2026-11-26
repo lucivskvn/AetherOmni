@@ -131,7 +131,21 @@ def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: st
         if source_doc_uuid:
             surreal_db.clone_chunks(source_doc_uuid, new_uuid)
     except Exception as clone_err:
-        logger.warning("[Upload] SurrealDB chunk clone failed: %s", clone_err)
+        # The clone is marked COMPLETED but has no searchable chunks; enqueue a
+        # re-embed so the copied markdown is re-chunked and embedded instead of
+        # leaving a silently RAG-invisible document.
+        logger.warning("[Upload] SurrealDB chunk clone failed for %s: %s", new_uuid, clone_err)
+        try:
+            from extractor import cloud_tasks
+            from extractor.utils import REEMBED_DOCUMENT_TASK
+
+            if getattr(settings, "SURREALDB_OFFLINE", False):
+                doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
+                cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_id": doc_id})
+            else:
+                cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": new_uuid})
+        except Exception as enqueue_err:
+            logger.warning("[Upload] Failed to enqueue chunk-repair re-embed for %s: %s", new_uuid, enqueue_err)
 
     view_common._record_view_audit(
         request,
