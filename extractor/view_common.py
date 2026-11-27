@@ -358,10 +358,17 @@ def _safe_metadata_source_link(value: object) -> str:
         return ""
     # Literal-IP hosts bypass the name checks: block private/loopback/link-local
     # targets so LLM-influenced metadata cannot render internal-service links.
+    # inet_aton normalization catches shorthand forms browsers still resolve —
+    # "127.1", "2130706433", "0x7f.1" all mean 127.0.0.1 (AUD-429).
+    import socket
+
     try:
         addr = ipaddress.ip_address(hostname.strip("[]"))
     except ValueError:
-        return source_link
+        try:
+            addr = ipaddress.ip_address(socket.inet_ntoa(socket.inet_aton(hostname)))
+        except OSError, ValueError:
+            return source_link
     if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
         return ""
     return source_link
