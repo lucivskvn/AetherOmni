@@ -203,9 +203,23 @@ class QuizStudioTests(SimpleTestCase):
             bad_resp = views.QuizGenerateAPIView.as_view()(bad_req)
         self.assertEqual(bad_resp.status_code, 400)
 
+        # Ad-hoc client crystals are rejected (AUD-434); seed a verified,
+        # anchor-grounded crystal so generation reaches the mocked LLM call.
+        from extractor import surreal_db
+
+        surreal_db._test_korda_crystals["c-verified-1"] = {
+            "crystal_id": "c-verified-1",
+            "owner_id": "1",
+            "doc_slug": "",
+            "title": "T",
+            "summary": "S",
+            "status": "verified",
+            "tags": [],
+            "anchor_ids": ["a1"],
+        }
         unavail_req = rf.post(
             "/api/v1/quiz/generate/",
-            data=json.dumps({"difficulty": "Medium", "count": 2, "crystals": [{"title": "T", "summary": "S"}]}),
+            data=json.dumps({"difficulty": "Medium", "count": 2}),
             content_type="application/json",
         )
         unavail_req.user = user

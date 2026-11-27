@@ -20,6 +20,14 @@ def _apply_markdown_download_headers(resp: HttpResponse, filename: str) -> HttpR
 
 
 def _load_quiz_crystals(actor_id: str, body: dict) -> list[dict]:
+    """Return verified, anchor-grounded crystals for quiz generation.
+
+    Client-supplied ad-hoc crystals are intentionally not accepted: quiz items
+    must be grounded in notebook evidence, and ``create_crystal_with_provenance``
+    only grants ``verified`` status to crystals with owned active anchors
+    (AUD-434). Ungrounded items would persist into the FSRS queue with empty
+    ``anchor_ids`` and no ``tests`` edges.
+    """
 
     doc_slug = str(body.get("doc_slug") or "").strip()[:120] or None
     crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=50)
@@ -29,18 +37,7 @@ def _load_quiz_crystals(actor_id: str, body: dict) -> list[dict]:
         filtered = [c for c in crystals if str(c.get("crystal_id") or "") in wanted]
         if filtered:
             return filtered[:20]
-    if crystals or not isinstance(body.get("crystals"), list):
-        return crystals[:20]
-    return [
-        {
-            "crystal_id": "",
-            "title": str(c.get("title") or "")[:200],
-            "summary": str(c.get("summary") or "")[:2000],
-            "anchor_ids": [],
-        }
-        for c in body["crystals"][:10]
-        if isinstance(c, dict) and (c.get("title") or c.get("summary"))
-    ]
+    return crystals[:20]
 
 
 class StrictLibrarianAPIView(LoginRequiredMixin, View):
