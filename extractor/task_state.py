@@ -2,3 +2,4 @@
 
 CLOUD_TASK_NAME = "cloud_task_name"
 CANCEL_REQUESTED = "cancel_requested"
+PENDING_OPERATION = "pending_operation"

@@ -89,6 +89,12 @@ def enqueue(task_name: str, payload: dict[str, Any], countdown: int = 0) -> None
         _enqueue_cloud(task_name, payload, safe_countdown)
 
 
+# Test seam: tests inject handlers via patch.dict; production always falls
+# through to the real registry when empty.
+_LOCAL_TASK_REGISTRY: dict[str, Any] = {}
+
+
+
 def _enqueue_local(task_name: str, payload: dict) -> None:
     """Execute task in a daemon thread (local development fallback)."""
     logger.info("[CloudTasks/local] Spawning thread for task '%s'", task_name)
@@ -206,6 +212,14 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
         ts.FromDatetime(schedule_time)
         task["schedule_time"] = ts
 
+    # Document pipelines can legitimately run ~25 minutes (the worker heartbeat
+    # budget is 1500s). Without an explicit dispatch deadline Cloud Tasks gives
+    # up at its ~10-minute default and retries while the first delivery is
+    # still running. 1740s covers the heartbeat budget with margin and stays
+    # under the 30-minute HTTP-task ceiling; the worker request timeout
+    # (service-worker.yaml / Pulumi) is aligned to 1800s.
+    task["dispatch_deadline"] = {"seconds": 1740}
+
     try:
         _persist_document_task(task_name, payload)
         client = _get_tasks_client()
@@ -214,6 +228,32 @@ def _enqueue_cloud(task_name: str, payload: dict, countdown: int) -> None:
     except Exception as exc:
         logger.exception("[CloudTasks] Failed to enqueue task '%s'", task_name)
         raise RuntimeError(f"Cloud Tasks could not enqueue '{task_name}'.") from exc
+
+
+def document_task_still_queued(task_name: str | None) -> bool:
+    """Best-effort check that a persisted Cloud Tasks name still exists.
+
+    Used by the stale-task reaper to distinguish a PENDING document that is
+    genuinely waiting in the queue from one whose delivery was lost. Returns
+    False when the task is gone, the name is missing, or the lookup itself
+    fails — an unverifiable task is conservatively treated as queued so a
+    transient API error cannot trigger a duplicate replacement enqueue.
+    """
+    if not task_name or settings.DEBUG or getattr(settings, "SURREALDB_OFFLINE", False):
+        return False
+    try:
+        from google.api_core.exceptions import NotFound
+
+        _get_tasks_client().get_task(name=task_name)
+        return True
+    except NotFound:
+        return False
+    except Exception as exc:
+        # An unverifiable task is treated as still queued: reaping on a
+        # transient lookup error would replace a live delivery and burn retry
+        # budget. The next reaper sweep re-checks once the API recovers.
+        logger.warning("[CloudTasks] Could not verify queued task %s: %s", task_name, exc)
+        return True
 
 
 def _persist_document_task(task_name: str, payload: dict) -> None:

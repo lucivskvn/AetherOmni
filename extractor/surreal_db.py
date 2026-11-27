@@ -30,10 +30,14 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from surrealdb import AsyncSurreal
 
-from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME
+from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME, PENDING_OPERATION
 
 logger = logging.getLogger(__name__)
 document_task_name: ContextVar[str] = ContextVar("document_task_name", default="")
+
+# Sentinel for update_document: pass CLEAR_FIELD as a value to set the field
+# to NULL/NONE. Plain None still means "leave unchanged" (AUD-324).
+CLEAR_FIELD = object()
 
 # Canonical allowlist of writable documents fields; must match schema.surql.
 # create_document and _update_document_surreal both filter payloads through it.
@@ -68,6 +72,7 @@ VALID_DOCUMENT_FIELDS = {
     "publication_year",
     "license_type",
     "doi",
+    PENDING_OPERATION,
 }
 
 
@@ -850,13 +855,17 @@ def _offline_update_values(data, user_model):
     valid_fields = {field.name for field in SourceDocument._meta.fields}
     values = {}
     for key, value in data.items():
+        if key not in valid_fields:
+            continue
         if key == "uploaded_by_id":
             values[key] = _resolve_offline_owner_id(value, user_model)
+        elif value is CLEAR_FIELD:
+            values[key] = None
         elif key == "expires_at":
             from django.utils.dateparse import parse_datetime
 
             values[key] = parse_datetime(value) if value else None
-        elif key in valid_fields:
+        else:
             values[key] = value
     return values
 
@@ -908,7 +917,10 @@ def _update_document_offline(doc_uuid, data):
 
 
 def _update_document_surreal(doc_uuid, data):
-    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
+    # doc_uuid is the record identity used by the WHERE clause and $doc_uuid
+    # param; letting payload rewrite it would silently re-key or no-op the
+    # update. Identity changes are not a supported operation.
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS and k != "doc_uuid"}
     if not payload:
         return get_document(doc_uuid) or {}
 
@@ -916,7 +928,9 @@ def _update_document_surreal(doc_uuid, data):
     params = {"doc_uuid": doc_uuid}
     for k, v in payload.items():
         _validate_field_name(k)
-        if k in ("created_at", "updated_at", "expires_at"):
+        if v is CLEAR_FIELD:
+            set_parts.append(f"{k} = NONE")
+        elif k in ("created_at", "updated_at", "expires_at"):
             set_parts.append(f"{k} = <datetime> ${k}")
             params[k] = v
         else:
@@ -962,7 +976,10 @@ def touch_document(doc_uuid: str, expected_task: str = "") -> bool:
             lookup = _offline_document_lookup(doc_uuid)
         except TypeError, ValueError:
             return False
-        return SourceDocument.objects.filter(**lookup).update(updated_at=timezone.now()) == 1
+        qs = SourceDocument.objects.filter(**lookup)
+        if expected_task:
+            qs = qs.filter(cloud_task_name=expected_task, cancel_requested=False)
+        return qs.update(updated_at=timezone.now()) == 1
 
     params: dict[str, Any] = {"doc_uuid": doc_uuid}
     condition = ""
@@ -985,7 +1002,7 @@ def _conditional_update_document_offline(doc_uuid, data, allowed_statuses):
         return None
 
     payload = {
-        k: v
+        k: (None if v is CLEAR_FIELD else v)
         for k, v in data.items()
         if k in {"status", "retry_count", "error_message", CANCEL_REQUESTED} and v is not None
     }
@@ -1015,8 +1032,11 @@ def _conditional_update_document_surreal(doc_uuid, data, allowed_statuses):
     params: dict[str, Any] = {"doc_uuid": doc_uuid, "allowed_statuses": list(allowed_statuses)}
     for k, v in payload.items():
         _validate_field_name(k)
-        set_parts.append(f"{k} = ${k}")
-        params[k] = v
+        if v is CLEAR_FIELD:
+            set_parts.append(f"{k} = NONE")
+        else:
+            set_parts.append(f"{k} = ${k}")
+            params[k] = v
     set_parts.append("updated_at = time::now()")
 
     sql = (
@@ -1033,6 +1053,8 @@ def update_document_if_status(doc_uuid: str, data: dict, *, allowed_statuses: li
     Compare-and-swap guard for the stale-task reaper: a worker that completes or
     fails the document between the scan snapshot and this write makes the UPDATE
     match zero rows, so the reaper cannot overwrite a fresher terminal state.
+    Restricted to the reaper's narrow field set; views needing a full-payload
+    CAS must use ``update_document_cas`` instead.
     Returns the updated row, or None when the guard rejected the write.
     """
     doc_uuid = str(doc_uuid)
@@ -1043,8 +1065,9 @@ def update_document_if_status(doc_uuid: str, data: dict, *, allowed_statuses: li
     return _conditional_update_document_surreal(doc_uuid, data, allowed_statuses)
 
 
-def _conditional_update_document_content_offline(doc_uuid, data, allowed_statuses):
-    """Status-guarded update that persists arbitrary document fields (editor saves)."""
+def _cas_update_document_offline(doc_uuid, data, allowed_statuses, allowed_pending_operations=None):
+    """Offline counterpart of ``_cas_update_document_surreal``: single-statement
+    UPDATE guarded by status so the check-and-write cannot interleave."""
     from django.contrib.auth import get_user_model
     from django.utils import timezone
 
@@ -1056,10 +1079,14 @@ def _conditional_update_document_content_offline(doc_uuid, data, allowed_statuse
         return None
 
     values = _offline_update_values(data, get_user_model())
+    if not values:
+        return None
     values["updated_at"] = timezone.now()
-    updated = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses), cancel_requested=False).update(
-        **values
-    )
+
+    qs = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses), cancel_requested=False)
+    if allowed_pending_operations is not None:
+        qs = qs.filter(pending_operation__in=list(allowed_pending_operations))
+    updated = qs.update(**values)
     if updated != 1:
         return None
     try:
@@ -1068,9 +1095,11 @@ def _conditional_update_document_content_offline(doc_uuid, data, allowed_statuse
         return None
 
 
-def _conditional_update_document_content_surreal(doc_uuid, data, allowed_statuses):
-    """Status-guarded UPDATE ... WHERE status IN $allowed_statuses for content saves."""
-    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS}
+def _cas_update_document_surreal(doc_uuid, data, allowed_statuses, allowed_pending_operations=None):
+    """Full-payload CAS: same field handling as ``_update_document_surreal`` but
+    the WHERE clause additionally requires status IN allowed_statuses. Worker
+    task-name fencing is preserved when the ContextVar is set."""
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS and k != "doc_uuid"}
     if not payload:
         return get_document(doc_uuid) or {}
 
@@ -1078,36 +1107,55 @@ def _conditional_update_document_content_surreal(doc_uuid, data, allowed_statuse
     params: dict[str, Any] = {"doc_uuid": doc_uuid, "allowed_statuses": list(allowed_statuses)}
     for k, v in payload.items():
         _validate_field_name(k)
-        if k in ("created_at", "updated_at", "expires_at"):
+        if v is CLEAR_FIELD:
+            set_parts.append(f"{k} = NONE")
+        elif k in ("created_at", "updated_at", "expires_at"):
             set_parts.append(f"{k} = <datetime> ${k}")
+            params[k] = v
         else:
             set_parts.append(f"{k} = ${k}")
-        params[k] = v
+            params[k] = v
+
     if "updated_at" not in payload:
         set_parts.append("updated_at = time::now()")
 
-    sql = (
-        f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid "  # nosec B608 # noqa: S608 -- field names validated; values bound
-        "AND status IN $allowed_statuses AND cancel_requested != true RETURN AFTER;"
-    )
+    conditions = ["doc_uuid = $doc_uuid", "status IN $allowed_statuses"]
+    if allowed_pending_operations is not None:
+        # Rows predating the field hold NONE (DEFAULT applies on create only);
+        # treat NONE as the empty marker so legacy docs remain retryable.
+        conditions.append(
+            "(pending_operation IN $allowed_pending_operations "
+            "OR (pending_operation = NONE AND '' IN $allowed_pending_operations))"
+        )
+        params["allowed_pending_operations"] = list(allowed_pending_operations)
+    if task_name := document_task_name.get():
+        conditions.append("cloud_task_name = $expected_task AND cancel_requested != true")
+        params["expected_task"] = task_name
+    sql = f"UPDATE documents SET {', '.join(set_parts)} WHERE {' AND '.join(conditions)};"  # nosec B608 # noqa: S608
     rows = _first_result(_run(sql, params))
     return rows[0] if rows else None
 
 
-def update_document_content_if_status(doc_uuid: str, data: dict, *, allowed_statuses: list[str]) -> dict | None:
-    """Conditionally update document content only while status remains allowed.
+def update_document_cas(
+    doc_uuid: str,
+    data: dict,
+    *,
+    allowed_statuses: list[str],
+    allowed_pending_operations: list[str] | None = None,
+) -> dict | None:
+    """Update a document only while its status remains in ``allowed_statuses``.
 
-    Unlike update_document_if_status (restricted to status-ish fields for the
-    reaper/fail paths), this persists arbitrary VALID_DOCUMENT_FIELDS so the
-    editor save cannot land while a pipeline task has claimed the document.
-    Returns the updated row, or None when the guard rejected the write.
+    General-purpose compare-and-swap for view-layer read-check-write flows:
+    unlike ``update_document_if_status`` (reaper field whitelist) this accepts
+    the full writable field set. Returns the updated row, or None when the
+    status guard rejected the write (the document changed state concurrently).
     """
     doc_uuid = str(doc_uuid)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        return _conditional_update_document_content_offline(doc_uuid, data, allowed_statuses)
-    return _conditional_update_document_content_surreal(doc_uuid, data, allowed_statuses)
+        return _cas_update_document_offline(doc_uuid, data, allowed_statuses, allowed_pending_operations)
+    return _cas_update_document_surreal(doc_uuid, data, allowed_statuses, allowed_pending_operations)
 
 
 def claim_document_for_processing(doc_uuid: str) -> dict | None:
@@ -1148,13 +1196,13 @@ def claim_document_for_processing(doc_uuid: str) -> dict | None:
 
     params = {"doc_uuid": doc_uuid}
     sql = (
-        "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now() "
+        "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now(), pending_operation = '' "
         "WHERE doc_uuid = $doc_uuid AND status = 'PENDING' AND cancel_requested != true RETURN AFTER;"
     )
     if task_name := document_task_name.get():
         params["expected_task"] = task_name
         sql = (
-            "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now() "
+            "UPDATE documents SET status = 'EXTRACTING', updated_at = time::now(), pending_operation = '' "
             "WHERE doc_uuid = $doc_uuid AND status = 'PENDING' "
             "AND cloud_task_name = $expected_task AND cancel_requested != true RETURN AFTER;"
         )
@@ -1224,6 +1272,30 @@ def get_document(doc_uuid: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def _split_offline_document_ids(clean_uuids: list[str]) -> tuple[list[int], list[str]]:
+    """Split lookup keys into integer PKs and valid UUID strings.
+
+    Invalid UUID strings make the ORM raise ValidationError for the whole
+    IN clause — one bad entry must not drop the rest of the batch.
+    """
+    import uuid as _uuid
+
+    int_ids: list[int] = []
+    uuid_strs: list[str] = []
+    for item in clean_uuids:
+        try:
+            int_ids.append(int(item))
+            continue
+        except ValueError, TypeError:
+            pass
+        try:
+            _uuid.UUID(str(item))
+        except ValueError, TypeError, AttributeError:
+            continue
+        uuid_strs.append(str(item))
+    return int_ids, uuid_strs
+
+
 def get_documents(doc_uuids: list[str]) -> list[dict]:
     """Retrieve multiple document records by a list of UUIDs."""
     if not doc_uuids:
@@ -1248,15 +1320,8 @@ def get_documents(doc_uuids: list[str]) -> list[dict]:
 
         from extractor.models import SourceDocument
 
+        int_ids, uuid_strs = _split_offline_document_ids(clean_uuids)
         try:
-            int_ids = []
-            uuid_strs = []
-            for item in clean_uuids:
-                try:
-                    int_ids.append(int(item))
-                except ValueError, TypeError:
-                    uuid_strs.append(str(item))
-
             docs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs))
             return [_model_to_dict(doc) for doc in docs]
         except Exception as exc:
@@ -1416,7 +1481,9 @@ def get_user_total_spend(user_id: str | None = None, since: datetime | None = No
         if user_id:
             qs = qs.filter(uploaded_by_id=user_id)
         if since is not None:
-            qs = qs.filter(created_at__gte=since)
+            # Spend is attributed by last activity (updated_at), matching the
+            # worker budget gate — created_at would miss month-boundary runs.
+            qs = qs.filter(updated_at__gte=since)
         agg = qs.aggregate(total=Sum("cost_usd"))["total"]
         return Decimal(str(agg or 0))
 
@@ -1426,7 +1493,7 @@ def get_user_total_spend(user_id: str | None = None, since: datetime | None = No
         clauses.append("uploaded_by_id = $user_id")
         params["user_id"] = str(user_id)
     if since is not None:
-        clauses.append("created_at >= type::datetime($since)")
+        clauses.append("updated_at >= type::datetime($since)")
         params["since"] = since.isoformat()
 
     where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
@@ -1608,24 +1675,109 @@ def delete_document(doc_uuid: str) -> None:
 # ── Chunk helpers ─────────────────────────────────────────────────────────────
 
 
-def _write_worker_chunks(doc_uuid: str, payloads: list[dict] | None = None) -> None:
-    """Fence each chunk mutation against cancellation, deletion, and replacement tasks."""
+# Deterministic record ids (doc_uuid:chunk_index) make chunk writes idempotent:
+# an ambiguous transport failure retried by _async_run UPSERTs the same records
+# instead of duplicating them (same pattern as user_memories, AUD-370).
+_CHUNK_UPSERT_MUTATION = (
+    "FOR $c IN $payloads { "
+    'LET $rec = type::record("chunks", $c.doc_uuid + ":" + <string>$c.chunk_index); '
+    "UPSERT $rec MERGE $c; "
+    "};"
+)
+
+
+def _write_worker_chunks(doc_uuid: str, payloads: list[dict] | None = None) -> bool:
+    """Fence each chunk mutation against cancellation, deletion, and replacement tasks.
+
+    Returns True when the document guard passed and the mutation ran, False when
+    the write was fenced out (superseded task, cancelled, or deleted document).
+    """
     params = {"doc_uuid": doc_uuid, "expected_task": document_task_name.get(), "payloads": payloads}
+    exists = (
+        "(SELECT id FROM documents WHERE doc_uuid = $doc_uuid "
+        "AND cloud_task_name = $expected_task AND cancel_requested != true)"
+    )
     if payloads is None:
-        sql = (
-            "BEGIN TRANSACTION; "
-            "IF array::len((SELECT id FROM documents WHERE doc_uuid = $doc_uuid "
-            "AND cloud_task_name = $expected_task AND cancel_requested != true)) > 0 { "
-            "DELETE FROM chunks WHERE doc_uuid = $doc_uuid; }; COMMIT TRANSACTION;"
-        )
+        mutation = "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;"
     else:
-        sql = (
-            "BEGIN TRANSACTION; "
-            "IF array::len((SELECT id FROM documents WHERE doc_uuid = $doc_uuid "
-            "AND cloud_task_name = $expected_task AND cancel_requested != true)) > 0 { "
-            "INSERT INTO chunks $payloads; }; COMMIT TRANSACTION;"
+        mutation = _CHUNK_UPSERT_MUTATION
+    sql = f"BEGIN TRANSACTION; LET $guard = array::len({exists}) > 0; IF $guard {{ {mutation} }} RETURN $guard; COMMIT TRANSACTION;"  # nosec B608
+    res = _run(sql, params)
+    return _transaction_flag(res)
+
+
+def _transaction_flag(res: Any) -> bool:
+    """Extract a boolean LET/RETURN flag from a SurrealDB transaction result."""
+    candidates = res if isinstance(res, list) else [res]
+    for stmt in candidates:
+        if isinstance(stmt, bool):
+            return stmt
+        if isinstance(stmt, dict):
+            val = stmt.get("result", stmt.get("RETURN"))
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, list) and val and isinstance(val[0], bool):
+                return val[0]
+    return False
+
+
+def _write_unfenced_chunks(doc_uuid: str, payloads: list[dict] | None = None) -> bool:
+    """Non-worker chunk mutation fenced only on document existence.
+
+    Used by regeneration/clone/admin paths that carry no task identity: writes
+    are skipped when the document was deleted mid-operation so orphaned chunks
+    are never left behind (AUD-354). Returns the transaction guard flag.
+    """
+    params = {"doc_uuid": doc_uuid, "payloads": payloads}
+    exists = "(SELECT id FROM documents WHERE doc_uuid = $doc_uuid)"
+    if payloads is None:
+        mutation = "DELETE FROM chunks WHERE doc_uuid = $doc_uuid;"
+    else:
+        mutation = _CHUNK_UPSERT_MUTATION
+    sql = f"BEGIN TRANSACTION; LET $guard = array::len({exists}) > 0; IF $guard {{ {mutation} }} RETURN $guard; COMMIT TRANSACTION;"  # nosec B608
+    res = _run(sql, params)
+    _check_surreal_error(res)
+    guard_ok = _transaction_flag(res)
+    if not guard_ok:
+        logger.warning(
+            "[Chunks] Chunk mutation for %s was skipped: document does not exist (deleted mid-operation).",
+            doc_uuid,
         )
-    _run(sql, params)
+    return guard_ok
+
+
+def _write_chunks_guarded(doc_uuid: str, payloads: list[dict] | None = None) -> bool:
+    """Dispatch a chunk mutation to the worker-fenced or existence-fenced writer."""
+    if document_task_name.get():
+        return _write_worker_chunks(doc_uuid, payloads)
+    return _write_unfenced_chunks(doc_uuid, payloads)
+
+
+def _insert_chunk_batches(doc_uuid: str, chunk_payloads: list[dict]) -> bool:
+    """Insert chunk payloads in small per-batch transactions.
+
+    Large serialized vector payloads exceed the HTTP request size limit in a
+    single call, so each batch is its own transaction. Returns True when any
+    write was fenced out.
+    """
+    batch_size = 15
+    fenced_out = False
+    for i in range(0, len(chunk_payloads), batch_size):
+        batch = chunk_payloads[i : i + batch_size]
+        fenced_out = not _write_chunks_guarded(doc_uuid, batch) or fenced_out
+    return fenced_out
+
+
+def _compensating_delete_chunks(doc_uuid: str) -> None:
+    """Best-effort chunk cleanup after a mid-insert failure."""
+    try:
+        _write_chunks_guarded(doc_uuid)
+    except Exception as cleanup_err:
+        logger.warning(
+            "[Chunks] Compensating delete failed for %s after batch insert failure: %s",
+            doc_uuid,
+            cleanup_err,
+        )
 
 
 def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
@@ -1651,53 +1803,30 @@ def recreate_chunks(doc_uuid: str, chunk_payloads: list[dict]) -> None:
     for chunk in chunk_payloads:
         chunk["doc_uuid"] = doc_uuid
 
-    # Insert chunks in small batches to prevent HTTP 413 Payload Too Large errors
-    # resulting from large serialized vector embedding payloads in a single request.
-    # Each batch is its own transaction so a partial failure only affects one batch.
-    batch_size = 15
-
     # First, atomically delete all existing chunks for this document
-    if document_task_name.get():
-        _write_worker_chunks(doc_uuid)
-    else:
-        _run(
-            "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
-            {"doc_uuid": doc_uuid},
-        )
+    fenced_out = not _write_chunks_guarded(doc_uuid)
 
     if not chunk_payloads:
         return
 
     try:
-        for i in range(0, len(chunk_payloads), batch_size):
-            batch = chunk_payloads[i : i + batch_size]
-            if document_task_name.get():
-                _write_worker_chunks(doc_uuid, batch)
-            else:
-                _run(
-                    "BEGIN TRANSACTION; INSERT INTO chunks $payloads; COMMIT TRANSACTION;",
-                    {"payloads": batch},
-                )
+        fenced_out = _insert_chunk_batches(doc_uuid, chunk_payloads) or fenced_out
     except Exception:
         # Batches commit independently (payload-size limit prevents a single
         # transaction), so a mid-loop failure would otherwise leave a partial
         # chunk set that RAG silently serves as complete. Compensate by
         # removing this document's chunks before propagating the failure.
-        try:
-            if document_task_name.get():
-                _write_worker_chunks(doc_uuid)
-            else:
-                _run(
-                    "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
-                    {"doc_uuid": doc_uuid},
-                )
-        except Exception as cleanup_err:
-            logger.warning(
-                "[Chunks] Compensating delete failed for %s after batch insert failure: %s",
-                doc_uuid,
-                cleanup_err,
-            )
+        _compensating_delete_chunks(doc_uuid)
         raise
+
+    if fenced_out:
+        # Silent IF-guard skips previously made "success" indistinguishable
+        # from "fenced out"; a COMPLETED doc could end up with zero chunks.
+        logger.warning(
+            "[Chunks] One or more chunk writes for %s were fenced out "
+            "(task superseded, document cancelled, or deleted mid-write).",
+            doc_uuid,
+        )
 
 
 def delete_chunks(doc_uuid: str) -> None:
@@ -1791,6 +1920,32 @@ def get_document_chunks(doc_uuid: str, limit: int = 100, start: int = 0) -> list
     return []
 
 
+def get_document_all_chunks(doc_uuid: str) -> list[dict[str, Any]]:
+    """Retrieve every chunk for a document in one query.
+
+    Unlike get_document_chunks this applies no LIMIT, so callers needing a
+    complete, generation-consistent snapshot (e.g. exports) get all rows from
+    a single atomic read instead of paginated windows that can straddle a
+    concurrent recreate_chunks delete+insert cycle.
+    """
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC;"
+        result = _first_result(_run(sql, {"doc_uuid": doc_uuid}))
+        if isinstance(result, list) and result:
+            return result
+        chunks = _test_chunks.get(doc_uuid, [])
+        return sorted(chunks, key=lambda x: int(x.get("chunk_index", 0)))
+
+    sql = "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid ORDER BY chunk_index ASC;"
+    result = _first_result(_run(sql, {"doc_uuid": doc_uuid}))
+    if isinstance(result, list):
+        return result
+    return []
+
+
 def clone_chunks(source_uuid: str, target_uuid: str) -> None:
     """Copy all chunks from source_uuid to target_uuid (deduplication flow)."""
     source_uuid = str(source_uuid).strip()
@@ -1807,11 +1962,10 @@ def clone_chunks(source_uuid: str, target_uuid: str) -> None:
         _test_chunks[target_uuid] = [{**c, "doc_uuid": target_uuid} for c in source_chunks]
         return
 
-    source_chunks = []
-    while page := get_document_chunks(source_uuid, limit=500, start=len(source_chunks)):
-        source_chunks.extend(page)
-        if len(page) < 500:
-            break
+    # Single atomic read: paginated windows can straddle a concurrent
+    # re-embed's delete+insert cycle and mix two chunk generations into the
+    # dedup target (AUD-356 follow-up).
+    source_chunks = get_document_all_chunks(source_uuid)
     if not source_chunks:
         return
 
@@ -1867,69 +2021,99 @@ def search_chunks_hnsw(
     return _first_result(_run(sql, params))
 
 
-def _bm25_scored_sql(allowed: bool) -> str:
-    """BM25-ranked chunk search using the idx_chunks_bm25 full-text index.
+def _bm25_query_terms(query_text: str, max_terms: int = 8) -> list[str]:
+    """Split a query into matchable terms for sparse retrieval (AUD-323).
 
-    The @1@ predicate binds the match to highlight ref 1 so search::score(1)
-    resolves; ordering by score keeps LIMIT from returning an arbitrary subset
-    when more than `limit` chunks match.
+    Whole-phrase CONTAINS gives near-zero recall for multi-word queries; match
+    per-term instead and rank by term coverage.
     """
-    fields = (
-        "id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id, "
-        "search::score(1) AS bm25_score"
-    )
-    scope = "doc_uuid INSIDE $allowed_doc_uuids AND " if allowed else ""
-    sql = (
-        f"SELECT {fields} FROM chunks "  # nosec B608 # noqa: S608 -- static fields/scope; values bound
-        f"WHERE {scope}content @1@ $query_text "
-        "ORDER BY bm25_score DESC LIMIT $limit;"
-    )
-    return sql
+    import re
+
+    terms: list[str] = []
+    seen: set[str] = set()
+    for tok in re.split(r"\s+", query_text.strip()):
+        term = tok.strip(".,;:!?()[]{}\"'`“”‘’«»-–—")  # noqa: RUF001 -- intentionally strips smart quotes/dashes
+        key = term.lower()
+        if len(term) >= 2 and key not in seen:
+            seen.add(key)
+            terms.append(term)
+        if len(terms) >= max_terms:
+            break
+    return terms
 
 
-def _bm25_contains_sql(allowed: bool) -> str:
-    """Legacy substring fallback used until idx_chunks_bm25 is applied."""
-    fields = "id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id"
-    scope = "doc_uuid INSIDE $allowed_doc_uuids AND " if allowed else ""
-    sql = f"SELECT {fields} FROM chunks WHERE {scope}content CONTAINS $query_text LIMIT $limit;"  # nosec B608 # noqa: S608 -- static fields/scope; values bound
-    return sql
+def _rank_bm25_rows(rows: list[dict], terms: list[str], limit: int) -> list[dict]:
+    """Order candidate rows by number of distinct query terms present."""
+    if not terms:
+        return rows[:limit]
+    lowered = [t.lower() for t in terms]
+
+    def coverage(row: dict) -> int:
+        content = str(row.get("content") or "").lower()
+        return sum(1 for t in lowered if t in content)
+
+    return sorted(rows, key=coverage, reverse=True)[:limit]
+
+
+def _bm25_offline_chunks(
+    query_text: str, terms: list[str], limit: int, allowed_doc_uuids: list[str] | None
+) -> list[dict]:
+    chunks = []
+    if allowed_doc_uuids is not None:
+        for uuid_str in allowed_doc_uuids:
+            chunks.extend(_test_chunks.get(uuid_str, []))
+    else:
+        for c_list in _test_chunks.values():
+            chunks.extend(c_list)
+    lowered = [t.lower() for t in terms]
+    if terms:
+        candidates = [c for c in chunks if any(t in str(c.get("content") or "").lower() for t in lowered)]
+    else:
+        candidates = [c for c in chunks if query_text.lower() in c.get("content", "").lower()]
+    return _rank_bm25_rows(candidates, terms, limit)
+
+
+def _bm25_surreal_params(
+    query_text: str, terms: list[str], limit: int, allowed_doc_uuids: list[str] | None
+) -> tuple[str, dict]:
+    params: dict[str, Any] = {"query_text": query_text, "limit": limit}
+    select_cols = (
+        "SELECT id, doc_uuid, content, language, chunk_index, page_number, chapter_title, anchor_id FROM chunks "
+    )
+    if terms:
+        # Match any term, then rank by coverage — whole-phrase CONTAINS misses
+        # nearly every multi-word query (AUD-323).
+        clauses = " OR ".join(f"content CONTAINS $t{i}" for i in range(len(terms)))
+        where = f"WHERE ({clauses})"
+        params.update({f"t{i}": t for i, t in enumerate(terms)})
+        # Over-fetch candidates for ranking; cap to keep the query bounded.
+        params["limit"] = max(limit * 5, 50)
+    else:
+        where = "WHERE content CONTAINS $query_text"
+    scope = ""
+    if allowed_doc_uuids is not None:
+        scope = " AND doc_uuid INSIDE $allowed_doc_uuids"
+        params["allowed_doc_uuids"] = allowed_doc_uuids
+    return f"{select_cols}{where}{scope} LIMIT $limit;", params  # nosec B608 -- clauses/cols are static; values are bound params
 
 
 def search_chunks_bm25(query_text: str, limit: int = 10, allowed_doc_uuids: list[str] | None = None) -> list[dict]:
     """Execute keyword search over SurrealDB document chunks for sparse retrieval."""
-    params: dict[str, Any] = {"query_text": query_text, "limit": limit}
+    terms = _bm25_query_terms(query_text)
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        chunks = []
-        if allowed_doc_uuids is not None:
-            for uuid_str in allowed_doc_uuids:
-                chunks.extend(_test_chunks.get(uuid_str, []))
-        else:
-            for c_list in _test_chunks.values():
-                chunks.extend(c_list)
-        results = [c for c in chunks if query_text.lower() in c.get("content", "").lower()]
-        return results[:limit]
+        return _bm25_offline_chunks(query_text, terms, limit, allowed_doc_uuids)
 
-    allowed = allowed_doc_uuids is not None
-    if allowed:
-        params["allowed_doc_uuids"] = allowed_doc_uuids
-
-    try:
-        return _first_result(_run(_bm25_scored_sql(allowed), params))
-    except Exception as exc:
-        # Pre-index deployments (or SurrealDB versions without the @ operator)
-        # fall back to the legacy substring scan rather than failing the
-        # whole hybrid retrieval leg.
-        logger.warning("[BM25] Scored search unavailable (%s); using CONTAINS fallback.", exc)
-        return _first_result(_run(_bm25_contains_sql(allowed), params))
+    sql, params = _bm25_surreal_params(query_text, terms, limit, allowed_doc_uuids)
+    rows = _first_result(_run(sql, params))
+    return _rank_bm25_rows(rows if isinstance(rows, list) else [], terms, limit)
 
 
 from extractor.surreal_audit import (  # noqa: F401
     _flush_document_cost,
     _record_document_spend,
-    count_audit_logs,
-    list_audit_logs,
+    deleted_document_spend_total,
     log_audit,
     monthly_spend_ledger_add,
     monthly_spend_ledger_total,
@@ -1943,6 +2127,8 @@ from extractor.surreal_cache import (  # noqa: F401
     delete_rag_cache_for_document,
     find_chunk_embedding,
     find_chunk_embeddings_batch,
+    kv_cache_add,
+    kv_cache_delete,
     kv_cache_delete_pattern,
     kv_cache_get,
     kv_cache_set,

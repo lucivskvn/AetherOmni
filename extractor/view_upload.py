@@ -10,6 +10,7 @@ from django.views import View
 
 from extractor import surreal_db, view_common
 from extractor.models import AuditAction
+from extractor.task_state import PENDING_OPERATION
 from extractor.utils import (
     VIDEO_FILE_EXTENSIONS,
     broadcast_status_change,
@@ -19,6 +20,13 @@ from extractor.utils import (
 
 logger = logging.getLogger(view_common.VIEWS_LOGGER_NAME)
 
+# Aggregate batch cap: Cloud Run rejects requests over ~32MB before Django
+# runs, so an unbounded multi-file POST surfaces as an opaque platform 413.
+MAX_UPLOAD_BATCH_SIZE = 20
+
+# NOTE: ".zip" is intentionally absent — validate_zip()/safe_extract() in
+# file_ingest.py are currently unwired helpers. If ZIP upload is ever added,
+# both guards MUST be applied at extraction time (AUD-380).
 ALLOWED_UPLOAD_EXTENSIONS = {
     "pdf",
     "png",
@@ -154,7 +162,8 @@ def _clone_deduplicated_doc(request, existing_doc, orig_name: str, file_hash: st
         document=doc,
         ip=ip,
     )
-    broadcast_status_change(new_uuid, "COMPLETED", owner_id=view_common._doc_owner_id(existing_doc))
+    # The clone belongs to the acting user, not the source document's owner.
+    broadcast_status_change(new_uuid, "COMPLETED", owner_id=view_common.get_request_actor_id(request))
     return {"status": "cached", "name": orig_name}
 
 
@@ -171,18 +180,28 @@ def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
         }
 
     doc_uuid = view_common._extract_clean_doc_uuid(existing_doc)
-    doc_ref = surreal_db.update_document(
+    actor_id = view_common.get_request_actor_id(request)
+    # CAS on FAILED: a concurrent retry/reaper/cancel between the dedup read and
+    # this write must not be clobbered back to PENDING. Spend fields are left
+    # untouched — zeroing them would erase already-incurred cost from budget
+    # accounting (see AUD-311).
+    doc_ref = surreal_db.update_document_if_status(
         doc_uuid,
         {
             "status": "PENDING",
-            "cost_usd": 0.0,
-            "input_tokens": 0,
-            "output_tokens": 0,
+            PENDING_OPERATION: "",
             "error_message": "",
             "cancel_requested": False,
             "retry_count": retry_cnt + 1,
         },
+        allowed_statuses=["FAILED"],
     )
+    if doc_ref is None:
+        return {
+            "status": "error",
+            "name": orig_name,
+            "error": f"File '{orig_name}' changed state while retrying; refresh and try again.",
+        }
 
     view_common._record_view_audit(
         request,
@@ -199,8 +218,8 @@ def _retry_failed_doc(request, existing_doc, orig_name: str) -> dict[str, str]:
         cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
 
     # Reprocessing may change derived content; drop cached answers built on it.
-    view_common._invalidate_doc_rag_caches(doc_uuid, view_common._doc_owner_id(existing_doc))
-    broadcast_status_change(str(doc_uuid), "PENDING", owner_id=view_common._doc_owner_id(existing_doc))
+    view_common._invalidate_doc_rag_caches(doc_uuid, actor_id)
+    broadcast_status_change(str(doc_uuid), "PENDING", owner_id=actor_id)
     return {"status": "success", "name": f"{orig_name} (re-enqueued)"}
 
 
@@ -238,8 +257,10 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
         "created_at": view_common.format_datetime(timezone.now()),
         "updated_at": view_common.format_datetime(timezone.now()),
     }
+    doc_created = False
     try:
         doc = surreal_db.create_document(data)
+        doc_created = True
 
         view_common._record_view_audit(
             request,
@@ -255,6 +276,14 @@ def _create_fresh_uploaded_doc(request, uploaded_file, file_hash: str) -> dict[s
         else:
             cloud_tasks.enqueue("process_document", {"document_uuid": new_uuid})
     except Exception:
+        if doc_created:
+            # Remove the Surreal record too — otherwise the reaper picks up a
+            # PENDING doc whose backing file was just deleted and burns a
+            # retry cycle failing on a missing blob.
+            try:
+                surreal_db.delete_document(new_uuid)
+            except Exception as del_exc:
+                logger.warning("[Upload] Failed to delete orphaned document %s: %s", new_uuid, del_exc)
         try:
             default_storage.delete(saved_path)
         except Exception as cleanup_exc:
@@ -349,6 +378,9 @@ class UploadView(LoginRequiredMixin, View):
         uploaded_files = request.FILES.getlist("file")
         if not uploaded_files:
             messages.error(request, "No file uploaded.")
+            return redirect("dashboard")
+        if len(uploaded_files) > MAX_UPLOAD_BATCH_SIZE:
+            messages.error(request, f"Too many files in one batch (max {MAX_UPLOAD_BATCH_SIZE}).")
             return redirect("dashboard")
 
         # Per-user throttle: batches can contain up to DATA_UPLOAD_MAX_NUMBER_FILES

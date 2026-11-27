@@ -173,6 +173,9 @@
                                 <th>Actions</th>
                             </tr>
                         </thead>
+                        {% if snapshot_capped %}
+                        <p class="text-slate-400" style="margin: 8px 0;">Showing the most recent documents only; statistics reflect your full library.</p>
+                        {% endif %}
                         <tbody>
                             {% if documents %}
                                 {% for d in documents %}

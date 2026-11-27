@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse, JsonResponse
@@ -19,6 +20,14 @@ def _apply_markdown_download_headers(resp: HttpResponse, filename: str) -> HttpR
 
 
 def _load_quiz_crystals(actor_id: str, body: dict) -> list[dict]:
+    """Return verified, anchor-grounded crystals for quiz generation.
+
+    Client-supplied ad-hoc crystals are intentionally not accepted: quiz items
+    must be grounded in notebook evidence, and ``create_crystal_with_provenance``
+    only grants ``verified`` status to crystals with owned active anchors
+    (AUD-434). Ungrounded items would persist into the FSRS queue with empty
+    ``anchor_ids`` and no ``tests`` edges.
+    """
 
     doc_slug = str(body.get("doc_slug") or "").strip()[:120] or None
     crystals = surreal_db.list_crystals_for_user(actor_id, doc_slug=doc_slug, limit=50)
@@ -28,18 +37,7 @@ def _load_quiz_crystals(actor_id: str, body: dict) -> list[dict]:
         filtered = [c for c in crystals if str(c.get("crystal_id") or "") in wanted]
         if filtered:
             return filtered[:20]
-    if crystals or not isinstance(body.get("crystals"), list):
-        return crystals[:20]
-    return [
-        {
-            "crystal_id": "",
-            "title": str(c.get("title") or "")[:200],
-            "summary": str(c.get("summary") or "")[:2000],
-            "anchor_ids": [],
-        }
-        for c in body["crystals"][:10]
-        if isinstance(c, dict) and (c.get("title") or c.get("summary"))
-    ]
+    return crystals[:20]
 
 
 class StrictLibrarianAPIView(LoginRequiredMixin, View):
@@ -285,8 +283,6 @@ class CrystalSynthesizeAPIView(LoginRequiredMixin, View):
     """Synthesize and persist a verified Crystal grounded in existing Anchors."""
 
     def post(self, request):
-        import uuid
-
         body, err = view_common._parse_json_dict_body(request)
         if err is not None or body is None:
             return err
@@ -361,4 +357,15 @@ class MarkdownCompileAPIView(LoginRequiredMixin, View):
         bundles = compiler.compile_markdown_bundles(crystals)
         if request.GET.get("download") == "1":
             return _serve_markdown_download(request, bundles)
-        return JsonResponse({"status": "ok", "bundle_count": len(bundles), "bundles": bundles})
+        # Return bundle metadata only — each bundle can be ~3MB and the client
+        # fetches content per-part via ?download=1&part=N (AUD-290).
+        return JsonResponse(
+            {
+                "status": "ok",
+                "bundle_count": len(bundles),
+                "bundles": [
+                    {"part": i + 1, "words": len(b.split()), "bytes": len(b.encode("utf-8"))}
+                    for i, b in enumerate(bundles)
+                ],
+            }
+        )

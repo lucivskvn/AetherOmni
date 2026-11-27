@@ -48,28 +48,43 @@ def generate_unique_username(user_email: str) -> str:
 def _get_or_create_django_user(user_email: str, django_username: str) -> tuple[User, bool]:
     import uuid
 
-    user = User.objects.filter(email__iexact=user_email).first()
+    from django.db import IntegrityError, transaction
+
+    # Deterministic binding: order by pk so duplicate-email rows always resolve
+    # to the same account, and warn so operators can deduplicate (AUD-295).
+    email_matches = User.objects.filter(email__iexact=user_email).order_by("pk")
+    if email_matches.count() > 1:
+        logger.warning(
+            "[Auth] Multiple Django users share email %s; binding to pk=%s deterministically.",
+            user_email,
+            email_matches.values_list("pk", flat=True).first(),
+        )
+    user = email_matches.first()
     if user:
         return user, False
 
-    try:
-        user = User.objects.create(
-            username=django_username,
-            email=user_email,
-            is_active=True,
-        )
-        return user, True
-    except Exception:
-        existing = User.objects.filter(email__iexact=user_email).first()
-        if existing:
-            return existing, False
-        fallback_username = f"{django_username[:130]}_{uuid.uuid4().hex[:8]}"
-        user = User.objects.create(
-            username=fallback_username,
-            email=user_email,
-            is_active=True,
-        )
-        return user, True
+    # Each create runs in its own savepoint: a concurrent first-login for the
+    # same email can trip the LOWER(email) unique index, and without a
+    # savepoint the IntegrityError would poison the caller's atomic block so
+    # the recovery lookup below raises TransactionManagementError instead
+    # (AUD-418).
+    candidates = [django_username, f"{django_username[:130]}_{uuid.uuid4().hex[:8]}"]
+    for index, candidate in enumerate(candidates):
+        try:
+            with transaction.atomic():
+                user = User.objects.create(
+                    username=candidate,
+                    email=user_email,
+                    is_active=True,
+                )
+            return user, True
+        except IntegrityError:
+            existing = User.objects.filter(email__iexact=user_email).first()
+            if existing:
+                return existing, False
+            if index == len(candidates) - 1:
+                raise
+    raise RuntimeError(f"Django user creation failed for {user_email}")
 
 
 def _evaluate_admin_claim(user_email: str, user_info: dict) -> bool:
@@ -103,7 +118,7 @@ def _sync_supabase_user(
     request: HttpRequest | None,
     resp_data: dict,
     username: str | None,
-) -> User:
+) -> User | None:
     """
     Retrieve or create a Django User from a successful Supabase auth response.
     Promotes to superuser/staff if the email matches the ADMIN_EMAIL.
@@ -119,9 +134,18 @@ def _sync_supabase_user(
 
     with transaction.atomic():
         user, created = _get_or_create_django_user(user_email, django_username)
+        if not user.is_active:
+            # Django-side deactivation is the operator ban path; Supabase is
+            # only the IdP, so an inactive account must not get a session.
+            logger.warning("[Auth] Login rejected for deactivated account: %s", user_email)
+            return None
         is_promoted_admin = _evaluate_admin_claim(user_email, user_info)
 
         role_changed = user.is_superuser != is_promoted_admin or user.is_staff != is_promoted_admin
+        if role_changed and user.is_superuser and not is_promoted_admin:
+            # Explicit demotion path: ADMIN_EMAIL is the sole authority, so a
+            # superuser absent from it loses privileges on next login (AUD-295).
+            logger.warning("[Auth] Demoting superuser %s: email not in ADMIN_EMAIL.", user_email)
         user.is_superuser = is_promoted_admin
         user.is_staff = is_promoted_admin
 
@@ -211,34 +235,69 @@ class SupabaseAuthBackend(ModelBackend):
                 getattr(settings, "SUPABASE_PUBLIC_KEY", ""),
             )
         )
-        url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
-        app_ver = getattr(settings, "APP_VERSION", "1.5.0")
-        headers = {
-            "apikey": supabase_key,
-            "Content-Type": APPLICATION_JSON,
-            "User-Agent": f"AetherOmni-AuthClient/{app_ver}",
-        }
-        body: dict = {"email": target_email, "password": password}
         captcha_token = request.POST.get("cf-turnstile-response", "") if request else ""
-        turnstile_required = bool(getattr(settings, "CF_TURNSTILE_SITE_KEY", ""))
-        if turnstile_required and not captcha_token:
-            logger.warning("[Auth] Supabase authentication rejected before dispatch: security check incomplete.")
+        if not _supabase_captcha_allows(request, captcha_token):
             return None
+        body: dict = {"email": target_email, "password": password}
         if captcha_token:
             body["gotrue_meta_security"] = {"captcha_token": captcha_token}
-        payload = json.dumps(body).encode("utf-8")
 
-        try:
-            from extractor.utils import validate_url_scheme
+        resp_data = _request_supabase_token(request, supabase_url, supabase_key, body)
+        if resp_data is None:
+            return None
+        return _sync_supabase_user(request, resp_data, target_email)
 
-            validate_url_scheme(url)
-            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
-                resp_data = json.loads(response.read().decode("utf-8"))
-                return _sync_supabase_user(request, resp_data, target_email)
-        except urllib.error.HTTPError as e:
-            logger.warning("[Auth] Supabase authentication rejected: HTTP %s", e.code)
-            return None
-        except Exception as e:
-            logger.warning("[Auth] Supabase API network connectivity exception: %s", e)
-            return None
+
+def _supabase_captcha_allows(request: HttpRequest | None, captcha_token: str) -> bool:
+    """Enforce the Turnstile pre-dispatch check and optional siteverify (AUD-296)."""
+    turnstile_required = bool(getattr(settings, "CF_TURNSTILE_SITE_KEY", ""))
+    if turnstile_required and not captcha_token:
+        logger.warning("[Auth] Supabase authentication rejected before dispatch: security check incomplete.")
+        return False
+    if captcha_token and getattr(settings, "CF_TURNSTILE_SECRET_KEY", ""):
+        # Server-side siteverify when configured; GoTrue captcha remains
+        # the verifier otherwise (AUD-296).
+        from extractor.view_auth import _verify_turnstile_token
+
+        if not _verify_turnstile_token(captcha_token):
+            logger.warning("[Auth] Supabase authentication rejected: CAPTCHA verification failed.")
+            return False
+    return True
+
+
+def _mark_auth_unavailable(request: HttpRequest | None) -> None:
+    """Flag IdP outages so the login form shows 'unavailable', not 'bad credentials' (AUD-392)."""
+    if request is not None:
+        request._supabase_auth_unavailable = True
+
+
+def _request_supabase_token(
+    request: HttpRequest | None, supabase_url: str, supabase_key: str, body: dict
+) -> dict | None:
+    """POST the password grant to GoTrue; returns the token response or None."""
+    url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
+    app_ver = getattr(settings, "APP_VERSION", "unknown")
+    headers = {
+        "apikey": supabase_key,
+        "Content-Type": APPLICATION_JSON,
+        "User-Agent": f"AetherOmni-AuthClient/{app_ver}",
+    }
+    payload = json.dumps(body).encode()
+    try:
+        from extractor.utils import validate_url_scheme
+
+        validate_url_scheme(url)
+        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        logger.warning("[Auth] Supabase authentication rejected: HTTP %s", e.code)
+        if e.code == 429 or e.code >= 500:
+            # Rate limiting and upstream outages are transient, not bad
+            # credentials — surface them as unavailable (AUD-417).
+            _mark_auth_unavailable(request)
+        return None
+    except Exception as e:
+        logger.warning("[Auth] Supabase API network connectivity exception: %s", e)
+        _mark_auth_unavailable(request)
+        return None

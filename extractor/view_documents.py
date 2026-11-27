@@ -14,7 +14,7 @@ from django.views.decorators.cache import never_cache
 
 from extractor import surreal_db, view_common
 from extractor.models import AuditAction
-from extractor.task_state import CANCEL_REQUESTED
+from extractor.task_state import CANCEL_REQUESTED, PENDING_OPERATION
 from extractor.utils import (
     APPLICATION_JSON,
     HEADER_X_REQUESTED_WITH,
@@ -103,6 +103,10 @@ def _build_document_save_payload(request, sanitized_markdown: str) -> dict[str, 
     payload: dict[str, Any] = {
         "refined_markdown": sanitized_markdown,
         "status": "PENDING",
+        # Marks the pending state as awaiting re-embed (not full pipeline) so
+        # the stale-task reaper re-enqueues the right task type if the
+        # reembed delivery is lost (AUD-318).
+        PENDING_OPERATION: "reembed",
         CANCEL_REQUESTED: False,
     }
     field_limits = {
@@ -167,12 +171,11 @@ class DocumentSaveView(LoginRequiredMixin, View):
         cleaned_markdown = new_markdown.replace("\x00", "").strip()
         payload = _build_document_save_payload(request, cleaned_markdown)
 
-        # The earlier status check is only a snapshot; a pipeline task can
-        # claim the document in between. The conditional UPDATE is the
-        # authoritative guard so an edit cannot land mid-pipeline.
-        doc_ref = surreal_db.update_document_content_if_status(
-            doc_uuid, payload, allowed_statuses=["COMPLETED", "FAILED"]
-        )
+        # CAS on terminal states: a concurrent retry/restart could move the
+        # document back into an active status between the read above and this
+        # write; an unconditional update would clobber it back to PENDING and
+        # overwrite in-flight pipeline output (AUD-433).
+        doc_ref = surreal_db.update_document_cas(doc_uuid, payload, allowed_statuses=["COMPLETED", "FAILED"])
         if doc_ref is None:
             if raw_doc.get(CANCEL_REQUESTED):
                 messages.error(
@@ -387,10 +390,18 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             self._abort_inflight_docs(raw_docs)
             self._delete_physical_files(raw_docs)
             surreal_db.purge_all()
+            # purge_all preserves kv_cache; drop rag_search_cache entries so
+            # cached answers cannot survive the reset (post_delete hooks no
+            # longer run for the raw-deleted rows).
+            surreal_db.kv_cache_delete_pattern(surreal_db.RAG_SEARCH_CACHE_PREFIX)
             try:
-                from extractor.models import MonthlySpendLog, SourceDocument, UserMemory
+                from extractor.models import AuditLog, MonthlySpendLog, SourceDocument, UserMemory
 
-                SourceDocument.objects.all().delete()
+                # Detach audit rows, then raw-delete: per-row delete() would
+                # fire post_delete N times — N Surreal delete_document calls
+                # after purge_all() already wiped them, plus N cache purges.
+                AuditLog.objects.update(document=None)
+                SourceDocument.objects.all()._raw_delete(using="default")
                 UserMemory.objects.all().delete()
                 if getattr(settings, "SURREALDB_OFFLINE", False):
                     MonthlySpendLog.objects.all().delete()
@@ -440,33 +451,18 @@ def _is_doc_owner_or_staff(doc: dict, request: Any) -> bool:
     return uploaded_by_id in (actor_id, str(getattr(request.user, "id", "")))
 
 
-def _enqueue_restarted_document(doc: dict, doc_uuid: str, cloud_tasks: Any) -> None:
+def _enqueue_restarted_document(doc: dict, doc_uuid: str, cloud_tasks: Any, *, reembed_only: bool = False) -> None:
     from django.conf import settings
 
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    task_name = REEMBED_DOCUMENT_TASK if reembed_only else "process_document"
     if getattr(settings, "SURREALDB_OFFLINE", False):
         doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
-        cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+        cloud_tasks.enqueue(task_name, {"document_id": doc_id})
     else:
-        cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+        cloud_tasks.enqueue(task_name, {"document_uuid": doc_uuid})
     broadcast_status_change(doc_uuid, "PENDING", owner_id=doc.get("uploaded_by_id"))
-
-
-def _flush_doc_spend_before_reset(doc) -> None:
-    """Ledger a document's accumulated spend before retry/restart zeroes its counters.
-
-    Document spend is otherwise only flushed at delete time, so resetting
-    cost_usd/tokens without flushing first permanently erases the failed
-    attempt's spend from MonthlySpendLog and under-counts the budget gate.
-    """
-    try:
-        doc_dict = doc if isinstance(doc, dict) else surreal_db._model_to_dict(doc)
-        if not surreal_db._flush_document_cost(doc_dict):
-            logger.warning(
-                "[Retry] Spend flush failed for doc %s before counter reset; proceeding anyway.",
-                doc_dict.get("doc_uuid"),
-            )
-    except Exception as exc:
-        logger.warning("[Retry] Spend flush raised for doc reset: %s", exc)
 
 
 def _restart_single_document(doc, request, cloud_tasks):
@@ -481,22 +477,37 @@ def _restart_single_document(doc, request, cloud_tasks):
     if status not in ["PENDING", "FAILED", "COMPLETED"]:
         return False
 
-    _flush_doc_spend_before_reset(doc)
-    surreal_db.update_document(
+    # A doc marked pending_operation="reembed" carries unsaved user edits in
+    # refined_markdown; routing it through full re-extraction would silently
+    # destroy them (AUD-355). Keep the marker and re-enqueue only the re-embed.
+    pending_reembed = (doc.get(PENDING_OPERATION) or "") == "reembed"
+
+    # Spend fields are intentionally not reset: cost_usd/tokens record
+    # already-incurred spend and zeroing them would erase it from budget
+    # accounting (AUD-311). The worker accumulates the new run's cost on top.
+    # CAS on the non-active statuses admitted above so a doc that entered
+    # processing between the read and this write is not clobbered (AUD-433).
+    doc_ref = surreal_db.update_document_cas(
         doc_uuid,
         {
             "status": "PENDING",
-            "cost_usd": 0.0,
-            "input_tokens": 0,
-            "output_tokens": 0,
+            PENDING_OPERATION: "reembed" if pending_reembed else "",
             "retry_count": retry_cnt + 1 if status == "FAILED" else retry_cnt,
             "error_message": "",
             CANCEL_REQUESTED: False,
             "updated_at": view_common.format_datetime(timezone.now()),
         },
+        allowed_statuses=["PENDING", "FAILED", "COMPLETED"],
+        # A save that lands between the read and this write flips the doc to
+        # PENDING with pending_operation="reembed"; matching only on status
+        # would clobber that marker and queue full re-extraction over the
+        # user's edits. Require the marker to be unchanged too.
+        allowed_pending_operations=[doc.get(PENDING_OPERATION) or ""],
     )
+    if doc_ref is None:
+        return False
 
-    _enqueue_restarted_document(doc, doc_uuid, cloud_tasks)
+    _enqueue_restarted_document(doc, doc_uuid, cloud_tasks, reembed_only=pending_reembed)
     # Reprocessing may change refined content; drop cached answers derived
     # from the previous pipeline output for this document's owner.
     view_common._invalidate_doc_rag_caches(str(doc_uuid), doc.get("uploaded_by_id"))
@@ -617,13 +628,23 @@ def _get_offline_docs_for_delete(request, document_ids):
 
     int_ids = []
     uuid_strs = []
+    import uuid as _uuid
+
     for item in document_ids:
         try:
             int_ids.append(int(item))
+            continue
         except ValueError, TypeError:
-            clean_str = view_common._extract_clean_doc_uuid(item)
-            if clean_str:
-                uuid_strs.append(clean_str)
+            pass
+        clean_str = view_common._extract_clean_doc_uuid(item)
+        if not clean_str:
+            continue
+        # Invalid UUID strings make the ORM raise ValidationError for the
+        # whole IN clause — one bad selection must not 500 the bulk action.
+        try:
+            uuid_strs.append(str(_uuid.UUID(clean_str)))
+        except ValueError, TypeError, AttributeError:
+            continue
 
     qs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs))
     if not (request.user.is_staff or request.user.is_superuser):
@@ -787,7 +808,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
 
         return None, None
 
-    def _requeue_document_task(self, doc_wrapped, doc_uuid, request):
+    def _requeue_document_task(self, doc_wrapped, doc_uuid, request, *, reembed_only: bool = False):
         view_common._record_view_audit(
             request,
             AuditAction.DOCUMENT_REQUEUED,
@@ -798,12 +819,14 @@ class DocumentRetryView(LoginRequiredMixin, View):
         from django.conf import settings
 
         from extractor import cloud_tasks
+        from extractor.utils import REEMBED_DOCUMENT_TASK
 
+        task_name = REEMBED_DOCUMENT_TASK if reembed_only else "process_document"
         if getattr(settings, "SURREALDB_OFFLINE", False):
             doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
-            cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+            cloud_tasks.enqueue(task_name, {"document_id": doc_id})
         else:
-            cloud_tasks.enqueue("process_document", {"document_uuid": str(doc_uuid)})
+            cloud_tasks.enqueue(task_name, {"document_uuid": str(doc_uuid)})
 
         # Reprocessing may produce different refined content; drop cached
         # answers derived from the previous pipeline output.
@@ -861,27 +884,38 @@ class DocumentRetryView(LoginRequiredMixin, View):
 
         is_restart = doc.status in ["COMPLETED", "PENDING"]
         retry_cnt = doc.retry_count
+        return self._apply_retry_requeue(request, doc_uuid, raw_doc, doc, users_map, is_ajax, is_restart, retry_cnt)
 
-        # Zeroing cost/token counters below would erase this attempt's spend
-        # from the monthly ledger; flush it first (delete-time path only
-        # fires for documents that are actually deleted).
-        _flush_doc_spend_before_reset(raw_doc)
+    def _apply_retry_requeue(self, request, doc_uuid, raw_doc, doc, users_map, is_ajax, is_restart, retry_cnt):
+        # Preserve a pending re-embed marker: clearing it and running full
+        # re-extraction would overwrite the user's refined_markdown edits
+        # (AUD-355). Re-enqueue only the re-embed in that case.
+        pending_reembed = (raw_doc.get(PENDING_OPERATION) or "") == "reembed"
 
-        doc_ref = surreal_db.update_document(
+        # Spend fields are not reset — see _restart_single_document (AUD-311).
+        # CAS on non-active statuses so a concurrent transition between the
+        # permission/status read and this write cannot be clobbered (AUD-433).
+        doc_ref = surreal_db.update_document_cas(
             doc_uuid,
             {
                 "status": "PENDING",
-                "cost_usd": 0.0,
-                "input_tokens": 0,
-                "output_tokens": 0,
+                PENDING_OPERATION: "reembed" if pending_reembed else "",
                 "error_message": "",
                 "retry_count": 0 if is_restart else retry_cnt + 1,
                 CANCEL_REQUESTED: False,
             },
+            allowed_statuses=["PENDING", "FAILED", "COMPLETED"],
+            allowed_pending_operations=[(raw_doc.get(PENDING_OPERATION) or "")],
         )
+        if doc_ref is None:
+            err_msg = "Document changed state while retrying. Refresh and try again."
+            if is_ajax:
+                return JsonResponse({"error": err_msg}, status=409)
+            messages.error(request, err_msg)
+            return redirect("dashboard")
         doc_wrapped = view_common._wrap_surreal_doc(doc_ref, users_map)
 
-        self._requeue_document_task(doc_wrapped, doc_uuid, request)
+        self._requeue_document_task(doc_wrapped, doc_uuid, request, reembed_only=pending_reembed)
         broadcast_status_change(str(doc_uuid), "PENDING", owner_id=view_common._doc_owner_id(doc_ref))
 
         if is_ajax:

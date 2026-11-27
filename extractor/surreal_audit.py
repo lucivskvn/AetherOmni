@@ -18,37 +18,7 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-def list_audit_logs(limit: int = 100, start: int = 0) -> list[dict]:
-    from extractor import surreal_db
-
-    """Retrieve paginated audit logs from SurrealDB ordered by timestamp desc."""
-
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        from extractor.models import AuditLog
-
-        qs = AuditLog.objects.all().order_by("-timestamp")[start : start + limit]
-        return [surreal_db._audit_log_to_dict(log) for log in qs]
-
-    sql = "SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT $limit START $start;"
-    return surreal_db._first_result(surreal_db._run(sql, {"limit": limit, "start": start}))
-
-
-def count_audit_logs() -> int:
-    from extractor import surreal_db
-
-    """Count total audit logs in SurrealDB."""
-
-    if getattr(settings, "SURREALDB_OFFLINE", False):
-        from extractor.models import AuditLog
-
-        return AuditLog.objects.count()
-
-    sql = "SELECT count() AS n FROM audit_logs GROUP ALL;"
-    rows = surreal_db._first_result(surreal_db._run(sql))
-    return rows[0].get("n", 0) if rows else 0
-
-
-def _record_document_spend(doc_uuid: str, created_at: datetime, cost: float, in_tok: int, out_tok: int) -> bool:
+def _record_document_spend(doc_uuid: str, spend_month: datetime, cost: float, in_tok: int, out_tok: int) -> bool:
     from extractor import surreal_db
 
     """Atomically record one deleted document's spend, tolerating retry attempts."""
@@ -67,8 +37,8 @@ def _record_document_spend(doc_uuid: str, created_at: datetime, cost: float, in_
             sql,
             {
                 "doc_uuid": doc_uuid,
-                "year": created_at.year,
-                "month": created_at.month,
+                "year": spend_month.year,
+                "month": spend_month.month,
                 "cost_usd": cost,
                 "input_tokens": in_tok,
                 "output_tokens": out_tok,
@@ -138,28 +108,57 @@ def monthly_spend_ledger_total(year: int, month: int) -> dict[str, float] | None
     }
 
 
+def deleted_document_spend_total(year: int, month: int) -> float | None:
+    """Return summed spend of deleted documents for a calendar month.
+
+    Deleted-document spend lives in document_spend_reconciliations so removal
+    cannot erase budget consumption. Returns None on failure so callers can
+    fail closed rather than under-count the monthly total.
+    """
+    from extractor import surreal_db
+
+    sql = (
+        "SELECT math::sum(cost_usd) AS cost_usd FROM document_spend_reconciliations "
+        "WHERE year = $year AND month = $month GROUP ALL;"
+    )
+    try:
+        rows = surreal_db._first_result(surreal_db._run(sql, {"year": int(year), "month": int(month)}))
+    except Exception as exc:
+        logger.warning("[SurrealDB] Failed to read deleted-document spend: %s", exc)
+        return None
+    if not rows:
+        return 0.0
+    row = rows[0] if isinstance(rows[0], dict) else {}
+    return float(row.get("cost_usd") or 0.0)
+
+
 def _flush_document_cost(doc) -> bool:
     """Persist a document's spend before deletion, returning whether deletion is safe."""
     cost = doc.get("cost_usd") or 0.0
-    created_at_value = doc.get("created_at")
+    # Attribute spend to the month of last pipeline activity (updated_at),
+    # matching the live-spend budget convention (AUD-303): a document created
+    # last month but processed this month consumed THIS month's budget, and
+    # attributing the flush to created_at would let cross-month deletions
+    # escape the current month's total entirely (AUD-394).
+    spend_ts = doc.get("updated_at") or doc.get("created_at")
     if cost <= 0:
         return True
 
-    if not created_at_value:
+    if not spend_ts:
         logger.warning("[SurrealDB] event=surrealdb_missing_created_at")
         return False
 
     from django.utils.dateparse import parse_datetime as django_parse
 
-    if isinstance(created_at_value, datetime):
-        created_at = created_at_value
-    elif isinstance(created_at_value, str):
-        created_at = django_parse(created_at_value)
+    if isinstance(spend_ts, datetime):
+        spend_at = spend_ts
+    elif isinstance(spend_ts, str):
+        spend_at = django_parse(spend_ts)
     else:
-        logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=%s", type(created_at_value).__name__)
+        logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=%s", type(spend_ts).__name__)
         return False
 
-    if not created_at:
+    if not spend_at:
         logger.warning("[SurrealDB] event=surrealdb_invalid_created_at type=string")
         return False
 
@@ -170,13 +169,13 @@ def _flush_document_cost(doc) -> bool:
         if not doc_uuid:
             logger.warning("[SurrealDB] event=surrealdb_missing_document_uuid")
             return False
-        return _record_document_spend(doc_uuid, created_at, float(cost), input_tokens, output_tokens)
+        return _record_document_spend(doc_uuid, spend_at, float(cost), input_tokens, output_tokens)
 
     from extractor.models import MonthlySpendLog
 
     try:
         return MonthlySpendLog.add_cost(
-            date=created_at,
+            date=spend_at,
             cost=Decimal(str(cost)),
             in_tok=input_tokens,
             out_tok=output_tokens,
@@ -192,6 +191,10 @@ def log_audit(
     from extractor import surreal_db
 
     """Write an audit log entry to SurrealDB."""
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        # Offline audit persistence is handled by log_audit_event's Django ORM
+        # leg; writing here would only produce swallowed failures (AUD-371).
+        return
     params = {
         "action": action,
         "user_id": str(user_id),

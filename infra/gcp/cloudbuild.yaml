@@ -344,7 +344,7 @@ steps:
         APP_URL='${_APP_URL}'
         APP_URL="$${APP_URL:-$${WEB_URL}}"
         ENV_VARS="RELEASE_VERSION=$${RELEASE_VERSION},BUILD_SHA=$${BUILD_SHA},SHORT_SHA=$${BUILD_SHA}"
-        ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=1,GUNICORN_TIMEOUT=900,RUN_MIGRATIONS_ON_STARTUP=False"
+        ENV_VARS="$${ENV_VARS},DJANGO_DEBUG=False,ENABLE_PERIODIC_MAINTENANCE=False,GUNICORN_WORKERS=1,GUNICORN_TIMEOUT=1800,RUN_MIGRATIONS_ON_STARTUP=False"
         # Keep the deploy contract aligned with the Pulumi-managed media bucket
         # and its least-privilege runtime identity.
         RUNTIME_SERVICE_ACCOUNT="korda-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -373,6 +373,7 @@ steps:
           --max-instances=5 \
           --cpu=2 \
           --memory=2Gi \
+          --timeout=1800 \
           --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"
@@ -441,6 +442,7 @@ steps:
           --max-instances=5 \
           --cpu=1 \
           --memory=1Gi \
+          --timeout=900 \
           --service-account="$${RUNTIME_SERVICE_ACCOUNT}" \
           --set-env-vars="^;^$${ENV_VARS}" \
           --set-secrets="$${SECRETS}"

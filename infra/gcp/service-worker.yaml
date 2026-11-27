@@ -13,7 +13,7 @@ spec:
         run.googleapis.com/launch-stage: BETA
     spec:
       serviceAccountName: "${SERVICE_ACCOUNT}"
-      timeoutSeconds: 900
+      timeoutSeconds: 1800
       containers:
       - image: "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/cloud-run-source-deploy/korda:${RELEASE_VERSION}"
         name: worker
@@ -52,7 +52,7 @@ spec:
         - name: EVENTARC_SERVICE_ACCOUNT
           value: "${EVENTARC_SERVICE_ACCOUNT}"
         - name: GUNICORN_TIMEOUT
-          value: "900"
+          value: "1800"
         - name: GUNICORN_WORKERS
           value: "1"
         - name: RUN_MIGRATIONS_ON_STARTUP

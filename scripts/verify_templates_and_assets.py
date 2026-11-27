@@ -21,6 +21,14 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# URLconf resolution requires Django settings; offline mode keeps this check
+# independent of SurrealDB credentials, matching run_checks.sh test invocations.
+os.environ.setdefault("SURREALDB_OFFLINE", "True")
+# No DATABASE_URL default: offline mode must not silently select SQLite when
+# a developer has SURREALDB_OFFLINE unset but no database configured.
+# Same local-verification key run_checks.sh exports; never a production value.
+os.environ.setdefault("DJANGO_SECRET_KEY", "local-verification-only-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df0Jy")
+
 TEMPLATES_DIR = ROOT / "extractor" / "templates"
 STATIC_DIR = ROOT / "static"
 HTML_SUFFIX = ".html"

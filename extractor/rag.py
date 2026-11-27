@@ -38,6 +38,7 @@ from extractor.llm_gateway import (
     generate_llm_stream_unified,
     record_unified_response_spend,
 )
+from extractor.task_state import PENDING_OPERATION
 
 logger = logging.getLogger(__name__)
 
@@ -201,9 +202,11 @@ def _lookup_cached_embeddings(
 
         if cached_vector:
             final_embeddings[idx] = cached_vector
-        else:
+        elif cleaned_text:
             missing_indices.append(idx)
             missing_texts.append(text)
+        # Whitespace-only chunks skip the embedding API entirely; they stay
+        # None and are treated as failed sentinels by _fill_missing_fallbacks.
     return final_embeddings, missing_indices, missing_texts
 
 
@@ -247,23 +250,37 @@ def _fill_missing_fallbacks(final_embeddings, chunks_list, model_name):
 
     is_offline = getattr(settings, "SURREALDB_OFFLINE", False)
 
+    consecutive_failures = 0
+    max_consecutive_failures = 10
     for idx, emb in enumerate(final_embeddings):
-        if emb is None:
-            if is_offline:
-                final_embeddings[idx] = generate_deterministic_embedding(chunks_list[idx])
-                continue
+        if emb is not None:
+            continue
+        if not str(chunks_list[idx]).strip():
+            # Whitespace-only chunk: no provider call; remains a failed sentinel.
+            final_embeddings[idx] = _EMBEDDING_FAILED_SENTINEL
+            continue
+        if is_offline:
+            final_embeddings[idx] = generate_deterministic_embedding(chunks_list[idx])
+            continue
+        if consecutive_failures >= max_consecutive_failures:
+            # Provider outage on a large document: stop after a bounded run of
+            # failures instead of issuing one call per remaining chunk (AUD-350).
+            final_embeddings[idx] = _EMBEDDING_FAILED_SENTINEL
+            continue
 
-            try:
-                response = execute_embed_content_with_fallback(model_name=model_name, contents=[chunks_list[idx]])
-                if not response.embeddings:
-                    raise ValueError("Embedding provider returned no embeddings.")
-                final_embeddings[idx] = response.embeddings[0].values or None
-            except RuntimeError, ValueError, AttributeError:
-                logger.warning(
-                    "[Embeddings] Live embedding failed for chunk %s — storing sentinel value to exclude from HNSW queries.",
-                    idx,
-                )
-                final_embeddings[idx] = _EMBEDDING_FAILED_SENTINEL
+        try:
+            response = execute_embed_content_with_fallback(model_name=model_name, contents=[chunks_list[idx]])
+            if not response.embeddings:
+                raise ValueError("Embedding provider returned no embeddings.")
+            final_embeddings[idx] = response.embeddings[0].values or None
+            consecutive_failures = 0
+        except RuntimeError, ValueError, AttributeError:
+            consecutive_failures += 1
+            logger.warning(
+                "[Embeddings] Live embedding failed for chunk %s — storing sentinel value to exclude from HNSW queries.",
+                idx,
+            )
+            final_embeddings[idx] = _EMBEDDING_FAILED_SENTINEL
 
 
 def generate_surreal_embeddings(
@@ -391,10 +408,13 @@ def _hydrate_source_from_uuid(uuid_str: str) -> dict[str, Any]:
         "publication_year": meta.get("publication_year", ""),
         "license_type": meta.get("license_type", "Unknown"),
         "doi": meta.get("doi", ""),
-        "chunk_index": 0,
-        "page_number": 1,
+        # Cached answers only retain source UUIDs, so real citation
+        # coordinates are unavailable — emit empty values rather than
+        # fabricated page/chunk/anchor data the UI would render as fact.
+        "chunk_index": None,
+        "page_number": None,
         "chapter_title": "",
-        "anchor_id": "page-1",
+        "anchor_id": "",
         "deep_link": f"/document/{uuid_str}/" if uuid_str else "",
     }
 
@@ -539,14 +559,19 @@ def _retrieve_matching_chunks(
     query_cleaned: str,
     allowed_uuids: list[str] | None,
     top_k: int,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | None:
+    """Return fused chunks, [] for a genuinely empty corpus, or None on backend failure.
+
+    Callers must distinguish None (SurrealDB unreachable) from [] (no relevant
+    context) — reporting an outage as "no sources found" masks incidents (AUD-349).
+    """
     try:
         dense = surreal_db.search_chunks_hnsw(query_embedding, limit=top_k, allowed_doc_uuids=allowed_uuids)
         sparse = surreal_db.search_chunks_bm25(query_cleaned, limit=top_k, allowed_doc_uuids=allowed_uuids)
         return reciprocal_rank_fusion(dense, sparse, k=60, top_k=top_k)
     except OSError, RuntimeError:
         logger.exception("[RAG Search] Connection error to SurrealDB.")
-        return []
+        return None
 
 
 def _get_query_embedding(query_cleaned: str) -> list[float]:
@@ -647,6 +672,10 @@ def query_semantic_knowledge_rag(
     _ensure_chunks_loaded(allowed_uuids)
 
     matching_chunks = _retrieve_matching_chunks(surreal_db, query_embedding, query_cleaned, allowed_uuids, top_k)
+    if matching_chunks is None:
+        # Surface the outage as a server error instead of a 200 "no context"
+        # response that is indistinguishable from an empty corpus (AUD-349).
+        raise RuntimeError("SurrealDB retrieval unavailable during RAG search.")
     if not matching_chunks:
         return {"answer": "No relevant source context found in the knowledge database.", "sources": []}
 
@@ -808,11 +837,18 @@ def _stream_query_rag_events(
         yield f"data: {json.dumps({'done': True})}\n\n"
         return
 
+    # Preference capture must run on the streaming path too — SSE is the
+    # primary dashboard path, so skipping it silently drops most memories.
+    _enqueue_user_preference_memory(user, actor_id, query_cleaned)
+
     user_memories_block = _fetch_user_memories_block(user, query_embedding, actor_id=actor_id)
     _ensure_chunks_loaded(allowed_uuids)
 
     matching_chunks = _retrieve_matching_chunks(surreal_db, query_embedding, query_cleaned, allowed_uuids, top_k)
 
+    if matching_chunks is None:
+        yield f"data: {json.dumps({'error': 'Search is temporarily unavailable. Please retry.'})}\n\n"
+        return
     if not matching_chunks:
         yield f"data: {json.dumps({'error': 'No relevant source context found in the knowledge database.'})}\n\n"
         return
@@ -1070,31 +1106,58 @@ def _get_doc_metadata(doc_uuid: str) -> dict[str, Any]:
     }
 
 
+def _regen_marker_key(doc_uuid_str: str) -> str:
+    return f"regen_enqueued:{doc_uuid_str}"
+
+
 def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db) -> None:
-    """Regenerate and save chunks+embeddings for a single COMPLETED document that is missing them."""
+    """Queue chunk+embedding regeneration for a COMPLETED document missing chunks.
 
-    # Fall back to regeneration if JSON was missing or corrupted
-    if doc.get("status") == "COMPLETED" and doc.get("refined_markdown"):
-        logger.info(f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Regenerating chunks...")
-        lang = (doc.get("language") or "").lower()
-        chunk_size = 500 if "arabic" in lang or "ar" in lang else 1200
-        from extractor.rag import generate_surreal_embeddings
-        from extractor.tasks import chunk_document_semantically
-
-        chunks = chunk_document_semantically(doc.get("refined_markdown") or "", max_chunk_size=chunk_size)
-        if chunks:
-            from extractor.tasks import _build_chunk_payload
-
-            embeddings = generate_surreal_embeddings(chunks, model_name="text-embedding-004")
-            payloads = [
-                _build_chunk_payload(i, chunk_text, emb, doc.get("language") or "")[0]
-                for i, (chunk_text, emb) in enumerate(zip(chunks, embeddings))
-            ]
-            # Save to SurrealDB
-            surreal_db.recreate_chunks(doc_uuid_str, payloads)
-            logger.info(f"[Surreal Sync] Regenerated and saved {len(payloads)} chunks to SurrealDB for {doc_uuid_str}.")
-    else:
+    Regeneration runs through the re-embed task (Cloud Task in production,
+    daemon thread in DEBUG) so the budget gate, cancellation fencing, and task
+    identity checks apply. Doing it synchronously inside a search request
+    multiplied spend and could exceed the request timeout (AUD-348).
+    """
+    if doc.get("status") != "COMPLETED" or not (doc.get("refined_markdown") or "").strip():
         logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.get('status')}, skipping sync.")
+        return
+    if doc.get(PENDING_OPERATION) == "reembed":
+        return  # A re-embed is already queued or in flight for this document.
+    try:
+        if surreal_db.kv_cache_get(_regen_marker_key(doc_uuid_str)):
+            return  # Recently enqueued; avoid a task per concurrent query.
+    except Exception as exc:
+        logger.debug("[Surreal Sync] Regen marker lookup failed for %s: %s", doc_uuid_str, exc)
+    logger.info(f"[Surreal Sync] JSON missing for COMPLETED document {doc_uuid_str}. Enqueueing re-embed...")
+    try:
+        from extractor import cloud_tasks
+        from extractor.utils import REEMBED_DOCUMENT_TASK
+
+        # Mark the doc as awaiting re-embed BEFORE dispatch so a dead run is
+        # reaped as reembed (never full pipeline, which would destroy edits).
+        # CAS on COMPLETED: if the doc changed state, skip the enqueue.
+        marked = surreal_db.update_document_cas(
+            doc_uuid_str, {PENDING_OPERATION: "reembed"}, allowed_statuses=["COMPLETED"]
+        )
+        if marked is None:
+            return
+        try:
+            cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid_str})
+        except Exception:
+            # A COMPLETED doc carrying pending_operation="reembed" is skipped
+            # by this guard forever; clear the marker so a later query can
+            # retry the regeneration enqueue.
+            try:
+                surreal_db.update_document_cas(doc_uuid_str, {PENDING_OPERATION: ""}, allowed_statuses=["COMPLETED"])
+            except Exception:
+                logger.debug("[Surreal Sync] Failed to clear reembed marker for %s", doc_uuid_str)
+            raise
+        try:
+            surreal_db.kv_cache_set(_regen_marker_key(doc_uuid_str), True, ttl_seconds=900)
+        except Exception as exc:
+            logger.debug("[Surreal Sync] Regen marker set failed for %s: %s", doc_uuid_str, exc)
+    except Exception as exc:
+        logger.warning(f"[Surreal Sync] Failed to enqueue chunk regeneration for {doc_uuid_str}: {exc}")
 
 
 def _normalise_doc_uuid_list(doc_uuids: Any) -> list[str]:

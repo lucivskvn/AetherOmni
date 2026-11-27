@@ -313,7 +313,9 @@
                 <i data-lucide="terminal"></i> Cloud Run Worker Logs (korda-worker)
             </h3>
             <div class="log-panel" data-log-panel aria-label="Cloud Run worker logs">
-                {% if worker_logs %}
+                {% if not can_view_logs %}
+                    <div class="text-slate-400">Container logs are restricted to superusers.</div>
+                {% elif worker_logs %}
                     {% for entry in worker_logs %}
                     <div class="log-entry">
                         <span class="log-time">{{ entry.timestamp }}</span>
@@ -332,7 +334,9 @@
                 <i data-lucide="terminal"></i> Cloud Run Web Logs (korda-web)
             </h3>
             <div class="log-panel" data-log-panel aria-label="Cloud Run web logs">
-                {% if web_logs %}
+                {% if not can_view_logs %}
+                    <div class="text-slate-400">Container logs are restricted to superusers.</div>
+                {% elif web_logs %}
                     {% for entry in web_logs %}
                     <div class="log-entry">
                         <span class="log-time">{{ entry.timestamp }}</span>

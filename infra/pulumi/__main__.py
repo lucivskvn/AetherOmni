@@ -137,7 +137,10 @@ for idx, role in enumerate(iam_roles):
     )
     iam_members.append(member)
 
-for sa_idx, sa_role in enumerate(["roles/iam.serviceAccountUser", "roles/iam.serviceAccountTokenCreator"]):
+# serviceAccountUser on itself supports self-referential act-as flows; the
+# runtime code never calls iamcredentials (generateIdToken/signBlob), so
+# serviceAccountTokenCreator is deliberately not granted.
+for sa_idx, sa_role in enumerate(["roles/iam.serviceAccountUser"]):
     sa_member = gcp.serviceaccount.IAMMember(
         f"korda-sa-self-iam-{sa_idx}",
         service_account_id=service_account.name,
@@ -182,6 +185,30 @@ gcp.cloudtasks.QueueIamMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
+# document_task_still_queued() calls tasks.get on recorded task names; grant a
+# queue-scoped custom role with only that permission (least privilege over
+# roles/cloudtasks.viewer, which adds list/full-view).
+tasks_reader_role = gcp.projects.IAMCustomRole(
+    "korda-tasks-reader-role",
+    project=project,
+    role_id="kordaTasksReader",
+    title="KORDA Cloud Tasks Reader",
+    description="Read a single Cloud Task by name so the stale-task reaper can verify queued deliveries.",
+    permissions=["cloudtasks.tasks.get"],
+    stage="GA",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+gcp.cloudtasks.QueueIamMember(
+    "korda-queue-task-reader",
+    name=tasks_queue.name,
+    location=queue_region,
+    project=project,
+    role=tasks_reader_role.name,
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
 media_bucket_object_admin = gcp.storage.BucketIAMMember(
     "korda-bucket-object-admin",
     bucket=media_bucket.name,
@@ -190,11 +217,45 @@ media_bucket_object_admin = gcp.storage.BucketIAMMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
+# backups/ objects stay write-only (objectCreator) so the runtime identity
+# cannot read or delete backup history. The staged-export lifecycle needs
+# get/create/update/delete ONLY under staging/, granted via an IAM condition.
 backup_bucket_object_creator = gcp.storage.BucketIAMMember(
     "korda-backup-bucket-object-creator",
     bucket=backup_bucket.name,
     role="roles/storage.objectCreator",
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+backup_staging_role = gcp.projects.IAMCustomRole(
+    "korda-backup-staging-role",
+    project=project,
+    role_id="kordaBackupStagingManager",
+    title="KORDA Backup Staging Manager",
+    description="Object access limited to the staging/ prefix for in-flight SurrealDB export promotion.",
+    permissions=[
+        "storage.objects.create",
+        "storage.objects.delete",
+        "storage.objects.get",
+        "storage.objects.update",
+    ],
+    stage="GA",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+backup_staging_binding = gcp.storage.BucketIAMMember(
+    "korda-backup-bucket-staging-manager",
+    bucket=backup_bucket.name,
+    role=backup_staging_role.name,
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    condition=backup_bucket.bucket.name.apply(
+        lambda b: gcp.storage.BucketIAMMemberConditionArgs(
+            title="backup-staging-prefix-only",
+            description="Restrict object access to the staging/ prefix used for in-flight exports.",
+            expression=f"resource.name.startsWith('projects/_/buckets/{b}/objects/staging/')",
+        )
+    ),
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
@@ -385,7 +446,10 @@ worker_component = ScaleToZeroWorker(
     + secret_envs
     + [
         gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="1"),
-        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_TIMEOUT", value="900"),
+        # Worker requests are synchronous Cloud Tasks deliveries; document
+        # pipelines run up to ~25 minutes, so the request ceiling must cover
+        # the 1740s dispatch deadline set in cloud_tasks.py.
+        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_TIMEOUT", value="1800"),
         gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="RUN_MIGRATIONS_ON_STARTUP", value="False"),
     ],
     sizing=WorkerSizing(
@@ -393,6 +457,7 @@ worker_component = ScaleToZeroWorker(
         memory="2Gi",
         min_instances=worker_min_instances,
         max_instances=worker_max_instances,
+        timeout="1800s",
     ),
     is_public=False,
     legacy_name="korda-worker",
