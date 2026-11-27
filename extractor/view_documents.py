@@ -854,6 +854,9 @@ class DocumentRetryView(LoginRequiredMixin, View):
 
         is_restart = doc.status in ["COMPLETED", "PENDING"]
         retry_cnt = doc.retry_count
+        return self._apply_retry_requeue(request, doc_uuid, raw_doc, doc, users_map, is_ajax, is_restart, retry_cnt)
+
+    def _apply_retry_requeue(self, request, doc_uuid, raw_doc, doc, users_map, is_ajax, is_restart, retry_cnt):
         # Preserve a pending re-embed marker: clearing it and running full
         # re-extraction would overwrite the user's refined_markdown edits
         # (AUD-355). Re-enqueue only the re-embed in that case.
