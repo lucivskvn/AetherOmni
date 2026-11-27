@@ -1,6 +1,7 @@
+import ipaddress
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -39,13 +40,18 @@ class AetherJSONEncoder(DjangoJSONEncoder):
             return str(obj)
 
 
-def parse_datetime(val):
+def parse_datetime(val) -> datetime | None:
+    """Parse a stored timestamp; returns None on missing/malformed input.
+
+    Callers must choose their own fallback — silently substituting "now" for a
+    corrupt timestamp misattributes spend months and expiry windows.
+    """
     if not val:
-        return timezone.now()
+        return None
     if isinstance(val, datetime):
         return val
     try:
-        return datetime.strptime(val, ISO_8601_FORMAT).replace(tzinfo=timezone.UTC)
+        return datetime.strptime(val, ISO_8601_FORMAT).replace(tzinfo=UTC)
     except ValueError, TypeError:
         try:
             from django.utils.dateparse import parse_datetime as django_parse
@@ -53,11 +59,12 @@ def parse_datetime(val):
             parsed = django_parse(val)
             if parsed:
                 if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=timezone.UTC)
+                    parsed = parsed.replace(tzinfo=UTC)
                 return parsed
         except ValueError, TypeError, AttributeError:
             pass
-    return timezone.now()
+    logger.debug("[Time] Unparseable timestamp value: %r", val)
+    return None
 
 
 def format_datetime(dt):
@@ -118,9 +125,7 @@ def _build_users_map(user_ids=None, fallback_user=None) -> dict:
             users_map[str(actor_id)] = fallback_user
 
     if user_ids is None:
-        for u in user_model.objects.all():
-            users_map[str(u.id)] = u
-        return users_map
+        raise ValueError("_build_users_map requires an explicit user_ids collection")
 
     needed_ids = {str(uid) for uid in user_ids if uid and str(uid) not in users_map}
     if not needed_ids:
@@ -179,8 +184,11 @@ def _build_synthetic_surreal_doc(d: dict, users_map: dict | None = None) -> Simp
     doc_obj.error_message = d.get("error_message")
     doc_obj.retry_count = d.get("retry_count", 0)
 
-    doc_obj.created_at = parse_datetime(d.get("created_at"))
-    doc_obj.updated_at = parse_datetime(d.get("updated_at"))
+    # Missing/corrupt timestamps surface as the epoch sentinel rather than
+    # "now" so they cannot be misattributed to the current budget month.
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    doc_obj.created_at = parse_datetime(d.get("created_at")) or epoch
+    doc_obj.updated_at = parse_datetime(d.get("updated_at")) or epoch
     doc_obj.expires_at = parse_datetime(d.get("expires_at")) if d.get("expires_at") else None
 
     uid = d.get("uploaded_by_id")
@@ -219,10 +227,11 @@ def _render_sanitized_markdown(markdown_text: str) -> str:
 
 def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
     """
-    Lightweight budget gate that only reads Django ORM tables — no SurrealDB.
-    Safe to call from any view, including in test environments.
-    Returns True when the authenticated user has consumed their monthly AI budget.
-    Staff / superusers are never budget-gated.
+    Pre-flight budget gate mirroring the worker-side check in llm_gateway:
+    live document spend + monthly spend ledger + deleted-document
+    reconciliations vs the configured cap (cap <= 0 halts all spend).
+    Staff / superusers are never budget-gated. Fails closed in production.
+    Returns True when the budget is exhausted.
     """
     if user.is_staff or user.is_superuser:
         return False
@@ -235,13 +244,17 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
 
         settings_obj = SystemSettings.get_settings()
         budget_cap = Decimal(str(settings_obj.monthly_budget_usd or 10.0))
+        # Mirror the worker gate: a configured cap of 0 halts all spend; only a
+        # missing value defaults to the fallback cap.
         if budget_cap <= 0:
-            return False
+            return True
 
         now = timezone.now()
         monthly_logged = MonthlySpendLog.total_for_month(now.year, now.month)
 
-        # Add live spend from active SurrealDB documents if available
+        # Add live spend from active SurrealDB documents if available, plus
+        # spend of deleted documents (document_spend_reconciliations) so the
+        # pre-check cannot under-report what the worker-side gate enforces.
         monthly_live = Decimal(0)
         try:
             from datetime import UTC, datetime
@@ -249,7 +262,18 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
             from extractor import surreal_db as _sdb
 
             first_of_month = datetime(now.year, now.month, 1, tzinfo=UTC)
-            monthly_live = _sdb.get_user_total_spend(actor_id or str(user.id), since=first_of_month)
+            # The worker gate sums live spend across ALL documents (global
+            # monthly cap), so the pre-check must use the same unscoped total —
+            # a per-user sum would admit requests the worker will reject.
+            monthly_live = _sdb.get_user_total_spend(None, since=first_of_month)
+            deleted_total = _sdb.deleted_document_spend_total(now.year, now.month)
+            if deleted_total is None:
+                raise RuntimeError("deleted-document spend read failed")
+            monthly_live += Decimal(str(deleted_total))
+            # MonthlySpendLog.total_for_month treats a failed ledger read as
+            # zero spend; mirror the worker gate and fail closed (AUD-402).
+            if _sdb.monthly_spend_ledger_total(now.year, now.month) is None:
+                raise RuntimeError("monthly spend ledger read failed")
         except Exception as err:
             # Fail closed in production: an unreadable spend source must not
             # let uploads/quiz generation slip past the budget pre-check.
@@ -320,12 +344,27 @@ def _enforce_distributed_rate_limit(
 
 
 def _safe_metadata_source_link(value: object) -> str:
-    """Return only absolute HTTP(S) metadata links safe for a document anchor."""
+    """Return only absolute HTTPS metadata links safe for a document anchor.
+
+    Cleartext http:// and private/internal hosts are rejected: the value is
+    rendered as a clickable source link and may originate from LLM output.
+    """
     source_link = str(value or "").strip()
     parsed_url = urlparse(source_link)
-    if parsed_url.scheme in {"http", "https"} and parsed_url.netloc:
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
+        return ""
+    hostname = (parsed_url.hostname or "").lower()
+    if hostname in {"localhost", "metadata.google.internal"} or hostname.endswith(".internal"):
+        return ""
+    # Literal-IP hosts bypass the name checks: block private/loopback/link-local
+    # targets so LLM-influenced metadata cannot render internal-service links.
+    try:
+        addr = ipaddress.ip_address(hostname.strip("[]"))
+    except ValueError:
         return source_link
-    return ""
+    if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+        return ""
+    return source_link
 
 
 def get_request_actor_id(request) -> str:
@@ -334,7 +373,13 @@ def get_request_actor_id(request) -> str:
         return ""
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return str(request.user.id)
-    return str(request.session.get("supabase_user_id") or request.user.id)
+    supabase_id = request.session.get("supabase_user_id")
+    if not supabase_id:
+        # Falling back to the Django PK can never match stored Supabase
+        # uploaded_by_id values — owners would be locked out of their own
+        # documents. Log so the session anomaly is diagnosable (AUD-377).
+        logger.warning("[Auth] supabase_user_id missing from session for user pk=%s", request.user.pk)
+    return str(supabase_id or request.user.id)
 
 
 def _invalidate_doc_rag_caches(doc_uuid: str, actor_id: str | None = None) -> None:

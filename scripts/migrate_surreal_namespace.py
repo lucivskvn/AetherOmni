@@ -66,6 +66,25 @@ RELATION_TABLES = {
     "tests",
     "attempted_on",
 }
+
+# Fields declared `TYPE datetime` (or `option<datetime>`) in schema.surql.
+# The ISO-string heuristic must only fire for these: applying it to a
+# SCHEMAFULL `string` field (chunk content, error_message, titles) would
+# emit type::datetime() into a string column and fail the batch.
+DATETIME_FIELDS = {
+    "created_at",
+    "updated_at",
+    "expires_at",
+    "custom_time",
+    "fsrs_due_at",
+    "last_accessed_at",
+    "submitted_at",
+    "reconciled_at",
+    "recorded_at",
+    "timestamp",
+    "window_start",
+    "extracted_at",
+}
 _RECORD_ID_VALUE = re.compile(r"^[A-Za-z0-9_]+:[A-Za-z0-9_.\-\u27e8\u27e9]+$")
 
 
@@ -223,7 +242,7 @@ class SurrealNamespaceMigrator:
             for k, v in clean_record.items():
                 if k == "id" or (is_relation and k in ("in", "out")):
                     continue
-                if self._is_iso_datetime_string(v):
+                if k in DATETIME_FIELDS and self._is_iso_datetime_string(v):
                     formatted_fields.append(f"{k}: type::datetime({json.dumps(v)})")
                 else:
                     formatted_fields.append(f"{k}: {json.dumps(v, default=str)}")

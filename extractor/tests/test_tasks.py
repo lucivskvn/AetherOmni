@@ -143,6 +143,26 @@ class ResilienceAndSafetyTestCase(TestCase):
             if temp_local_path and os.path.exists(temp_local_path):
                 os.unlink(temp_local_path)
 
+    @patch("extractor.tasks.broadcast_status_change")
+    @patch("extractor.tasks._acquire_stage1_raw_markdown")
+    def test_run_stage1_offline_broadcasts_refining_without_crashing(self, mock_acquire, mock_bcast):
+        """Offline _run_stage1 gets a SourceDocument model, not a dict — the
+        REFINING broadcast must not call .get() on it (AUD-397)."""
+        from extractor.tasks import _run_stage1
+
+        doc = SourceDocument.objects.create(original_filename="paper.txt", status="EXTRACTING")
+        mock_acquire.return_value = ("# Title\n\nbody", "TEXT", 1, 0.0, 10, 5)
+
+        with self.settings(SURREALDB_OFFLINE=True):
+            result = _run_stage1("/tmp/unused", doc.id)
+
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, "REFINING")
+        self.assertEqual(doc.raw_markdown, "# Title\n\nbody")
+        mock_bcast.assert_called_once()
+        self.assertEqual(mock_bcast.call_args.args[1], "REFINING")
+        self.assertIsNotNone(result)
+
     @patch("extractor.file_utils._get_gcs_bucket")
     @patch("extractor.tasks.surreal_db.get_document")
     def test_get_working_path_surreal_accepts_django_storage_object_key(self, mock_get_document, mock_get_bucket):
@@ -234,9 +254,11 @@ class ResilienceAndSafetyTestCase(TestCase):
         self.assertEqual(response.status_code, 302)
         doc_refreshed = SourceDocument.objects.get(id=doc.id)
         self.assertEqual(doc_refreshed.status, "PENDING")
-        self.assertEqual(doc_refreshed.cost_usd, Decimal("0.00"))
-        self.assertEqual(doc_refreshed.input_tokens, 0)
-        self.assertEqual(doc_refreshed.output_tokens, 0)
+        # Spend fields are preserved on retry: the worker accumulates the new
+        # run's cost on top, and zeroing would undercount monthly spend (AUD-311).
+        self.assertEqual(doc_refreshed.cost_usd, Decimal("0.18"))
+        self.assertEqual(doc_refreshed.input_tokens, 1500)
+        self.assertEqual(doc_refreshed.output_tokens, 750)
         self.assertEqual(doc_refreshed.error_message, "")
         self.assertEqual(doc_refreshed.retry_count, 1)
 

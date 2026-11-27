@@ -20,8 +20,9 @@ def _sanitize_gcp_token(val: str | None, default: str = "") -> str:
     token = str(val).strip().lower()
     if _GCP_TOKEN_RE.match(token):
         return token
-    # Strip any non-allowed characters
-    cleaned = re.sub(r"[^a-z0-9_-]", "", token)[:63]
+    # Strip any non-allowed characters, then any leading -/_ so the token is a
+    # valid GCP identifier start (AUD-386).
+    cleaned = re.sub(r"[^a-z0-9_-]", "", token).lstrip("-_")[:63]
     return cleaned if cleaned else default
 
 
@@ -148,6 +149,12 @@ def _detect_production_gcp_project(project_id, region):
         region = _fetch_gcp_region() or region
 
     project_number = _query_metadata_server("project/numeric-project-id")
+    if not project_number:
+        # Do not cache a failed numeric-project-id lookup: one transient
+        # metadata-server hiccup would otherwise disable the deploy controller
+        # until the instance restarts (AUD-286). Retry on the next call.
+        logger.warning("[Deployment] numeric-project-id lookup failed; will retry on next call.")
+        return project_id, region, project_number
     _PRODUCTION_GCP_CACHE = {"project_id": project_id, "region": region, "project_number": project_number}
     return project_id, region, project_number
 
@@ -383,20 +390,24 @@ def _parse_http_request_payload(entry):
 
         try:
             parsed = urlparse(url)
+            # Drop the query string: access-log lines are shown to staff and
+            # query params can carry tokens or PII (AUD-288).
             path = parsed.path
-            if parsed.query:
-                path += f"?{parsed.query}"
         except Exception:
-            path = url
+            path = url.split("?", 1)[0]
         return f"HTTP {method} {path} - Status: {status} - Latency: {latency}"
     return None
 
 
 def _parse_text_payload(entry):
+    # jsonPayload/protoPayload may be arbitrary JSON (string, list) — guard
+    # before .get() so one malformed entry can't fail the whole fetch (AUD-384).
+    json_payload = entry.get("jsonPayload")
+    proto_payload = entry.get("protoPayload")
     return (
         entry.get("textPayload")
-        or entry.get("jsonPayload", {}).get("message")
-        or entry.get("protoPayload", {}).get("resourceName", "")
+        or (json_payload.get("message") if isinstance(json_payload, dict) else None)
+        or (proto_payload.get("resourceName", "") if isinstance(proto_payload, dict) else None)
         or ""
     )
 
@@ -514,6 +525,13 @@ def get_service_logs(service_name, limit=50):
     if not project_id:
         return [{"timestamp": "", "message": "GCP Project ID not configured.", "severity": "WARNING"}]
 
+    # Clamp caller-supplied limits before they reach the Logging API / gcloud
+    # CLI (AUD-387).
+    try:
+        limit = max(1, min(int(limit), 1000))
+    except TypeError, ValueError:
+        limit = 50
+
     token = get_gcp_access_token()
     if token:
         return _get_service_logs_gcp(service_name, project_id, region, limit, token)
@@ -537,6 +555,8 @@ def run_qa_checks():
         results.append("✓ [Ruff Linter] Passed. No issues found.\n")
     except subprocess.CalledProcessError as e:
         results.append(f"✗ [Ruff Linter] Found Issues:\n{e.output.decode('utf-8')}\n")
+    except subprocess.TimeoutExpired:
+        results.append("⚠️ [Ruff Linter] Timed out after 30s; result inconclusive.\n")
     except FileNotFoundError:
         results.append("⚠️ [Ruff Linter] Ruff not installed in host/container.\n")
 
@@ -547,6 +567,8 @@ def run_qa_checks():
         results.append("✓ [Ruff Formatter] Passed. Code formatting is consistent.\n")
     except subprocess.CalledProcessError as e:
         results.append(f"✗ [Ruff Formatter] Code has formatting inconsistencies:\n{e.output.decode('utf-8')}\n")
+    except subprocess.TimeoutExpired:
+        results.append("⚠️ [Ruff Formatter] Timed out after 30s; result inconclusive.\n")
     except FileNotFoundError:
         logger.debug("[Audits] Ruff formatter binary not found during automated check pass.")
 
@@ -559,6 +581,8 @@ def run_qa_checks():
         results.append("✓ [Django System Check] Passed successfully.\n")
     except subprocess.CalledProcessError as e:
         results.append(f"✗ [Django System Check] Failed:\n{e.output.decode('utf-8')}\n")
+    except subprocess.TimeoutExpired:
+        results.append("⚠️ [Django System Check] Timed out after 30s; result inconclusive.\n")
 
     return "".join(results)
 
@@ -571,9 +595,11 @@ def check_service_dependencies_health() -> dict[str, bool]:
 
     supabase_url = os.getenv("SUPABASE_URL", "")
     supabase_key = os.getenv("SUPABASE_PUBLIC_KEY", "")
-    supabase_ok = True
+    supabase_ok = bool(supabase_url and supabase_key)
+    if not supabase_ok:
+        logger.warning("[Deployment] Supabase health probe skipped: SUPABASE_URL/SUPABASE_PUBLIC_KEY not configured.")
 
-    if supabase_url and supabase_key:
+    if supabase_ok:
         try:
             health_url = f"{supabase_url.rstrip('/')}/auth/v1/health"
             validate_url_scheme(health_url)

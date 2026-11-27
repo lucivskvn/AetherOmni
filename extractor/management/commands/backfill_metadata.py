@@ -3,6 +3,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
+from django.utils import timezone
 
 from extractor.cloud_tasks import enqueue
 from extractor.models import SourceDocument
@@ -41,8 +42,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING(f"Found {count} documents missing metadata. Re-queueing..."))
 
         doc_list = list(docs)
-        # Optimization: Perform single batch update instead of individual doc.save() calls
-        docs.update(status="PENDING", error_message="")
+        # Optimization: Perform single batch update instead of individual doc.save() calls.
+        # updated_at must be set explicitly: QuerySet.update() bypasses auto_now,
+        # and updated_at drives monthly spend attribution (AUD-303/AUD-361).
+        docs.update(status="PENDING", error_message="", updated_at=timezone.now())
 
         for doc in doc_list:
             # Send to background worker queue with canonical task name and payload

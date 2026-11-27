@@ -1156,6 +1156,10 @@ class DeploymentControllerViewTestCase(TestCase):
     """Verifies DeploymentControllerView behaviour under various roles and scaling options."""
 
     def setUp(self):
+        # The deployment console caches GCP reads for ~60s; reset between tests.
+        from extractor import view_admin
+
+        view_admin._GCP_CONSOLE_CACHE.clear()
         self.admin = User.objects.create_superuser(username="depadmin", password="password123")
         self.staff = User.objects.create_user(username="depstaff", password="password123", is_staff=True)
         self.user = User.objects.create_user(username="depuser", password="password123")
@@ -1530,17 +1534,20 @@ class SecurityAuthTestCase(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, "Registration of administrative or system email addresses is not permitted.")
 
-            # Register user with supabase domain
-            response = self.client.post(
-                reverse("register"),
-                {
-                    "email": "attacker@project.supabase.co",
-                    "password": "password123",
-                    "confirm_password": "password123",
-                },
-            )
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, "Registration of administrative or system email addresses is not permitted.")
+            # The configured ADMIN_EMAIL identity is also reserved (AUD-275).
+            with self.settings(ADMIN_EMAIL="root@corp.example.com"):
+                response = self.client.post(
+                    reverse("register"),
+                    {
+                        "email": "root@corp.example.com",
+                        "password": "password123",
+                        "confirm_password": "password123",
+                    },
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(
+                    response, "Registration of administrative or system email addresses is not permitted."
+                )
 
     def test_register_view_validates_email_format(self):
         with self.settings(SUPABASE_URL="https://project.supabase.co", SUPABASE_PUBLIC_KEY="mock-public-key"):
@@ -1562,7 +1569,7 @@ class SecurityAuthTestCase(TestCase):
                 {"email": "test@example.com", "password": "password123", "confirm_password": "password123"},
             )
             self.assertEqual(response.status_code, 200)
-            self.assertContains(response, "Insecure URL scheme. Production environments require https.")
+            self.assertContains(response, "the authentication service rejected the request")
 
     @patch("urllib.request.urlopen")
     def test_forgot_password_scheme_validation(self, mock_urlopen):
@@ -1572,7 +1579,9 @@ class SecurityAuthTestCase(TestCase):
         ):
             response = self.client.post(reverse("forgot_password"), {"email": "test@example.com"})
             self.assertEqual(response.status_code, 200)
-            self.assertContains(response, "Insecure URL scheme. Production environments require https.")
+            # Provider errors are collapsed to a generic message to prevent
+            # account enumeration (AUD-276).
+            self.assertContains(response, "If an account exists for that address")
 
     def test_login_page_renders_turnstile_widget_when_configured(self):
         with self.settings(CF_TURNSTILE_SITE_KEY="test-site-key"):
@@ -1953,15 +1962,13 @@ class DatetimeUtilityTestCase(TestCase):
         self.assertEqual(parsed.tzinfo, timezone.UTC)
 
     def test_parse_datetime_fallback_on_invalid(self):
-        from datetime import datetime
-
         from extractor.views import parse_datetime
 
-        parsed = parse_datetime("invalid-date-format-string")
-        self.assertIsInstance(parsed, datetime)
-
-        parsed_none = parse_datetime(None)
-        self.assertIsInstance(parsed_none, datetime)
+        # Malformed or missing input must surface as None, not "now" —
+        # callers choose their own fallback so corrupt timestamps cannot be
+        # silently attributed to the current time.
+        self.assertIsNone(parse_datetime("invalid-date-format-string"))
+        self.assertIsNone(parse_datetime(None))
 
 
 class SupabaseSessionExchangeTestCase(TestCase):
@@ -2110,8 +2117,6 @@ class ViewsExceptionPathsTestCase(TestCase):
         self.assertEqual(body, {"key": "value"})
 
     def test_parse_datetime_variations(self):
-        from datetime import datetime
-
         from django.utils import timezone
 
         from extractor.views import parse_datetime
@@ -2120,9 +2125,9 @@ class ViewsExceptionPathsTestCase(TestCase):
         # datetime object returned directly
         self.assertEqual(parse_datetime(now), now)
 
-        # None/empty returns current time
-        self.assertIsInstance(parse_datetime(None), datetime)
-        self.assertIsInstance(parse_datetime(""), datetime)
+        # None/empty returns None so callers pick an explicit fallback
+        self.assertIsNone(parse_datetime(None))
+        self.assertIsNone(parse_datetime(""))
 
         # ISO format
         dt_str = "2026-08-15T12:00:00Z"
@@ -2136,8 +2141,8 @@ class ViewsExceptionPathsTestCase(TestCase):
         parsed_alt = parse_datetime(alt_str)
         self.assertEqual(parsed_alt.hour, 14)
 
-        # Completely invalid string returns current time
-        self.assertIsInstance(parse_datetime("invalid-date-string-xyz"), datetime)
+        # Completely invalid string returns None
+        self.assertIsNone(parse_datetime("invalid-date-string-xyz"))
 
     def test_supabase_register_error_handling(self):
         import io

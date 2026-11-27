@@ -205,13 +205,14 @@ class CurrencyExchangeTestCase(TestCase):
 
     def test_browser_locale_detection_es_ar_not_sar(self):
         # Regression: "es-AR" contains the substring "ar" — naive matching
-        # resolved Argentine Spanish users to SAR instead of EUR.
+        # resolved Argentine Spanish users to SAR. Region-aware resolution now
+        # maps es-AR to ARS (Argentina), never SAR.
         request = self.factory.get("/", HTTP_ACCEPT_LANGUAGE="es-AR,es;q=0.9,en;q=0.8")
-        cache.set("usd_exchange_rates", {"EUR": 0.92})
+        cache.set("usd_exchange_rates", {"ARS": 1000.0})
 
         details = get_locale_currency_details(request)
-        self.assertEqual(details["currency_code"], "EUR")
-        self.assertEqual(details["symbol"], "€")
+        self.assertEqual(details["currency_code"], "ARS")
+        self.assertEqual(details["symbol"], "$")
 
     def test_browser_locale_detection_gb_region(self):
         request = self.factory.get("/", HTTP_ACCEPT_LANGUAGE="en-GB,en;q=0.9")

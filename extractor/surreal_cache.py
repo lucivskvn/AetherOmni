@@ -92,14 +92,8 @@ def search_rag_cache_hnsw(
 
 
 def purge_expired_rag_cache() -> int:
-    from extractor import surreal_db
-
     """Delete all expired RAG cache entries. Returns count of deleted rows."""
-    sql = "SELECT count() AS n FROM rag_cache WHERE expires_at < time::now() GROUP ALL;"
-    count_rows = surreal_db._first_result(surreal_db._run(sql))
-    count = count_rows[0].get("n", 0) if count_rows else 0
-    surreal_db._run("DELETE FROM rag_cache WHERE expires_at < time::now();")
-    return count
+    return _purge_expired_table("rag_cache")
 
 
 def purge_all_rag_cache() -> None:
@@ -112,12 +106,38 @@ def purge_all_rag_cache() -> None:
 def _purge_expired_table(table: str) -> int:
     from extractor import surreal_db
 
-    """Delete expired rows from a table; rows with expires_at NONE are retained."""
-    count_sql = f"SELECT count() AS n FROM {table} WHERE expires_at < time::now() GROUP ALL;"  # nosec B608 # noqa: S608 -- table is a static literal
-    count_rows = surreal_db._first_result(surreal_db._run(count_sql))
-    count = count_rows[0].get("n", 0) if count_rows else 0
-    surreal_db._run(f"DELETE FROM {table} WHERE expires_at < time::now();")  # nosec B608 # noqa: S608 -- table is a static literal
-    return count
+    """Delete expired rows from a table; rows with expires_at NONE are retained.
+
+    Count and delete run in one transaction so the reported count matches the
+    deleted set's snapshot (AUD-375).
+    """
+    sql = (
+        "BEGIN TRANSACTION;"  # noqa: S608 -- table is a static literal
+        f"LET $c = (SELECT count() AS n FROM {table} WHERE expires_at < time::now() GROUP ALL);"  # nosec B608
+        f"DELETE FROM {table} WHERE expires_at < time::now();"  # nosec B608
+        "RETURN $c;"
+        "COMMIT TRANSACTION;"
+    )
+    res = surreal_db._run(sql)
+    found = _find_purge_count(res)
+    return found if found is not None else 0
+
+
+def _find_purge_count(node: Any) -> int | None:
+    """Recursively locate the {n: count} row inside a transaction result."""
+    if isinstance(node, dict):
+        if "n" in node:
+            return int(node.get("n") or 0)
+        for val in node.values():
+            found = _find_purge_count(val)
+            if found is not None:
+                return found
+    elif isinstance(node, list):
+        for val in node:
+            found = _find_purge_count(val)
+            if found is not None:
+                return found
+    return None
 
 
 def purge_expired_kv_cache() -> int:
@@ -221,7 +241,6 @@ def kv_cache_set(key: str, value: Any, ttl_seconds: int | None = None) -> None:
     else:
         expires_at_val = None
 
-    json_value = json.dumps(value)
     sql = (
         "BEGIN TRANSACTION;"
         "DELETE FROM kv_cache WHERE cache_key = $cache_key;"
@@ -232,14 +251,22 @@ def kv_cache_set(key: str, value: Any, ttl_seconds: int | None = None) -> None:
         "};"
         "COMMIT TRANSACTION;"
     )
-    surreal_db._run(
-        sql,
-        {
-            "cache_key": key,
-            "cache_value": json_value,
-            "expires_at": expires_at_val,
-        },
-    )
+    try:
+        # json.dumps inside the try: a non-serializable value must degrade to
+        # a skipped cache write, not propagate to callers (AUD-373).
+        json_value = json.dumps(value)
+        surreal_db._run(
+            sql,
+            {
+                "cache_key": key,
+                "cache_value": json_value,
+                "expires_at": expires_at_val,
+            },
+        )
+    except Exception as exc:
+        # Cache writes are best-effort: a same-key race losing the UNIQUE
+        # constraint must not propagate to callers (AUD-328).
+        logger.debug("[KVCache] Set failed for key %r: %s", key, exc)
 
 
 RAG_SEARCH_CACHE_PREFIX = "rag_search_cache:"
@@ -257,10 +284,14 @@ def find_chunk_embedding(text: str) -> list[float] | None:
     from extractor import surreal_db
 
     """Finds an existing embedding for the exact text block from any previously ingested document."""
-    sql = "SELECT embedding FROM chunks WHERE content = $text LIMIT 1;"
+    # embedding != NONE: a chunk row without an embedding must not shadow a
+    # reusable one for identical content (AUD-372).
+    sql = "SELECT embedding FROM chunks WHERE content = $text AND embedding != NONE LIMIT 1;"
     results = surreal_db._first_result(surreal_db._run(sql, {"text": text}))
-    if results and isinstance(results[0], dict) and "embedding" in results[0]:
-        return results[0]["embedding"]
+    if results and isinstance(results[0], dict):
+        emb = results[0].get("embedding")
+        if emb is not None:
+            return emb
     return None
 
 
@@ -276,12 +307,12 @@ def find_chunk_embeddings_batch(texts: list[str]) -> dict[str, list[float]]:
     unique_texts = [t for t in set(texts) if t][:500]
     if not unique_texts:
         return {}
-    sql = "SELECT content, embedding FROM chunks WHERE content IN $texts;"
+    sql = "SELECT content, embedding FROM chunks WHERE content IN $texts AND embedding != NONE;"
     results = surreal_db._first_result(surreal_db._run(sql, {"texts": unique_texts}))
     mapping: dict[str, list[float]] = {}
     if results and isinstance(results, list):
         for row in results:
-            if isinstance(row, dict) and "content" in row and "embedding" in row:
+            if isinstance(row, dict) and "content" in row and row.get("embedding") is not None:
                 mapping[row["content"]] = row["embedding"]
     return mapping
 
@@ -293,8 +324,8 @@ def check_rate_limit_atomic(key: str, max_requests: int, window_seconds: int = 3
     from extractor import surreal_db
 
     """
-    Atomic sliding-window rate limit checker in SurrealDB.
-    Returns True if request is allowed, False if quota exceeded.
+    Atomic fixed-window rate limit checker in SurrealDB (window anchored at
+    first request, not sliding). Returns True if allowed, False if exceeded.
     """
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return True
@@ -321,8 +352,23 @@ def check_rate_limit_atomic(key: str, max_requests: int, window_seconds: int = 3
             "};"
             "COMMIT TRANSACTION;"
         )
-        res = surreal_db._run(sql, {"key": key, "max_requests": max_requests, "expires_at": expires_at})
-        decision = _parse_rate_limit_transaction_result(res, max_requests)
+        params = {"key": key, "max_requests": max_requests, "expires_at": expires_at}
+        # The key column is UNIQUE-indexed: under concurrent first-requests the
+        # loser's INSERT aborts the transaction. Retry once so the second
+        # attempt observes the committed row and returns a correct decision
+        # instead of a spurious deny (AUD-374).
+        decision = None
+        last_exc: Exception | None = None
+        for _attempt in range(2):
+            try:
+                res = surreal_db._run(sql, params)
+                decision = _parse_rate_limit_transaction_result(res, max_requests)
+                break
+            except Exception as exc:
+                last_exc = exc
+                logger.debug("[RateLimit] Transaction attempt %d failed: %s", _attempt + 1, exc)
+        if last_exc is not None and decision is None:
+            raise last_exc
         if decision is not None:
             return decision
         logger.warning("[RateLimit] Unexpected SurrealDB transaction result; denying request.")

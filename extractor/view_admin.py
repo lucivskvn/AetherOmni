@@ -2,6 +2,7 @@ import json
 import logging
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -337,7 +338,11 @@ def _get_surreal_audit_logs(request, is_staff_or_superuser, action_filter, user_
         sql += " WHERE " + " AND ".join(where_clauses)
     # Filter actions after normalizing legacy ledger values. This keeps old,
     # immutable entries discoverable while all new writes remain canonical.
-    sql += " ORDER BY timestamp DESC LIMIT 500;"
+    # Action/user/search predicates are applied in Python after the fetch, so
+    # widen the window when filters are active — otherwise matches beyond the
+    # newest rows are silently invisible (AUD-313).
+    row_limit = 5000 if (action_filter or user_query or search_query) else 500
+    sql += f" ORDER BY timestamp DESC LIMIT {row_limit};"
 
     raw_logs = surreal_db._first_result(surreal_db._run(sql, params))
 
@@ -390,9 +395,33 @@ class AuditLogListView(LoginRequiredMixin, View):
                 )
         except Exception as exc:
             logger.warning("[Audit Logs] Failed to retrieve SurrealDB logs, falling back to local store: %s", exc)
+            # Surface the degraded store: in production the Django AuditLog
+            # mirror can be empty/stale, and "no logs" would look like a clean
+            # trail rather than a backend failure (AUD-314).
+            messages.warning(
+                request,
+                "The primary audit store is unavailable; showing the local mirror, which may be incomplete.",
+            )
             context = _get_offline_audit_logs(request, is_staff_or_superuser, action_filter, user_query, search_query)
 
         return render(request, "extractor/audit_logs.html", context)
+
+
+_GCP_CONSOLE_CACHE: dict[str, tuple[float, Any]] = {}
+_GCP_CONSOLE_CACHE_TTL = 60.0
+
+
+def _cached_gcp_console_call(name: str, fn, *args, **kwargs):
+    """Cache GCP console reads for ~60s so page loads don't burn API quota (AUD-312)."""
+    import time
+
+    now = time.time()
+    hit = _GCP_CONSOLE_CACHE.get(name)
+    if hit and now - hit[0] < _GCP_CONSOLE_CACHE_TTL:
+        return hit[1]
+    result = fn(*args, **kwargs)
+    _GCP_CONSOLE_CACHE[name] = (now, result)
+    return result
 
 
 def _resolve_worker_config(worker_config_default):
@@ -406,7 +435,9 @@ def _resolve_worker_config(worker_config_default):
     worker_service_name = settings.WORKER_SERVICE_NAME
 
     try:
-        worker_real = get_service_config(worker_service_name)
+        worker_real = _cached_gcp_console_call(
+            f"svc_cfg:{worker_service_name}", get_service_config, worker_service_name
+        )
         if worker_real:
             worker_config = worker_real
             gcp_active = True
@@ -483,7 +514,9 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         worker_config, gcp_active, worker_service_name = _resolve_worker_config(worker_config)
 
         try:
-            web_real = get_service_config(settings.WEB_SERVICE_NAME)
+            web_real = _cached_gcp_console_call(
+                f"svc_cfg:{settings.WEB_SERVICE_NAME}", get_service_config, settings.WEB_SERVICE_NAME
+            )
             if web_real:
                 web_config = web_real
         except Exception as e:
@@ -501,21 +534,29 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
         else:
             current_mode = "always-on"
 
-        # Fetch logs (last 50 rows)
-        try:
-            worker_logs = get_service_logs(worker_service_name, limit=50)
-        except Exception as e:
-            worker_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
+        # Fetch logs (last 50 rows). Container logs can contain document
+        # content and request metadata — restrict them to superusers; staff
+        # see the console without the log panels (AUD-312).
+        can_view_logs = request.user.is_superuser
+        if can_view_logs:
+            try:
+                worker_logs = _cached_gcp_console_call(
+                    f"svc_logs:{worker_service_name}", get_service_logs, worker_service_name, limit=50
+                )
+            except Exception as e:
+                worker_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
 
-        try:
-            web_logs = get_service_logs(settings.WEB_SERVICE_NAME, limit=50)
-        except Exception as e:
-            web_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
+            try:
+                web_logs = _cached_gcp_console_call(
+                    f"svc_logs:{settings.WEB_SERVICE_NAME}", get_service_logs, settings.WEB_SERVICE_NAME, limit=50
+                )
+            except Exception as e:
+                web_logs = [{"timestamp": "", "message": f"Log retrieval error: {e}", "severity": "ERROR"}]
 
         # Check SurrealDB & downstream dependencies health status
         from extractor.deployment import check_service_dependencies_health
 
-        health_probes = check_service_dependencies_health()
+        health_probes = _cached_gcp_console_call("dep_health", check_service_dependencies_health)
 
         context = {
             "project_id": project_id,
@@ -528,6 +569,7 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             "current_mode": current_mode,
             "worker_logs": worker_logs,
             "web_logs": web_logs,
+            "can_view_logs": can_view_logs,
             "surreal_health": "ONLINE" if health_probes.get("surrealdb") else "OFFLINE",
             "supabase_health": "ONLINE" if health_probes.get("supabase") else "OFFLINE",
         }

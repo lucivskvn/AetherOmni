@@ -11,7 +11,7 @@ from django.utils import timezone
 from extractor import cloud_tasks
 from extractor.models import SourceDocument
 from extractor.tasks import process_document_task
-from extractor.utils import calculate_file_sha256, check_budget_and_api_limit
+from extractor.utils import BudgetExceededException, calculate_file_sha256, check_budget_and_api_limit
 
 
 class Command(BaseCommand):
@@ -93,9 +93,18 @@ class Command(BaseCommand):
 
             try:
                 check_budget_and_api_limit()
-            except Exception as budget_err:
+            except BudgetExceededException as budget_err:
                 self.stdout.write(
                     self.style.ERROR(f"   - [HALTED] Monthly budget limit reached. Cannot proceed: {budget_err}\n")
+                )
+                return
+            except Exception as check_err:
+                # Non-budget failures (ledger outage, SurrealDB errors) must not
+                # be mislabeled as a budget halt (AUD-360).
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"   - [HALTED] Budget/spend check failed; cannot verify monthly cap: {check_err}\n"
+                    )
                 )
                 return
 

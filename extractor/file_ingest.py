@@ -213,8 +213,16 @@ def _format_json_rows_as_table(title: str, items: list[dict]) -> str:
     """Formats a list of dictionaries into a clean Markdown table."""
     keys = list({k: True for item in items for k in item}.keys())
     rows = []
+    rendered = 0
     for item in items:
-        rows.append([str(item.get(k, "")).strip().replace("\n", "<br>") for k in keys])
+        row = [str(item.get(k, "")).strip().replace("\n", "<br>") for k in keys]
+        # Enforce the rendered-output budget while building rows so a huge
+        # JSON array cannot amplify into tens of MB of intermediate strings
+        # before the final size check (AUD-270).
+        rendered += sum(len(c.encode("utf-8")) for c in row)
+        if rendered > _LOCAL_MAX_MARKDOWN_BYTES:
+            raise ValueError("JSON document exceeds the rendered output limit.")
+        rows.append(row)
     return _format_markdown_table_sheet(title, [keys, *rows])
 
 
@@ -255,7 +263,7 @@ def process_json_local(file_path: str) -> str:
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
-    except ValueError:
+    except ValueError, RecursionError:
         try:
             with open(file_path, encoding="latin-1") as f:
                 data = json.load(f)
@@ -279,7 +287,9 @@ def _format_markdown_table_sheet(
     # whitespace so they cannot inject Markdown structure into headings.
     safe_title = " ".join(str(sheet_title).split())
     sheet_md = [f"### Sheet: {safe_title}\n"]
-    sheet_md.append("| " + " | ".join([h.replace("|", "\\|") for h in headers]) + " |")
+    # Headers get the same newline/pipe escaping as data rows — a multi-line
+    # header would otherwise split the GFM table (AUD-269).
+    sheet_md.append("| " + " | ".join([str(h).replace("|", "\\|").replace("\n", "<br>") for h in headers]) + " |")
     sheet_md.append("| " + " | ".join(["---" for _ in headers]) + " |")
     for r in rows[1:]:
         if len(r) < len(headers):
@@ -329,6 +339,12 @@ def _parse_excel_openpyxl(file_path: str) -> str | None:
 
 def _extract_zipxml_cell_value(c_el: Any, shared_strings: list[str]) -> str:
     cell_type = c_el.get("t")
+    # inlineStr cells store text in <is><t>… with no <v> element (AUD-268).
+    if cell_type == "inlineStr":
+        is_el = c_el.find(".//{*}is")
+        if is_el is None:
+            return ""
+        return "".join(t_el.text or "" for t_el in is_el.iter("{*}t"))
     v_el = c_el.find(".//{*}v")
     if v_el is None or not v_el.text:
         return ""
@@ -350,15 +366,29 @@ def _extract_sheet_rows_from_xml(sheet_tree, shared_strings: list[str], parsed_r
     return rows
 
 
+def _shared_string_item_text(si: Any) -> str:
+    # Concatenate every run's <t>: rich-text strings split content across
+    # <r><t> runs, and si.find() would keep only the first (AUD-268).
+    # Phonetic guides live under <rPh> and are excluded.
+    parts: list[str] = []
+    for child in si:
+        tag = child.tag.rsplit("}", 1)[-1]
+        if tag == "t":
+            parts.append(child.text or "")
+        elif tag == "r":
+            t_el = child.find("{*}t")
+            if t_el is not None:
+                parts.append(t_el.text or "")
+    return "".join(parts)
+
+
 def _load_zipxml_shared_strings(zf: Any) -> list[str]:
     import defusedxml.ElementTree as ET  # type: ignore[import-untyped]
 
     shared_strings: list[str] = []
     if "xl/sharedStrings.xml" in zf.namelist():
         ss_tree = ET.fromstring(zf.read("xl/sharedStrings.xml"))
-        for si in ss_tree.findall(".//{*}si"):
-            t_el = si.find(".//{*}t")
-            shared_strings.append(t_el.text if t_el is not None and t_el.text else "")
+        shared_strings = [_shared_string_item_text(si) for si in ss_tree.findall(".//{*}si")]
     return shared_strings
 
 

@@ -164,7 +164,10 @@ def render_markdown_to_html(markdown_text: str) -> str:
 
 def _escape_yaml_val(val: Any) -> str:
     s = str(val or "")
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n")
+    # Strip remaining C0 control chars and escape YAML-significant whitespace
+    # so exotic metadata cannot corrupt the frontmatter block (AUD-346).
+    s = "".join(c for c in s if ord(c) >= 0x20 or c in "\t\r\n")
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\t", "\\t").replace("\r", "\\r").replace("\n", "\\n")
 
 
 def _build_yaml_frontmatter(doc: Any) -> str:

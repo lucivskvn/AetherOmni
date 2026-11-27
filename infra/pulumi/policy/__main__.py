@@ -72,16 +72,21 @@ def validate_private_worker_iam(args: ResourceValidationArgs, report_violation: 
     if args.resource_type not in iam_types:
         return
     service_name = str(args.props.get("name") or args.name)
-    if "web" in service_name and "worker" not in service_name:
-        return
+    role = str(args.props.get("role") or "")
+    # Only the web service's public invoker binding may reference allUsers.
+    # Match the exact service name and role rather than a substring heuristic
+    # so a future "korda-webhook"-style name cannot silently inherit the
+    # exemption, and a non-invoker allUsers grant on the web service is still
+    # flagged.
+    is_public_web_invoker = service_name == "korda-web" and role == "roles/run.invoker"
 
     forbidden = {"allUsers", "allAuthenticatedUsers"}
     member = str(args.props.get("member", ""))
-    if member in forbidden:
-        report_violation(f"Worker service '{service_name}' must remain private; '{member}' is forbidden.")
+    if member in forbidden and not is_public_web_invoker:
+        report_violation(f"Service '{service_name}' must remain private; '{member}' is forbidden.")
     for m in args.props.get("members") or []:
-        if str(m) in forbidden:
-            report_violation(f"Worker service '{service_name}' must remain private; '{m}' is forbidden.")
+        if str(m) in forbidden and not is_public_web_invoker:
+            report_violation(f"Service '{service_name}' must remain private; '{m}' is forbidden.")
     policy_data = str(args.props.get("policyData") or "")
     if any(f in policy_data for f in forbidden):
         report_violation(f"Worker service '{service_name}' IAM policyData must not grant public access.")

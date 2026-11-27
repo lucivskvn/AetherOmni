@@ -143,7 +143,7 @@ if app_url:
 # are claimable by any Cloudflare Zero Trust team, which would let an
 # attacker-controlled Host pass validation and become a CSRF-trusted origin
 # (CSRF_TRUSTED_ORIGINS is derived from ALLOWED_HOSTS below).
-extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", ".fainko.my.id,.fainko.id")
+extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", "")
 for extra_host in [h.strip() for h in extra_hosts_env.split(",") if h.strip()]:
     if extra_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(extra_host)
@@ -368,6 +368,11 @@ SUPABASE_PUBLIC_KEY = os.getenv("SUPABASE_PUBLIC_KEY", "")
 
 # Cloudflare Turnstile — site key is public (safe to render in templates)
 CF_TURNSTILE_SITE_KEY = os.getenv("CF_TURNSTILE_SITE_KEY", "")
+# Optional: when set, the widget token is verified server-side against
+# Cloudflare siteverify before the request reaches Supabase GoTrue. Without it,
+# only token presence is checked locally and GoTrue captcha config is the sole
+# verifier (AUD-296).
+CF_TURNSTILE_SECRET_KEY = os.getenv("CF_TURNSTILE_SECRET_KEY", "")
 
 # Run periodic database maintenance only on the single-worker maintenance service.
 ENABLE_PERIODIC_MAINTENANCE = os.getenv("ENABLE_PERIODIC_MAINTENANCE", "False").lower() in ("true", "1", "yes")
@@ -411,6 +416,11 @@ for host in ALLOWED_HOSTS:
     if host_clean and host_clean != "*":
         if host_clean.startswith("*.") or not host_clean.startswith("."):
             CSRF_TRUSTED_ORIGINS.append(f"https://{host_clean}")
+        elif host_clean == ".run.app":
+            # *.run.app is shared across every GCP project's Cloud Run services;
+            # trusting the wildcard would let any tenant's origin pass CSRF.
+            # The exact service origin is already trusted via APP_URL (step 2).
+            continue
         else:
             CSRF_TRUSTED_ORIGINS.append(f"https://*{host_clean}")
 

@@ -17,6 +17,7 @@
 
 
 import logging
+import re
 import urllib.parse
 
 from django.conf import settings
@@ -119,6 +120,18 @@ def _extract_host_from_origin(origin: str) -> str | None:
         return None
 
 
+_VALID_HOST_RE = re.compile(
+    r"^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$|^\[?[0-9a-fA-F:]+\]?$"
+)
+
+
+def _is_safe_db_host(host: str) -> bool:
+    """Reject wildcard/malformed hosts derived from DB-stored CSRF origins."""
+    if not host or host == "*" or ".." in host or "/" in host or "\\" in host:
+        return False
+    return bool(_VALID_HOST_RE.match(host.lower()))
+
+
 def _load_db_origins_tuple() -> tuple[str, ...]:
     try:
         from extractor.models import SystemSettings
@@ -194,8 +207,10 @@ class DynamicCsrfTrustedOriginsMiddleware:
             if origin not in settings.CSRF_TRUSTED_ORIGINS:
                 settings.CSRF_TRUSTED_ORIGINS.append(origin)
             origin_host = _extract_host_from_origin(origin)
-            if origin_host:
+            if origin_host and _is_safe_db_host(origin_host):
                 db_hosts.add(origin_host)
+            elif origin_host:
+                logger.warning("[Middleware] Ignoring unsafe DB-derived host: %r", origin_host)
 
         # Reconcile ALLOWED_HOSTS: drop hosts previously appended from DB
         # origins that are no longer configured, without touching static or

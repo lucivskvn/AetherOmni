@@ -54,7 +54,8 @@ class MonthlySpendLogTestCase(TestCase):
 
         with (
             patch("extractor.surreal_db.delete_document"),
-            patch("extractor.models.purge_rag_cache"),
+            patch("extractor.surreal_db.delete_rag_cache_for_document"),
+            patch("extractor.models._delete_orphaned_document_blob"),
         ):
             document.delete()
 
@@ -69,7 +70,7 @@ class MonthlySpendLogTestCase(TestCase):
             cost_usd=Decimal("1.250000"),
         )
 
-        with patch("extractor.models.purge_rag_cache"):
+        with patch("extractor.models._delete_orphaned_document_blob"):
             document.delete()
 
         add_cost.assert_called_once()

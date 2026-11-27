@@ -308,14 +308,21 @@ class ProductionDeploymentContractTestCase(TestCase):
         self.assertIn("roles/storage.objectAdmin", preflight)
 
     def test_web_service_matches_worker_gunicorn_timeout(self):
-        """Cloud Run allows 900s; the web Gunicorn timeout must not undercut it."""
+        """Web keeps the 900s ceiling; the worker must cover the 1740s Cloud
+        Tasks dispatch deadline set in cloud_tasks.py, so it runs at 1800s."""
         pulumi_program = self._repo_file("infra", "pulumi", "__main__.py")
         cloudbuild = self._repo_file("infra", "gcp", "cloudbuild.yaml")
         service_manifest = self._repo_file("infra", "gcp", "service.yaml")
+        worker_manifest = self._repo_file("infra", "gcp", "service-worker.yaml")
 
-        self.assertEqual(pulumi_program.count('name="GUNICORN_TIMEOUT", value="900"'), 2)
-        self.assertEqual(cloudbuild.count("GUNICORN_TIMEOUT=900"), 2)
+        self.assertEqual(pulumi_program.count('name="GUNICORN_TIMEOUT", value="900"'), 1)
+        self.assertEqual(pulumi_program.count('name="GUNICORN_TIMEOUT", value="1800"'), 1)
+        self.assertIn('timeout="1800s"', pulumi_program)
+        self.assertEqual(cloudbuild.count("GUNICORN_TIMEOUT=900"), 1)
+        self.assertEqual(cloudbuild.count("GUNICORN_TIMEOUT=1800"), 1)
         self.assertIn('- name: GUNICORN_TIMEOUT\n          value: "900"', service_manifest)
+        self.assertIn('- name: GUNICORN_TIMEOUT\n          value: "1800"', worker_manifest)
+        self.assertIn("timeoutSeconds: 1800", worker_manifest)
 
     def test_pulumi_grants_deployer_preflight_reader_role(self):
         """The Cloud Build trigger identity must be able to run verify_gcp_prerequisites.py.

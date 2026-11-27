@@ -110,7 +110,11 @@ def _resolve_audit_user_id(event: AuditEvent) -> str:
     if event.actor_id:
         return str(event.actor_id)
     if event.user and hasattr(event.user, "id"):
-        return str(event.user.id)
+        uid = getattr(event.user, "id", None)
+        # AnonymousUser/unsaved users expose .id = None; str(None) would
+        # persist the literal "None" as a tenant key (AUD-266).
+        if uid is not None:
+            return str(uid)
     if event.user:
         return str(event.user)
     return "system"
@@ -131,19 +135,25 @@ def log_audit_event(event: AuditEvent) -> None:
     Dual-write audit log to both SQLite (Django ORM) and SurrealDB.
     Failures in either leg are logged but do not raise to avoid disrupting the main flow.
     """
+    from django.conf import settings
+
     from extractor.models import AuditLog
 
-    # Leg 1: Django ORM → SQLite
-    try:
-        AuditLog.objects.create(
-            user=event.user if hasattr(event.user, "pk") else None,
-            action=event.action,
-            document=event.document if hasattr(event.document, "pk") else None,
-            details=event.details,
-            ip_address=event.ip_address,
-        )
-    except Exception as exc:
-        logger.warning("[AuditLog] Failed to write SQLite audit entry: %s", exc)
+    # Leg 1: Django ORM → SQLite. This table is only read in offline mode —
+    # production audit reads go to SurrealDB — so skip the wasted INSERT and
+    # its unbounded growth in production (AUD-265).
+
+    if getattr(settings, "SURREALDB_OFFLINE", False) or getattr(settings, "DEBUG", False):
+        try:
+            AuditLog.objects.create(
+                user=event.user if hasattr(event.user, "pk") else None,
+                action=event.action,
+                document=event.document if hasattr(event.document, "pk") else None,
+                details=event.details,
+                ip_address=event.ip_address,
+            )
+        except Exception as exc:
+            logger.warning("[AuditLog] Failed to write SQLite audit entry: %s", exc)
 
     # Leg 2: SurrealDB audit_logs table
     try:
@@ -175,7 +185,9 @@ def validate_url_scheme(url: str) -> None:
 
     if not url.startswith(("http://", "https://")):  # NOSONAR python:S5332 -- Protocol scheme validator
         raise ValueError("Invalid URL scheme. Only http and https schemes are permitted.")
-    if not getattr(settings, "DEBUG", True) and url.startswith(
+    # Fail closed: an unset DEBUG flag must not silently permit http:// in
+    # what may be a production context.
+    if not getattr(settings, "DEBUG", False) and url.startswith(
         "http://"
     ):  # NOSONAR python:S5332 -- Enforcement of https in production
         raise ValueError("Insecure URL scheme. Production environments require https.")

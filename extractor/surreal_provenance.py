@@ -77,11 +77,15 @@ def upsert_source(
     sql = """
     BEGIN TRANSACTION;
     LET $s = type::record("source", $source_id);
-    LET $existing = (SELECT owner_id, version FROM $s)[0];
+    LET $existing = (SELECT owner_id, version, gcs_uri, sha256 FROM $s)[0];
     IF $existing != NONE AND $existing.owner_id != $owner_id {
         THROW "Source record belongs to a different owner.";
     };
-    LET $next_ver = IF $existing != NONE AND $existing.version > $version THEN $existing.version ELSE $version END;
+    // Idempotent re-ingest: an Eventarc retry of the same object (same
+    // gcs_uri + sha256) reuses the existing version instead of minting a new
+    // anchor-less version (AUD-264/AUD-285).
+    LET $same_content = $existing != NONE AND $existing.gcs_uri = $gcs_uri AND $existing.sha256 = $sha256;
+    LET $next_ver = IF $same_content THEN $existing.version ELSE IF $existing != NONE AND $existing.version > $version THEN $existing.version ELSE $version END;
     LET $saved = (UPSERT $s CONTENT {
         source_id: $source_id,
         doc_slug: $doc_slug,
@@ -181,9 +185,19 @@ def create_anchors_with_provenance(
     sql = """
     BEGIN TRANSACTION;
     LET $s = type::record("source", $source_id);
+    // Supersede prior-version anchors for this owner+slug so hybrid search
+    // only surfaces quotes from the current version (AUD-367). Same-version
+    // re-ingest is unaffected (version < $version is false).
+    UPDATE anchor SET status = "superseded"
+    WHERE owner_id = $owner_id AND doc_slug = $doc_slug
+          AND version < $version AND status = "active";
     FOR $anc IN $anchors {
         LET $a = type::record("anchor", $anc.anchor_id);
-        CREATE $a CONTENT {
+        // UPSERT + edge cleanup keeps re-ingest idempotent: a retried Eventarc
+        // delivery converges instead of colliding on idx_anchor_id or
+        // duplicating anchored_in edges (AUD-263).
+        DELETE anchored_in WHERE in = $a AND out = $s;
+        UPSERT $a CONTENT {
             anchor_id: $anc.anchor_id,
             source_id: $source_id,
             doc_slug: $doc_slug,
@@ -339,7 +353,10 @@ def create_crystal_with_provenance(
     safe_status = status if status in {"draft", "verified", "archived"} else "draft"
     if getattr(settings, "SURREALDB_OFFLINE", False):
         owned_aids = [
-            aid for aid in dedup_aids if surreal_db._test_korda_anchors.get(aid, {}).get("owner_id") == str(owner_id)
+            aid
+            for aid in dedup_aids
+            if surreal_db._test_korda_anchors.get(aid, {}).get("owner_id") == str(owner_id)
+            and surreal_db._test_korda_anchors.get(aid, {}).get("status", "active") == "active"
         ]
         effective_status = safe_status if (safe_status != "verified" or owned_aids) else "draft"
         rec = {
@@ -356,7 +373,9 @@ def create_crystal_with_provenance(
         return rec
     sql = """
     BEGIN TRANSACTION;
-    LET $owned_anchors = (SELECT VALUE anchor_id FROM anchor WHERE owner_id = $owner_id AND anchor_id INSIDE $anchor_ids);
+    // Only active anchors may ground a crystal — superseded-version anchors
+    // must not validate new "verified" crystals (AUD-327).
+    LET $owned_anchors = (SELECT VALUE anchor_id FROM anchor WHERE owner_id = $owner_id AND status = "active" AND anchor_id INSIDE $anchor_ids);
     LET $effective_status = IF $status == "verified" AND array::len($owned_anchors) == 0 THEN "draft" ELSE $status END;
     LET $c = type::record("crystal", $crystal_id);
     LET $created = (UPSERT $c CONTENT {
@@ -369,6 +388,10 @@ def create_crystal_with_provenance(
         tags: $tags,
         updated_at: time::now()
     });
+    // Replace grounding edges on re-synthesis: UPSERT updates the crystal but
+    // stale grounded_in edges would otherwise accumulate and keep superseded
+    // anchors reachable (AUD-368).
+    DELETE grounded_in WHERE in = $c;
     FOR $aid IN $owned_anchors {
         LET $a = type::record("anchor", $aid);
         RELATE $c->grounded_in->$a;

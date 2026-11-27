@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse, JsonResponse
@@ -285,8 +286,6 @@ class CrystalSynthesizeAPIView(LoginRequiredMixin, View):
     """Synthesize and persist a verified Crystal grounded in existing Anchors."""
 
     def post(self, request):
-        import uuid
-
         body, err = view_common._parse_json_dict_body(request)
         if err is not None or body is None:
             return err
@@ -361,4 +360,15 @@ class MarkdownCompileAPIView(LoginRequiredMixin, View):
         bundles = compiler.compile_markdown_bundles(crystals)
         if request.GET.get("download") == "1":
             return _serve_markdown_download(request, bundles)
-        return JsonResponse({"status": "ok", "bundle_count": len(bundles), "bundles": bundles})
+        # Return bundle metadata only — each bundle can be ~3MB and the client
+        # fetches content per-part via ?download=1&part=N (AUD-290).
+        return JsonResponse(
+            {
+                "status": "ok",
+                "bundle_count": len(bundles),
+                "bundles": [
+                    {"part": i + 1, "words": len(b.split()), "bytes": len(b.encode("utf-8"))}
+                    for i, b in enumerate(bundles)
+                ],
+            }
+        )

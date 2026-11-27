@@ -381,8 +381,8 @@ class FileUtilsTestCase(TestCase):
 
         conn.close()
 
-    @patch("extractor.export_generators._get_doc_chunks")
-    def test_insert_sqlite_chunks_flushes_bounded_batches(self, get_doc_chunks):
+    @patch("extractor.export_generators._iter_all_doc_chunks")
+    def test_insert_sqlite_chunks_flushes_bounded_batches(self, iter_all_doc_chunks):
         import sqlite3
 
         class DummyDoc:
@@ -390,7 +390,7 @@ class FileUtilsTestCase(TestCase):
             title = "Bounded batches"
             author = "Test author"
 
-        get_doc_chunks.return_value = [{"chunk_index": index, "content": f"chunk {index}"} for index in range(501)]
+        iter_all_doc_chunks.return_value = [{"chunk_index": index, "content": f"chunk {index}"} for index in range(501)]
         conn = sqlite3.connect(":memory:")
         cursor = conn.cursor()
         file_utils._init_sqlite_export_schema(cursor)

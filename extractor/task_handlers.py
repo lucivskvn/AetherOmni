@@ -17,6 +17,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import re
 from datetime import UTC
 
 from django.conf import settings
@@ -69,6 +70,7 @@ def _register():
                         "cleanup_expired_documents": tasks.cleanup_expired_documents_task,
                         "reap_stale_tasks": tasks.reap_stale_tasks,
                         "store_user_memory": tasks.store_user_memory_task,
+                        "digitalize_gcs_object": digitalize_gcs_object_task,
                     }
                 )
 
@@ -88,19 +90,36 @@ def _document_task_identity(task_name: str, payload: dict) -> str:
     return ""
 
 
-def _has_active_document_claim(doc: dict) -> bool:
-    """Return whether a non-terminal document claim has been refreshed recently."""
+def _claim_timestamp(doc: dict):
+    """Return the document's claim timestamp as an aware datetime, or None."""
     updated_at = doc.get("updated_at")
     if isinstance(updated_at, str):
         updated_at = parse_datetime(updated_at)
     if updated_at is None:
-        return True
+        return None
     if timezone.is_naive(updated_at):
         updated_at = timezone.make_aware(updated_at, UTC)
-    return updated_at > timezone.now() - timezone.timedelta(minutes=5)
+    return updated_at
 
 
-def _confirm_document_outcome(task_name: str, payload: dict) -> None:
+def _has_active_document_claim(doc: dict, claimed_before=None) -> bool:
+    """Return whether a non-terminal document claim has been refreshed recently.
+
+    When ``claimed_before`` is given, a claim refreshed *after* that instant
+    belongs to the current delivery's own writes and does not count as an
+    independent active worker (AUD-282).
+    """
+    updated_at = _claim_timestamp(doc)
+    if updated_at is None:
+        # A non-terminal document with no freshness signal is not an active
+        # claim — treat it as stale so the delivery stays retryable and the
+        # reaper can recover it.
+        return False
+    stale_cutoff = timezone.now() - timezone.timedelta(minutes=5)
+    return not (updated_at <= stale_cutoff or (claimed_before is not None and updated_at > claimed_before))
+
+
+def _confirm_document_outcome(task_name: str, payload: dict, delivery_started=None) -> None:
     """Do not acknowledge an unfinished delivery after a worker/storage failure."""
     from extractor.utils import REEMBED_DOCUMENT_TASK
 
@@ -112,10 +131,13 @@ def _confirm_document_outcome(task_name: str, payload: dict) -> None:
     doc = surreal_db.get_document(doc_uuid) if doc_uuid else None
     if not doc or doc.get("status") in {"COMPLETED", "FAILED"} or doc.get(CANCEL_REQUESTED):
         return
-    expected = payload.get(CLOUD_TASK_NAME)
+    # Deliveries enqueued before task-identity enforcement lack the payload
+    # key; fall back to the document's stored claim so they are not retried
+    # until dead-letter (AUD-283).
+    expected = payload.get(CLOUD_TASK_NAME) or doc.get(CLOUD_TASK_NAME)
     if expected and doc.get(CLOUD_TASK_NAME) != expected:
         return  # Superseded delivery; a different task owns the document now.
-    if expected and _has_active_document_claim(doc):
+    if expected and _has_active_document_claim(doc, claimed_before=delivery_started):
         return  # A duplicate delivery found the currently active worker's claim.
     raise RuntimeError("Document has no durable terminal outcome; delivery remains retryable.")
 
@@ -334,8 +356,9 @@ class CloudTaskHandlerView(View):
 
         token = surreal_db.document_task_name.set(_document_task_identity(task_name, payload))
         try:
+            delivery_started = timezone.now()
             handler(payload)
-            _confirm_document_outcome(task_name, payload)
+            _confirm_document_outcome(task_name, payload, delivery_started=delivery_started)
         except Exception:
             logger.exception("[CloudTasksHandler] Task '%s' raised an unhandled exception", task_name)
             # A normal pipeline failure is persisted by the handler and returns normally.
@@ -387,11 +410,15 @@ def _parse_eventarc_payload(request) -> tuple[dict | None, str, JsonResponse | N
 
 
 def _attach_anchor_embeddings(anchors: list[dict], llm_gateway) -> None:
+    embedded = 0
     for anc in anchors:
+        if embedded >= MAX_ANCHOR_EMBEDDINGS:
+            break
         if isinstance(anc, dict) and not anc.get("embedding") and anc.get("quote"):
             emb = llm_gateway.generate_query_embedding(str(anc["quote"]))
             if emb:
                 anc["embedding"] = emb
+                embedded += 1
 
 
 def _record_korda_spend(model_used: str, input_tokens: int, output_tokens: int) -> None:
@@ -415,20 +442,37 @@ def _record_korda_spend(model_used: str, input_tokens: int, output_tokens: int) 
         logger.warning("[KORDA Spend] Failed to record spend: %s", exc)
 
 
+_ID_SAFE_RE = re.compile(r"^[A-Za-z0-9_.:@-]{1,128}$")
+_SLUG_SAFE_RE = re.compile(r"^[A-Za-z0-9_.:@-]{1,200}$")
+MAX_ANCHORS_PER_OBJECT = 500
+MAX_ANCHOR_EMBEDDINGS = 200
+
+
 def _parse_gcs_event_fields(payload: dict, bucket_name: str, object_name: str) -> dict[str, str]:
     parts = [p for p in object_name.split("/") if p]
     raw_metadata = payload.get("metadata")
     metadata: dict = raw_metadata if isinstance(raw_metadata, dict) else {}
-    owner_id = str(metadata.get("owner_id") or (parts[2] if len(parts) >= 5 else "system")).strip() or "system"
+    # The raw/{scope}/{owner}/{slug}/ path is server-controlled; object custom
+    # metadata is caller-influenced and must not override it (AUD-281).
+    path_owner = parts[2] if len(parts) >= 5 else ""
+    owner_id = str(path_owner or metadata.get("owner_id") or "system").strip() or "system"
     doc_slug = str(metadata.get("doc_slug") or (parts[3] if len(parts) >= 5 else object_name)).strip() or object_name
+    source_id = str(metadata.get("source_id") or f"{owner_id}:{doc_slug}")
+    title = str(metadata.get("title") or (parts[-1] if parts else "") or doc_slug)
+    # Validate cheap fields before any LLM spend: malformed values would fail
+    # the schemafull provenance writes later and loop Eventarc retries (AUD-340).
+    if not _ID_SAFE_RE.match(owner_id) or not _ID_SAFE_RE.match(source_id):
+        raise ValueError("Eventarc object metadata produced an invalid owner_id/source_id")
+    if not _SLUG_SAFE_RE.match(doc_slug):
+        raise ValueError("Eventarc object metadata produced an invalid doc_slug")
     return {
         "owner_id": owner_id,
-        "doc_slug": doc_slug,
+        "doc_slug": doc_slug[:200],
         "gcs_uri": f"gs://{bucket_name}/{object_name}",
         "mime_type": str(payload.get("contentType") or "application/pdf"),
         "sha256": str(metadata.get("sha256") or ""),
-        "source_id": str(metadata.get("source_id") or f"{owner_id}:{doc_slug}"),
-        "title": str(metadata.get("title") or (parts[-1] if parts else "") or doc_slug),
+        "source_id": source_id[:128],
+        "title": title[:300],
     }
 
 
@@ -449,11 +493,11 @@ def _digitalize_gcs_object(payload: dict, bucket_name: str, object_name: str) ->
         int(extracted.get("input_tokens") or 0),
         int(extracted.get("output_tokens") or 0),
     )
-    anchors = extracted.get("anchors") or []
+    anchors = (extracted.get("anchors") or [])[:MAX_ANCHORS_PER_OBJECT]
     _attach_anchor_embeddings(anchors, llm_gateway)
     version = surreal_db.get_next_source_version(meta["owner_id"], meta["doc_slug"])
 
-    surreal_db.upsert_source(
+    saved_source = surreal_db.upsert_source(
         source_id=meta["source_id"],
         doc_slug=meta["doc_slug"],
         owner_id=meta["owner_id"],
@@ -463,19 +507,22 @@ def _digitalize_gcs_object(payload: dict, bucket_name: str, object_name: str) ->
         sha256=meta["sha256"],
         version=version,
     )
+    # upsert_source may converge a retry onto the existing version; anchors
+    # must be written under the version actually persisted (AUD-264/285).
+    persisted_version = int(saved_source.get("version") or version)
     if anchors:
         surreal_db.create_anchors_with_provenance(
             source_id=meta["source_id"],
             doc_slug=meta["doc_slug"],
             owner_id=meta["owner_id"],
-            version=version,
+            version=persisted_version,
             anchors=anchors,
         )
 
     logger.info(
         "[EventarcGCSRaw] Digitalized %s v%d (%d anchors) for owner=%s",
         meta["gcs_uri"],
-        version,
+        persisted_version,
         len(anchors),
         meta["owner_id"],
     )
@@ -484,7 +531,7 @@ def _digitalize_gcs_object(payload: dict, bucket_name: str, object_name: str) ->
         "bucket": bucket_name,
         "name": object_name,
         "source_id": meta["source_id"],
-        "version": version,
+        "version": persisted_version,
         "anchors_created": len(anchors),
     }
 
@@ -509,6 +556,61 @@ def _eventarc_service_accounts() -> tuple[str, ...]:
     return tuple(sa.strip() for sa in candidates if sa and sa.strip())
 
 
+DEFERRED_DIGITALIZATION_COUNTDOWN = 6 * 3600
+
+
+def _defer_digitalization(payload: dict, bucket_name: str, object_name: str) -> None:
+    """Re-drive a budget-deferred Eventarc object on a long countdown.
+
+    A 202 acknowledgement tells Eventarc not to retry, so without this the
+    object would never be digitalized and the raw/ lifecycle rule could
+    delete it before the monthly budget resets.
+    """
+    if settings.DEBUG:
+        return
+    try:
+        from extractor import cloud_tasks
+
+        cloud_tasks.enqueue(
+            "digitalize_gcs_object",
+            {"bucket": bucket_name, "name": object_name, "event": payload},
+            countdown=DEFERRED_DIGITALIZATION_COUNTDOWN,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[EventarcGCSRaw] Failed to defer digitalization of gs://%s/%s: %s", bucket_name, object_name, exc
+        )
+
+
+def digitalize_gcs_object_task(task_payload: dict) -> None:
+    """Cloud Tasks handler that retries a budget-deferred GCS digitalization."""
+    from extractor import llm_gateway
+
+    event = task_payload.get("event")
+    bucket_name = str(task_payload.get("bucket") or "")
+    object_name = str(task_payload.get("name") or "")
+    if not isinstance(event, dict) or not bucket_name or not object_name:
+        logger.warning("[EventarcGCSRaw] Deferred digitalization task has an invalid payload; dropping.")
+        return
+    try:
+        _digitalize_gcs_object(event, bucket_name, object_name)
+    except llm_gateway.BudgetExceededException:
+        if settings.DEBUG:
+            return
+        try:
+            from extractor import cloud_tasks
+
+            cloud_tasks.enqueue(
+                "digitalize_gcs_object",
+                {"bucket": bucket_name, "name": object_name, "event": event},
+                countdown=DEFERRED_DIGITALIZATION_COUNTDOWN,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[EventarcGCSRaw] Failed to re-defer digitalization of gs://%s/%s: %s", bucket_name, object_name, exc
+            )
+
+
 def _digitalize_or_error_response(payload, bucket_name, object_name):
     """Run Eventarc digitalization, mapping outcomes to the receiver contract."""
     from extractor import llm_gateway
@@ -517,8 +619,10 @@ def _digitalize_or_error_response(payload, bucket_name, object_name):
         return _digitalize_gcs_object(payload, bucket_name, object_name), None
     except llm_gateway.BudgetExceededException as exc:
         # Acknowledge (202) so Eventarc does not retry a permanently-failing
-        # delivery; the object stays unprocessed until the budget resets.
+        # delivery; the deferred Cloud Task re-drives it after the budget
+        # window instead of losing the object to the raw/ lifecycle rule.
         logger.warning("[EventarcGCSRaw] Monthly budget exceeded for gs://%s/%s: %s", bucket_name, object_name, exc)
+        _defer_digitalization(payload, bucket_name, object_name)
         return None, JsonResponse({"status": "deferred", "reason": "monthly-budget-exceeded"}, status=202)
     except ValueError as exc:
         logger.warning("[EventarcGCSRaw] Permanent failure for gs://%s/%s: %s", bucket_name, object_name, exc)
@@ -546,6 +650,10 @@ class EventarcGCSRawView(View):
         if error_response is not None or payload is None:
             return error_response
 
+        # Empty event_type is allowed: Pub/Sub push deliveries carry the
+        # CloudEvent type in message attributes, not the body, so finalized
+        # objects arrive without it. Non-empty non-finalized types are ignored
+        # (AUD-284 — empty type is an accepted, OIDC-gated allowance).
         if event_type and event_type != "google.cloud.storage.object.v1.finalized":
             return JsonResponse({"status": "ignored", "reason": "non-finalized-event"})
 

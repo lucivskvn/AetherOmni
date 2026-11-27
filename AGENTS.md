@@ -52,6 +52,12 @@ explicitly before applying them.
 - Dashboard RAG uses the authenticated SSE endpoint when readable streams are available, renders streamed tokens as text, and falls back to the sanitized JSON response when streaming is unavailable.
 - Use `scripts/normalize_system_settings.py` as a dry-run preflight for persisted settings drift; `--apply` requires reviewed deployment approval, must never print setting values, must verify its postconditions, and must purge retired `openrouter_api_key` data before the corresponding schema release.
 - Preserve the Cloud Run memory floor in Pulumi, declarative service manifests, and Cloud Build deploy flags after a memory-exhaustion incident. Local and Actions gates must also assert Supabase CAPTCHA forwarding, configured email confirmation, and `ADMIN_EMAIL`-only administrative authority.
+- Document retry/requeue paths must preserve a pending `reembed` marker and enqueue only the re-embed task; routing edited documents through full re-extraction would destroy unsaved `refined_markdown` changes. Non-task chunk mutations are fenced on document existence so deleted documents never leave orphaned chunks.
+- SurrealDB backups stream to a staging GCS object and are server-side copied to the final backup name only after a complete non-empty export; failed exports must delete staging and never occupy the final name.
+- Anchor persistence supersedes prior-version anchors for the same owner and doc slug inside the write transaction, and crystal grounding replaces `grounded_in` edges atomically on re-synthesis so stale or superseded anchors cannot remain reachable.
+- Export generation holds a single-flight lock before consuming the rate-limit slot so busy rejections do not burn quota, and SFT JSONL output enforces the serialized byte budget including line framing.
+- Supabase auth failures must distinguish IdP outages (HTTP 5xx, network errors) from invalid credentials in user-facing messaging; Django user email uniqueness is enforced by a partial unique index on `LOWER(email)` and duplicate rows are merged onto the lowest-pk account by migration.
+- Offline audit persistence is the Django ORM leg only; SurrealDB audit writes are skipped in offline mode rather than producing swallowed failures.
 
 ### 1. Shift-Left Local Verification FIRST (Multi-Language Stack & Dual Git Hooks)
 
@@ -188,7 +194,7 @@ explicitly before applying them.
 - Keep `scripts/check_reliability_contracts.py` blocking in local and CI gates. It protects task ownership/cancellation, recovery-token lifetime, YAML export escaping, and dashboard polling lifecycle against regressions found by review tools.
 - Keep `scripts/check_security_boundaries.py` blocking in local gates. It asserts the Phase-0 trust boundaries documented in `docs/security-phase0.md` (least-privilege IAM, UBLA buckets, private worker, wss-only SurrealDB transport).
 
-#### Module organization conventions (extractor/)
+### Module organization conventions (extractor/)
 
 - `extractor/` uses filename prefixes as informal namespaces: `view_*` (Django views behind the `views.py` facade), `surreal_*` (SurrealDB satellites behind the `surreal_db.py` facade), `file_*`/`export_*` (file pipeline behind the `file_utils.py` facade). Place new modules under the matching prefix; promote to a real subpackage only when a prefix group gains its own tests and stable boundary.
 - Facade modules (`views.py`, `surreal_db.py`, `file_utils.py`) re-export satellite symbols so `mock.patch("extractor.<facade>.X")` keeps working. Satellites MUST resolve shared infrastructure through function-level `from extractor import <facade>` imports — top-level imports would create a cycle with the facade's bottom re-exports and silently break patch targets.

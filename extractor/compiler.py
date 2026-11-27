@@ -45,7 +45,9 @@ def _render_crystal_section(crystal: dict[str, Any]) -> str:
     # the "## " heading or inject additional Markdown structure.
     title = " ".join(str(crystal.get("title") or "Untitled Concept").split()) or "Untitled Concept"
     summary = str(crystal.get("summary") or "").strip()
-    tags = [str(t).strip() for t in (crystal.get("tags") or []) if str(t).strip()]
+    # Collapse whitespace in tags too: a tag containing newlines could inject
+    # additional Markdown structure into the exported bundle (AUD-385).
+    tags = [" ".join(str(t).split()) for t in (crystal.get("tags") or []) if str(t).strip()]
     anchors = crystal.get("anchors") or []
 
     lines: list[str] = [f"## {title}", ""]
@@ -54,16 +56,25 @@ def _render_crystal_section(crystal: dict[str, Any]) -> str:
         lines.append("")
 
     if summary:
-        src_tags = " ".join(f"[SRC: {a.get('source_id', 'unknown')} | {format_anchor_coord(a)}]" for a in anchors[:3])
-        lines.append(f"{summary} {src_tags}".strip())
+        lines.append(summary)
+        lines.append("")
+
+    # Inline citations render even without a summary; strip backticks so a
+    # doc-derived coord/section_heading cannot break the code span (AUD-279).
+    if anchors:
+        src_tags = " ".join(
+            f"[SRC: {str(a.get('source_id', 'unknown')).replace('`', '')} | {format_anchor_coord(a).replace('`', '')}]"
+            for a in anchors[:3]
+        )
+        lines.append(f"{src_tags}")
         lines.append("")
 
     if anchors:
         lines.append("### Verbatim Evidence")
         lines.append("")
         for anchor in anchors:
-            coord = format_anchor_coord(anchor)
-            src_id = anchor.get("source_id", "unknown")
+            coord = format_anchor_coord(anchor).replace("`", "")
+            src_id = str(anchor.get("source_id", "unknown")).replace("`", "")
             quote = str(anchor.get("quote") or "").strip().replace("\n", "\n> ")
             lines.append(f"- `[SRC: {src_id} | {coord}]`")
             lines.append(f"  > {quote}")

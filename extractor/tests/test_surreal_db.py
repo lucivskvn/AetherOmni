@@ -153,10 +153,18 @@ class SurrealDBClientTestCase(TestCase):
 
         surreal_db.recreate_chunks(doc_uuid, chunks)
         self.assertEqual(mock_db.query_raw.call_count, 2)
-        mock_db.query_raw.assert_any_call(
-            "BEGIN TRANSACTION; DELETE FROM chunks WHERE doc_uuid = $doc_uuid; COMMIT TRANSACTION;",
-            {"doc_uuid": "00000000-0000-0000-0000-000000000000"},
-        )
+        # Non-worker path: mutations are fenced on document existence (AUD-354)
+        # rather than running bare DELETE/INSERT transactions.
+        delete_sql, delete_params = mock_db.query_raw.call_args_list[0].args
+        self.assertIn("LET $guard", delete_sql)
+        self.assertIn("DELETE FROM chunks WHERE doc_uuid = $doc_uuid", delete_sql)
+        self.assertEqual(delete_params["doc_uuid"], "00000000-0000-0000-0000-000000000000")
+        insert_sql, insert_params = mock_db.query_raw.call_args_list[1].args
+        # Chunk writes use deterministic record ids + UPSERT so an ambiguous
+        # transport retry cannot duplicate rows (AUD-400).
+        self.assertIn('type::record("chunks"', insert_sql)
+        self.assertIn("UPSERT $rec MERGE $c", insert_sql)
+        self.assertEqual(len(insert_params["payloads"]), 1)
 
     @override_settings(DEBUG=True)
     @patch("extractor.surreal_db.AsyncSurreal")
@@ -272,33 +280,29 @@ class SurrealDBClientTestCase(TestCase):
     @override_settings(SURREALDB_OFFLINE=False)
     @patch("extractor.surreal_db._run")
     def test_purge_expired_kv_cache_counts_and_deletes_only_expired(self, mock_run):
-        mock_run.side_effect = [
-            [{"status": "OK", "result": [{"n": 7}]}],
-            [{"status": "OK", "result": []}],
-        ]
+        # AUD-375: count + delete now run in a single transaction.
+        mock_run.return_value = [{"status": "OK", "result": [{"n": 7}]}]
 
         self.assertEqual(surreal_db.purge_expired_kv_cache(), 7)
-        self.assertEqual(mock_run.call_count, 2)
-        count_sql = mock_run.call_args_list[0].args[0]
-        delete_sql = mock_run.call_args_list[1].args[0]
-        for sql in (count_sql, delete_sql):
-            self.assertIn("kv_cache", sql)
-            self.assertIn("expires_at < time::now()", sql)
+        self.assertEqual(mock_run.call_count, 1)
+        sql = mock_run.call_args.args[0]
+        self.assertIn("BEGIN TRANSACTION", sql)
+        self.assertIn("kv_cache", sql)
+        self.assertIn("expires_at < time::now()", sql)
+        self.assertIn("DELETE FROM kv_cache", sql)
 
     @override_settings(SURREALDB_OFFLINE=False)
     @patch("extractor.surreal_db._run")
     def test_purge_expired_rate_limits_counts_and_deletes_only_expired(self, mock_run):
-        mock_run.side_effect = [
-            [{"status": "OK", "result": [{"n": 3}]}],
-            [{"status": "OK", "result": []}],
-        ]
+        mock_run.return_value = [{"status": "OK", "result": [{"n": 3}]}]
 
         self.assertEqual(surreal_db.purge_expired_rate_limits(), 3)
-        count_sql = mock_run.call_args_list[0].args[0]
-        delete_sql = mock_run.call_args_list[1].args[0]
-        for sql in (count_sql, delete_sql):
-            self.assertIn("rate_limits", sql)
-            self.assertIn("expires_at < time::now()", sql)
+        self.assertEqual(mock_run.call_count, 1)
+        sql = mock_run.call_args.args[0]
+        self.assertIn("BEGIN TRANSACTION", sql)
+        self.assertIn("rate_limits", sql)
+        self.assertIn("expires_at < time::now()", sql)
+        self.assertIn("DELETE FROM rate_limits", sql)
 
     def test_update_document_offline_nonexistent(self):
         res = surreal_db._update_document_offline("00000000-0000-0000-0000-000000000000", {"title": "New Title"})
@@ -436,16 +440,24 @@ class SurrealDBClientTestCase(TestCase):
 
     @override_settings(SURREALDB_OFFLINE=False)
     @patch("extractor.surreal_db.recreate_chunks")
-    @patch("extractor.surreal_db.get_document_chunks")
-    def test_clone_chunks_pages_beyond_chunk_limit(self, get_chunks, recreate):
+    @patch("extractor.surreal_db._run")
+    def test_clone_chunks_pages_beyond_chunk_limit(self, mock_run, recreate):
+        # AUD-356: clone uses keyset pagination on chunk_index, not OFFSET.
         first_page = [{"chunk_index": index, "content": str(index)} for index in range(500)]
-        get_chunks.side_effect = [first_page, [{"chunk_index": 500, "content": "500"}], []]
+        second_page = [{"chunk_index": 500, "content": "500"}]
+        mock_run.side_effect = [
+            [{"result": first_page}],
+            [{"result": second_page}],
+        ]
 
         surreal_db.clone_chunks("source", "target")
 
-        self.assertEqual(
-            get_chunks.call_args_list, [call("source", limit=500, start=0), call("source", limit=500, start=500)]
-        )
+        self.assertEqual(mock_run.call_count, 2)
+        first_sql, first_params = mock_run.call_args_list[0].args
+        self.assertIn("chunk_index > $last_index", first_sql)
+        self.assertEqual(first_params["last_index"], -1)
+        _second_sql, second_params = mock_run.call_args_list[1].args
+        self.assertEqual(second_params["last_index"], 499)
         target_uuid, cloned_chunks = recreate.call_args.args
         self.assertEqual(target_uuid, "target")
         self.assertEqual(len(cloned_chunks), 501)

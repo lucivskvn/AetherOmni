@@ -14,7 +14,7 @@ from django.views.decorators.cache import never_cache
 
 from extractor import surreal_db, view_common
 from extractor.models import AuditAction
-from extractor.task_state import CANCEL_REQUESTED
+from extractor.task_state import CANCEL_REQUESTED, PENDING_OPERATION
 from extractor.utils import (
     APPLICATION_JSON,
     HEADER_X_REQUESTED_WITH,
@@ -103,6 +103,10 @@ def _build_document_save_payload(request, sanitized_markdown: str) -> dict[str, 
     payload: dict[str, Any] = {
         "refined_markdown": sanitized_markdown,
         "status": "PENDING",
+        # Marks the pending state as awaiting re-embed (not full pipeline) so
+        # the stale-task reaper re-enqueues the right task type if the
+        # reembed delivery is lost (AUD-318).
+        PENDING_OPERATION: "reembed",
         CANCEL_REQUESTED: False,
     }
     field_limits = {
@@ -369,9 +373,13 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             self._delete_physical_files(raw_docs)
             surreal_db.purge_all()
             try:
-                from extractor.models import MonthlySpendLog, SourceDocument, UserMemory
+                from extractor.models import AuditLog, MonthlySpendLog, SourceDocument, UserMemory
 
-                SourceDocument.objects.all().delete()
+                # Detach audit rows, then raw-delete: per-row delete() would
+                # fire post_delete N times — N Surreal delete_document calls
+                # after purge_all() already wiped them, plus N cache purges.
+                AuditLog.objects.update(document=None)
+                SourceDocument.objects.all()._raw_delete(using="default")
                 UserMemory.objects.all().delete()
                 if getattr(settings, "SURREALDB_OFFLINE", False):
                     MonthlySpendLog.objects.all().delete()
@@ -421,14 +429,17 @@ def _is_doc_owner_or_staff(doc: dict, request: Any) -> bool:
     return uploaded_by_id in (actor_id, str(getattr(request.user, "id", "")))
 
 
-def _enqueue_restarted_document(doc: dict, doc_uuid: str, cloud_tasks: Any) -> None:
+def _enqueue_restarted_document(doc: dict, doc_uuid: str, cloud_tasks: Any, *, reembed_only: bool = False) -> None:
     from django.conf import settings
 
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    task_name = REEMBED_DOCUMENT_TASK if reembed_only else "process_document"
     if getattr(settings, "SURREALDB_OFFLINE", False):
         doc_id = doc.get("id") if isinstance(doc, dict) else getattr(doc, "id", None)
-        cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+        cloud_tasks.enqueue(task_name, {"document_id": doc_id})
     else:
-        cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
+        cloud_tasks.enqueue(task_name, {"document_uuid": doc_uuid})
     broadcast_status_change(doc_uuid, "PENDING", owner_id=doc.get("uploaded_by_id"))
 
 
@@ -444,13 +455,19 @@ def _restart_single_document(doc, request, cloud_tasks):
     if status not in ["PENDING", "FAILED", "COMPLETED"]:
         return False
 
+    # A doc marked pending_operation="reembed" carries unsaved user edits in
+    # refined_markdown; routing it through full re-extraction would silently
+    # destroy them (AUD-355). Keep the marker and re-enqueue only the re-embed.
+    pending_reembed = (doc.get(PENDING_OPERATION) or "") == "reembed"
+
+    # Spend fields are intentionally not reset: cost_usd/tokens record
+    # already-incurred spend and zeroing them would erase it from budget
+    # accounting (AUD-311). The worker accumulates the new run's cost on top.
     surreal_db.update_document(
         doc_uuid,
         {
             "status": "PENDING",
-            "cost_usd": 0.0,
-            "input_tokens": 0,
-            "output_tokens": 0,
+            PENDING_OPERATION: "reembed" if pending_reembed else "",
             "retry_count": retry_cnt + 1 if status == "FAILED" else retry_cnt,
             "error_message": "",
             CANCEL_REQUESTED: False,
@@ -458,7 +475,7 @@ def _restart_single_document(doc, request, cloud_tasks):
         },
     )
 
-    _enqueue_restarted_document(doc, doc_uuid, cloud_tasks)
+    _enqueue_restarted_document(doc, doc_uuid, cloud_tasks, reembed_only=pending_reembed)
     # Reprocessing may change refined content; drop cached answers derived
     # from the previous pipeline output for this document's owner.
     view_common._invalidate_doc_rag_caches(str(doc_uuid), doc.get("uploaded_by_id"))
@@ -566,13 +583,23 @@ def _get_offline_docs_for_delete(request, document_ids):
 
     int_ids = []
     uuid_strs = []
+    import uuid as _uuid
+
     for item in document_ids:
         try:
             int_ids.append(int(item))
+            continue
         except ValueError, TypeError:
-            clean_str = view_common._extract_clean_doc_uuid(item)
-            if clean_str:
-                uuid_strs.append(clean_str)
+            pass
+        clean_str = view_common._extract_clean_doc_uuid(item)
+        if not clean_str:
+            continue
+        # Invalid UUID strings make the ORM raise ValidationError for the
+        # whole IN clause — one bad selection must not 500 the bulk action.
+        try:
+            uuid_strs.append(str(_uuid.UUID(clean_str)))
+        except ValueError, TypeError, AttributeError:
+            continue
 
     qs = SourceDocument.objects.filter(Q(id__in=int_ids) | Q(uuid__in=uuid_strs))
     if not (request.user.is_staff or request.user.is_superuser):
@@ -736,7 +763,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
 
         return None, None
 
-    def _requeue_document_task(self, doc_wrapped, doc_uuid, request):
+    def _requeue_document_task(self, doc_wrapped, doc_uuid, request, *, reembed_only: bool = False):
         view_common._record_view_audit(
             request,
             AuditAction.DOCUMENT_REQUEUED,
@@ -747,12 +774,14 @@ class DocumentRetryView(LoginRequiredMixin, View):
         from django.conf import settings
 
         from extractor import cloud_tasks
+        from extractor.utils import REEMBED_DOCUMENT_TASK
 
+        task_name = REEMBED_DOCUMENT_TASK if reembed_only else "process_document"
         if getattr(settings, "SURREALDB_OFFLINE", False):
             doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
-            cloud_tasks.enqueue("process_document", {"document_id": doc_id})
+            cloud_tasks.enqueue(task_name, {"document_id": doc_id})
         else:
-            cloud_tasks.enqueue("process_document", {"document_uuid": str(doc_uuid)})
+            cloud_tasks.enqueue(task_name, {"document_uuid": str(doc_uuid)})
 
         # Reprocessing may produce different refined content; drop cached
         # answers derived from the previous pipeline output.
@@ -810,14 +839,17 @@ class DocumentRetryView(LoginRequiredMixin, View):
 
         is_restart = doc.status in ["COMPLETED", "PENDING"]
         retry_cnt = doc.retry_count
+        # Preserve a pending re-embed marker: clearing it and running full
+        # re-extraction would overwrite the user's refined_markdown edits
+        # (AUD-355). Re-enqueue only the re-embed in that case.
+        pending_reembed = (raw_doc.get(PENDING_OPERATION) or "") == "reembed"
 
+        # Spend fields are not reset — see _restart_single_document (AUD-311).
         doc_ref = surreal_db.update_document(
             doc_uuid,
             {
                 "status": "PENDING",
-                "cost_usd": 0.0,
-                "input_tokens": 0,
-                "output_tokens": 0,
+                PENDING_OPERATION: "reembed" if pending_reembed else "",
                 "error_message": "",
                 "retry_count": 0 if is_restart else retry_cnt + 1,
                 CANCEL_REQUESTED: False,
@@ -825,7 +857,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
         )
         doc_wrapped = view_common._wrap_surreal_doc(doc_ref, users_map)
 
-        self._requeue_document_task(doc_wrapped, doc_uuid, request)
+        self._requeue_document_task(doc_wrapped, doc_uuid, request, reembed_only=pending_reembed)
         broadcast_status_change(str(doc_uuid), "PENDING", owner_id=view_common._doc_owner_id(doc_ref))
 
         if is_ajax:

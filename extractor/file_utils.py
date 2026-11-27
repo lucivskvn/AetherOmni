@@ -144,6 +144,59 @@ _FALLBACK_RATES: dict[str, float] = {
     "IDR": 16200.0,
     "SAR": 3.75,
     "TRY": 32.0,
+    "BRL": 5.5,
+    "MXN": 17.0,
+    "ARS": 1000.0,
+    "CLP": 950.0,
+    "COP": 4000.0,
+    "PEN": 3.7,
+    "AUD": 1.5,
+    "CAD": 1.4,
+    "INR": 83.0,
+    "JPY": 150.0,
+    "KRW": 1350.0,
+    "SGD": 1.35,
+}
+
+# Currencies whose minor unit is not used in everyday pricing.
+_ZERO_DECIMAL_CURRENCIES = {"IDR", "JPY", "KRW"}
+
+_CURRENCY_SYMBOLS: dict[str, str] = {
+    "USD": "$",
+    "EUR": "€",
+    "GBP": "£",
+    "IDR": "Rp ",
+    "SAR": "SR ",
+    "TRY": "₺",
+    "BRL": "R$ ",
+    "MXN": "$",
+    "ARS": "$",
+    "CLP": "$",
+    "COP": "$",
+    "PEN": "S/ ",
+    "AUD": "A$",
+    "CAD": "C$",
+    "INR": "₹",
+    "JPY": "¥",
+    "KRW": "₩",
+    "SGD": "S$",
+}
+
+# Region subtags whose currency differs from the language default —
+# e.g. "es-MX" must not resolve to EUR, "pt-BR" must not resolve to EUR.
+_REGION_CURRENCY: dict[str, tuple[str, str]] = {
+    "br": ("BRL", "R$ "),
+    "mx": ("MXN", "$"),
+    "ar": ("ARS", "$"),
+    "cl": ("CLP", "$"),
+    "co": ("COP", "$"),
+    "pe": ("PEN", "S/ "),
+    "au": ("AUD", "A$"),
+    "ca": ("CAD", "C$"),
+    "in": ("INR", "₹"),
+    "jp": ("JPY", "¥"),
+    "kr": ("KRW", "₩"),
+    "sg": ("SGD", "S$"),
 }
 
 
@@ -264,6 +317,12 @@ def _resolve_currency_and_symbol(accept_language: str) -> tuple[str, str]:
     lang = parts[0] if parts else ""
     region = parts[1] if len(parts) > 1 else ""
 
+    # Region wins over language defaults when the locale pins a distinct
+    # currency (es-MX, pt-BR, en-AU, ...); otherwise fall back to language.
+    region_currency = _REGION_CURRENCY.get(region)
+    if region_currency is not None:
+        return region_currency
+
     if lang == "id":
         return "IDR", "Rp "
     if lang == "ar":
@@ -344,21 +403,34 @@ def get_locale_currency_details(request: Any) -> dict[str, Any]:
 
     if selected_currency and selected_currency != "auto":
         currency = selected_currency
-        symbol_map = {"USD": "$", "IDR": "Rp ", "SAR": "SR ", "EUR": "€", "GBP": "£", "TRY": "₺"}
-        symbol = symbol_map.get(currency, "$")
+        symbol = _CURRENCY_SYMBOLS.get(currency, "$")
     else:
         accept_language = request.META.get("HTTP_ACCEPT_LANGUAGE", "").lower() if request else ""
         currency, symbol = _resolve_currency_and_symbol(accept_language)
 
     rates = _get_exchange_rates()
     rate = rates.get(currency, 1.0) if rates else 1.0
-    return {"currency_code": currency, "symbol": symbol, "rate": rate}
+    # Exchange-rate API values are untrusted: keep only finite positive
+    # numerics so a malformed upstream payload can't crash rendering or
+    # display negative localized prices (AUD-381).
+    try:
+        rate_dec = Decimal(str(rate))
+        if not rate_dec.is_finite() or rate_dec <= 0:
+            rate_dec = Decimal("1")
+    except Exception:
+        rate_dec = Decimal("1")
+    return {"currency_code": currency, "symbol": symbol, "rate": rate_dec}
 
 
 def format_localized_cost(cost_usd: Decimal, currency_details: dict[str, Any]) -> str:
     """Formats USD pricing into both localized and USD formats."""
     usd_val = Decimal(str(cost_usd))
-    rate = Decimal(str(currency_details["rate"]))
+    try:
+        rate = Decimal(str(currency_details["rate"]))
+        if not rate.is_finite() or rate <= 0:
+            rate = Decimal("1")
+    except Exception:
+        rate = Decimal("1")
     local_val = usd_val * rate
 
     def fmt_usd(v: Decimal) -> str:
@@ -369,7 +441,7 @@ def format_localized_cost(cost_usd: Decimal, currency_details: dict[str, Any]) -
     if currency_details["currency_code"] == "USD":
         return fmt_usd(usd_val)
 
-    if currency_details["currency_code"] == "IDR":
+    if currency_details["currency_code"] in _ZERO_DECIMAL_CURRENCIES:
         return f"{currency_details['symbol']}{int(local_val):,} (~{fmt_usd(usd_val)})"
 
     return f"{currency_details['symbol']}{local_val:.2f} (~{fmt_usd(usd_val)})"

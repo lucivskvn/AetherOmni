@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -20,6 +21,94 @@ from extractor.utils import (
 logger = logging.getLogger(view_common.VIEWS_LOGGER_NAME)
 
 SNAPSHOT_CAPPED = "snapshot_capped"
+
+
+def _get_unbounded_doc_aggregates(request, since: datetime | None = None) -> dict:
+    """Spend/token/status aggregates over ALL scoped documents.
+
+    The display snapshot is capped for page weight; stats derived from it
+    undercount for heavy users and diverge from the worker budget gate
+    (AUD-342). These aggregates query SurrealDB/Django directly instead.
+    """
+    from django.conf import settings
+
+    user = request.user
+    staff = bool(user.is_staff or user.is_superuser)
+    actor_id = None if staff else view_common.get_request_actor_id(request)
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return _doc_aggregates_offline(actor_id, since)
+    return _doc_aggregates_surreal(actor_id, since)
+
+
+def _doc_aggregates_offline(actor_id: str | None, since: datetime | None) -> dict:
+    from django.db.models import Count, Q, Sum
+
+    from extractor.models import SourceDocument
+
+    qs = SourceDocument.objects.all()
+    if actor_id:
+        # Match list_document_statuses scoping: own docs plus unowned ones.
+        qs = qs.filter(Q(uploaded_by_id=actor_id) | Q(uploaded_by__isnull=True))
+    agg = qs.aggregate(
+        total_cost=Sum("cost_usd"),
+        total_in=Sum("input_tokens"),
+        total_out=Sum("output_tokens"),
+    )
+    monthly_cost = qs.filter(updated_at__gte=since).aggregate(total=Sum("cost_usd"))["total"] if since else None
+    pages = qs.filter(status="COMPLETED").aggregate(total=Sum("page_count"))["total"] or 0
+    status_counts = {row["status"]: row["n"] for row in qs.values("status").annotate(n=Count("id"))}
+    return {
+        "total_cost": Decimal(str(agg["total_cost"] or 0)),
+        "total_in": int(agg["total_in"] or 0),
+        "total_out": int(agg["total_out"] or 0),
+        "total_pages": int(pages),
+        "status_counts": status_counts,
+        "monthly_cost": Decimal(str(monthly_cost or 0)),
+    }
+
+
+def _doc_aggregates_surreal(actor_id: str | None, since: datetime | None) -> dict:
+    # Match list_document_statuses scoping: own docs plus unowned ones.
+    scope = " WHERE (uploaded_by_id = $uid OR uploaded_by_id = NONE)" if actor_id else ""
+    params: dict[str, Any] = {"uid": actor_id} if actor_id else {}
+    cost_sql = (
+        "SELECT math::sum(cost_usd) AS total_cost, math::sum(input_tokens) AS tin, "  # noqa: S608 -- scope is a static clause; values are bound params
+        f"math::sum(output_tokens) AS tout FROM documents{scope} GROUP ALL;"  # nosec B608
+    )
+    cost_rows = surreal_db._first_result(surreal_db._run(cost_sql, params))
+    cost_row = cost_rows[0] if cost_rows and isinstance(cost_rows[0], dict) else {}
+    monthly_cost = _surreal_monthly_cost(scope, params, since)
+    page_sql = (
+        "SELECT math::sum(page_count) AS tp FROM documents"  # noqa: S608 -- scope is a static clause; values are bound params
+        f"{scope}{' AND' if scope else ' WHERE'} status = 'COMPLETED' GROUP ALL;"  # nosec B608
+    )
+    page_rows = surreal_db._first_result(surreal_db._run(page_sql, params))
+    page_row = page_rows[0] if page_rows and isinstance(page_rows[0], dict) else {}
+    status_rows = surreal_db._first_result(
+        surreal_db._run(f"SELECT status, count() AS n FROM documents{scope} GROUP BY status;", params)  # nosec B608 # noqa: S608
+    )
+    status_counts = {str(r.get("status")): int(r.get("n") or 0) for r in (status_rows or []) if isinstance(r, dict)}
+    return {
+        "total_cost": Decimal(str(cost_row.get("total_cost") or 0)),
+        "total_in": int(cost_row.get("tin") or 0),
+        "total_out": int(cost_row.get("tout") or 0),
+        "total_pages": int(page_row.get("tp") or 0),
+        "status_counts": status_counts,
+        "monthly_cost": monthly_cost,
+    }
+
+
+def _surreal_monthly_cost(scope: str, params: dict, since: datetime | None) -> Decimal:
+    if since is None:
+        return Decimal(0)
+    month_sql = (
+        "SELECT math::sum(cost_usd) AS mc FROM documents"  # noqa: S608 -- scope is a static clause; values are bound params
+        f"{scope}{' AND' if scope else ' WHERE'} updated_at >= type::datetime($since) GROUP ALL;"  # nosec B608
+    )
+    month_rows = surreal_db._first_result(surreal_db._run(month_sql, {**params, "since": since.isoformat()}))
+    month_row = month_rows[0] if month_rows and isinstance(month_rows[0], dict) else {}
+    return Decimal(str(month_row.get("mc") or 0))
 
 
 def _get_dashboard_stats(request, document_limit: int | None = None):
@@ -45,17 +134,36 @@ def _get_dashboard_stats(request, document_limit: int | None = None):
     users_map = view_common._build_users_map(user_ids, fallback_user=user)
     docs = [view_common._wrap_surreal_doc(d, users_map) for d in raw_docs]
 
-    monthly_live = Decimal(str(sum(float(d.cost_usd) for d in docs if d.created_at >= first_of_month)))
+    # Unbounded aggregates: the display snapshot may be capped, but spend,
+    # tokens, status counts, and pages must reflect every scoped document so
+    # the page agrees with the worker budget gate and the status API (AUD-342).
+    # monthly_cost uses the same scope as the snapshot (own docs plus unowned),
+    # matching the pre-AUD-342 accounting that included unowned documents.
+    agg = _get_unbounded_doc_aggregates(request, since=first_of_month)
+    monthly_live = agg["monthly_cost"]
 
-    # Add cost of documents that were deleted this month (persisted in MonthlySpendLog)
+    # Add cost of documents that were deleted this month. Offline mode flushes
+    # deleted spend into MonthlySpendLog at delete time; production keeps it in
+    # document_spend_reconciliations, which total_for_month does not cover —
+    # mirror the worker budget gate or the dashboard under-reports spend and
+    # can show budget_exceeded=False while the gate rejects work (AUD-394).
     from extractor.models import MonthlySpendLog
 
     monthly_logged = MonthlySpendLog.total_for_month(now.year, now.month)
-    monthly_spent = monthly_live + monthly_logged
+    deleted_spend = Decimal(0)
+    if not getattr(settings, "SURREALDB_OFFLINE", False):
+        try:
+            deleted_total = surreal_db.deleted_document_spend_total(now.year, now.month)
+            if deleted_total is None:
+                raise RuntimeError("deleted-document spend read failed")
+            deleted_spend = Decimal(str(deleted_total))
+        except Exception as exc:
+            logger.warning("[Dashboard] Deleted-document spend read failed; monthly total may under-report: %s", exc)
+    monthly_spent = monthly_live + monthly_logged + deleted_spend
 
-    total_spent_usd = Decimal(str(sum(float(d.cost_usd) for d in docs)))
-    prompt_tokens = sum(int(d.input_tokens) for d in docs)
-    cand_tokens = sum(int(d.output_tokens) for d in docs)
+    total_spent_usd = agg["total_cost"]
+    prompt_tokens = agg["total_in"]
+    cand_tokens = agg["total_out"]
     total_tokens_spent = prompt_tokens + cand_tokens
 
     # Status stats
@@ -67,13 +175,10 @@ def _get_dashboard_stats(request, document_limit: int | None = None):
         ("COMPLETED", "Completed"),
         ("FAILED", "Failed"),
     ]
-    stats_dict = {choice[0]: 0 for choice in status_choices}
-    for d in docs:
-        if d.status in stats_dict:
-            stats_dict[d.status] += 1
+    stats_dict = {choice[0]: agg["status_counts"].get(choice[0], 0) for choice in status_choices}
 
     # Total pages
-    total_pages = sum(int(d.page_count) for d in docs if d.status == "COMPLETED")
+    total_pages = agg["total_pages"]
 
     # Budget cap checks
     system_settings_obj = surreal_db.get_system_settings()
@@ -177,7 +282,9 @@ class DashboardView(LoginRequiredMixin, View):
     """
 
     def get(self, request):
-        snapshot_limit = 501
+        # Probe with limit+1 rows so "exactly at the cap" is not misreported
+        # as truncated (AUD-343).
+        snapshot_limit = 502
         try:
             stats = _get_dashboard_stats(request, document_limit=snapshot_limit)
         except RuntimeError:
@@ -208,6 +315,7 @@ class DashboardView(LoginRequiredMixin, View):
             "formatted_monthly_spent": stats["formatted_monthly_spent"],
             "formatted_budget_cap": stats["formatted_budget_cap"],
             "budget_exceeded": stats["budget_exceeded"],
+            "snapshot_capped": stats.get(SNAPSHOT_CAPPED, False),
             "currency_details": stats["currency_details"],
             "sort_by": sort_by,
         }

@@ -61,9 +61,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 const MAX_UPLOAD_FILE_SIZE = 30 * 1024 * 1024;
+// Keep in sync with extractor/view_upload.py VIDEO_FILE_EXTENSIONS + document types.
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([
     '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.tiff', '.heic', '.heif',
-    '.csv', '.txt', '.md', '.markdown', '.json', '.docx', '.doc', '.xlsx', '.xls'
+    '.csv', '.txt', '.md', '.markdown', '.json', '.docx', '.doc', '.xlsx', '.xls',
+    '.mp4', '.mov', '.m4v', '.webm'
 ]);
 
 function filterUploadFiles(files) {
@@ -72,7 +74,7 @@ function filterUploadFiles(files) {
         const hasExtension = file.name.includes('.') && !file.name.startsWith('.');
         const extension = hasExtension ? `.${file.name.split('.').pop().toLowerCase()}` : '';
         if (!extension || !ALLOWED_UPLOAD_EXTENSIONS.has(extension)) {
-            showClientSideAlert(`Skipped "${file.name}": Unsupported format. Supported: PDF, Images (PNG, JPG, WEBP, GIF, TIFF, HEIC), Markdown, Text, CSV, JSON, Word, Excel.`);
+            showClientSideAlert(`Skipped "${file.name}": Unsupported format. Supported: PDF, Images (PNG, JPG, WEBP, GIF, TIFF, HEIC), Markdown, Text, CSV, JSON, Word, Excel, Video (MP4, MOV, M4V, WEBM).`);
             continue;
         }
         if (file.size > MAX_UPLOAD_FILE_SIZE) {
@@ -85,7 +87,16 @@ function filterUploadFiles(files) {
 }
 
 async function executeRagFetch(url) {
-    const response = await fetch(url);
+    // Bound the JSON fallback path: a stalled connection must not hang the
+    // search UI indefinitely (AUD-274). SSE streaming is exempt by design.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+        response = await fetch(url, { signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
     let data = null;
     try {
         data = await response.json();
@@ -1674,17 +1685,23 @@ function updateDashboardStats(stats) {
 
 
 function _findTableRowForDoc(tbody, doc) {
-    const escapedDocId = typeof globalThis.CSS?.escape === 'function' ? globalThis.CSS.escape(String(doc.id)) : String(doc.id);
-    let row = tbody.querySelector(`tr[data-doc-id="${escapedDocId}"]`);
-    if (row) return row;
+    // Iterate rows instead of building attribute selectors: doc.id is
+    // server/poll-supplied and CSS.escape() targets identifiers, not string
+    // literals — a malformed id could throw and abort the whole update pass
+    // (AUD-273).
+    const docIdStr = String(doc.id);
+    for (const row of tbody.querySelectorAll('tr[data-doc-id]')) {
+        if (row.dataset.docId === docIdStr) return row;
+    }
 
-    const chk = document.getElementById(`chk-doc-${doc.id}`);
+    const chk = document.getElementById(`chk-doc-${docIdStr}`);
     if (chk) return chk.closest('tr');
 
     const hrefKey = doc.uuid ? `/document/${doc.uuid}/` : `/document/${doc.id}/`;
-    const escapedKey = typeof globalThis.CSS?.escape === 'function' ? globalThis.CSS.escape(hrefKey) : hrefKey;
-    const link = tbody.querySelector(`a[href*="${escapedKey}"]`);
-    return link ? link.closest('tr') : null;
+    for (const link of tbody.querySelectorAll('a[href]')) {
+        if (link.getAttribute('href')?.includes(hrefKey)) return link.closest('tr');
+    }
+    return null;
 }
 
 function updateDocumentsTable(documents, complete = false, visibleIds = []) {

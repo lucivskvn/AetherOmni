@@ -26,14 +26,26 @@ def _normalize_generated_item(
     diff: str,
     default_format: str,
     fallback_anchor_ids: list[str],
+    valid_anchor_ids: set[str] | None = None,
 ) -> dict[str, Any]:
-    anchor_ids = [str(a) for a in (raw.get("anchor_ids") or fallback_anchor_ids[:1]) if a]
+    # LLM output is untrusted: near-miss enums ("multi-select", "MCQ ") would
+    # silently break grading, and hallucinated anchor_ids yield empty evidence
+    # cards — normalize both against known-good sets (AUD-291).
+    raw_format = str(raw.get("item_format") or "").strip()
+    item_format = raw_format if raw_format in SUPPORTED_FORMATS else default_format
+    raw_diff = str(raw.get("difficulty") or "").strip()
+    difficulty = raw_diff if raw_diff in SUPPORTED_DIFFICULTIES else diff
+    raw_anchor_ids = [str(a) for a in (raw.get("anchor_ids") or fallback_anchor_ids[:1]) if a]
+    if valid_anchor_ids is not None:
+        anchor_ids = [a for a in raw_anchor_ids if a in valid_anchor_ids]
+    else:
+        anchor_ids = raw_anchor_ids
     return {
         "item_id": uuid.uuid4().hex[:16],
         "owner_id": str(owner_id),
         "topic": str(raw.get("topic") or "General"),
-        "difficulty": str(raw.get("difficulty") or diff),
-        "item_format": str(raw.get("item_format") or default_format),
+        "difficulty": difficulty,
+        "item_format": item_format,
         "stem": str(raw.get("stem") or ""),
         "choices": list(raw.get("choices") or []),
         "correct_answer": raw.get("correct_answer"),
@@ -146,6 +158,7 @@ def generate_and_persist_quiz(
     raw_items = [it for it in items_field if isinstance(it, dict)] if isinstance(items_field, list) else []
 
     fallback_anchor_ids = [aid for c in crystals for aid in (c.get("anchor_ids") or [])]
+    valid_anchor_ids = set(fallback_anchor_ids)
     persisted = [
         _normalize_generated_item(
             raw,
@@ -153,6 +166,7 @@ def generate_and_persist_quiz(
             diff=diff,
             default_format=fmt_list[0],
             fallback_anchor_ids=fallback_anchor_ids,
+            valid_anchor_ids=valid_anchor_ids,
         )
         for raw in raw_items[:n_items]
     ]

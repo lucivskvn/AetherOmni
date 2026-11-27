@@ -25,8 +25,12 @@ def _parse_rag_document_ids(document_ids_str: str | None) -> list[Any] | None:
         item = raw.strip()
         if not item:
             continue
+        # Only strip a known Surreal record-table prefix (e.g. "document:42");
+        # an arbitrary colon inside a legitimate id must not be mangled (AUD-280).
         if ":" in item:
-            item = item.split(":", 1)[1]
+            prefix, _, rest = item.partition(":")
+            if prefix.isidentifier() and prefix.islower() and rest:
+                item = rest
         item = item[:64]
         try:
             ids.append(int(item))
@@ -43,7 +47,11 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
 
     def _check_rag_limits(self, request):
         rl_key = f"rag_ratelimit_{view_common.get_request_actor_id(request)}"
-        if not view_common._enforce_distributed_rate_limit(f"rag:{rl_key}", rl_key, max_requests=10, window_seconds=60):
+        # Local (offline) key mirrors the Surreal key so dev/prod rate-limit
+        # semantics match: search and stream get independent 10/min buckets (AUD-344).
+        if not view_common._enforce_distributed_rate_limit(
+            f"rag:{rl_key}", f"rag:{rl_key}", max_requests=10, window_seconds=60
+        ):
             logger.warning("[RAGRateLimit] SurrealDB rate limit fallback error or limit exceeded for %s", rl_key)
             return JsonResponse(
                 {"error": RAG_RATE_LIMIT_MSG},
@@ -86,11 +94,16 @@ class DocumentRAGSearchView(LoginRequiredMixin, View):
                 actor_id=view_common.get_request_actor_id(request),
             )
             # Render markdown answer safely to HTML
-            results["answer_html"] = render_markdown_to_html(results["answer"])
+            results["answer_html"] = render_markdown_to_html(results.get("answer") or "")
             return JsonResponse(results, encoder=view_common.AetherJSONEncoder)
         except ValueError as e:
             logger.warning("[RAG Search] Validation error: %s", e)
             return JsonResponse({"error": "Invalid search parameters provided."}, status=400)
+        except RuntimeError as e:
+            # Retrieval outage (SurrealDB unavailable / degraded) is a
+            # transient dependency failure, not a server bug — surface 503.
+            logger.warning("[RAG Search] Retrieval backend unavailable: %s", e)
+            return JsonResponse({"error": "Search is temporarily unavailable. Please try again shortly."}, status=503)
         except Exception as e:
             logger.exception("[RAG Search] Internal exception during semantic search: %s", e)
             return JsonResponse(
@@ -107,7 +120,7 @@ class StreamQueryRAGView(LoginRequiredMixin, View):
     def _check_stream_limits(self, request, actor_id: str):
         rl_key = f"rag_ratelimit_{actor_id}"
         if not view_common._enforce_distributed_rate_limit(
-            f"stream:{rl_key}", rl_key, max_requests=10, window_seconds=60
+            f"stream:{rl_key}", f"stream:{rl_key}", max_requests=10, window_seconds=60
         ):
             logger.warning("[RAGStreamRateLimit] SurrealDB rate limit fallback error or limit exceeded for %s", rl_key)
             return JsonResponse(

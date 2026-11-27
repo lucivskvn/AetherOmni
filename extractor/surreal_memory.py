@@ -38,17 +38,24 @@ def add_user_memory(user_id: str, memory_text: str, embedding: list[float]) -> N
     from extractor import surreal_db
 
     """Persist a new user memory vector with a bounded retention window."""
+    # Deterministic record id makes the write idempotent: concurrent or retried
+    # calls UPSERT the same row instead of passing a check-then-insert dedupe
+    # race and accumulating duplicates (AUD-370).
+    import hashlib
+
+    mem_key = hashlib.sha256(f"{user_id}\x00{memory_text}".encode()).hexdigest()
     sql = (
-        "INSERT INTO user_memories {"
-        "  user_id: $user_id,"
-        "  memory_text: $memory_text,"
-        "  embedding: $embedding,"
-        "  expires_at: $expires_at"
-        "};"
+        "LET $rec = type::record('user_memories', $mem_key);"
+        "UPSERT $rec SET"
+        "  user_id = $user_id,"
+        "  memory_text = $memory_text,"
+        "  embedding = $embedding,"
+        "  expires_at = $expires_at;"
     )
     surreal_db._run(
         sql,
         {
+            "mem_key": mem_key,
             "user_id": user_id,
             "memory_text": memory_text,
             "embedding": embedding,

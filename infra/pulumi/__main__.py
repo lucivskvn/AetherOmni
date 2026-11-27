@@ -137,7 +137,10 @@ for idx, role in enumerate(iam_roles):
     )
     iam_members.append(member)
 
-for sa_idx, sa_role in enumerate(["roles/iam.serviceAccountUser", "roles/iam.serviceAccountTokenCreator"]):
+# serviceAccountUser on itself supports self-referential act-as flows; the
+# runtime code never calls iamcredentials (generateIdToken/signBlob), so
+# serviceAccountTokenCreator is deliberately not granted.
+for sa_idx, sa_role in enumerate(["roles/iam.serviceAccountUser"]):
     sa_member = gcp.serviceaccount.IAMMember(
         f"korda-sa-self-iam-{sa_idx}",
         service_account_id=service_account.name,
@@ -385,7 +388,10 @@ worker_component = ScaleToZeroWorker(
     + secret_envs
     + [
         gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_WORKERS", value="1"),
-        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_TIMEOUT", value="900"),
+        # Worker requests are synchronous Cloud Tasks deliveries; document
+        # pipelines run up to ~25 minutes, so the request ceiling must cover
+        # the 1740s dispatch deadline set in cloud_tasks.py.
+        gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GUNICORN_TIMEOUT", value="1800"),
         gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="RUN_MIGRATIONS_ON_STARTUP", value="False"),
     ],
     sizing=WorkerSizing(
@@ -393,6 +399,7 @@ worker_component = ScaleToZeroWorker(
         memory="2Gi",
         min_instances=worker_min_instances,
         max_instances=worker_max_instances,
+        timeout="1800s",
     ),
     is_public=False,
     legacy_name="korda-worker",

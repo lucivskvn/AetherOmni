@@ -1,7 +1,6 @@
 import json
 import logging
 from typing import Any
-from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib import messages
@@ -27,14 +26,45 @@ TEMPLATE_REGISTER = "extractor/register.html"
 TEMPLATE_FORGOT_PASSWORD = "extractor/forgot_password.html"  # nosec B105
 
 
+def _verify_turnstile_token(captcha_token: str) -> bool:
+    """Verify a Turnstile token against Cloudflare siteverify (AUD-296).
+
+    Returns True when verification succeeds or no secret is configured (the
+    presence check already ran and GoTrue captcha remains the verifier).
+    Fails closed on transport/parse errors so a forged token cannot pass.
+    """
+    secret = getattr(settings, "CF_TURNSTILE_SECRET_KEY", "")
+    if not secret:
+        return True
+    import urllib.parse
+    import urllib.request
+
+    try:
+        data = urllib.parse.urlencode({"secret": secret, "response": captcha_token}).encode()
+        req = urllib.request.Request(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:  # nosec B310 nosemgrep
+            result = json.loads(resp.read().decode("utf-8"))
+        return bool(result.get("success"))
+    except Exception as exc:
+        logger.warning("[Auth] Turnstile siteverify request failed: %s", exc)
+        return False
+
+
 def _turnstile_token_error(request) -> str | None:
-    """Return a user-facing error when Turnstile is configured but the token is missing."""
+    """Return a user-facing error when Turnstile is configured but the token is missing/invalid."""
     if not getattr(settings, "CF_TURNSTILE_SITE_KEY", ""):
         return None
     captcha_token = request.POST.get("cf-turnstile-response", "").strip()
-    if captcha_token:
-        return None
-    return "CAPTCHA verification is required. Please complete the security check and try again."
+    if not captcha_token:
+        return "CAPTCHA verification is required. Please complete the security check and try again."
+    if not _verify_turnstile_token(captcha_token):
+        return "CAPTCHA verification failed. Please complete the security check and try again."
+    return None
 
 
 _email_validator = EmailValidator(allowlist=None)
@@ -63,10 +93,12 @@ def _validate_registration_inputs(email, password, confirm_password, supabase_ur
     if not supabase_url or not supabase_key:
         return "Supabase integration is not configured. Local registration is disabled."
 
-    parsed = urlparse(supabase_url)
-    domain = parsed.netloc or "example.com"
+    # Deny the configured admin identity and the literal admin@ prefix. The
+    # Supabase project hostname is not a mail domain, so checking email
+    # domains against it is dead logic (AUD-275).
+    admin_email = (getattr(settings, "ADMIN_EMAIL", "") or "").strip().lower()
     email_lower = email.lower()
-    if email_lower.startswith("admin@") or email_lower.endswith(f"@{domain}"):
+    if email_lower.startswith("admin@") or (admin_email and email_lower == admin_email):
         return "Registration of administrative or system email addresses is not permitted."
 
     if len(password) < 8:
@@ -119,7 +151,8 @@ def _call_supabase_auth_endpoint(
             err_msg = "Authentication provider returned an invalid response."
         return False, f"{failure_prefix}: {str(err_msg)[:255]}"
     except ValueError as e:
-        return False, str(e)
+        logger.warning("[Supabase Auth] %s rejected request URL: %s", endpoint, e)
+        return False, f"{failure_prefix}: the authentication service rejected the request."
     except Exception as e:
         logger.warning("[Supabase Auth] %s network error: %s", endpoint, e)
         return False, "A network error occurred. Please try again later."
@@ -248,8 +281,13 @@ def forgot_password_view(request):
         if success:
             messages.success(request, "Password recovery link has been sent! Please check your email inbox.")
             return redirect("login")
-        else:
-            messages.error(request, error_msg)
+        # Collapse provider errors: distinguishable responses enable
+        # account enumeration on the recover endpoint (AUD-276).
+        logger.warning("[Auth] Account recovery failed for submitted address: %s", error_msg)
+        messages.error(
+            request,
+            "If an account exists for that address, a recovery link has been sent. Please check your email inbox.",
+        )
 
     return render(request, TEMPLATE_FORGOT_PASSWORD)
 
@@ -271,6 +309,34 @@ def reset_password_confirm_view(request):
     return render(request, "extractor/reset_password_confirm.html", context)
 
 
+def _fetch_supabase_user_info(supabase_url: str, supabase_key: str, access_token: str):
+    """Validate an access token against Supabase /auth/v1/user.
+
+    Returns (user_info, None) on success or (None, JsonResponse) on failure.
+    HTTPError → 401 (bad/expired token); other failures propagate to the
+    caller's 500 handler so backend faults are not reported as auth errors.
+    """
+    import urllib.error
+    import urllib.request
+
+    from extractor.utils import validate_url_scheme
+
+    url = f"{supabase_url.rstrip('/')}/auth/v1/user"
+    validate_url_scheme(url)
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": APPLICATION_JSON,
+    }
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
+            return json.loads(response.read().decode("utf-8")), None
+    except urllib.error.HTTPError as exc:
+        logger.info("[Auth] Session exchange rejected by provider: HTTP %s", exc.code)
+        return None, JsonResponse({"error": "Authentication failed."}, status=401)
+
+
 @method_decorator(csrf_protect, name="dispatch")
 class SupabaseSessionExchangeView(View):
     """
@@ -290,7 +356,6 @@ class SupabaseSessionExchangeView(View):
         from django.contrib.auth import login
 
         from extractor.auth import _sync_supabase_user
-        from extractor.utils import validate_url_scheme
 
         if self._rate_limited(request):
             return JsonResponse({"error": "Too many authentication attempts. Please wait and try again."}, status=429)
@@ -309,16 +374,9 @@ class SupabaseSessionExchangeView(View):
             if not supabase_url or not supabase_key:
                 return JsonResponse({"error": "Supabase integration not configured."}, status=503)
 
-            url = f"{supabase_url.rstrip('/')}/auth/v1/user"
-            validate_url_scheme(url)
-            headers = {
-                "apikey": supabase_key,
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": APPLICATION_JSON,
-            }
-            req = urllib.request.Request(url, headers=headers, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
-                user_info = json.loads(response.read().decode("utf-8"))
+            user_info, fetch_err = _fetch_supabase_user_info(supabase_url, supabase_key, access_token)
+            if fetch_err is not None:
+                return fetch_err
 
             if getattr(settings, "SUPABASE_CONFIRM_EMAIL_REQUIRED", False):
                 email_confirmed = bool(user_info.get("email_confirmed_at") or user_info.get("confirmed_at"))
@@ -326,9 +384,15 @@ class SupabaseSessionExchangeView(View):
                     return JsonResponse({"error": "Email address not verified."}, status=403)
 
             user = _sync_supabase_user(request, {"user": user_info}, user_info.get("email"))
+            if user is None:
+                # Deactivated Django account — _sync_supabase_user rejects it.
+                return JsonResponse({"error": "Authentication failed."}, status=401)
             user.backend = "extractor.auth.SupabaseAuthBackend"
             login(request, user)
             return JsonResponse({"status": "ok", "user": user.username})
-        except Exception as exc:
-            logger.warning("[Auth] Supabase session exchange failed: %s", exc)
+        except urllib.error.HTTPError as exc:
+            logger.info("[Auth] Session exchange rejected by provider: HTTP %s", exc.code)
             return JsonResponse({"error": "Authentication failed."}, status=401)
+        except Exception as exc:
+            logger.exception("[Auth] Supabase session exchange failed: %s", exc)
+            return JsonResponse({"error": "Authentication service unavailable."}, status=500)
