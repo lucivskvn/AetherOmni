@@ -189,33 +189,37 @@ class DocumentSaveView(LoginRequiredMixin, View):
                 )
             return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
         doc_wrapped = view_common._wrap_surreal_doc(doc_ref, users_map)
-
-        # Invalidate cached RAG answers derived from the pre-edit content.
-        view_common._invalidate_doc_rag_caches(str(doc_uuid), view_common.get_request_actor_id(request))
-
-        # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes
-        from django.conf import settings
-
-        from extractor import cloud_tasks
-
-        if getattr(settings, "SURREALDB_OFFLINE", False):
-            doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
-            cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_id": doc_id})
-        else:
-            cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid})
-        broadcast_status_change(str(doc_uuid), "PENDING", owner_id=view_common._doc_owner_id(doc_wrapped))
-
-        # Audit only after the re-embed enqueue succeeds; otherwise the audit
-        # row would claim "re-indexing queued" for a save whose enqueue failed.
-        view_common._record_view_audit(
-            request,
-            AuditAction.DOCUMENT_EDITED,
-            f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
-            document=doc_wrapped,
-        )
-
-        messages.success(request, "Changes saved and re-indexing queued successfully!")
+        _finalize_document_save(request, doc_uuid, doc_wrapped)
         return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
+
+
+def _finalize_document_save(request, doc_uuid, doc_wrapped) -> None:
+    """Invalidate caches, enqueue the re-embed, broadcast, audit, and confirm a save."""
+    from django.conf import settings
+
+    from extractor import cloud_tasks
+
+    # Invalidate cached RAG answers derived from the pre-edit content.
+    view_common._invalidate_doc_rag_caches(str(doc_uuid), view_common.get_request_actor_id(request))
+
+    # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
+        cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_id": doc_id})
+    else:
+        cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid})
+    broadcast_status_change(str(doc_uuid), "PENDING", owner_id=view_common._doc_owner_id(doc_wrapped))
+
+    # Audit only after the re-embed enqueue succeeds; otherwise the audit
+    # row would claim "re-indexing queued" for a save whose enqueue failed.
+    view_common._record_view_audit(
+        request,
+        AuditAction.DOCUMENT_EDITED,
+        f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
+        document=doc_wrapped,
+    )
+
+    messages.success(request, "Changes saved and re-indexing queued successfully!")
 
 
 class DocumentDeleteView(LoginRequiredMixin, View):
