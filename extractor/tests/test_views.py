@@ -2090,6 +2090,62 @@ class SupabaseSessionExchangeTestCase(TestCase):
         self.assertEqual(response.status_code, 413)
         self.assertEqual(response.json().get("error"), "Request body too large.")
 
+    @patch("urllib.request.urlopen")
+    def test_session_exchange_provider_outage_returns_503(self, mock_urlopen):
+        """Supabase 429/5xx during token validation must not masquerade as a 401 bad token."""
+        import io
+        import json
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="https://project.supabase.co/auth/v1/user",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,
+            fp=io.BytesIO(b'{"message":"upstream unavailable"}'),
+        )
+
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            ADMIN_EMAIL="",
+        ):
+            response = self.client.post(
+                reverse("supabase_session_exchange"),
+                data=json.dumps({"access_token": "any-token"}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.json().get("error"), "Authentication service unavailable.")
+
+    @patch("urllib.request.urlopen")
+    def test_session_exchange_bad_token_still_returns_401(self, mock_urlopen):
+        """Genuine 4xx rejections still surface as authentication failures."""
+        import io
+        import json
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="https://project.supabase.co/auth/v1/user",
+            code=401,
+            msg="Unauthorized",
+            hdrs=None,
+            fp=io.BytesIO(b'{"message":"invalid JWT"}'),
+        )
+
+        with self.settings(
+            SUPABASE_URL="https://project.supabase.co",
+            SUPABASE_PUBLIC_KEY="mock-public-key",
+            ADMIN_EMAIL="",
+        ):
+            response = self.client.post(
+                reverse("supabase_session_exchange"),
+                data=json.dumps({"access_token": "bad-token"}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 401)
+            self.assertEqual(response.json().get("error"), "Authentication failed.")
+
 
 class ViewsExceptionPathsTestCase(TestCase):
     """Direct unit tests for helper functions and exception paths in views.py."""

@@ -313,8 +313,9 @@ def _fetch_supabase_user_info(supabase_url: str, supabase_key: str, access_token
     """Validate an access token against Supabase /auth/v1/user.
 
     Returns (user_info, None) on success or (None, JsonResponse) on failure.
-    HTTPError → 401 (bad/expired token); other failures propagate to the
-    caller's 500 handler so backend faults are not reported as auth errors.
+    4xx rejections → 401 (bad/expired token); 429/5xx → 503 so provider
+    outages are not misreported as credential failures (AUD-417 parity).
+    Other failures propagate to the caller's 500 handler.
     """
     import urllib.error
     import urllib.request
@@ -333,6 +334,9 @@ def _fetch_supabase_user_info(supabase_url: str, supabase_key: str, access_token
         with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310 nosemgrep
             return json.loads(response.read().decode("utf-8")), None
     except urllib.error.HTTPError as exc:
+        if exc.code == 429 or exc.code >= 500:
+            logger.warning("[Auth] Session exchange hit provider outage: HTTP %s", exc.code)
+            return None, JsonResponse({"error": "Authentication service unavailable."}, status=503)
         logger.info("[Auth] Session exchange rejected by provider: HTTP %s", exc.code)
         return None, JsonResponse({"error": "Authentication failed."}, status=401)
 
