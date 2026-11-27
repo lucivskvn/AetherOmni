@@ -217,15 +217,23 @@ media_bucket_object_admin = gcp.storage.BucketIAMMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-# backup_surreal.py streams to a .partial staging object, server-side copies
-# it to the final name, then deletes staging — requiring create, get (copy
-# source), update (metadata patch), and delete, not objectCreator alone.
-backup_object_role = gcp.projects.IAMCustomRole(
-    "korda-backup-object-role",
+# backups/ objects stay write-only (objectCreator) so the runtime identity
+# cannot read or delete backup history. The staged-export lifecycle needs
+# get/create/update/delete ONLY under staging/, granted via an IAM condition.
+backup_bucket_object_creator = gcp.storage.BucketIAMMember(
+    "korda-backup-bucket-object-creator",
+    bucket=backup_bucket.name,
+    role="roles/storage.objectCreator",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+backup_staging_role = gcp.projects.IAMCustomRole(
+    "korda-backup-staging-role",
     project=project,
-    role_id="kordaBackupObjectManager",
-    title="KORDA Backup Object Manager",
-    description="Create, read, update, and delete objects in the backup bucket for staged SurrealDB exports.",
+    role_id="kordaBackupStagingManager",
+    title="KORDA Backup Staging Manager",
+    description="Object access limited to the staging/ prefix for in-flight SurrealDB export promotion.",
     permissions=[
         "storage.objects.create",
         "storage.objects.delete",
@@ -236,11 +244,18 @@ backup_object_role = gcp.projects.IAMCustomRole(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
-backup_bucket_object_creator = gcp.storage.BucketIAMMember(
-    "korda-backup-bucket-object-creator",
+backup_staging_binding = gcp.storage.BucketIAMMember(
+    "korda-backup-bucket-staging-manager",
     bucket=backup_bucket.name,
-    role=backup_object_role.name,
+    role=backup_staging_role.name,
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    condition=backup_bucket.bucket.name.apply(
+        lambda b: gcp.storage.BucketIAMMemberConditionArgs(
+            title="backup-staging-prefix-only",
+            description="Restrict object access to the staging/ prefix used for in-flight exports.",
+            expression=f"resource.name.startsWith('projects/_/buckets/{b}/objects/staging/')",
+        )
+    ),
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 

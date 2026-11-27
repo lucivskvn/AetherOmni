@@ -38,13 +38,16 @@ class Command(BaseCommand):
             raise CommandError("SURREAL_URL must use wss:// or https:// for off-host backup exports.")
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         blob_name = f"backups/{surreal_ns}/{surreal_db}/{stamp}.surql.gz"
+        # staging/ is the only prefix where the runtime identity holds
+        # get/delete/update (IAM-conditioned); backups/ stays write-only.
+        staging_name = f"staging/{surreal_ns}/{surreal_db}/{stamp}.surql.gz"
 
         client = storage.Client()
         bucket = client.bucket(backup_bucket)
         # Stream to a staging object first: if the export fails mid-stream the
         # final backup name never holds a truncated snapshot (AUD-359). On
         # success the staging object is server-side copied to the final name.
-        staging_blob = bucket.blob(f"{blob_name}.partial")
+        staging_blob = bucket.blob(staging_name)
         try:
             total_bytes, sha256_hex = self._stream_export(
                 http_url, surreal_user, surreal_pass, surreal_ns, surreal_db, staging_blob
@@ -59,29 +62,25 @@ class Command(BaseCommand):
                 logger.warning("[Backup] Failed to delete staging object %s", staging_blob.name)
             raise CommandError(f"SurrealDB backup failed: {exc}") from exc
 
-        try:
-            blob = bucket.copy_blob(staging_blob, bucket, blob_name)
-        finally:
-            try:
-                staging_blob.delete()
-            except Exception:
-                logger.warning("[Backup] Failed to delete staging object %s", staging_blob.name)
-
-        # Record integrity metadata so a truncated-but-nonempty export is
-        # detectable during restore drills without re-downloading the object.
-        blob.metadata = {
+        # Record integrity metadata on the staging object BEFORE promotion:
+        # objects.copy carries metadata to the destination, and the runtime
+        # identity has no storage.objects.update on backups/ (write-only).
+        staging_blob.metadata = {
             "surreal_ns": surreal_ns,
             "surreal_db": surreal_db,
             "exported_at": stamp,
             "uncompressed_bytes": str(total_bytes),
             "uncompressed_sha256": sha256_hex,
         }
+        staging_blob.patch()
+
         try:
-            blob.patch()
-        except Exception as exc:
-            # The payload is already stored; a metadata failure must not fail
-            # the backup job — log and report success with the caveat.
-            self.stderr.write(f"Backup uploaded but metadata patch failed: {exc}")
+            bucket.copy_blob(staging_blob, bucket, blob_name)
+        finally:
+            try:
+                staging_blob.delete()
+            except Exception:
+                logger.warning("[Backup] Failed to delete staging object %s", staging_blob.name)
         self.stdout.write(
             f"Uploaded SurrealDB backup to gs://{backup_bucket}/{blob_name} "
             f"({total_bytes} uncompressed bytes, sha256:{sha256_hex[:12]}…)"
