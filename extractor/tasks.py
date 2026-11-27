@@ -704,14 +704,17 @@ def _sanitise_yaml_block(raw: str) -> str:
             if value.startswith('"') and value.endswith('"'):
                 fixed_lines.append(line)
                 continue
-            # Strip single-quote wrapping that the LLM sometimes adds
-            if value.startswith("'") and value.endswith("'") and len(value) > 1:
+            # Strip single-quote wrapping that the LLM sometimes adds. Inside
+            # quotes '#' is literal, so comment-stripping must be skipped for
+            # these values (e.g. title 'Book #1' must keep the '#1').
+            was_single_quoted = value.startswith("'") and value.endswith("'") and len(value) > 1
+            if was_single_quoted:
                 value = value[1:-1]
-            # Drop trailing " # comment" before quoting: in YAML plain scalars
-            # a space+hash starts a comment, so keeping it would bake the
-            # comment text into the stored value (e.g. title "Book #1" is
-            # safe — '#' without a preceding space is literal).
-            value = re.sub(r"\s+#.*$", "", value).rstrip()
+            else:
+                # Drop trailing " # comment" before quoting: in YAML plain
+                # scalars a space+hash starts a comment, so keeping it would
+                # bake the comment text into the stored value.
+                value = re.sub(r"\s+#.*$", "", value).rstrip()
             # In double-quoted YAML scalars, backslashes are escape characters.
             # Escape existing backslashes first, then escape double-quotes.
             value = value.replace("\\", "\\\\").replace('"', '\\"')

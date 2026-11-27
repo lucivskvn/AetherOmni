@@ -174,10 +174,16 @@ class DocumentSaveView(LoginRequiredMixin, View):
             doc_uuid, payload, allowed_statuses=["COMPLETED", "FAILED"]
         )
         if doc_ref is None:
-            messages.error(
-                request,
-                "Document state changed while saving (it may be processing now). Please retry.",
-            )
+            if raw_doc.get(CANCEL_REQUESTED):
+                messages.error(
+                    request,
+                    "This document was stopped and cannot be edited. Retry processing first.",
+                )
+            else:
+                messages.error(
+                    request,
+                    "Document state changed while saving (it may be processing now). Please retry.",
+                )
             return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
         doc_wrapped = view_common._wrap_surreal_doc(doc_ref, users_map)
 
