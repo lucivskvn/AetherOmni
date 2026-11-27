@@ -96,9 +96,9 @@ def _validate_registration_inputs(email, password, confirm_password, supabase_ur
     # Deny the configured admin identity and the literal admin@ prefix. The
     # Supabase project hostname is not a mail domain, so checking email
     # domains against it is dead logic (AUD-275).
-    admin_email = (getattr(settings, "ADMIN_EMAIL", "") or "").strip().lower()
+    admin_emails = {e.strip().lower() for e in (getattr(settings, "ADMIN_EMAIL", "") or "").split(",") if e.strip()}
     email_lower = email.lower()
-    if email_lower.startswith("admin@") or (admin_email and email_lower == admin_email):
+    if email_lower.startswith("admin@") or email_lower in admin_emails:
         return "Registration of administrative or system email addresses is not permitted."
 
     if len(password) < 8:

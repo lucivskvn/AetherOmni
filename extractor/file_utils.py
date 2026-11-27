@@ -315,7 +315,9 @@ def _resolve_currency_and_symbol(accept_language: str) -> tuple[str, str]:
     first_tag = (accept_language or "").split(",")[0].split(";")[0].strip().lower()
     parts = [p for p in re.split(r"[-_]", first_tag) if p]
     lang = parts[0] if parts else ""
-    region = parts[1] if len(parts) > 1 else ""
+    # BCP-47 allows an optional script subtag (zh-Hans-SG): the region is the
+    # last subtag, not parts[1], so "zh-Hans-SG" resolves to SG.
+    region = parts[-1] if len(parts) > 1 else ""
 
     # Region wins over language defaults when the locale pins a distinct
     # currency (es-MX, pt-BR, en-AU, ...); otherwise fall back to language.

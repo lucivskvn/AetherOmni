@@ -119,6 +119,7 @@ def _purge_expired_table(table: str) -> int:
         "COMMIT TRANSACTION;"
     )
     res = surreal_db._run(sql)
+    surreal_db._check_surreal_error(res)
     found = _find_purge_count(res)
     return found if found is not None else 0
 
@@ -270,6 +271,40 @@ def kv_cache_set(key: str, value: Any, ttl_seconds: int | None = None) -> None:
 
 
 RAG_SEARCH_CACHE_PREFIX = "rag_search_cache:"
+
+
+def kv_cache_add(key: str, value: Any, ttl_seconds: int | None = None) -> bool:
+    """INSERT-only KV write: returns False when the key already exists.
+
+    Unlike kv_cache_set this never overwrites, so it can serve as a
+    cross-worker, cross-instance mutual-exclusion primitive (the unique
+    cache_key index makes the check-and-set atomic).
+    """
+    from datetime import timedelta
+
+    from extractor import surreal_db
+
+    expires_at_val = datetime.now(UTC) + timedelta(seconds=ttl_seconds) if ttl_seconds is not None else None
+    sql = "INSERT INTO kv_cache {  cache_key: $cache_key,  cache_value: $cache_value,  expires_at: $expires_at};"
+    try:
+        surreal_db._run(
+            sql,
+            {
+                "cache_key": key,
+                "cache_value": json.dumps(value),
+                "expires_at": expires_at_val,
+            },
+        )
+        return True
+    except Exception:
+        return False
+
+
+def kv_cache_delete(key: str) -> None:
+    """Delete a single KV entry by exact key."""
+    from extractor import surreal_db
+
+    surreal_db._run("DELETE FROM kv_cache WHERE cache_key = $cache_key;", {"cache_key": key})
 
 
 def kv_cache_delete_pattern(prefix: str) -> None:

@@ -55,6 +55,7 @@ class MonthlySpendLogTestCase(TestCase):
         with (
             patch("extractor.surreal_db.delete_document"),
             patch("extractor.surreal_db.delete_rag_cache_for_document"),
+            patch("extractor.surreal_db.kv_cache_delete_pattern"),
             patch("extractor.models._delete_orphaned_document_blob"),
         ):
             document.delete()

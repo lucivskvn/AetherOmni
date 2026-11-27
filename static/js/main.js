@@ -92,16 +92,18 @@ async function executeRagFetch(url) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     let response;
-    try {
-        response = await fetch(url, { signal: controller.signal });
-    } finally {
-        clearTimeout(timeoutId);
-    }
     let data = null;
     try {
-        data = await response.json();
-    } catch {
-        // A non-JSON error response is handled by the common error path below.
+        response = await fetch(url, { signal: controller.signal });
+        // Keep the timeout armed until the body finishes: fetch() resolves on
+        // headers, so a stalled body would otherwise hang the fallback search.
+        try {
+            data = await response.json();
+        } catch {
+            // A non-JSON error response is handled by the common error path below.
+        }
+    } finally {
+        clearTimeout(timeoutId);
     }
     if (!response.ok || !data || data.error) {
         throw new Error(data?.error || data?.message || 'An error occurred during vector search.');

@@ -259,8 +259,8 @@ def init_django_admin():
             if not supabase_url and not os.getenv("ADMIN_DEV_PASSWORD", "").strip():
                 logger.warning(
                     "Local admin '%s' was provisioned with an unrecoverable random password. "
-                    "Set a password via 'python manage.py changepassword <username>' or supply "
-                    "ADMIN_DEV_PASSWORD before startup.",
+                    "ADMIN_DEV_PASSWORD is only applied when the account is first created; "
+                    "for an existing account recover via 'python manage.py changepassword <username>'.",
                     admin_email,
                 )
         else:

@@ -226,7 +226,8 @@ def document_task_still_queued(task_name: str | None) -> bool:
     Used by the stale-task reaper to distinguish a PENDING document that is
     genuinely waiting in the queue from one whose delivery was lost. Returns
     False when the task is gone, the name is missing, or the lookup itself
-    fails — an unverifiable task must not pin a document forever.
+    fails — an unverifiable task is conservatively treated as queued so a
+    transient API error cannot trigger a duplicate replacement enqueue.
     """
     if not task_name or settings.DEBUG or getattr(settings, "SURREALDB_OFFLINE", False):
         return False
@@ -238,8 +239,11 @@ def document_task_still_queued(task_name: str | None) -> bool:
     except NotFound:
         return False
     except Exception as exc:
+        # An unverifiable task is treated as still queued: reaping on a
+        # transient lookup error would replace a live delivery and burn retry
+        # budget. The next reaper sweep re-checks once the API recovers.
         logger.warning("[CloudTasks] Could not verify queued task %s: %s", task_name, exc)
-        return False
+        return True
 
 
 def _persist_document_task(task_name: str, payload: dict) -> None:

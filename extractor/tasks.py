@@ -1390,6 +1390,10 @@ def _claim_for_reembedding(doc_uuid: str) -> dict | None:
     return claimed
 
 
+class _ChunkWriteFailedError(Exception):
+    """recreate_chunks raised; the previous chunk set may be partially replaced."""
+
+
 def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], existing_pages: int) -> int:
     if not chunks:
         # Same cancellation fence as the non-empty path: legacy deliveries may
@@ -1399,7 +1403,10 @@ def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], exis
             return -1
         # Edited content may chunk to nothing (e.g. emptied document). Purge the
         # previous vectors anyway — otherwise stale chunks stay searchable.
-        surreal_db.recreate_chunks(doc_uuid, [])
+        try:
+            surreal_db.recreate_chunks(doc_uuid, [])
+        except Exception as exc:
+            raise _ChunkWriteFailedError(str(exc)) from exc
         return max(0, existing_pages)
 
     check_budget_and_api_limit()
@@ -1418,7 +1425,10 @@ def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], exis
     chunk_payloads = [
         _build_chunk_payload(i, ct, emb, doc_language)[0] for i, (ct, emb) in enumerate(zip(chunks, embeddings))
     ]
-    surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
+    try:
+        surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
+    except Exception as exc:
+        raise _ChunkWriteFailedError(str(exc)) from exc
     return existing_pages if existing_pages > 0 else len(chunks)
 
 
@@ -1455,7 +1465,7 @@ def reembed_edited_document_task(payload: dict) -> None:
         existing_pages = _get_val(doc, "page_count") or 0
         try:
             final_page_count = _recreate_and_embed_chunks(doc_uuid, doc, chunks, existing_pages)
-        except Exception:
+        except _ChunkWriteFailedError:
             # recreate_chunks may have partially written; treat as replaced.
             chunks_replaced = True
             raise
@@ -1463,7 +1473,9 @@ def reembed_edited_document_task(payload: dict) -> None:
         if final_page_count < 0:
             return
 
-        surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
+        surreal_db.update_document(
+            doc_uuid, {"page_count": final_page_count, "status": "COMPLETED", PENDING_OPERATION: ""}
+        )
         logger.info("[Worker] Re-embedding successful for Document UUID: %s!", doc_uuid)
         uploaded_by_id = doc.get("uploaded_by_id")
         user = _resolve_user_by_id(uploaded_by_id)
@@ -1499,7 +1511,7 @@ def _handle_reembed_failure(doc_uuid, doc, exc, prior_status, chunks_replaced) -
         # was aborted before writing), so the document remains usable —
         # restore COMPLETED instead of stranding a healthy doc as FAILED.
         try:
-            surreal_db.update_document(doc_uuid, {"status": "COMPLETED", "error_message": ""})
+            surreal_db.update_document(doc_uuid, {"status": "COMPLETED", "error_message": "", PENDING_OPERATION: ""})
             broadcast_status_change(doc_uuid, "COMPLETED", owner_id=doc.get("uploaded_by_id"))
         except Exception as restore_err:
             logger.warning("[Worker] Failed to restore COMPLETED status for %s: %s", doc_uuid, restore_err)

@@ -382,6 +382,10 @@ class DocumentPurgeAllView(LoginRequiredMixin, UserPassesTestMixin, View):
             self._abort_inflight_docs(raw_docs)
             self._delete_physical_files(raw_docs)
             surreal_db.purge_all()
+            # purge_all preserves kv_cache; drop rag_search_cache entries so
+            # cached answers cannot survive the reset (post_delete hooks no
+            # longer run for the raw-deleted rows).
+            surreal_db.kv_cache_delete_pattern(surreal_db.RAG_SEARCH_CACHE_PREFIX)
             try:
                 from extractor.models import AuditLog, MonthlySpendLog, SourceDocument, UserMemory
 
@@ -486,6 +490,11 @@ def _restart_single_document(doc, request, cloud_tasks):
             "updated_at": view_common.format_datetime(timezone.now()),
         },
         allowed_statuses=["PENDING", "FAILED", "COMPLETED"],
+        # A save that lands between the read and this write flips the doc to
+        # PENDING with pending_operation="reembed"; matching only on status
+        # would clobber that marker and queue full re-extraction over the
+        # user's edits. Require the marker to be unchanged too.
+        allowed_pending_operations=[doc.get(PENDING_OPERATION) or ""],
     )
     if doc_ref is None:
         return False
@@ -875,6 +884,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
                 CANCEL_REQUESTED: False,
             },
             allowed_statuses=["PENDING", "FAILED", "COMPLETED"],
+            allowed_pending_operations=[(raw_doc.get(PENDING_OPERATION) or "")],
         )
         if doc_ref is None:
             err_msg = "Document changed state while retrying. Refresh and try again."

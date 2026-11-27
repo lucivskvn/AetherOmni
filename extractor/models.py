@@ -88,6 +88,10 @@ class SourceDocument(models.Model):
     # enforces retry_count >= 0 at the DB level, preventing negative values
     # that could bypass the retry_count >= 3 limit guard.
     retry_count = models.PositiveIntegerField(default=0)
+    # Mirrors the Surreal documents.pending_operation marker: "reembed" means
+    # the PENDING state awaits re-embedding (edited markdown), not full
+    # extraction, so the stale-task reaper picks the right task type.
+    pending_operation = models.CharField(max_length=32, blank=True, default="")
 
     # Lifespans and GDPR auditing
     created_at = models.DateTimeField(auto_now_add=True)
@@ -520,11 +524,14 @@ def invalidate_rag_cache_on_delete(sender, instance, **kwargs):
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return
+    surreal_deleted = False
     try:
         from extractor import surreal_db
 
+        surreal_deleted = False
         try:
             surreal_db.delete_document(str(instance.uuid))
+            surreal_deleted = True
         except Exception as exc:
             logger.warning("[Cleanup] Failed to delete SurrealDB document: %s", exc)
         try:
@@ -536,4 +543,5 @@ def invalidate_rag_cache_on_delete(sender, instance, **kwargs):
         surreal_db.kv_cache_delete_pattern(prefix)
     except Exception as exc:
         logger.warning("[Cleanup] Failed to invalidate caches for %s: %s", instance.uuid, exc)
-    _delete_orphaned_document_blob(instance)
+    if surreal_deleted:
+        _delete_orphaned_document_blob(instance)

@@ -17,7 +17,10 @@ from django.db.models.functions import Lower
 def _iter_user_fk_fields(apps, user_model):
     """Yield (model, attname) for every concrete FK pointing at the user model."""
     user_concrete = user_model._meta.concrete_model
-    for model in apps.get_models():
+    # include_auto_created picks up M2M through tables (auth_user_groups,
+    # auth_user_permissions) so memberships on the duplicate are reassigned
+    # instead of silently deleted with dup.delete().
+    for model in apps.get_models(include_auto_created=True):
         if model._meta.proxy:
             continue
         for field in model._meta.local_fields:

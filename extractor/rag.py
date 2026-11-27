@@ -1130,6 +1130,14 @@ def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db) -> None
         from extractor import cloud_tasks
         from extractor.utils import REEMBED_DOCUMENT_TASK
 
+        # Mark the doc as awaiting re-embed BEFORE dispatch so a dead run is
+        # reaped as reembed (never full pipeline, which would destroy edits).
+        # CAS on COMPLETED: if the doc changed state, skip the enqueue.
+        marked = surreal_db.update_document_cas(
+            doc_uuid_str, {"pending_operation": "reembed"}, allowed_statuses=["COMPLETED"]
+        )
+        if marked is None:
+            return
         cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid_str})
         try:
             surreal_db.kv_cache_set(_regen_marker_key(doc_uuid_str), True, ttl_seconds=900)

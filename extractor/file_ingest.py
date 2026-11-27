@@ -253,6 +253,8 @@ def _format_json_rows_as_table(title: str, items: list[dict]) -> str:
         # JSON array cannot amplify into tens of MB of intermediate strings
         # before the final size check (AUD-270).
         rendered += sum(len(c.encode("utf-8")) for c in row)
+        # Account for the "| c | c |" delimiters and newline the row will add.
+        rendered += 3 * len(row) + 2
         if rendered > _LOCAL_MAX_MARKDOWN_BYTES:
             raise ValueError("JSON document exceeds the rendered output limit.")
         rows.append(row)
@@ -378,10 +380,15 @@ def _extract_zipxml_cell_value(c_el: Any, shared_strings: list[str]) -> str:
     cell_type = c_el.get("t")
     # inlineStr cells store text in <is><t>… with no <v> element (AUD-268).
     if cell_type == "inlineStr":
-        is_el = c_el.find(".//{*}is")
+        # ElementTree has no {*}-wildcard in iter()/find(); match on local
+        # names so namespaced <x:is><x:t> inline strings still resolve.
+        def _local(tag: str) -> str:
+            return tag.rsplit("}", 1)[-1]
+
+        is_el = next((el for el in c_el.iter() if _local(el.tag) == "is"), None)
         if is_el is None:
             return ""
-        return "".join(t_el.text or "" for t_el in is_el.iter("{*}t"))
+        return "".join(t_el.text or "" for t_el in is_el.iter() if _local(t_el.tag) == "t")
     v_el = c_el.find(".//{*}v")
     if v_el is None or not v_el.text:
         return ""

@@ -31,13 +31,26 @@ EXPORT_BUSY_MSG = "Another export is already in progress for your account. Pleas
 def _acquire_export_lock(request) -> bool:
     """Single-flight guard: exports fully buffer output in memory, so
     concurrent exports multiply peak RSS several-fold (AUD-345)."""
+    key = f"export_inflight_{view_common.get_request_actor_id(request)}"
+    # TTL must exceed worst-case generation time for the 1000-doc/64MiB
+    # budget, or the lock expires mid-export and a second export can start
+    # (AUD-363).
+    from django.conf import settings
+
+    if not getattr(settings, "SURREALDB_OFFLINE", False):
+        # LocMemCache is per-process: with multiple Gunicorn workers each has
+        # its own lock table, so cache.add cannot exclude concurrent exports.
+        # The SurrealDB kv_cache unique index gives a shared atomic check-and-set.
+        from extractor import surreal_db as _sdb
+
+        try:
+            return _sdb.kv_cache_add(key, True, ttl_seconds=900)
+        except Exception as exc:
+            logger.warning("[ExportLock] Surreal lock backend error; allowing export: %s", exc)
+            return True
     from django.core.cache import cache
 
-    key = f"export_inflight_{view_common.get_request_actor_id(request)}"
     try:
-        # TTL must exceed worst-case generation time for the 1000-doc/64MiB
-        # budget, or the lock expires mid-export and a second export can start
-        # (AUD-363).
         return bool(cache.add(key, True, 900))
     except Exception as exc:
         logger.warning("[ExportLock] Cache backend error; allowing export: %s", exc)
@@ -45,10 +58,18 @@ def _acquire_export_lock(request) -> bool:
 
 
 def _release_export_lock(request) -> None:
-    from django.core.cache import cache
+    from django.conf import settings
 
+    key = f"export_inflight_{view_common.get_request_actor_id(request)}"
     try:
-        cache.delete(f"export_inflight_{view_common.get_request_actor_id(request)}")
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor import surreal_db as _sdb
+
+            _sdb.kv_cache_delete(key)
+            return
+        from django.core.cache import cache
+
+        cache.delete(key)
     except Exception as exc:
         logger.debug("[ExportLock] Failed to release export lock: %s", exc)
 

@@ -63,7 +63,7 @@ def _render_crystal_section(crystal: dict[str, Any]) -> str:
     # doc-derived coord/section_heading cannot break the code span (AUD-279).
     if anchors:
         src_tags = " ".join(
-            f"[SRC: {str(a.get('source_id', 'unknown')).replace('`', '')} | {format_anchor_coord(a).replace('`', '')}]"
+            f"`[SRC: {str(a.get('source_id', 'unknown')).replace('`', '')} | {format_anchor_coord(a).replace('`', '')}]`"
             for a in anchors[:3]
         )
         lines.append(f"{src_tags}")

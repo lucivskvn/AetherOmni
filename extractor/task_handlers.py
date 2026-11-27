@@ -50,6 +50,7 @@ GOOGLE_TASKS_IP_CIDRS = [
 
 import threading
 from collections.abc import Callable
+from typing import Any
 
 _TASK_REGISTRY: dict[str, Callable] = {}
 TASK_REGISTRY = _TASK_REGISTRY
@@ -448,6 +449,19 @@ MAX_ANCHORS_PER_OBJECT = 500
 MAX_ANCHOR_EMBEDDINGS = 200
 
 
+def _namespaced_source_id(raw_source_id: Any, owner_id: str, doc_slug: str) -> str:
+    """Force caller-supplied source ids into the owner's namespace.
+
+    source_id keys the provenance source record globally; an id outside the
+    owner's "{owner}:" namespace could claim another owner's default
+    "{owner}:{slug}" identity before they ingest (AUD-281 follow-up).
+    """
+    source_id = str(raw_source_id or f"{owner_id}:{doc_slug}")
+    if not source_id.startswith(f"{owner_id}:") and source_id != doc_slug:
+        return f"{owner_id}:{source_id}"
+    return source_id
+
+
 def _parse_gcs_event_fields(payload: dict, bucket_name: str, object_name: str) -> dict[str, str]:
     parts = [p for p in object_name.split("/") if p]
     raw_metadata = payload.get("metadata")
@@ -457,7 +471,7 @@ def _parse_gcs_event_fields(payload: dict, bucket_name: str, object_name: str) -
     path_owner = parts[2] if len(parts) >= 5 else ""
     owner_id = str(path_owner or metadata.get("owner_id") or "system").strip() or "system"
     doc_slug = str(metadata.get("doc_slug") or (parts[3] if len(parts) >= 5 else object_name)).strip() or object_name
-    source_id = str(metadata.get("source_id") or f"{owner_id}:{doc_slug}")
+    source_id = _namespaced_source_id(metadata.get("source_id"), owner_id, doc_slug)
     title = str(metadata.get("title") or (parts[-1] if parts else "") or doc_slug)
     # Validate cheap fields before any LLM spend: malformed values would fail
     # the schemafull provenance writes later and loop Eventarc retries (AUD-340).
@@ -577,9 +591,11 @@ def _defer_digitalization(payload: dict, bucket_name: str, object_name: str) -> 
             countdown=DEFERRED_DIGITALIZATION_COUNTDOWN,
         )
     except Exception as exc:
-        logger.warning(
-            "[EventarcGCSRaw] Failed to defer digitalization of gs://%s/%s: %s", bucket_name, object_name, exc
-        )
+        # The defer is the only durable retry path for a budget-deferred raw/
+        # object; swallowing the enqueue failure would ack the Eventarc
+        # delivery and strand the object. Propagate so the delivery retries.
+        logger.error("[EventarcGCSRaw] Failed to defer digitalization of gs://%s/%s: %s", bucket_name, object_name, exc)
+        raise
 
 
 def digitalize_gcs_object_task(task_payload: dict) -> None:

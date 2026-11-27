@@ -600,20 +600,30 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             mode_display = "Always-On Performance Mode"
         else:
             messages.error(request, "Invalid deployment scaling mode selected.")
-            return redirect("deployment_controller")
+            return redirect(view_common.ROUTE_DEPLOYMENT_CONTROLLER)
 
         # Preflight health check
         health_status = check_service_dependencies_health()
         if not health_status.get("surrealdb") and not getattr(settings, "SURREALDB_OFFLINE", False):
             messages.warning(request, "Preflight alert: SurrealDB is currently offline or unreachable.")
 
-        # Resolve which service to scale on GCP
+        # Resolve which service to scale on GCP. Reject names that sanitize
+        # to empty: _sanitize_gcp_token would otherwise fall back to the web
+        # service default and scale the wrong Cloud Run service.
         target_service = settings.WORKER_SERVICE_NAME
+        from extractor.deployment import _GCP_TOKEN_RE, _sanitize_gcp_token
+
+        if not target_service or not _GCP_TOKEN_RE.match(_sanitize_gcp_token(target_service, "")):
+            messages.error(
+                request, "WORKER_SERVICE_NAME is not a valid Cloud Run service name; scaling was not changed."
+            )
+            return redirect(view_common.ROUTE_DEPLOYMENT_CONTROLLER)
 
         try:
             if not get_service_config(target_service):
                 raise RuntimeError("Worker configuration is unavailable; scaling was not changed.")
             update_service_scale(target_service, min_scale, max_scale)
+            _GCP_CONSOLE_CACHE.pop(f"service_config:{target_service}", None)
             messages.success(request, f"Successfully toggled scaling mode of {target_service} to {mode_display}!")
             view_common._record_view_audit(
                 request,
@@ -626,4 +636,4 @@ class DeploymentControllerView(LoginRequiredMixin, UserPassesTestMixin, View):
             logger.exception("[Deployment] Cloud Run scaling update failed")
             messages.error(request, "Cloud Run scaling update failed. Please try again later.")
 
-        return redirect("deployment_controller")
+        return redirect(view_common.ROUTE_DEPLOYMENT_CONTROLLER)

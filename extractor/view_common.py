@@ -28,6 +28,7 @@ ISO_8601_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DOCUMENT_NOT_FOUND_MSG = "Document not found."
 
 ROUTE_DOCUMENT_DETAIL = "document_detail"
+ROUTE_DEPLOYMENT_CONTROLLER = "deployment_controller"
 
 
 class AetherJSONEncoder(DjangoJSONEncoder):
@@ -243,7 +244,9 @@ def _is_budget_exceeded(user, actor_id: str | None = None) -> bool:
         from extractor.models import MonthlySpendLog, SystemSettings
 
         settings_obj = SystemSettings.get_settings()
-        budget_cap = Decimal(str(settings_obj.monthly_budget_usd or 10.0))
+        # `or` would treat a configured 0 cap as unset; only None defaults.
+        raw_cap = settings_obj.monthly_budget_usd
+        budget_cap = Decimal(str(10.0 if raw_cap is None else raw_cap))
         # Mirror the worker gate: a configured cap of 0 halts all spend; only a
         # missing value defaults to the fallback cap.
         if budget_cap <= 0:

@@ -151,6 +151,7 @@ def _get_dashboard_stats(request, document_limit: int | None = None):
 
     monthly_logged = MonthlySpendLog.total_for_month(now.year, now.month)
     deleted_spend = Decimal(0)
+    spend_read_incomplete = False
     if not getattr(settings, "SURREALDB_OFFLINE", False):
         try:
             deleted_total = surreal_db.deleted_document_spend_total(now.year, now.month)
@@ -158,6 +159,9 @@ def _get_dashboard_stats(request, document_limit: int | None = None):
                 raise RuntimeError("deleted-document spend read failed")
             deleted_spend = Decimal(str(deleted_total))
         except Exception as exc:
+            # Do not present the total as complete: flag it so callers can
+            # distinguish a verified figure from an under-reported one.
+            spend_read_incomplete = True
             logger.warning("[Dashboard] Deleted-document spend read failed; monthly total may under-report: %s", exc)
     monthly_spent = monthly_live + monthly_logged + deleted_spend
 
@@ -197,6 +201,7 @@ def _get_dashboard_stats(request, document_limit: int | None = None):
 
     return {
         "monthly_spent": monthly_spent,
+        "spend_read_incomplete": spend_read_incomplete,
         "total_spent_usd": total_spent_usd,
         "prompt_tokens": prompt_tokens,
         "candidates_tokens": cand_tokens,

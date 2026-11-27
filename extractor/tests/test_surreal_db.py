@@ -441,23 +441,18 @@ class SurrealDBClientTestCase(TestCase):
     @override_settings(SURREALDB_OFFLINE=False)
     @patch("extractor.surreal_db.recreate_chunks")
     @patch("extractor.surreal_db._run")
-    def test_clone_chunks_pages_beyond_chunk_limit(self, mock_run, recreate):
-        # AUD-356: clone uses keyset pagination on chunk_index, not OFFSET.
-        first_page = [{"chunk_index": index, "content": str(index)} for index in range(500)]
-        second_page = [{"chunk_index": 500, "content": "500"}]
-        mock_run.side_effect = [
-            [{"result": first_page}],
-            [{"result": second_page}],
-        ]
+    def test_clone_chunks_reads_one_source_generation(self, mock_run, recreate):
+        # Clone uses a single atomic chunk read: paginated windows can straddle
+        # a concurrent re-embed's delete+insert cycle and mix generations.
+        all_chunks = [{"chunk_index": index, "content": str(index)} for index in range(501)]
+        mock_run.return_value = [{"result": all_chunks}]
 
         surreal_db.clone_chunks("source", "target")
 
-        self.assertEqual(mock_run.call_count, 2)
-        first_sql, first_params = mock_run.call_args_list[0].args
-        self.assertIn("chunk_index > $last_index", first_sql)
-        self.assertEqual(first_params["last_index"], -1)
-        _second_sql, second_params = mock_run.call_args_list[1].args
-        self.assertEqual(second_params["last_index"], 499)
+        mock_run.assert_called_once()
+        sql, params = mock_run.call_args.args
+        self.assertIn("doc_uuid = $doc_uuid", sql)
+        self.assertEqual(params["doc_uuid"], "source")
         target_uuid, cloned_chunks = recreate.call_args.args
         self.assertEqual(target_uuid, "target")
         self.assertEqual(len(cloned_chunks), 501)

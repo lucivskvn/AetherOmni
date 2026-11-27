@@ -136,7 +136,12 @@ if app_url:
 
     # .hostname strips port and any userinfo — netloc would leak
     # "user:pass@host:port" verbatim into ALLOWED_HOSTS (AUD-430).
-    parsed_host = (urlparse(app_url).hostname or "").lower()
+    parsed = urlparse(app_url)
+    parsed_host = (parsed.hostname or "").lower()
+    # Django requires bracketed IPv6 literals in ALLOWED_HOSTS; .hostname
+    # strips them, so re-wrap when the netloc carried an IPv6 address.
+    if parsed_host and ":" in parsed_host:
+        parsed_host = f"[{parsed_host}]"
     if parsed_host and parsed_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(parsed_host)
 

@@ -855,14 +855,18 @@ def _offline_update_values(data, user_model):
     valid_fields = {field.name for field in SourceDocument._meta.fields}
     values = {}
     for key, value in data.items():
+        if key not in valid_fields:
+            continue
         if key == "uploaded_by_id":
             values[key] = _resolve_offline_owner_id(value, user_model)
+        elif value is CLEAR_FIELD:
+            values[key] = None
         elif key == "expires_at":
             from django.utils.dateparse import parse_datetime
 
             values[key] = parse_datetime(value) if value else None
-        elif key in valid_fields:
-            values[key] = None if value is CLEAR_FIELD else value
+        else:
+            values[key] = value
     return values
 
 
@@ -1061,7 +1065,7 @@ def update_document_if_status(doc_uuid: str, data: dict, *, allowed_statuses: li
     return _conditional_update_document_surreal(doc_uuid, data, allowed_statuses)
 
 
-def _cas_update_document_offline(doc_uuid, data, allowed_statuses):
+def _cas_update_document_offline(doc_uuid, data, allowed_statuses, allowed_pending_operations=None):
     """Offline counterpart of ``_cas_update_document_surreal``: single-statement
     UPDATE guarded by status so the check-and-write cannot interleave."""
     from django.contrib.auth import get_user_model
@@ -1079,7 +1083,10 @@ def _cas_update_document_offline(doc_uuid, data, allowed_statuses):
         return None
     values["updated_at"] = timezone.now()
 
-    updated = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses)).update(**values)
+    qs = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses))
+    if allowed_pending_operations is not None:
+        qs = qs.filter(pending_operation__in=list(allowed_pending_operations))
+    updated = qs.update(**values)
     if updated != 1:
         return None
     try:
@@ -1088,7 +1095,7 @@ def _cas_update_document_offline(doc_uuid, data, allowed_statuses):
         return None
 
 
-def _cas_update_document_surreal(doc_uuid, data, allowed_statuses):
+def _cas_update_document_surreal(doc_uuid, data, allowed_statuses, allowed_pending_operations=None):
     """Full-payload CAS: same field handling as ``_update_document_surreal`` but
     the WHERE clause additionally requires status IN allowed_statuses. Worker
     task-name fencing is preserved when the ContextVar is set."""
@@ -1113,6 +1120,9 @@ def _cas_update_document_surreal(doc_uuid, data, allowed_statuses):
         set_parts.append("updated_at = time::now()")
 
     conditions = ["doc_uuid = $doc_uuid", "status IN $allowed_statuses"]
+    if allowed_pending_operations is not None:
+        conditions.append("pending_operation IN $allowed_pending_operations")
+        params["allowed_pending_operations"] = list(allowed_pending_operations)
     if task_name := document_task_name.get():
         conditions.append("cloud_task_name = $expected_task AND cancel_requested != true")
         params["expected_task"] = task_name
@@ -1121,7 +1131,13 @@ def _cas_update_document_surreal(doc_uuid, data, allowed_statuses):
     return rows[0] if rows else None
 
 
-def update_document_cas(doc_uuid: str, data: dict, *, allowed_statuses: list[str]) -> dict | None:
+def update_document_cas(
+    doc_uuid: str,
+    data: dict,
+    *,
+    allowed_statuses: list[str],
+    allowed_pending_operations: list[str] | None = None,
+) -> dict | None:
     """Update a document only while its status remains in ``allowed_statuses``.
 
     General-purpose compare-and-swap for view-layer read-check-write flows:
@@ -1133,8 +1149,8 @@ def update_document_cas(doc_uuid: str, data: dict, *, allowed_statuses: list[str
     from django.conf import settings
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        return _cas_update_document_offline(doc_uuid, data, allowed_statuses)
-    return _cas_update_document_surreal(doc_uuid, data, allowed_statuses)
+        return _cas_update_document_offline(doc_uuid, data, allowed_statuses, allowed_pending_operations)
+    return _cas_update_document_surreal(doc_uuid, data, allowed_statuses, allowed_pending_operations)
 
 
 def claim_document_for_processing(doc_uuid: str) -> dict | None:
@@ -1210,14 +1226,14 @@ def claim_document_for_reembedding(doc_uuid: str) -> dict | None:
         return get_document(doc_uuid)
     if task_name:
         sql = (
-            "UPDATE documents SET status = 'EMBEDDING', updated_at = time::now(), pending_operation = '' "
+            "UPDATE documents SET status = 'EMBEDDING', updated_at = time::now() "
             "WHERE doc_uuid = $doc_uuid AND status IN $statuses "
             "AND cancel_requested != true AND cloud_task_name = $expected_task RETURN AFTER;"
         )
         params: dict[str, Any] = {"doc_uuid": doc_uuid, "statuses": statuses, "expected_task": task_name}
     else:
         sql = (
-            "UPDATE documents SET status = 'EMBEDDING', updated_at = time::now(), pending_operation = '' "
+            "UPDATE documents SET status = 'EMBEDDING', updated_at = time::now() "
             "WHERE doc_uuid = $doc_uuid AND status IN $statuses AND cancel_requested != true RETURN AFTER;"
         )
         params = {"doc_uuid": doc_uuid, "statuses": statuses}
@@ -1715,6 +1731,7 @@ def _write_unfenced_chunks(doc_uuid: str, payloads: list[dict] | None = None) ->
         mutation = _CHUNK_UPSERT_MUTATION
     sql = f"BEGIN TRANSACTION; LET $guard = array::len({exists}) > 0; IF $guard {{ {mutation} }} RETURN $guard; COMMIT TRANSACTION;"  # nosec B608
     res = _run(sql, params)
+    _check_surreal_error(res)
     guard_ok = _transaction_flag(res)
     if not guard_ok:
         logger.warning(
@@ -1940,23 +1957,10 @@ def clone_chunks(source_uuid: str, target_uuid: str) -> None:
         _test_chunks[target_uuid] = [{**c, "doc_uuid": target_uuid} for c in source_chunks]
         return
 
-    # Keyset-paginate on chunk_index instead of OFFSET pagination: offset
-    # windows shift when the source is re-embedded mid-clone, silently
-    # dropping or duplicating chunks in the dedup target (AUD-356).
-    source_chunks = []
-    last_index = -1
-    while True:
-        sql = (
-            "SELECT * FROM chunks WHERE doc_uuid = $doc_uuid AND chunk_index > $last_index "
-            "ORDER BY chunk_index ASC LIMIT 500;"
-        )
-        page = _first_result(_run(sql, {"doc_uuid": source_uuid, "last_index": last_index}))
-        if not isinstance(page, list) or not page:
-            break
-        source_chunks.extend(page)
-        last_index = max(int(c.get("chunk_index") or 0) for c in page)
-        if len(page) < 500:
-            break
+    # Single atomic read: paginated windows can straddle a concurrent
+    # re-embed's delete+insert cycle and mix two chunk generations into the
+    # dedup target (AUD-356 follow-up).
+    source_chunks = get_document_all_chunks(source_uuid)
     if not source_chunks:
         return
 
@@ -2021,9 +2025,12 @@ def _bm25_query_terms(query_text: str, max_terms: int = 8) -> list[str]:
     import re
 
     terms: list[str] = []
+    seen: set[str] = set()
     for tok in re.split(r"\s+", query_text.strip()):
         term = tok.strip(".,;:!?()[]{}\"'`“”‘’«»-–—")  # noqa: RUF001 -- intentionally strips smart quotes/dashes
-        if len(term) >= 2 and term not in terms:
+        key = term.lower()
+        if len(term) >= 2 and key not in seen:
+            seen.add(key)
             terms.append(term)
         if len(terms) >= max_terms:
             break
@@ -2115,6 +2122,8 @@ from extractor.surreal_cache import (  # noqa: F401
     delete_rag_cache_for_document,
     find_chunk_embedding,
     find_chunk_embeddings_batch,
+    kv_cache_add,
+    kv_cache_delete,
     kv_cache_delete_pattern,
     kv_cache_get,
     kv_cache_set,

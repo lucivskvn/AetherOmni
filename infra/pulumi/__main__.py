@@ -185,6 +185,30 @@ gcp.cloudtasks.QueueIamMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
+# document_task_still_queued() calls tasks.get on recorded task names; grant a
+# queue-scoped custom role with only that permission (least privilege over
+# roles/cloudtasks.viewer, which adds list/full-view).
+tasks_reader_role = gcp.projects.IAMCustomRole(
+    "korda-tasks-reader-role",
+    project=project,
+    role_id="kordaTasksReader",
+    title="KORDA Cloud Tasks Reader",
+    description="Read a single Cloud Task by name so the stale-task reaper can verify queued deliveries.",
+    permissions=["cloudtasks.tasks.get"],
+    stage="GA",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
+gcp.cloudtasks.QueueIamMember(
+    "korda-queue-task-reader",
+    name=tasks_queue.name,
+    location=queue_region,
+    project=project,
+    role=tasks_reader_role.name,
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
 media_bucket_object_admin = gcp.storage.BucketIAMMember(
     "korda-bucket-object-admin",
     bucket=media_bucket.name,
@@ -193,10 +217,29 @@ media_bucket_object_admin = gcp.storage.BucketIAMMember(
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
 
+# backup_surreal.py streams to a .partial staging object, server-side copies
+# it to the final name, then deletes staging — requiring create, get (copy
+# source), update (metadata patch), and delete, not objectCreator alone.
+backup_object_role = gcp.projects.IAMCustomRole(
+    "korda-backup-object-role",
+    project=project,
+    role_id="kordaBackupObjectManager",
+    title="KORDA Backup Object Manager",
+    description="Create, read, update, and delete objects in the backup bucket for staged SurrealDB exports.",
+    permissions=[
+        "storage.objects.create",
+        "storage.objects.delete",
+        "storage.objects.get",
+        "storage.objects.update",
+    ],
+    stage="GA",
+    opts=pulumi.ResourceOptions(provider=gcp_provider),
+)
+
 backup_bucket_object_creator = gcp.storage.BucketIAMMember(
     "korda-backup-bucket-object-creator",
     bucket=backup_bucket.name,
-    role="roles/storage.objectCreator",
+    role=backup_object_role.name,
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
     opts=pulumi.ResourceOptions(provider=gcp_provider),
 )
