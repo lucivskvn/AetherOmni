@@ -106,13 +106,22 @@ def _validate_xlsx_archive(zf: zipfile.ZipFile) -> None:
         raise ValueError("XLSX workbook contains too many worksheets.")
 
 
-def _bounded_excel_row(row: tuple[Any, ...] | list[Any], parsed_rows: list[int]) -> list[str]:
+def _bounded_excel_row(
+    row: tuple[Any, ...] | list[Any], parsed_rows: list[int], content_bytes: list[int] | None = None
+) -> list[str]:
     """Validate a non-empty spreadsheet row against the workbook work budget."""
     if len(row) > _XLSX_MAX_COLUMNS:
         raise ValueError("XLSX worksheet exceeds the column limit.")
     normalized = [str(cell).strip() if cell is not None else "" for cell in row]
     if any(len(cell) > _XLSX_MAX_CELL_CHARS for cell in normalized):
         raise ValueError("XLSX worksheet contains an oversized cell.")
+    if content_bytes is not None:
+        # Shared strings let a tiny archive expand into hundreds of MB of cell
+        # text; bound cumulative extracted content at collection time instead of
+        # only at render time (AUD-431).
+        content_bytes[0] += sum(len(cell.encode("utf-8")) for cell in normalized)
+        if content_bytes[0] > _XLSX_MAX_MARKDOWN_BYTES:
+            raise ValueError("XLSX workbook exceeds the rendered output limit.")
     if any(normalized):
         parsed_rows[0] += 1
         if parsed_rows[0] > _XLSX_MAX_ROWS:
@@ -344,11 +353,12 @@ def _parse_excel_openpyxl(file_path: str) -> str | None:
             sheets_md: list[str] = []
             parsed_rows = [0]
             rendered_bytes = [0]
+            content_bytes = [0]
             for sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
                 rows: list[list[str]] = []
                 for row in ws.iter_rows(values_only=True):
-                    str_row = _bounded_excel_row(row, parsed_rows)
+                    str_row = _bounded_excel_row(row, parsed_rows, content_bytes)
                     if any(str_row):
                         rows.append(str_row)
                 formatted = _format_markdown_table_sheet(sheet_name, rows, rendered_bytes)
@@ -383,12 +393,16 @@ def _extract_zipxml_cell_value(c_el: Any, shared_strings: list[str]) -> str:
     return v_el.text
 
 
-def _extract_sheet_rows_from_xml(sheet_tree, shared_strings: list[str], parsed_rows: list[int]) -> list[list[str]]:
+def _extract_sheet_rows_from_xml(
+    sheet_tree, shared_strings: list[str], parsed_rows: list[int], content_bytes: list[int]
+) -> list[list[str]]:
     """Helper to extract non-empty rows from an Excel worksheet XML tree."""
     rows: list[list[str]] = []
     for row_el in sheet_tree.findall(".//{*}row"):
         row_cells = _bounded_excel_row(
-            [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")], parsed_rows
+            [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")],
+            parsed_rows,
+            content_bytes,
         )
         if any(row_cells):
             rows.append(row_cells)
@@ -428,9 +442,10 @@ def _parse_zipxml_sheets(zf: Any, shared_strings: list[str]) -> list[str]:
     sheets_md: list[str] = []
     parsed_rows = [0]
     rendered_bytes = [0]
+    content_bytes = [0]
     for s_idx, s_file in enumerate(sheet_files, 1):
         sheet_tree = ET.fromstring(zf.read(s_file))
-        rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings, parsed_rows)
+        rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings, parsed_rows, content_bytes)
         formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows, rendered_bytes)
         if formatted:
             sheets_md.append(formatted)
