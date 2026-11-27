@@ -1121,7 +1121,12 @@ def _cas_update_document_surreal(doc_uuid, data, allowed_statuses, allowed_pendi
 
     conditions = ["doc_uuid = $doc_uuid", "status IN $allowed_statuses"]
     if allowed_pending_operations is not None:
-        conditions.append("pending_operation IN $allowed_pending_operations")
+        # Rows predating the field hold NONE (DEFAULT applies on create only);
+        # treat NONE as the empty marker so legacy docs remain retryable.
+        conditions.append(
+            "(pending_operation IN $allowed_pending_operations "
+            "OR (pending_operation = NONE AND '' IN $allowed_pending_operations))"
+        )
         params["allowed_pending_operations"] = list(allowed_pending_operations)
     if task_name := document_task_name.get():
         conditions.append("cloud_task_name = $expected_task AND cancel_requested != true")

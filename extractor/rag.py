@@ -38,6 +38,7 @@ from extractor.llm_gateway import (
     generate_llm_stream_unified,
     record_unified_response_spend,
 )
+from extractor.task_state import PENDING_OPERATION
 
 logger = logging.getLogger(__name__)
 
@@ -1118,7 +1119,7 @@ def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db) -> None
     if doc.get("status") != "COMPLETED" or not (doc.get("refined_markdown") or "").strip():
         logger.warning(f"[Surreal Sync] Document {doc_uuid_str} is status {doc.get('status')}, skipping sync.")
         return
-    if doc.get("pending_operation") == "reembed":
+    if doc.get(PENDING_OPERATION) == "reembed":
         return  # A re-embed is already queued or in flight for this document.
     try:
         if surreal_db.kv_cache_get(_regen_marker_key(doc_uuid_str)):
@@ -1134,11 +1135,21 @@ def _regenerate_chunks_for_doc(doc: dict, doc_uuid_str: str, surreal_db) -> None
         # reaped as reembed (never full pipeline, which would destroy edits).
         # CAS on COMPLETED: if the doc changed state, skip the enqueue.
         marked = surreal_db.update_document_cas(
-            doc_uuid_str, {"pending_operation": "reembed"}, allowed_statuses=["COMPLETED"]
+            doc_uuid_str, {PENDING_OPERATION: "reembed"}, allowed_statuses=["COMPLETED"]
         )
         if marked is None:
             return
-        cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid_str})
+        try:
+            cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid_str})
+        except Exception:
+            # A COMPLETED doc carrying pending_operation="reembed" is skipped
+            # by this guard forever; clear the marker so a later query can
+            # retry the regeneration enqueue.
+            try:
+                surreal_db.update_document_cas(doc_uuid_str, {PENDING_OPERATION: ""}, allowed_statuses=["COMPLETED"])
+            except Exception:
+                logger.debug("[Surreal Sync] Failed to clear reembed marker for %s", doc_uuid_str)
+            raise
         try:
             surreal_db.kv_cache_set(_regen_marker_key(doc_uuid_str), True, ttl_seconds=900)
         except Exception as exc:

@@ -287,7 +287,7 @@ def kv_cache_add(key: str, value: Any, ttl_seconds: int | None = None) -> bool:
     expires_at_val = datetime.now(UTC) + timedelta(seconds=ttl_seconds) if ttl_seconds is not None else None
     sql = "INSERT INTO kv_cache {  cache_key: $cache_key,  cache_value: $cache_value,  expires_at: $expires_at};"
     try:
-        surreal_db._run(
+        res = surreal_db._run(
             sql,
             {
                 "cache_key": key,
@@ -295,16 +295,26 @@ def kv_cache_add(key: str, value: Any, ttl_seconds: int | None = None) -> bool:
                 "expires_at": expires_at_val,
             },
         )
-        return True
     except Exception:
-        return False
+        # Transport/backend failure: callers apply their own fail-open policy.
+        raise
+    stmts = res if isinstance(res, list) else [res]
+    for stmt in stmts:
+        if isinstance(stmt, dict) and stmt.get("status") == "ERR":
+            detail = str(stmt.get("detail") or stmt.get("information") or "")
+            # Unique-index rejection means the key is already held -> contended.
+            if any(w in detail.lower() for w in ("already exists", "duplicate", "unique")):
+                return False
+            raise RuntimeError(f"SurrealDB kv_cache_add failed: {detail}")
+    return True
 
 
 def kv_cache_delete(key: str) -> None:
     """Delete a single KV entry by exact key."""
     from extractor import surreal_db
 
-    surreal_db._run("DELETE FROM kv_cache WHERE cache_key = $cache_key;", {"cache_key": key})
+    res = surreal_db._run("DELETE FROM kv_cache WHERE cache_key = $cache_key;", {"cache_key": key})
+    surreal_db._check_surreal_error(res)
 
 
 def kv_cache_delete_pattern(prefix: str) -> None:
