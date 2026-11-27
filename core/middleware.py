@@ -106,12 +106,11 @@ def _extract_host_from_origin(origin: str) -> str | None:
     try:
         url = origin if "://" in origin else f"https://{origin}"
         parsed = urllib.parse.urlparse(url)
-        host = parsed.netloc or parsed.path
-        if host and "[" in host and "]" in host:
-            host = host.split("]", 1)[0].lstrip("[")
-        elif host and ":" in host:
-            host = host.split(":", 1)[0]
-        if host and host.startswith("*."):
+        # parsed.hostname strips userinfo, port, and IPv6 brackets — netloc
+        # can carry "user:pass@host" material that must never reach logs or
+        # ALLOWED_HOSTS (CodeQL py/clear-text-logging-sensitive-data).
+        host = (parsed.hostname or "").lower()
+        if host.startswith("*."):
             # Django ALLOWED_HOSTS uses leading dot (.example.com) for wildcard subdomains
             host = host[1:]
         return host or None
