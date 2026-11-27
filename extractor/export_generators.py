@@ -104,27 +104,40 @@ def _append_master_source_block(idx: int, doc: Any, doc_type: str, doc_markdown:
     """Helper to append structured markdown source section to master document."""
     from html import escape
 
-    clean_comment_title = escape(str(doc.title or "")).replace("--", "__")
-    clean_comment_author = escape(str(doc.author or "")).replace("--", "__")
-    clean_comment_lang = escape(str(doc.language or "")).replace("--", "__")
-    clean_comment_type = escape(str(doc_type or "")).replace("--", "__")
-    clean_comment_hash = escape(str(doc.file_hash or "")).replace("--", "__")
+    # Stored doc fields are user-controlled; collapse whitespace so a title or
+    # author containing newlines cannot inject extra Markdown structure into
+    # the master archival document (AUD-424).
+    flat_title = " ".join(str(doc.title or "").split())
+    flat_author = " ".join(str(doc.author or "").split())
+    flat_lang = " ".join(str(doc.language or "").split())
+    flat_type = " ".join(str(doc_type or "").split())
+    flat_hash = " ".join(str(doc.file_hash or "").split())
+
+    def _flat_doc_field(attr: str) -> str:
+        return " ".join(_get_doc_field_str(doc, attr).split())
+
+    flat_publisher = _flat_doc_field("publisher")
+    flat_year = _flat_doc_field("publication_year")
+    flat_doi = _flat_doc_field("doi")
+    flat_license = _flat_doc_field("license_type")
 
     ctx.master_content.append(
-        f"<!-- SOURCE_START_{idx + 1}: {clean_comment_title} by {clean_comment_author} ({clean_comment_lang}) [Type: {clean_comment_type}, Hash: {clean_comment_hash}] -->"
+        f"<!-- SOURCE_START_{idx + 1}: {escape(flat_title).replace('--', '__')} by "
+        f"{escape(flat_author).replace('--', '__')} ({escape(flat_lang).replace('--', '__')}) "
+        f"[Type: {escape(flat_type).replace('--', '__')}, Hash: {escape(flat_hash).replace('--', '__')}] -->"
     )
-    ctx.master_content.append(f"\n# SOURCE: {doc.title}\n")
-    ctx.master_content.append(f"**Author:** {doc.author}  ")
-    ctx.master_content.append(f"**Language:** {doc.language}  ")
-    ctx.master_content.append(f"**Document Type:** {doc_type}  ")
-    if _get_doc_field_str(doc, "publisher"):
-        ctx.master_content.append(f"**Publisher:** {_get_doc_field_str(doc, 'publisher')}  ")
-    if _get_doc_field_str(doc, "publication_year"):
-        ctx.master_content.append(f"**Publication Year:** {_get_doc_field_str(doc, 'publication_year')}  ")
-    if _get_doc_field_str(doc, "doi"):
-        ctx.master_content.append(f"**DOI:** {_get_doc_field_str(doc, 'doi')}  ")
-    if _get_doc_field_str(doc, "license_type"):
-        ctx.master_content.append(f"**License:** {_get_doc_field_str(doc, 'license_type')}  ")
+    ctx.master_content.append(f"\n# SOURCE: {flat_title}\n")
+    ctx.master_content.append(f"**Author:** {flat_author}  ")
+    ctx.master_content.append(f"**Language:** {flat_lang}  ")
+    ctx.master_content.append(f"**Document Type:** {flat_type}  ")
+    if flat_publisher:
+        ctx.master_content.append(f"**Publisher:** {flat_publisher}  ")
+    if flat_year:
+        ctx.master_content.append(f"**Publication Year:** {flat_year}  ")
+    if flat_doi:
+        ctx.master_content.append(f"**DOI:** {flat_doi}  ")
+    if flat_license:
+        ctx.master_content.append(f"**License:** {flat_license}  ")
     ctx.master_content.append("\n")
     ctx.master_content.append(doc_markdown)
     ctx.master_content.append(f"\n<!-- SOURCE_END_{idx + 1} -->\n\n---\n")
@@ -592,7 +605,9 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str, byte_budget: dic
     byte_budget = byte_budget if byte_budget is not None else {"used": 0}
     title = str(getattr(doc, "title", None) or "Untitled")
     author = str(getattr(doc, "author", None) or "Unknown")
-    chunks = list(_iter_all_doc_chunks(doc, doc_uuid))
+    # Iterate lazily: materializing every chunk up front would hold the whole
+    # document in memory before the byte budget below can fire (AUD-422).
+    chunks = _iter_all_doc_chunks(doc, doc_uuid)
     chunk_rows: list[tuple] = []
     fts_rows: list[tuple] = []
     batch_size = 500
