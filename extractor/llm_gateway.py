@@ -213,7 +213,7 @@ def _get_cached_realtime_pricing(cache) -> dict[str, dict[str, Decimal]] | None:
                 }
                 for k, v in cached_pricing.items()
             }
-        except (KeyError, ValueError, TypeError, AttributeError) as e:
+        except (ArithmeticError, KeyError, ValueError, TypeError, AttributeError) as e:
             logger.exception("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
 
     return None
@@ -227,11 +227,24 @@ def _parse_openrouter_pricing_response(data: dict) -> dict[str, dict[str, str]]:
         pricing = m.get("pricing", {})
         prompt_val = pricing.get("prompt", "0")
         completion_val = pricing.get("completion", "0")
-        if m_id:
-            pricing_map[m_id] = {
-                "prompt": str(prompt_val),
-                "completion": str(completion_val),
-            }
+        if not m_id:
+            continue
+        try:
+            # Validate before caching: a null/non-numeric rate (e.g. JSON null
+            # -> "None") would raise decimal.InvalidOperation — which is an
+            # ArithmeticError, not a ValueError — at Decimal() conversion time,
+            # and the bad map would already be cached for 24h (AUD-425).
+            prompt_dec = Decimal(str(prompt_val))
+            completion_dec = Decimal(str(completion_val))
+            if not (prompt_dec.is_finite() and completion_dec.is_finite()):
+                raise ValueError("non-finite rate")
+        except ArithmeticError, ValueError:
+            logger.warning("[Pricing API] Skipping model %s with invalid pricing payload.", m_id)
+            continue
+        pricing_map[m_id] = {
+            "prompt": str(prompt_dec),
+            "completion": str(completion_dec),
+        }
     return pricing_map
 
 
@@ -281,7 +294,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                 }
                 for k, v in pricing_map.items()
             }
-    except (httpx.HTTPError, httpx.InvalidURL, ValueError, TypeError, KeyError, OSError) as exc:
+    except (httpx.HTTPError, httpx.InvalidURL, ArithmeticError, ValueError, TypeError, KeyError, OSError) as exc:
         logger.exception("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
         _pricing_fetch_failed_at = time.time()
 
