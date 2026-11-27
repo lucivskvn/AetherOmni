@@ -134,7 +134,14 @@ app_url = os.getenv("APP_URL")
 if app_url:
     from urllib.parse import urlparse
 
-    parsed_host = urlparse(app_url).netloc
+    # .hostname strips port and any userinfo — netloc would leak
+    # "user:pass@host:port" verbatim into ALLOWED_HOSTS (AUD-430).
+    parsed = urlparse(app_url)
+    parsed_host = (parsed.hostname or "").lower()
+    # Django requires bracketed IPv6 literals in ALLOWED_HOSTS; .hostname
+    # strips them, so re-wrap when the netloc carried an IPv6 address.
+    if parsed_host and ":" in parsed_host:
+        parsed_host = f"[{parsed_host}]"
     if parsed_host and parsed_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(parsed_host)
 
@@ -143,7 +150,7 @@ if app_url:
 # are claimable by any Cloudflare Zero Trust team, which would let an
 # attacker-controlled Host pass validation and become a CSRF-trusted origin
 # (CSRF_TRUSTED_ORIGINS is derived from ALLOWED_HOSTS below).
-extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", ".fainko.my.id,.fainko.id")
+extra_hosts_env = os.getenv("EXTRA_ALLOWED_HOSTS", "")
 for extra_host in [h.strip() for h in extra_hosts_env.split(",") if h.strip()]:
     if extra_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(extra_host)
@@ -354,6 +361,9 @@ if (
 CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "extractor-tasks"
 # APP_URL is the fully-qualified URL of this Cloud Run service (used for task callbacks)
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")
+# Release version injected by Cloud Build (RELEASE_VERSION) for outbound
+# User-Agent strings; APP_VERSION remains an explicit override.
+APP_VERSION = (os.getenv("APP_VERSION") or os.getenv("RELEASE_VERSION") or "").strip() or "unknown"
 # WORKER_URL is the fully-qualified URL of the korda-worker service
 WORKER_URL = os.getenv("WORKER_URL", "")
 WORKER_SERVICE_NAME = os.getenv("WORKER_SERVICE_NAME", "korda-worker")
@@ -368,6 +378,11 @@ SUPABASE_PUBLIC_KEY = os.getenv("SUPABASE_PUBLIC_KEY", "")
 
 # Cloudflare Turnstile — site key is public (safe to render in templates)
 CF_TURNSTILE_SITE_KEY = os.getenv("CF_TURNSTILE_SITE_KEY", "")
+# Optional: when set, the widget token is verified server-side against
+# Cloudflare siteverify before the request reaches Supabase GoTrue. Without it,
+# only token presence is checked locally and GoTrue captcha config is the sole
+# verifier (AUD-296).
+CF_TURNSTILE_SECRET_KEY = os.getenv("CF_TURNSTILE_SECRET_KEY", "")
 
 # Run periodic database maintenance only on the single-worker maintenance service.
 ENABLE_PERIODIC_MAINTENANCE = os.getenv("ENABLE_PERIODIC_MAINTENANCE", "False").lower() in ("true", "1", "yes")
@@ -411,6 +426,11 @@ for host in ALLOWED_HOSTS:
     if host_clean and host_clean != "*":
         if host_clean.startswith("*.") or not host_clean.startswith("."):
             CSRF_TRUSTED_ORIGINS.append(f"https://{host_clean}")
+        elif host_clean == ".run.app":
+            # *.run.app is shared across every GCP project's Cloud Run services;
+            # trusting the wildcard would let any tenant's origin pass CSRF.
+            # The exact service origin is already trusted via APP_URL (step 2).
+            continue
         else:
             CSRF_TRUSTED_ORIGINS.append(f"https://*{host_clean}")
 
@@ -486,13 +506,16 @@ if not DEBUG:
         if origin_https not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(origin_https)
 
-    if app_url and app_url.startswith("http"):
+    if app_url:
         from urllib.parse import urlparse
 
         u = urlparse(app_url)
-        origin_app = f"{u.scheme}://{u.netloc}"
-        if origin_app not in CSRF_TRUSTED_ORIGINS:
-            CSRF_TRUSTED_ORIGINS.append(origin_app)
+        # startswith("http") also matches junk like "httpxyz"; require a real
+        # scheme+authority or a malformed "://" string lands in trusted origins.
+        if u.scheme in ("http", "https") and u.netloc:
+            origin_app = f"{u.scheme}://{u.netloc}"
+            if origin_app not in CSRF_TRUSTED_ORIGINS:
+                CSRF_TRUSTED_ORIGINS.append(origin_app)
 
     logger.info("[Security] Production OWASP enforcement active.")
 else:

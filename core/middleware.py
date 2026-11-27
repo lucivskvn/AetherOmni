@@ -17,6 +17,7 @@
 
 
 import logging
+import re
 import urllib.parse
 
 from django.conf import settings
@@ -105,18 +106,32 @@ def _extract_host_from_origin(origin: str) -> str | None:
     try:
         url = origin if "://" in origin else f"https://{origin}"
         parsed = urllib.parse.urlparse(url)
-        host = parsed.netloc or parsed.path
-        if host and "[" in host and "]" in host:
-            host = host.split("]", 1)[0].lstrip("[")
-        elif host and ":" in host:
-            host = host.split(":", 1)[0]
-        if host and host.startswith("*."):
+        # parsed.hostname strips userinfo, port, and IPv6 brackets — netloc
+        # can carry "user:pass@host" material that must never reach logs or
+        # ALLOWED_HOSTS (CodeQL py/clear-text-logging-sensitive-data).
+        host = (parsed.hostname or "").lower()
+        if host.startswith("*."):
             # Django ALLOWED_HOSTS uses leading dot (.example.com) for wildcard subdomains
             host = host[1:]
         return host or None
     except Exception:
         logger.debug("[Middleware] Could not parse host from origin")
         return None
+
+
+# A leading dot is valid: wildcard DB origins ("https://*.example.com") are
+# normalized to ".example.com" by _extract_host_from_origin, which is exactly
+# the ALLOWED_HOSTS wildcard form (AUD-426).
+_VALID_HOST_RE = re.compile(
+    r"^(\*\.)?\.?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$|^\[?[0-9a-fA-F:]+\]?$"
+)
+
+
+def _is_safe_db_host(host: str) -> bool:
+    """Reject wildcard/malformed hosts derived from DB-stored CSRF origins."""
+    if not host or host == "*" or ".." in host or "/" in host or "\\" in host:
+        return False
+    return bool(_VALID_HOST_RE.match(host.lower()))
 
 
 def _load_db_origins_tuple() -> tuple[str, ...]:
@@ -194,8 +209,10 @@ class DynamicCsrfTrustedOriginsMiddleware:
             if origin not in settings.CSRF_TRUSTED_ORIGINS:
                 settings.CSRF_TRUSTED_ORIGINS.append(origin)
             origin_host = _extract_host_from_origin(origin)
-            if origin_host:
+            if origin_host and _is_safe_db_host(origin_host):
                 db_hosts.add(origin_host)
+            elif origin_host:
+                logger.warning("[Middleware] Ignoring unsafe DB-derived host: %r", origin_host)
 
         # Reconcile ALLOWED_HOSTS: drop hosts previously appended from DB
         # origins that are no longer configured, without touching static or

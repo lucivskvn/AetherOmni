@@ -9,7 +9,23 @@ class SourceDocumentAdmin(admin.ModelAdmin):
     list_display = ("title", "language", "author", "document_type", "status", "cost_usd", "created_at")
     list_filter = ("status", "language", "document_type", "created_at")
     search_fields = ("title", "original_filename", "author", "file_hash", "semantic_signature")
-    readonly_fields = ("uuid", "file_hash", "retry_count", "created_at", "updated_at", "expires_at")
+    readonly_fields = (
+        "uuid",
+        "file_hash",
+        "retry_count",
+        "created_at",
+        "updated_at",
+        "expires_at",
+        # Content-derived and spend fields must flow through the edit/reprocess
+        # pipeline so chunks, embeddings, versions, and audit stay consistent.
+        "raw_markdown",
+        "refined_markdown",
+        "yaml_metadata",
+        "qa_dataset",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+    )
     fieldsets = (
         (
             "General Information",

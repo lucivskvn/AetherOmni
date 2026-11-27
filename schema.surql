@@ -40,6 +40,10 @@ DEFINE FIELD IF NOT EXISTS output_tokens     ON documents TYPE int    DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS cost_usd          ON documents TYPE float  DEFAULT 0.0;
 DEFINE FIELD IF NOT EXISTS semantic_signature ON documents TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS retry_count       ON documents TYPE int    DEFAULT 0;
+-- pending_operation marks a PENDING doc awaiting a specific task type
+-- ("" = full pipeline, "reembed" = re-embed edited content only) so the
+-- stale-task reaper re-enqueues the correct handler if delivery is lost.
+DEFINE FIELD IF NOT EXISTS pending_operation ON documents TYPE string DEFAULT "";
 DEFINE FIELD IF NOT EXISTS expires_at        ON documents TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS created_at        ON documents TYPE datetime DEFAULT time::now();
 DEFINE FIELD IF NOT EXISTS updated_at        ON documents TYPE datetime DEFAULT time::now();

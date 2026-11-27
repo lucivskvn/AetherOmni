@@ -104,27 +104,40 @@ def _append_master_source_block(idx: int, doc: Any, doc_type: str, doc_markdown:
     """Helper to append structured markdown source section to master document."""
     from html import escape
 
-    clean_comment_title = escape(str(doc.title or "")).replace("--", "__")
-    clean_comment_author = escape(str(doc.author or "")).replace("--", "__")
-    clean_comment_lang = escape(str(doc.language or "")).replace("--", "__")
-    clean_comment_type = escape(str(doc_type or "")).replace("--", "__")
-    clean_comment_hash = escape(str(doc.file_hash or "")).replace("--", "__")
+    # Stored doc fields are user-controlled; collapse whitespace so a title or
+    # author containing newlines cannot inject extra Markdown structure into
+    # the master archival document (AUD-424).
+    flat_title = " ".join(str(doc.title or "").split())
+    flat_author = " ".join(str(doc.author or "").split())
+    flat_lang = " ".join(str(doc.language or "").split())
+    flat_type = " ".join(str(doc_type or "").split())
+    flat_hash = " ".join(str(doc.file_hash or "").split())
+
+    def _flat_doc_field(attr: str) -> str:
+        return " ".join(_get_doc_field_str(doc, attr).split())
+
+    flat_publisher = _flat_doc_field("publisher")
+    flat_year = _flat_doc_field("publication_year")
+    flat_doi = _flat_doc_field("doi")
+    flat_license = _flat_doc_field("license_type")
 
     ctx.master_content.append(
-        f"<!-- SOURCE_START_{idx + 1}: {clean_comment_title} by {clean_comment_author} ({clean_comment_lang}) [Type: {clean_comment_type}, Hash: {clean_comment_hash}] -->"
+        f"<!-- SOURCE_START_{idx + 1}: {escape(flat_title).replace('--', '__')} by "
+        f"{escape(flat_author).replace('--', '__')} ({escape(flat_lang).replace('--', '__')}) "
+        f"[Type: {escape(flat_type).replace('--', '__')}, Hash: {escape(flat_hash).replace('--', '__')}] -->"
     )
-    ctx.master_content.append(f"\n# SOURCE: {doc.title}\n")
-    ctx.master_content.append(f"**Author:** {doc.author}  ")
-    ctx.master_content.append(f"**Language:** {doc.language}  ")
-    ctx.master_content.append(f"**Document Type:** {doc_type}  ")
-    if _get_doc_field_str(doc, "publisher"):
-        ctx.master_content.append(f"**Publisher:** {_get_doc_field_str(doc, 'publisher')}  ")
-    if _get_doc_field_str(doc, "publication_year"):
-        ctx.master_content.append(f"**Publication Year:** {_get_doc_field_str(doc, 'publication_year')}  ")
-    if _get_doc_field_str(doc, "doi"):
-        ctx.master_content.append(f"**DOI:** {_get_doc_field_str(doc, 'doi')}  ")
-    if _get_doc_field_str(doc, "license_type"):
-        ctx.master_content.append(f"**License:** {_get_doc_field_str(doc, 'license_type')}  ")
+    ctx.master_content.append(f"\n# SOURCE: {flat_title}\n")
+    ctx.master_content.append(f"**Author:** {flat_author}  ")
+    ctx.master_content.append(f"**Language:** {flat_lang}  ")
+    ctx.master_content.append(f"**Document Type:** {flat_type}  ")
+    if flat_publisher:
+        ctx.master_content.append(f"**Publisher:** {flat_publisher}  ")
+    if flat_year:
+        ctx.master_content.append(f"**Publication Year:** {flat_year}  ")
+    if flat_doi:
+        ctx.master_content.append(f"**DOI:** {flat_doi}  ")
+    if flat_license:
+        ctx.master_content.append(f"**License:** {flat_license}  ")
     ctx.master_content.append("\n")
     ctx.master_content.append(doc_markdown)
     ctx.master_content.append(f"\n<!-- SOURCE_END_{idx + 1} -->\n\n---\n")
@@ -363,34 +376,51 @@ def _build_sft_pair(
     }
 
 
+def _offline_doc_chunks(doc: Any) -> list[dict[str, Any]]:
+    """Re-chunk an offline document's markdown into export payloads (unbounded)."""
+    from extractor.rag import chunk_document_semantically
+    from extractor.tasks import _build_chunk_payload
+
+    content = (
+        getattr(doc, "refined_markdown", None)
+        or getattr(doc, "cleaned_markdown", None)
+        or getattr(doc, "raw_markdown", None)
+        or ""
+    )
+    raw_chunks = chunk_document_semantically(content)
+    lang = str(getattr(doc, "language", None) or "en")
+    return [_build_chunk_payload(idx, raw_text, None, lang)[0] for idx, raw_text in enumerate(raw_chunks)]
+
+
 def _get_doc_chunks(doc: Any, doc_uuid: str, limit: int) -> list[dict[str, Any]]:
 
     from extractor import surreal_db
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        from extractor.rag import chunk_document_semantically
-
-        content = (
-            getattr(doc, "refined_markdown", None)
-            or getattr(doc, "cleaned_markdown", None)
-            or getattr(doc, "raw_markdown", None)
-            or ""
-        )
-        raw_chunks = chunk_document_semantically(content)
-        from extractor.tasks import _build_chunk_payload
-
-        lang = str(getattr(doc, "language", None) or "en")
-        chunks_payload = []
-        for idx, raw_text in enumerate(raw_chunks[:limit]):
-            payload, _, _ = _build_chunk_payload(idx, raw_text, None, lang)
-            chunks_payload.append(payload)
-        return chunks_payload
+        return _offline_doc_chunks(doc)[:limit]
 
     try:
         return surreal_db.get_document_chunks(doc_uuid, limit=limit)
     except Exception as e:
         logger.warning("[SFT Dataset] Failed to retrieve chunks for %s: %s", doc_uuid, e)
         return []
+
+
+def _iter_all_doc_chunks(doc: Any, doc_uuid: str):
+    """Yield every stored chunk for a document from a single consistent read.
+
+    Unlike _get_doc_chunks this propagates retrieval errors and applies no
+    500-row cap: a truncated export bundle must fail loudly rather than ship
+    incomplete chunk data, and one atomic SELECT cannot straddle a concurrent
+    recreate_chunks delete+insert cycle the way paginated reads can.
+    """
+    from extractor import surreal_db
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        yield from _offline_doc_chunks(doc)
+        return
+
+    yield from surreal_db.get_document_all_chunks(doc_uuid)
 
 
 def _collect_pairs_for_document(doc, limit: int, current_count: int) -> list[dict[str, Any]]:
@@ -461,7 +491,18 @@ def generate_sft_jsonl_bundle(
 ) -> bytes:
     """Generates standard Hugging Face JSONL formatted SFT dataset as UTF-8 bytes."""
     pairs = generate_sft_dataset_pairs(document_ids, user, actor_id=actor_id, limit=5000)
-    lines = [json.dumps(p, ensure_ascii=False) for p in pairs]
+    lines: list[str] = []
+    total_bytes = 0
+    for pair in pairs:
+        line = json.dumps(pair, ensure_ascii=False)
+        # Enforce the bundle byte budget on the serialized output itself —
+        # the pair-level check in generate_sft_dataset_pairs does not account
+        # for JSONL newline framing (AUD-366).
+        line_bytes = len(line.encode("utf-8")) + 1
+        if total_bytes + line_bytes > EXPORT_MAX_TOTAL_CONTENT_BYTES:
+            raise ValueError(EXPORT_TOO_LARGE_MSG)
+        lines.append(line)
+        total_bytes += line_bytes
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
@@ -564,7 +605,9 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str, byte_budget: dic
     byte_budget = byte_budget if byte_budget is not None else {"used": 0}
     title = str(getattr(doc, "title", None) or "Untitled")
     author = str(getattr(doc, "author", None) or "Unknown")
-    chunks = _get_doc_chunks(doc, doc_uuid, limit=500)
+    # Iterate lazily: materializing every chunk up front would hold the whole
+    # document in memory before the byte budget below can fire (AUD-422).
+    chunks = _iter_all_doc_chunks(doc, doc_uuid)
     chunk_rows: list[tuple] = []
     fts_rows: list[tuple] = []
     batch_size = 500

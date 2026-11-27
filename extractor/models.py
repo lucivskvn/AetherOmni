@@ -88,6 +88,10 @@ class SourceDocument(models.Model):
     # enforces retry_count >= 0 at the DB level, preventing negative values
     # that could bypass the retry_count >= 3 limit guard.
     retry_count = models.PositiveIntegerField(default=0)
+    # Mirrors the Surreal documents.pending_operation marker: "reembed" means
+    # the PENDING state awaits re-embedding (edited markdown), not full
+    # extraction, so the stale-task reaper picks the right task type.
+    pending_operation = models.CharField(max_length=32, blank=True, default="")
 
     # Lifespans and GDPR auditing
     created_at = models.DateTimeField(auto_now_add=True)
@@ -137,32 +141,43 @@ class SystemSettings(models.Model):
 
             from extractor import surreal_db
 
+            class SurrealSettings:
+                def __init__(self, raw_data):
+                    self.id = 1
+                    self.pk = 1
+                    self.monthly_budget_usd = Decimal(str(raw_data.get("monthly_budget_usd", 10.0)))
+                    self.selected_model = raw_data.get("selected_model", "auto")
+                    self.currency = raw_data.get("currency", "auto")
+                    self.csrf_trusted_origins = raw_data.get(KEY_CSRF_TRUSTED_ORIGINS, "")
+
+                def save(self, *args, **kwargs):
+                    raise RuntimeError("SurrealSettings is a read-only proxy; persist settings via SaveSettingsView.")
+
+                def delete(self, *args, **kwargs):
+                    raise RuntimeError(
+                        "SurrealSettings is a read-only proxy; deletion is unsupported for remote settings."
+                    )
+
+                def __str__(self):
+                    return f"SystemSettings(Budget=${self.monthly_budget_usd}, Model={self.selected_model})"
+
             try:
                 raw = surreal_db.get_system_settings()
-
-                class SurrealSettings:
-                    def __init__(self, raw_data):
-                        self.id = 1
-                        self.pk = 1
-                        self.monthly_budget_usd = Decimal(str(raw_data.get("monthly_budget_usd", 10.0)))
-                        self.selected_model = raw_data.get("selected_model", "auto")
-                        self.currency = raw_data.get("currency", "auto")
-                        self.csrf_trusted_origins = raw_data.get(KEY_CSRF_TRUSTED_ORIGINS, "")
-
-                    def save(self, *args, **kwargs):
-                        # Read-only proxy for the remote settings record in offline mode.
-                        pass
-
-                    def delete(self, *args, **kwargs):
-                        # Read-only proxy: deletion is unsupported for remote settings.
-                        pass
-
-                    def __str__(self):
-                        return f"SystemSettings(Budget=${self.monthly_budget_usd}, Model={self.selected_model})"
-
-                return SurrealSettings(raw)
             except Exception as e:
                 logger.warning("[SystemSettings] Failed to fetch settings from SurrealDB: %s", e)
+                raw = None
+
+            if raw is not None:
+                try:
+                    return SurrealSettings(raw)
+                except Exception as e:
+                    # A malformed remote payload must not silently degrade to
+                    # Django defaults (e.g. the $10 budget fallback) in prod.
+                    logger.error("[SystemSettings] Malformed SurrealDB settings payload: %s", e)
+                    if not getattr(settings, "SURREALDB_OFFLINE", False):
+                        raise RuntimeError(
+                            "System settings payload is malformed; refusing to fall back to local defaults."
+                        ) from e
 
         obj, _ = cls.objects.get_or_create(id=1)
         return obj
@@ -275,14 +290,20 @@ class MonthlySpendLog(models.Model):
             try:
                 cls.objects.get_or_create(year=year, month=month)
             except IntegrityError:
-                pass
+                # A concurrent writer won the insert race; the row exists now.
+                logger.warning("[MonthlyLog] get_or_create raced for %s-%s", year, month)
 
             updated = cls.objects.filter(year=year, month=month).update(
                 accumulated_cost_usd=models.F("accumulated_cost_usd") + D(str(cost)),
                 accumulated_input_tokens=models.F("accumulated_input_tokens") + in_tok,
                 accumulated_output_tokens=models.F("accumulated_output_tokens") + out_tok,
             )
-            return updated == 1
+            if updated != 1:
+                # The racing transaction rolled back between get_or_create and
+                # update — the bucket row is gone and the increment was lost.
+                logger.warning("[MonthlyLog] spend update matched no row for %s-%s", year, month)
+                return False
+            return True
         except Exception as exc:  # pragma: no cover
             logger.warning("[MonthlyLog] add_cost skipped: %s", exc)
             return False
@@ -414,33 +435,113 @@ def flush_cost_to_monthly_log(sender, instance, **kwargs):
     if not getattr(settings, "SURREALDB_OFFLINE", False):
         return
     if instance.cost_usd and instance.cost_usd > 0:
-        ts = instance.created_at
+        # Attribute to last pipeline activity, matching the live-spend budget
+        # convention — created_at would misfile cross-month processing spend.
+        ts = instance.updated_at or instance.created_at
         try:
-            MonthlySpendLog.add_cost(
+            if not MonthlySpendLog.add_cost(
                 date=ts,
                 cost=instance.cost_usd,
                 in_tok=instance.input_tokens or 0,
                 out_tok=instance.output_tokens or 0,
-            )
+            ):
+                logger.warning("[MonthlyLog] Spend flush returned failure for document %s", instance.pk)
         except Exception as exc:  # pragma: no cover
             logger.warning("[MonthlyLog] Failed to flush cost before delete: %s", exc)
 
 
+def _delete_orphaned_document_blob(instance) -> None:
+    """Remove the backing storage object when no surviving document shares it.
+
+    Dedup clones reference the same blob, so deletion is refcounted on
+    file_hash against the authoritative SurrealDB store in production.
+    """
+    file_field = getattr(instance, "file", None)
+    object_name = getattr(file_field, "name", None) or (str(file_field) if file_field else "")
+    if not object_name:
+        return
+    try:
+        from django.conf import settings
+
+        from extractor import surreal_db
+
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            still_referenced = (
+                SourceDocument.objects.filter(file_hash=instance.file_hash).exclude(pk=instance.pk).exists()
+            )
+        else:
+            rows = surreal_db._first_result(
+                surreal_db._run(
+                    "SELECT count() AS n FROM documents WHERE file_hash = $h AND doc_uuid != $u GROUP ALL;",
+                    {"h": instance.file_hash, "u": str(instance.uuid)},
+                )
+            )
+            still_referenced = bool(rows and rows[0].get("n", 0))
+        if still_referenced:
+            return
+        from django.core.files.storage import default_storage
+
+        if default_storage.exists(object_name):
+            default_storage.delete(object_name)
+    except Exception as exc:
+        logger.warning("[Cleanup] Failed to delete orphaned file for %s: %s", instance.uuid, exc)
+
+
 @receiver(post_save, sender=SourceDocument)
 def invalidate_rag_cache_on_save(sender, instance, **kwargs):
-    if instance.status == "COMPLETED":
-        purge_rag_cache()
+    """Invalidate only the semantic-cache rows derived from this document.
+
+    The previous implementation purged the entire multi-tenant rag_cache and
+    every actor's KV prefix on each COMPLETED save; per-document deletion keeps
+    other tenants' cached answers warm.
+    """
+    if instance.status != "COMPLETED":
+        return
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return
+    try:
+        from extractor import surreal_db
+
+        try:
+            surreal_db.delete_rag_cache_for_document(str(instance.uuid))
+        except Exception as exc:
+            logger.warning("[Cache] Failed to invalidate RAG cache for %s: %s", instance.uuid, exc)
+        # KV entries are keyed per actor (rag_search_cache:{actor}:{scope}:{hash}).
+        # Scope the wipe to the owning actor; unowned docs feed every tenant's
+        # scope, so only the global prefix invalidates them correctly.
+        actor_id = getattr(instance, "uploaded_by_id", None)
+        prefix = f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{actor_id}:" if actor_id else surreal_db.RAG_SEARCH_CACHE_PREFIX
+        surreal_db.kv_cache_delete_pattern(prefix)
+    except Exception as exc:
+        logger.warning("[Cache] Failed to invalidate RAG cache for %s: %s", instance.uuid, exc)
 
 
 @receiver(post_delete, sender=SourceDocument)
 def invalidate_rag_cache_on_delete(sender, instance, **kwargs):
     from django.conf import settings
 
-    if not getattr(settings, "SURREALDB_OFFLINE", False):
-        try:
-            from extractor import surreal_db
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return
+    surreal_deleted = False
+    try:
+        from extractor import surreal_db
 
+        surreal_deleted = False
+        try:
             surreal_db.delete_document(str(instance.uuid))
+            surreal_deleted = True
         except Exception as exc:
             logger.warning("[Cleanup] Failed to delete SurrealDB document: %s", exc)
-    purge_rag_cache()
+        try:
+            surreal_db.delete_rag_cache_for_document(str(instance.uuid))
+        except Exception as exc:
+            logger.warning("[Cache] Failed to invalidate RAG cache for %s: %s", instance.uuid, exc)
+        actor_id = getattr(instance, "uploaded_by_id", None)
+        prefix = f"{surreal_db.RAG_SEARCH_CACHE_PREFIX}{actor_id}:" if actor_id else surreal_db.RAG_SEARCH_CACHE_PREFIX
+        surreal_db.kv_cache_delete_pattern(prefix)
+    except Exception as exc:
+        logger.warning("[Cleanup] Failed to invalidate caches for %s: %s", instance.uuid, exc)
+    if surreal_deleted:
+        _delete_orphaned_document_blob(instance)

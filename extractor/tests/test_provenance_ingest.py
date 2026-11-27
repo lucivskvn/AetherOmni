@@ -421,3 +421,37 @@ class ProvenanceIngestTests(TestCase):
             resp = task_handlers.EventarcGCSRawView.as_view()(request)
         self.assertEqual(resp.status_code, 202)
         self.assertEqual(json.loads(resp.content)["reason"], "monthly-budget-exceeded")
+
+    @override_settings(DEBUG=False)
+    def test_deferred_digitalization_reenqueues_on_budget_exceeded(self):
+        """A deferred digitalization task must re-arm itself while the budget is still exhausted."""
+        from extractor import task_handlers
+        from extractor.llm_gateway import BudgetExceededException
+
+        task_payload = {
+            "bucket": "korda-media",
+            "name": "raw/ephemeral/u1/spec/doc.pdf",
+            "event": {
+                "bucket": "korda-media",
+                "name": "raw/ephemeral/u1/spec/doc.pdf",
+                "contentType": "application/pdf",
+            },
+        }
+        with (
+            patch.object(task_handlers, "_digitalize_gcs_object", side_effect=BudgetExceededException("cap")),
+            patch("extractor.cloud_tasks.enqueue") as mock_enqueue,
+        ):
+            task_handlers.digitalize_gcs_object_task(task_payload)
+        mock_enqueue.assert_called_once()
+        args, kwargs = mock_enqueue.call_args
+        self.assertEqual(args[0], "digitalize_gcs_object")
+        self.assertEqual(kwargs["countdown"], task_handlers.DEFERRED_DIGITALIZATION_COUNTDOWN)
+        self.assertEqual(args[1]["name"], "raw/ephemeral/u1/spec/doc.pdf")
+
+    @override_settings(DEBUG=False)
+    def test_deferred_digitalization_drops_invalid_payload(self):
+        from extractor import task_handlers
+
+        with patch.object(task_handlers, "_digitalize_gcs_object") as mock_digitalize:
+            task_handlers.digitalize_gcs_object_task({"bucket": "", "name": "", "event": None})
+        mock_digitalize.assert_not_called()

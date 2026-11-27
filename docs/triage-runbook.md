@@ -58,10 +58,11 @@ Structured app logs carry `trace_id`, `doc_id`, `media_type`, `step`,
   the document `FAILED` with `error_message`. Check spend ledger before
   assuming quota — `MONTHLY_BUDGET_USD` cap also produces budget-exceeded
   failures by design.
-- **504 / task timeout:** Cloud Tasks dispatch deadline vs Cloud Run
-  `timeout=900s`. Long extractions (large PDFs, video transcription) can
-  exceed it — check `latency_ms` on the failing step and queue retry policy
-  (`infra/pulumi/__main__.py` `QueueRetryConfigArgs`).
+- **504 / task timeout:** Cloud Tasks dispatch deadline is 1740s
+  (`extractor/cloud_tasks.py`) against a Cloud Run worker `timeout=1800s`.
+  Pipelines past the ~25-minute heartbeat budget are treated as dead by the
+  stale-task reaper — check `latency_ms` on the failing step and queue retry
+  policy (`infra/pulumi/__main__.py` `QueueRetryConfigArgs`).
 - **Cloud Run 429 (concurrency):** `max_instance_count` bound hit during
   ingest bursts; scale-up is bounded by design — retry is automatic via
   Cloud Tasks.

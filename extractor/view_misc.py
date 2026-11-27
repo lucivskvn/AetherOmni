@@ -34,4 +34,10 @@ def sentry_debug_view(request):
         from django.http import HttpResponseForbidden
 
         return HttpResponseForbidden("Sentry debug endpoint is restricted.")
+    try:
+        import sentry_sdk
+
+        sentry_sdk.set_tag("debug_endpoint", "sentry_debug_view")
+    except Exception as exc:
+        logger.debug("[SentryDebug] Failed to tag debug event: %s", exc)
     raise ZeroDivisionError("Sentry verification debug error: division by zero trigger.")

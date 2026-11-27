@@ -184,6 +184,17 @@ class FileUtilsTestCase(TestCase):
                 "sheet", [["header"], ["value"]], [file_utils._XLSX_MAX_MARKDOWN_BYTES]
             )
 
+    def test_xlsx_parser_budget_bounds_cumulative_cell_content(self):
+        """Shared-string amplification must not materialize unbounded rows (AUD-431)."""
+        content_bytes = [0]
+        cell = "x" * file_utils._XLSX_MAX_CELL_CHARS
+        parsed_rows = [0]
+        # 4 max-size cells per row trips the 16 MiB content budget before the
+        # 5,000-row cap, isolating the cumulative-content guard.
+        with self.assertRaisesRegex(ValueError, "rendered output limit"):
+            for _ in range(file_utils._XLSX_MAX_ROWS):
+                file_utils._bounded_excel_row([cell] * 4, parsed_rows, content_bytes)
+
     def test_safe_extract_zip_slip_prevention(self):
         import tempfile
 
@@ -381,8 +392,8 @@ class FileUtilsTestCase(TestCase):
 
         conn.close()
 
-    @patch("extractor.export_generators._get_doc_chunks")
-    def test_insert_sqlite_chunks_flushes_bounded_batches(self, get_doc_chunks):
+    @patch("extractor.export_generators._iter_all_doc_chunks")
+    def test_insert_sqlite_chunks_flushes_bounded_batches(self, iter_all_doc_chunks):
         import sqlite3
 
         class DummyDoc:
@@ -390,7 +401,7 @@ class FileUtilsTestCase(TestCase):
             title = "Bounded batches"
             author = "Test author"
 
-        get_doc_chunks.return_value = [{"chunk_index": index, "content": f"chunk {index}"} for index in range(501)]
+        iter_all_doc_chunks.return_value = [{"chunk_index": index, "content": f"chunk {index}"} for index in range(501)]
         conn = sqlite3.connect(":memory:")
         cursor = conn.cursor()
         file_utils._init_sqlite_export_schema(cursor)

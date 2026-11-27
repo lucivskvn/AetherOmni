@@ -25,6 +25,54 @@ logger = logging.getLogger(view_common.VIEWS_LOGGER_NAME)
 
 EXPORT_RATE_LIMIT_MSG = "Export rate limit exceeded. Please wait 60 seconds before trying again."
 EXPORT_FAILURE_MSG = "Export generation failed. Please try again later."
+EXPORT_BUSY_MSG = "Another export is already in progress for your account. Please wait for it to finish."
+
+
+def _acquire_export_lock(request) -> bool:
+    """Single-flight guard: exports fully buffer output in memory, so
+    concurrent exports multiply peak RSS several-fold (AUD-345)."""
+    key = f"export_inflight_{view_common.get_request_actor_id(request)}"
+    # TTL must exceed worst-case generation time for the 1000-doc/64MiB
+    # budget, or the lock expires mid-export and a second export can start
+    # (AUD-363).
+    from django.conf import settings
+
+    if not getattr(settings, "SURREALDB_OFFLINE", False):
+        # LocMemCache is per-process: with multiple Gunicorn workers each has
+        # its own lock table, so cache.add cannot exclude concurrent exports.
+        # The SurrealDB kv_cache unique index gives a shared atomic check-and-set.
+        from extractor import surreal_db as _sdb
+
+        try:
+            return _sdb.kv_cache_add(key, True, ttl_seconds=900)
+        except Exception as exc:
+            logger.warning("[ExportLock] Surreal lock backend error; allowing export: %s", exc)
+            return True
+    from django.core.cache import cache
+
+    try:
+        return bool(cache.add(key, True, 900))
+    except Exception as exc:
+        logger.warning("[ExportLock] Cache backend error; allowing export: %s", exc)
+        return True
+
+
+def _release_export_lock(request) -> None:
+    from django.conf import settings
+
+    key = f"export_inflight_{view_common.get_request_actor_id(request)}"
+    try:
+        if not getattr(settings, "SURREALDB_OFFLINE", False):
+            from extractor import surreal_db as _sdb
+
+            _sdb.kv_cache_delete(key)
+            return
+        from django.core.cache import cache
+
+        cache.delete(key)
+    except Exception as exc:
+        logger.debug("[ExportLock] Failed to release export lock: %s", exc)
+
 
 SFT_PREVIEW_RATE_LIMIT_MSG = "Preview rate limit reached. Please wait a moment before trying again."
 
@@ -80,11 +128,16 @@ class ExportZipView(LoginRequiredMixin, View):
             messages.error(request, "No documents selected for export.")
             return redirect("dashboard")
 
-        if not _reserve_export_rate_limit(request):
-            messages.error(request, EXPORT_RATE_LIMIT_MSG)
+        # Acquire the single-flight lock before consuming a rate-limit slot:
+        # a busy rejection must not burn the user's 1/min export quota (AUD-364).
+        if not _acquire_export_lock(request):
+            messages.error(request, EXPORT_BUSY_MSG)
             return redirect("dashboard")
 
         try:
+            if not _reserve_export_rate_limit(request):
+                messages.error(request, EXPORT_RATE_LIMIT_MSG)
+                return redirect("dashboard")
             zip_data = generate_curated_zip_bundle(
                 document_ids, user=request.user, actor_id=view_common.get_request_actor_id(request)
             )
@@ -104,6 +157,8 @@ class ExportZipView(LoginRequiredMixin, View):
             logger.exception("[Export] ZIP bundle generation failed")
             messages.error(request, EXPORT_FAILURE_MSG)
             return redirect("dashboard")
+        finally:
+            _release_export_lock(request)
 
 
 def _check_sft_preview_rate_limit(actor_id: str) -> JsonResponse | None:
@@ -169,11 +224,16 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
             messages.error(request, "No documents selected for SFT JSONL export.")
             return redirect("dashboard")
 
-        if not _reserve_export_rate_limit(request):
-            messages.error(request, EXPORT_RATE_LIMIT_MSG)
+        # Acquire the single-flight lock before consuming a rate-limit slot:
+        # a busy rejection must not burn the user's 1/min export quota (AUD-364).
+        if not _acquire_export_lock(request):
+            messages.error(request, EXPORT_BUSY_MSG)
             return redirect("dashboard")
 
         try:
+            if not _reserve_export_rate_limit(request):
+                messages.error(request, EXPORT_RATE_LIMIT_MSG)
+                return redirect("dashboard")
             jsonl_data = generate_sft_jsonl_bundle(
                 document_ids,
                 user=request.user,
@@ -194,6 +254,8 @@ class ExportSftJsonlView(LoginRequiredMixin, View):
             logger.exception("[Export] SFT JSONL generation failed")
             messages.error(request, EXPORT_FAILURE_MSG)
             return redirect("dashboard")
+        finally:
+            _release_export_lock(request)
 
 
 class ExportSqliteView(LoginRequiredMixin, View):
@@ -206,11 +268,16 @@ class ExportSqliteView(LoginRequiredMixin, View):
             messages.error(request, "No documents selected for SQLite database export.")
             return redirect("dashboard")
 
-        if not _reserve_export_rate_limit(request):
-            messages.error(request, EXPORT_RATE_LIMIT_MSG)
+        # Acquire the single-flight lock before consuming a rate-limit slot:
+        # a busy rejection must not burn the user's 1/min export quota (AUD-364).
+        if not _acquire_export_lock(request):
+            messages.error(request, EXPORT_BUSY_MSG)
             return redirect("dashboard")
 
         try:
+            if not _reserve_export_rate_limit(request):
+                messages.error(request, EXPORT_RATE_LIMIT_MSG)
+                return redirect("dashboard")
             sqlite_data = generate_curated_sqlite_bundle(
                 document_ids,
                 user=request.user,
@@ -231,6 +298,8 @@ class ExportSqliteView(LoginRequiredMixin, View):
             logger.exception("[Export] SQLite generation failed")
             messages.error(request, EXPORT_FAILURE_MSG)
             return redirect("dashboard")
+        finally:
+            _release_export_lock(request)
 
 
 class ExportCsvView(LoginRequiredMixin, View):
@@ -243,11 +312,16 @@ class ExportCsvView(LoginRequiredMixin, View):
             messages.error(request, "No documents selected for CSV export.")
             return redirect("dashboard")
 
-        if not _reserve_export_rate_limit(request):
-            messages.error(request, EXPORT_RATE_LIMIT_MSG)
+        # Acquire the single-flight lock before consuming a rate-limit slot:
+        # a busy rejection must not burn the user's 1/min export quota (AUD-364).
+        if not _acquire_export_lock(request):
+            messages.error(request, EXPORT_BUSY_MSG)
             return redirect("dashboard")
 
         try:
+            if not _reserve_export_rate_limit(request):
+                messages.error(request, EXPORT_RATE_LIMIT_MSG)
+                return redirect("dashboard")
             csv_data = generate_curated_csv_bundle(
                 document_ids,
                 user=request.user,
@@ -268,3 +342,5 @@ class ExportCsvView(LoginRequiredMixin, View):
             logger.exception("[Export] CSV generation failed")
             messages.error(request, EXPORT_FAILURE_MSG)
             return redirect("dashboard")
+        finally:
+            _release_export_lock(request)

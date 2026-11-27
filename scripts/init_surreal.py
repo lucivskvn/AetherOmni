@@ -248,11 +248,21 @@ def init_django_admin():
 
         # Interactive authentication is delegated to Supabase. The local Django
         # account is bootstrap-only, so its credential must never be supplied by
-        # or persisted in deployment configuration.
-        admin_password = secrets.token_urlsafe(16)
+        # or persisted in deployment configuration. In offline/local mode a
+        # generated password would be unrecoverable (it is never printed), so
+        # honor an explicit dev-only override or leave the account for
+        # `manage.py changepassword`.
+        admin_password = os.getenv("ADMIN_DEV_PASSWORD", "").strip() or secrets.token_urlsafe(16)
 
         if admin_email:
             _setup_local_admin(admin_email, admin_password, supabase_url)
+            if not supabase_url and not os.getenv("ADMIN_DEV_PASSWORD", "").strip():
+                logger.warning(
+                    "Local admin '%s' was provisioned with an unrecoverable random password. "
+                    "ADMIN_DEV_PASSWORD is only applied when the account is first created; "
+                    "for an existing account recover via 'python manage.py changepassword <username>'.",
+                    admin_email,
+                )
         else:
             logger.info("ADMIN_EMAIL is not configured; skipping local administrator stub creation.")
         if not getattr(settings, "SURREALDB_OFFLINE", False):

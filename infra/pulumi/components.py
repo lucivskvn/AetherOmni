@@ -58,6 +58,17 @@ class ComplianceBucket(pulumi.ComponentResource):
                     condition=gcp.storage.BucketLifecycleRuleConditionArgs(age=1),
                 ),
             ]
+            # staging/ holds in-flight .partial exports awaiting promotion;
+            # crashed jobs leave orphans that the age rule reclaims.
+            lifecycle_rules.append(
+                gcp.storage.BucketLifecycleRuleArgs(
+                    action=gcp.storage.BucketLifecycleRuleActionArgs(type="Delete"),
+                    condition=gcp.storage.BucketLifecycleRuleConditionArgs(
+                        matches_prefixes=["staging/"],
+                        age=1,
+                    ),
+                )
+            )
             if backup_retention_days is not None:
                 # Daily backup exports accumulate forever without an age-based
                 # rule; bound retention independently of soft-delete/versioning.

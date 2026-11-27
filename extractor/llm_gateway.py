@@ -137,7 +137,10 @@ def check_budget_and_api_limit() -> None:
     logged_spent = MonthlySpendLog.total_for_month(now.year, now.month)
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
-        live_spent = SourceDocument.objects.filter(created_at__gte=first_of_month).aggregate(
+        # Attribute spend by updated_at (last pipeline activity), not
+        # created_at: a document created last month but processed this month
+        # consumed this month's budget (AUD-303).
+        live_spent = SourceDocument.objects.filter(updated_at__gte=first_of_month).aggregate(
             total=models.Sum("cost_usd")
         )["total"] or Decimal("0.0")
         settings_obj = SystemSettings.get_settings()
@@ -154,7 +157,7 @@ def check_budget_and_api_limit() -> None:
         # EDGE-03 / Q2 decision: SurrealDB BEGIN TRANSACTION block for atomic budget evaluation
         transaction_sql = """
         BEGIN TRANSACTION;
-        LET $live = (SELECT math::sum(cost_usd) AS total FROM documents WHERE created_at >= <datetime> $first_of_month GROUP ALL);
+        LET $live = (SELECT math::sum(cost_usd) AS total FROM documents WHERE updated_at >= <datetime> $first_of_month GROUP ALL);
         LET $spent = IF array::len($live) > 0 AND $live[0].total != NONE THEN $live[0].total ELSE 0.0 END;
         LET $deleted = (SELECT math::sum(cost_usd) AS total FROM document_spend_reconciliations WHERE year = $year AND month = $month GROUP ALL);
         LET $deleted_spent = IF array::len($deleted) > 0 AND $deleted[0].total != NONE THEN $deleted[0].total ELSE 0.0 END;
@@ -210,7 +213,7 @@ def _get_cached_realtime_pricing(cache) -> dict[str, dict[str, Decimal]] | None:
                 }
                 for k, v in cached_pricing.items()
             }
-        except (KeyError, ValueError, TypeError, AttributeError) as e:
+        except (ArithmeticError, KeyError, ValueError, TypeError, AttributeError) as e:
             logger.exception("[Pricing API] Error parsing cached pricing values: %s. Clearing cache.", e)
 
     return None
@@ -224,11 +227,24 @@ def _parse_openrouter_pricing_response(data: dict) -> dict[str, dict[str, str]]:
         pricing = m.get("pricing", {})
         prompt_val = pricing.get("prompt", "0")
         completion_val = pricing.get("completion", "0")
-        if m_id:
-            pricing_map[m_id] = {
-                "prompt": str(prompt_val),
-                "completion": str(completion_val),
-            }
+        if not m_id:
+            continue
+        try:
+            # Validate before caching: a null/non-numeric rate (e.g. JSON null
+            # -> "None") would raise decimal.InvalidOperation — which is an
+            # ArithmeticError, not a ValueError — at Decimal() conversion time,
+            # and the bad map would already be cached for 24h (AUD-425).
+            prompt_dec = Decimal(str(prompt_val))
+            completion_dec = Decimal(str(completion_val))
+            if not (prompt_dec.is_finite() and completion_dec.is_finite()):
+                raise ValueError("non-finite rate")
+        except ArithmeticError, ValueError:
+            logger.warning("[Pricing API] Skipping model %s with invalid pricing payload.", m_id)
+            continue
+        pricing_map[m_id] = {
+            "prompt": str(prompt_dec),
+            "completion": str(completion_dec),
+        }
     return pricing_map
 
 
@@ -278,7 +294,7 @@ def fetch_realtime_model_pricing() -> dict[str, dict[str, Decimal]] | None:
                 }
                 for k, v in pricing_map.items()
             }
-    except (httpx.HTTPError, httpx.InvalidURL, ValueError, TypeError, KeyError, OSError) as exc:
+    except (httpx.HTTPError, httpx.InvalidURL, ArithmeticError, ValueError, TypeError, KeyError, OSError) as exc:
         logger.exception("[Pricing API] Failed to fetch real-time model pricing: %s. Falling back.", exc)
         _pricing_fetch_failed_at = time.time()
 
@@ -516,8 +532,7 @@ def _try_vertex_fallback_chain(model_name, contents, config):
                 response = execute_with_backoff(
                     vertex_client.models.generate_content, model=model_name, contents=contents, config=config
                 )
-                input_tokens = response.usage_metadata.prompt_token_count or 0
-                output_tokens = response.usage_metadata.candidates_token_count or 0
+                input_tokens, output_tokens = usage_token_counts(getattr(response, "usage_metadata", None))
                 cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
                 return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
             except Exception as e:
@@ -542,8 +557,7 @@ def _try_ai_studio_fallback(model_name, contents, config):
             response = execute_with_backoff(
                 client.models.generate_content, model=model_name, contents=contents, config=config
             )
-            input_tokens = response.usage_metadata.prompt_token_count or 0
-            output_tokens = response.usage_metadata.candidates_token_count or 0
+            input_tokens, output_tokens = usage_token_counts(getattr(response, "usage_metadata", None))
             cost = calculate_gemini_cost(model_name, input_tokens, output_tokens)
             return UnifiedResponse(response.text, input_tokens, output_tokens, cost, model_name)
         except Exception as e:
@@ -600,8 +614,14 @@ KNOWN_GEMINI_MODELS: frozenset[str] = frozenset(
 
 def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: bool = False) -> str:
     """
-    Dynamically resolves the most cost-effective active Gemini model in the specified GCP region.
-    Evaluates real-time token pricing and regional availability, caching the optimal model for 24 hours.
+    Resolve a cost-effective Gemini model for the configured region.
+
+    Selects the candidate with the lowest combined prompt+completion token
+    price from the cached realtime pricing feed. Candidates without pricing
+    data are skipped; when none resolve, falls back to the preferred
+    Flash/Flash-Lite defaults. Regional model availability is not probed —
+    the region fallback chain in the callers handles unavailability.
+    Result is cached for 24 hours.
     """
     from django.core.cache import cache
 
@@ -630,21 +650,21 @@ def get_cheapest_regional_gemini_model(region: str | None = None, is_vision: boo
             MODEL_GEMINI_PRO,
         ]
 
-    selected_model = candidates[0]
-    for candidate in candidates:
-        if getattr(settings, "SURREALDB_OFFLINE", False) or os.getenv("CI"):
-            selected_model = candidate
-            break
-
-        # Check real-time pricing and regional validity
-        rt = resolve_realtime_pricing(candidate)
-        if rt:
-            selected_model = candidate
-            break
-
-        if candidate in {MODEL_GEMINI_FLASH, MODEL_GEMINI_FLASH_LITE}:
-            selected_model = candidate
-            break
+    if getattr(settings, "SURREALDB_OFFLINE", False) or os.getenv("CI"):
+        selected_model = candidates[0]
+    else:
+        priced: list[tuple[Decimal, str]] = []
+        for candidate in candidates:
+            rt = resolve_realtime_pricing(candidate)
+            if rt:
+                priced.append((rt[0] + rt[1], candidate))
+        if priced:
+            selected_model = min(priced, key=lambda item: item[0])[1]
+        else:
+            selected_model = next(
+                (c for c in candidates if c in {MODEL_GEMINI_FLASH, MODEL_GEMINI_FLASH_LITE}),
+                candidates[0],
+            )
 
     cache.set(cache_key, selected_model, 86400)
     return selected_model
@@ -703,25 +723,52 @@ def _determine_api_routing(model_name: str, is_vision: bool, openrouter_api_key:
     return final_model, use_openrouter
 
 
-_CASCADABLE_TERMS = (
-    _NOT_FOUND,
+# Status codes worth cascading to the next model/region/provider: the failure
+# is specific to this endpoint or transient. Everything else — 400 bad
+# request, 401/403 auth, 413 payload, 422 — fails identically everywhere and
+# must surface immediately instead of burning the whole fallback chain.
+_CASCADE_STATUS_CODES = {404, 408, 409, 425, 429, 500, 502, 503, 504}
+_NON_CASCADE_STATUS_CODES = {400, 401, 402, 403, 413, 422}
+
+# Message-only fallback (no structured status): restricted to model
+# availability wording. Broad terms like "invalid" or "permission" match
+# unrelated failures (bad API key, content policy) and caused infinite
+# cascades across every model, region, and provider (AUD-298).
+_CASCADE_MESSAGE_TERMS = (
     "not_found",
-    "invalid",
+    "not found",
+    "does not exist",
+    "no longer available",
     "deprecated",
     "retired",
-    "permission",
-    "404",
-    "400",
-    "429",
+    "is not supported",
+    "model_not_found",
     "resource_exhausted",
     "rate limit",
     "quota",
+    "internal",
+    "unavailable",
+    "service unavailable",
+    "timeout",
+    "timed out",
 )
 
 
 def _is_cascadable_error(err: Exception) -> bool:
+    status = getattr(err, "status_code", None) or getattr(err, "code", None)
+    if status is not None:
+        try:
+            status = int(status)
+        except TypeError, ValueError:
+            status = None
+    if status in _NON_CASCADE_STATUS_CODES:
+        return False
+    if status in _CASCADE_STATUS_CODES:
+        return True
+    if status is not None:
+        return False
     err_msg = str(err).lower()
-    return any(term in err_msg for term in _CASCADABLE_TERMS)
+    return any(term in err_msg for term in _CASCADE_MESSAGE_TERMS)
 
 
 def _try_direct_gemini_models(
@@ -850,6 +897,10 @@ class _PartialStreamYielded(Exception):
     """A stream failed after emitting chunks; failover would duplicate content."""
 
 
+class _StreamTruncatedError(Exception):
+    """The provider stream ended mid-answer; the partial text must not be cached as complete."""
+
+
 def _stream_vertex_region(client: Any, model_name: str, contents: list[Any], config: Any, usage_sink: dict | None):
     """Yield text chunks for a single Vertex region, classifying failures."""
     emitted = False
@@ -862,6 +913,8 @@ def _stream_vertex_region(client: Any, model_name: str, contents: list[Any], con
                 yield chunk.text
     except Exception as e:
         logger.warning("[Gateway Stream] Vertex AI streaming failed: %s.", e)
+        if emitted and usage_sink is not None:
+            usage_sink["truncated"] = True
         raise (_PartialStreamYielded() if emitted else _RegionStreamFailed()) from e
 
 
@@ -916,6 +969,8 @@ def _try_stream_ai_studio(
             return
         except Exception as e:
             logger.warning("[Gateway Stream] AI Studio streaming failed: %s.", e)
+            if usage_sink is not None:
+                usage_sink["truncated"] = True
 
 
 def _record_stream_usage_spend(model_name: str, usage: Any) -> None:
@@ -1016,6 +1071,11 @@ def generate_llm_stream_unified(
             # Streamed tokens bypass the non-streaming cost accounting path;
             # persist provider-reported usage so the monthly budget stays honest.
             _record_stream_usage_spend(gemini_model, usage_sink.get("usage"))
+            if usage_sink.get("truncated"):
+                # The provider stream died mid-answer. Raising (rather than
+                # ending silently) lets callers avoid caching the partial
+                # answer as a complete response.
+                raise _StreamTruncatedError("LLM stream ended before completion; answer may be truncated.")
             return
 
     # Fallback: non-streaming unified generation yielded as a single block.
@@ -1378,26 +1438,7 @@ def _attempt_generate_content(
             logger.warning(f"[Gateway] AI Studio model '{attempt_model}' rate-limited or exhausted: {e}.")
             return None
 
-        err_msg = str(e).lower()
-        is_cascadable = any(
-            term in err_msg
-            for term in [
-                _NOT_FOUND,
-                "not_found",
-                "invalid",
-                "deprecated",
-                "retired",
-                "permission",
-                "404",
-                "400",
-                "500",
-                "503",
-                "internal",
-                "unavailable",
-                "service unavailable",
-            ]
-        )
-        if is_cascadable:
+        if _is_cascadable_error(e):
             logger.warning(
                 f"[Gateway WARNING] Model '{attempt_model}' failed: {e}. Cascading to next available stable model..."
             )
@@ -1602,8 +1643,7 @@ def run_stage1_multimodal_ocr(file_path: str, model_name: str = MODEL_GEMINI_FLA
     else:
         response, actual_model = _run_ocr_with_upload(client, file_path, model_name, ocr_prompt)
 
-    input_toks = response.usage_metadata.prompt_token_count or 0
-    output_toks = response.usage_metadata.candidates_token_count or 0
+    input_toks, output_toks = usage_token_counts(getattr(response, "usage_metadata", None))
     cost = calculate_gemini_cost(actual_model, input_toks, output_toks)
 
     raw_markdown = response.text or ""
@@ -1764,10 +1804,12 @@ def _parse_refinement_output(full_output: str | None) -> tuple[str, str, list[An
     yaml_block, refined_text = _parse_yaml_block(refined_text)
 
     qa_list = []
-    # Find JSON Q&A block
-    json_match = re.search(r"`{3,4}json[ \t]*\n(.*)\n`{3,4}", refined_text, re.DOTALL)
+    # Find JSON Q&A block — case-insensitive fence tag, non-greedy body so a
+    # greedy match cannot span multiple fenced blocks, and a backreference so
+    # the closing fence must match the opening fence length.
+    json_match = re.search(r"(`{3,4})json[ \t]*\r?\n(.*?)\r?\n\1", refined_text, re.DOTALL | re.IGNORECASE)
     if json_match:
-        qa_list = _repair_and_parse_qa_json(json_match.group(1))
+        qa_list = _repair_and_parse_qa_json(json_match.group(2))
         pre_json = refined_text[: json_match.start()].rstrip()
         pre_json = re.sub(r"\r?\n#[^\r\n]*", "", pre_json).rstrip()
         refined_text = pre_json
@@ -1829,8 +1871,7 @@ def run_stage2_editorial_refinement(raw_markdown: str, model_name: str = MODEL_G
         client, model_name, contents=[refinement_prompt, raw_markdown]
     )
 
-    input_toks = response.usage_metadata.prompt_token_count or 0
-    output_toks = response.usage_metadata.candidates_token_count or 0
+    input_toks, output_toks = usage_token_counts(getattr(response, "usage_metadata", None))
     cost = calculate_gemini_cost(actual_model, input_toks, output_toks)
 
     refined_markdown, yaml_metadata, qa_dataset = _parse_refinement_output(response.text)
@@ -1911,6 +1952,10 @@ def _normalize_anchor_entry(raw_a: Any) -> dict[str, Any] | None:
     if not isinstance(raw_a, dict) or not raw_a.get("quote"):
         return None
     anc = dict(raw_a)
+    # Model-supplied anchor_id is untrusted: a fixed value would collide on
+    # idx_anchor_id UNIQUE across re-ingests and poison retries (AUD-263).
+    # Deterministic IDs are assigned downstream as {source_id}:v{ver}:{idx}.
+    anc.pop("anchor_id", None)
     anc["quote"] = str(anc["quote"])
     anc["page_num"] = _coerce_optional_number(anc.get("page_num"), int)
     anc["start_sec"] = _coerce_optional_number(anc.get("start_sec"), float)

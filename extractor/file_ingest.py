@@ -45,6 +45,26 @@ _LOCAL_MAX_MARKDOWN_BYTES: int = 16 * 1024 * 1024
 _LOCAL_MAX_PDF_PAGES: int = 600
 
 
+def _verify_actual_uncompressed_size(zf: zipfile.ZipFile, limit: int, label: str) -> None:
+    """Stream-decompress every member and enforce the limit on REAL bytes.
+
+    Central-directory ``file_size`` fields are attacker-controlled: a forged
+    archive can declare small sizes while its deflate streams expand far
+    beyond the parser budget, and ``zf.read()`` would then load unbounded
+    data into memory (AUD-419). Reading incrementally caps decompression at
+    ``limit`` regardless of the declared sizes.
+    """
+    total = 0
+    for member in zf.infolist():
+        if member.is_dir():
+            continue
+        with zf.open(member) as src:
+            while chunk := src.read(1024 * 1024):
+                total += len(chunk)
+                if total > limit:
+                    raise ValueError(f"{label} expands beyond the {limit}-byte limit.")
+
+
 def validate_zip(zf: zipfile.ZipFile) -> None:
     """Guard against Zip Bomb (EDGE-05) and path traversal Zip Slip (SEC-03) attacks.
 
@@ -66,6 +86,7 @@ def validate_zip(zf: zipfile.ZipFile) -> None:
         raise ValueError(
             f"ZIP uncompressed size {total_uncompressed} bytes exceeds the {_ZIP_MAX_UNCOMPRESSED_BYTES}-byte limit."
         )
+    _verify_actual_uncompressed_size(zf, _ZIP_MAX_UNCOMPRESSED_BYTES, "ZIP archive")
 
 
 def _validate_xlsx_archive(zf: zipfile.ZipFile) -> None:
@@ -75,6 +96,9 @@ def _validate_xlsx_archive(zf: zipfile.ZipFile) -> None:
         raise ValueError("XLSX archive contains too many members.")
     if sum(member.file_size for member in members) > _XLSX_MAX_UNCOMPRESSED_BYTES:
         raise ValueError("XLSX archive expands beyond the parser budget.")
+    # Declared sizes are forgeable; verify the real decompressed total before
+    # openpyxl or the XML fallback reads any member into memory (AUD-419).
+    _verify_actual_uncompressed_size(zf, _XLSX_MAX_UNCOMPRESSED_BYTES, "XLSX archive")
     sheet_count = sum(
         member.filename.startswith("xl/worksheets/sheet") and member.filename.endswith(".xml") for member in members
     )
@@ -82,13 +106,22 @@ def _validate_xlsx_archive(zf: zipfile.ZipFile) -> None:
         raise ValueError("XLSX workbook contains too many worksheets.")
 
 
-def _bounded_excel_row(row: tuple[Any, ...] | list[Any], parsed_rows: list[int]) -> list[str]:
+def _bounded_excel_row(
+    row: tuple[Any, ...] | list[Any], parsed_rows: list[int], content_bytes: list[int] | None = None
+) -> list[str]:
     """Validate a non-empty spreadsheet row against the workbook work budget."""
     if len(row) > _XLSX_MAX_COLUMNS:
         raise ValueError("XLSX worksheet exceeds the column limit.")
     normalized = [str(cell).strip() if cell is not None else "" for cell in row]
     if any(len(cell) > _XLSX_MAX_CELL_CHARS for cell in normalized):
         raise ValueError("XLSX worksheet contains an oversized cell.")
+    if content_bytes is not None:
+        # Shared strings let a tiny archive expand into hundreds of MB of cell
+        # text; bound cumulative extracted content at collection time instead of
+        # only at render time (AUD-431).
+        content_bytes[0] += sum(len(cell.encode("utf-8")) for cell in normalized)
+        if content_bytes[0] > _XLSX_MAX_MARKDOWN_BYTES:
+            raise ValueError("XLSX workbook exceeds the rendered output limit.")
     if any(normalized):
         parsed_rows[0] += 1
         if parsed_rows[0] > _XLSX_MAX_ROWS:
@@ -213,13 +246,26 @@ def _format_json_rows_as_table(title: str, items: list[dict]) -> str:
     """Formats a list of dictionaries into a clean Markdown table."""
     keys = list({k: True for item in items for k in item}.keys())
     rows = []
+    rendered = 0
     for item in items:
-        rows.append([str(item.get(k, "")).strip().replace("\n", "<br>") for k in keys])
+        row = [str(item.get(k, "")).strip().replace("\n", "<br>") for k in keys]
+        # Enforce the rendered-output budget while building rows so a huge
+        # JSON array cannot amplify into tens of MB of intermediate strings
+        # before the final size check (AUD-270).
+        rendered += sum(len(c.encode("utf-8")) for c in row)
+        # Account for the "| c | c |" delimiters and newline the row will add.
+        rendered += 3 * len(row) + 2
+        if rendered > _LOCAL_MAX_MARKDOWN_BYTES:
+            raise ValueError("JSON document exceeds the rendered output limit.")
+        rows.append(row)
     return _format_markdown_table_sheet(title, [keys, *rows])
 
 
 def _format_json_dict_section(key: Any, value: Any) -> str:
-    title = str(key).replace("_", " ").title()
+    # JSON keys are attacker-controlled document content; collapse whitespace
+    # so a key cannot inject additional Markdown headings (AUD-420), matching
+    # the sheet-title guard in _format_markdown_table_sheet.
+    title = " ".join(str(key).replace("_", " ").title().split())
     if isinstance(value, list) and all(isinstance(x, dict) for x in value):
         return f"## {title}\n\n" + _format_json_rows_as_table(title, value)
     if isinstance(value, (dict, list)):
@@ -255,7 +301,7 @@ def process_json_local(file_path: str) -> str:
     try:
         with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
-    except ValueError:
+    except ValueError, RecursionError:
         try:
             with open(file_path, encoding="latin-1") as f:
                 data = json.load(f)
@@ -279,7 +325,9 @@ def _format_markdown_table_sheet(
     # whitespace so they cannot inject Markdown structure into headings.
     safe_title = " ".join(str(sheet_title).split())
     sheet_md = [f"### Sheet: {safe_title}\n"]
-    sheet_md.append("| " + " | ".join([h.replace("|", "\\|") for h in headers]) + " |")
+    # Headers get the same newline/pipe escaping as data rows — a multi-line
+    # header would otherwise split the GFM table (AUD-269).
+    sheet_md.append("| " + " | ".join([str(h).replace("|", "\\|").replace("\n", "<br>") for h in headers]) + " |")
     sheet_md.append("| " + " | ".join(["---" for _ in headers]) + " |")
     for r in rows[1:]:
         if len(r) < len(headers):
@@ -307,11 +355,12 @@ def _parse_excel_openpyxl(file_path: str) -> str | None:
             sheets_md: list[str] = []
             parsed_rows = [0]
             rendered_bytes = [0]
+            content_bytes = [0]
             for sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
                 rows: list[list[str]] = []
                 for row in ws.iter_rows(values_only=True):
-                    str_row = _bounded_excel_row(row, parsed_rows)
+                    str_row = _bounded_excel_row(row, parsed_rows, content_bytes)
                     if any(str_row):
                         rows.append(str_row)
                 formatted = _format_markdown_table_sheet(sheet_name, rows, rendered_bytes)
@@ -329,25 +378,58 @@ def _parse_excel_openpyxl(file_path: str) -> str | None:
 
 def _extract_zipxml_cell_value(c_el: Any, shared_strings: list[str]) -> str:
     cell_type = c_el.get("t")
+    # inlineStr cells store text in <is><t>… with no <v> element (AUD-268).
+    if cell_type == "inlineStr":
+        # ElementTree has no {*}-wildcard in iter()/find(); match on local
+        # names so namespaced <x:is><x:t> inline strings still resolve.
+        def _local(tag: str) -> str:
+            return tag.rsplit("}", 1)[-1]
+
+        is_el = next((el for el in c_el.iter() if _local(el.tag) == "is"), None)
+        if is_el is None:
+            return ""
+        return "".join(t_el.text or "" for t_el in is_el.iter() if _local(t_el.tag) == "t")
     v_el = c_el.find(".//{*}v")
     if v_el is None or not v_el.text:
         return ""
-    if cell_type == "s" and v_el.text.isdigit():
+    # Bound the index digits: int() rejects strings beyond ~4300 digits, and a
+    # malformed oversized index must not fail the whole worksheet parse.
+    if cell_type == "s" and v_el.text.isdigit() and len(v_el.text) <= 9:
         idx = int(v_el.text)
         return shared_strings[idx] if idx < len(shared_strings) else v_el.text
     return v_el.text
 
 
-def _extract_sheet_rows_from_xml(sheet_tree, shared_strings: list[str], parsed_rows: list[int]) -> list[list[str]]:
+def _extract_sheet_rows_from_xml(
+    sheet_tree, shared_strings: list[str], parsed_rows: list[int], content_bytes: list[int]
+) -> list[list[str]]:
     """Helper to extract non-empty rows from an Excel worksheet XML tree."""
     rows: list[list[str]] = []
     for row_el in sheet_tree.findall(".//{*}row"):
         row_cells = _bounded_excel_row(
-            [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")], parsed_rows
+            [_extract_zipxml_cell_value(c_el, shared_strings) for c_el in row_el.findall(".//{*}c")],
+            parsed_rows,
+            content_bytes,
         )
         if any(row_cells):
             rows.append(row_cells)
     return rows
+
+
+def _shared_string_item_text(si: Any) -> str:
+    # Concatenate every run's <t>: rich-text strings split content across
+    # <r><t> runs, and si.find() would keep only the first (AUD-268).
+    # Phonetic guides live under <rPh> and are excluded.
+    parts: list[str] = []
+    for child in si:
+        tag = child.tag.rsplit("}", 1)[-1]
+        if tag == "t":
+            parts.append(child.text or "")
+        elif tag == "r":
+            t_el = child.find("{*}t")
+            if t_el is not None:
+                parts.append(t_el.text or "")
+    return "".join(parts)
 
 
 def _load_zipxml_shared_strings(zf: Any) -> list[str]:
@@ -356,9 +438,7 @@ def _load_zipxml_shared_strings(zf: Any) -> list[str]:
     shared_strings: list[str] = []
     if "xl/sharedStrings.xml" in zf.namelist():
         ss_tree = ET.fromstring(zf.read("xl/sharedStrings.xml"))
-        for si in ss_tree.findall(".//{*}si"):
-            t_el = si.find(".//{*}t")
-            shared_strings.append(t_el.text if t_el is not None and t_el.text else "")
+        shared_strings = [_shared_string_item_text(si) for si in ss_tree.findall(".//{*}si")]
     return shared_strings
 
 
@@ -369,9 +449,10 @@ def _parse_zipxml_sheets(zf: Any, shared_strings: list[str]) -> list[str]:
     sheets_md: list[str] = []
     parsed_rows = [0]
     rendered_bytes = [0]
+    content_bytes = [0]
     for s_idx, s_file in enumerate(sheet_files, 1):
         sheet_tree = ET.fromstring(zf.read(s_file))
-        rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings, parsed_rows)
+        rows = _extract_sheet_rows_from_xml(sheet_tree, shared_strings, parsed_rows, content_bytes)
         formatted = _format_markdown_table_sheet(f"Sheet {s_idx}", rows, rendered_bytes)
         if formatted:
             sheets_md.append(formatted)

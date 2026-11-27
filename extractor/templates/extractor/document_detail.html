@@ -409,6 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!resp.ok) {
                     throw new Error(data?.error || data?.message || `Server returned HTTP ${resp.status}`);
                 }
+                if (Array.isArray(data.pairs) && data.pairs.length) {
                     const escapeHtml = (str) => String(str ?? '')
                         .replace(/&/g, '&amp;')
                         .replace(/</g, '&lt;')

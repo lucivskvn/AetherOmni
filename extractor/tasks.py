@@ -24,7 +24,7 @@ from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.utils.text import slugify
 
-from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME
+from extractor.task_state import CANCEL_REQUESTED, CLOUD_TASK_NAME, PENDING_OPERATION
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +225,11 @@ def _fail_document(doc_uuid: str, error_message: str, details: str, log_audit: b
         logger.debug("[Worker] Failed to broadcast status failure: %s", exc)
 
 
+def _user_facing_stage_error(stage_name: str, exc: Exception) -> str:
+    """Bounded, user-safe failure summary — full tracebacks stay in logs only."""
+    return f"{stage_name} failed: {exc!s}"[:500]
+
+
 def _handle_stage_failure(doc_uuid: str, stage_name: str, exception: Exception) -> None:
     """Centralised failure handler — logs traceback and delegates to _fail_document."""
     err_msg = traceback.format_exc()
@@ -236,7 +241,7 @@ def _handle_stage_failure(doc_uuid: str, stage_name: str, exception: Exception) 
     )
     _fail_document(
         doc_uuid,
-        error_message=f"{stage_name} Error:\n{err_msg}",
+        error_message=_user_facing_stage_error(stage_name, exception),
         details=f"{stage_name} process failed: {exception!s}",
     )
 
@@ -631,7 +636,12 @@ def _run_stage1(working_path: str, document_id: str | int) -> Any:
     if getattr(settings, "SURREALDB_OFFLINE", False):
         doc_ref, saved = _save_stage1_offline(document_id, doc, stage1_result)
         if saved:
-            broadcast_status_change(str(doc_ref.uuid), "REFINING", owner_id=doc.get("uploaded_by_id"))
+            owner_id = (
+                doc.get("uploaded_by_id")
+                if isinstance(doc, dict)
+                else (str(doc.uploaded_by_id) if getattr(doc, "uploaded_by_id", None) else None)
+            )
+            broadcast_status_change(str(doc_ref.uuid), "REFINING", owner_id=owner_id)
         return doc_ref
 
     (
@@ -1362,7 +1372,7 @@ def process_document_task(payload: dict) -> None:
         try:
             _fail_document(
                 doc_uuid,
-                error_message=f"Pipeline Crashed:\n{err_msg}",
+                error_message=_user_facing_stage_error("Pipeline", exc),
                 details=f"Uncaught outer pipeline crash: {exc!s}",
             )
         except Exception as db_err:
@@ -1380,6 +1390,10 @@ def _claim_for_reembedding(doc_uuid: str) -> dict | None:
     return claimed
 
 
+class _ChunkWriteFailedError(Exception):
+    """recreate_chunks raised; the previous chunk set may be partially replaced."""
+
+
 def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], existing_pages: int) -> int:
     if not chunks:
         # Same cancellation fence as the non-empty path: legacy deliveries may
@@ -1389,7 +1403,10 @@ def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], exis
             return -1
         # Edited content may chunk to nothing (e.g. emptied document). Purge the
         # previous vectors anyway — otherwise stale chunks stay searchable.
-        surreal_db.recreate_chunks(doc_uuid, [])
+        try:
+            surreal_db.recreate_chunks(doc_uuid, [])
+        except Exception as exc:
+            raise _ChunkWriteFailedError(str(exc)) from exc
         return max(0, existing_pages)
 
     check_budget_and_api_limit()
@@ -1408,7 +1425,10 @@ def _recreate_and_embed_chunks(doc_uuid: str, doc: dict, chunks: list[str], exis
     chunk_payloads = [
         _build_chunk_payload(i, ct, emb, doc_language)[0] for i, (ct, emb) in enumerate(zip(chunks, embeddings))
     ]
-    surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
+    try:
+        surreal_db.recreate_chunks(doc_uuid, chunk_payloads)
+    except Exception as exc:
+        raise _ChunkWriteFailedError(str(exc)) from exc
     return existing_pages if existing_pages > 0 else len(chunks)
 
 
@@ -1423,11 +1443,17 @@ def reembed_edited_document_task(payload: dict) -> None:
         return
 
     logger.info("[Worker] Re-embedding Document UUID: %s", doc_uuid)
+    try:
+        prior_doc = surreal_db.get_document(doc_uuid) or {}
+        prior_status = prior_doc.get("status")
+    except Exception:
+        prior_status = None
     doc = _claim_for_reembedding(doc_uuid)
     if not doc:
         return
 
     heartbeat_stop = _start_pipeline_heartbeat(doc_uuid)
+    chunks_replaced = False
     try:
         from extractor.llm_gateway import BudgetExceededException
 
@@ -1437,11 +1463,19 @@ def reembed_edited_document_task(payload: dict) -> None:
         chunks = chunk_document_semantically(text_for_chunks, max_chunk_size=chunk_size)
 
         existing_pages = _get_val(doc, "page_count") or 0
-        final_page_count = _recreate_and_embed_chunks(doc_uuid, doc, chunks, existing_pages)
+        try:
+            final_page_count = _recreate_and_embed_chunks(doc_uuid, doc, chunks, existing_pages)
+        except _ChunkWriteFailedError:
+            # recreate_chunks may have partially written; treat as replaced.
+            chunks_replaced = True
+            raise
+        chunks_replaced = final_page_count >= 0
         if final_page_count < 0:
             return
 
-        surreal_db.update_document(doc_uuid, {"page_count": final_page_count, "status": "COMPLETED"})
+        surreal_db.update_document(
+            doc_uuid, {"page_count": final_page_count, "status": "COMPLETED", PENDING_OPERATION: ""}
+        )
         logger.info("[Worker] Re-embedding successful for Document UUID: %s!", doc_uuid)
         uploaded_by_id = doc.get("uploaded_by_id")
         user = _resolve_user_by_id(uploaded_by_id)
@@ -1465,16 +1499,35 @@ def reembed_edited_document_task(payload: dict) -> None:
             log_audit=True,
         )
     except Exception as exc:
-        err_msg = traceback.format_exc()
-        logger.exception("[Worker] Exception in re-embedding: %s", err_msg)
+        _handle_reembed_failure(doc_uuid, doc, exc, prior_status, chunks_replaced)
+    finally:
+        heartbeat_stop.set()
+
+
+def _handle_reembed_failure(doc_uuid, doc, exc, prior_status, chunks_replaced) -> None:
+    logger.error("[Worker] Exception in re-embedding for %s", doc_uuid, exc_info=exc)
+    if prior_status == "COMPLETED" and not chunks_replaced:
+        # The previous chunk set is still intact (replacement never ran or
+        # was aborted before writing), so the document remains usable —
+        # restore COMPLETED instead of stranding a healthy doc as FAILED.
+        try:
+            surreal_db.update_document(doc_uuid, {"status": "COMPLETED", "error_message": "", PENDING_OPERATION: ""})
+            broadcast_status_change(doc_uuid, "COMPLETED", owner_id=doc.get("uploaded_by_id"))
+        except Exception as restore_err:
+            logger.warning("[Worker] Failed to restore COMPLETED status for %s: %s", doc_uuid, restore_err)
+            _fail_document(
+                doc_uuid,
+                error_message=_user_facing_stage_error("Re-embedding", exc),
+                details=f"Re-embedding failed and status restore failed: {exc!s}",
+                log_audit=False,
+            )
+    else:
         _fail_document(
             doc_uuid,
-            error_message=f"Re-embedding Failure:\n{err_msg}",
+            error_message=_user_facing_stage_error("Re-embedding", exc),
             details=f"Re-embedding failed: {exc!s}",
             log_audit=False,
         )
-    finally:
-        heartbeat_stop.set()
 
 
 def _resolve_local_doc_obj(doc_uuid):
@@ -1745,62 +1798,88 @@ def _reap_single_stale_doc(doc: dict) -> bool:
     retry_count = doc.get("retry_count", 0)
     current_status = doc.get("status", "UNKNOWN")
 
+    from extractor import cloud_tasks
+    from extractor.utils import REEMBED_DOCUMENT_TASK
+
+    # A PENDING document whose recorded Cloud Task still exists is genuinely
+    # queued behind a busy worker, not dead — reaping it would burn retry
+    # budget and eventually mark a healthy backlog item FAILED (AUD-315).
+    if current_status == "PENDING":
+        recorded_task = doc.get(CLOUD_TASK_NAME)
+        if recorded_task and cloud_tasks.document_task_still_queued(recorded_task):
+            return False
+
+    # Documents saved via the editor await re-embedding, not a full pipeline
+    # re-run; re-enqueue the matching task type so a lost delivery cannot
+    # overwrite user edits with fresh extraction (AUD-318).
+    pending_operation = doc.get(PENDING_OPERATION) or ""
+    task_name = REEMBED_DOCUMENT_TASK if pending_operation == "reembed" else "process_document"
+
     # If document is stuck in PENDING or had a worker restart and has retries left, auto-re-enqueue it
     # only if the user has not explicitly requested cancellation.
+    if retry_count < 3 and not doc.get(CANCEL_REQUESTED):
+        return _reap_auto_retry(doc, doc_uuid, task_name, retry_count, current_status)
+
+    return _reap_mark_failed(doc, doc_uuid, current_status)
+
+
+def _reap_auto_retry(doc: dict, doc_uuid: str, task_name: str, retry_count: int, current_status: str) -> bool:
+    """CAS-claim a stale doc back to PENDING and re-enqueue its task."""
+    from extractor import cloud_tasks
+
+    logger.info(
+        "[Reaper] Document %s was stuck in '%s' (attempt %s/3). Auto-re-enqueuing task...",
+        doc_uuid,
+        current_status,
+        retry_count + 1,
+    )
     # The status-guarded write is a compare-and-swap: if a live worker moved the
     # document to a terminal state after the scan, the UPDATE matches zero rows
     # and we must not enqueue a duplicate processing task.
-    if retry_count < 3 and not doc.get(CANCEL_REQUESTED):
+    claimed = surreal_db.update_document_if_status(
+        doc_uuid,
+        {
+            "status": "PENDING",
+            "retry_count": retry_count + 1,
+            "error_message": "",
+            CANCEL_REQUESTED: False,
+        },
+        allowed_statuses=_IN_FLIGHT_STATUSES,
+    )
+    if claimed is None:
         logger.info(
-            "[Reaper] Document %s was stuck in '%s' (attempt %s/3). Auto-re-enqueuing task...",
+            "[Reaper] Document %s changed state since scan (was '%s'); skipping re-enqueue.",
             doc_uuid,
             current_status,
-            retry_count + 1,
         )
-        claimed = surreal_db.update_document_if_status(
-            doc_uuid,
-            {
-                "status": "PENDING",
-                "retry_count": retry_count + 1,
-                "error_message": "",
-                CANCEL_REQUESTED: False,
-            },
-            allowed_statuses=_IN_FLIGHT_STATUSES,
-        )
-        if claimed is None:
-            logger.info(
-                "[Reaper] Document %s changed state since scan (was '%s'); skipping re-enqueue.",
-                doc_uuid,
-                current_status,
-            )
-            return False
+        return False
+    try:
+        from django.conf import settings
+
+        if getattr(settings, "SURREALDB_OFFLINE", False):
+            cloud_tasks.enqueue(task_name, {"document_id": doc.get("id")})
+        else:
+            cloud_tasks.enqueue(task_name, {"document_uuid": doc_uuid})
         try:
-            from django.conf import settings
+            broadcast_status_change(str(doc_uuid), "PENDING", owner_id=doc.get("uploaded_by_id"))
+        except Exception as bcast_err:
+            logger.debug("[Reaper] Failed to broadcast status PENDING: %s", bcast_err)
+        logger.info("[Reaper] Successfully auto-re-enqueued document %s", doc_uuid)
+        return True
+    except Exception as enq_err:
+        logger.warning("[Reaper] Auto-retry enqueue failed for %s: %s", doc_uuid, enq_err)
+        # Only roll back while the document is still the PENDING row we just wrote;
+        # an unconditional write could clobber a concurrent worker transition.
+        surreal_db.update_document_if_status(
+            doc_uuid,
+            {"retry_count": retry_count, "status": current_status},
+            allowed_statuses=["PENDING"],
+        )
+        return False
 
-            from extractor import cloud_tasks
 
-            if getattr(settings, "SURREALDB_OFFLINE", False):
-                doc_id = doc.get("id")
-                cloud_tasks.enqueue("process_document", {"document_id": doc_id})
-            else:
-                cloud_tasks.enqueue("process_document", {"document_uuid": doc_uuid})
-            try:
-                broadcast_status_change(str(doc_uuid), "PENDING", owner_id=doc.get("uploaded_by_id"))
-            except Exception as bcast_err:
-                logger.debug("[Reaper] Failed to broadcast status PENDING: %s", bcast_err)
-            logger.info("[Reaper] Successfully auto-re-enqueued document %s", doc_uuid)
-            return True
-        except Exception as enq_err:
-            logger.warning("[Reaper] Auto-retry enqueue failed for %s: %s", doc_uuid, enq_err)
-            # Only roll back while the document is still the PENDING row we just wrote;
-            # an unconditional write could clobber a concurrent worker transition.
-            surreal_db.update_document_if_status(
-                doc_uuid,
-                {"retry_count": retry_count, "status": current_status},
-                allowed_statuses=["PENDING"],
-            )
-            return False
-
+def _reap_mark_failed(doc: dict, doc_uuid: str, current_status: str) -> bool:
+    """Mark a stale doc FAILED after max retries and emit audit + broadcast."""
     failed = surreal_db.update_document_if_status(
         doc_uuid,
         {
@@ -1824,7 +1903,6 @@ def _reap_single_stale_doc(doc: dict) -> bool:
     uploaded_by_id = doc.get("uploaded_by_id")
     user = _resolve_user_by_id(uploaded_by_id)
 
-    # Write audit log for reaped task
     log_audit_event(
         AuditEvent(
             action=AuditAction.EXTRACTION_FAILED,
@@ -1838,7 +1916,6 @@ def _reap_single_stale_doc(doc: dict) -> bool:
         ),
     )
 
-    # Broadcast status update so dashboard updates without hard reload
     try:
         broadcast_status_change(doc_uuid, "FAILED", owner_id=doc.get("uploaded_by_id"))
     except Exception as exc:

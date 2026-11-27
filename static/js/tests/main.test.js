@@ -925,7 +925,8 @@ describe('initializeRAGSearch Flow', () => {
       { headers: { Accept: 'text/event-stream' } }
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/rag-search/?q=What%20is%20ancient%20epigraphy%3F&document_ids=doc-1')
+      expect.stringContaining('/rag-search/?q=What%20is%20ancient%20epigraphy%3F&document_ids=doc-1'),
+      expect.objectContaining({ signal: expect.anything() })
     );
 
 
