@@ -134,7 +134,9 @@ app_url = os.getenv("APP_URL")
 if app_url:
     from urllib.parse import urlparse
 
-    parsed_host = urlparse(app_url).netloc
+    # .hostname strips port and any userinfo — netloc would leak
+    # "user:pass@host:port" verbatim into ALLOWED_HOSTS (AUD-430).
+    parsed_host = (urlparse(app_url).hostname or "").lower()
     if parsed_host and parsed_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(parsed_host)
 
@@ -499,13 +501,16 @@ if not DEBUG:
         if origin_https not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(origin_https)
 
-    if app_url and app_url.startswith("http"):
+    if app_url:
         from urllib.parse import urlparse
 
         u = urlparse(app_url)
-        origin_app = f"{u.scheme}://{u.netloc}"
-        if origin_app not in CSRF_TRUSTED_ORIGINS:
-            CSRF_TRUSTED_ORIGINS.append(origin_app)
+        # startswith("http") also matches junk like "httpxyz"; require a real
+        # scheme+authority or a malformed "://" string lands in trusted origins.
+        if u.scheme in ("http", "https") and u.netloc:
+            origin_app = f"{u.scheme}://{u.netloc}"
+            if origin_app not in CSRF_TRUSTED_ORIGINS:
+                CSRF_TRUSTED_ORIGINS.append(origin_app)
 
     logger.info("[Security] Production OWASP enforcement active.")
 else:
