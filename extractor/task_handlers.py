@@ -594,7 +594,7 @@ def _defer_digitalization(payload: dict, bucket_name: str, object_name: str) -> 
         # The defer is the only durable retry path for a budget-deferred raw/
         # object; swallowing the enqueue failure would ack the Eventarc
         # delivery and strand the object. Propagate so the delivery retries.
-        logger.error("[EventarcGCSRaw] Failed to defer digitalization of gs://%s/%s: %s", bucket_name, object_name, exc)
+        logger.exception("[EventarcGCSRaw] Failed to defer digitalization of gs://%s/%s", bucket_name, object_name)
         raise
 
 
