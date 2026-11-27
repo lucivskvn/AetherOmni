@@ -171,7 +171,17 @@ class DocumentSaveView(LoginRequiredMixin, View):
         cleaned_markdown = new_markdown.replace("\x00", "").strip()
         payload = _build_document_save_payload(request, cleaned_markdown)
 
-        doc_ref = surreal_db.update_document(doc_uuid, payload)
+        # CAS on terminal states: a concurrent retry/restart could move the
+        # document back into an active status between the read above and this
+        # write; an unconditional update would clobber it back to PENDING and
+        # overwrite in-flight pipeline output (AUD-433).
+        doc_ref = surreal_db.update_document_cas(doc_uuid, payload, allowed_statuses=["COMPLETED", "FAILED"])
+        if doc_ref is None:
+            messages.error(
+                request,
+                "Document changed state while saving. Refresh and try again.",
+            )
+            return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
         doc_wrapped = view_common._wrap_surreal_doc(doc_ref, users_map)
 
         # Invalidate cached RAG answers derived from the pre-edit content.
@@ -463,7 +473,9 @@ def _restart_single_document(doc, request, cloud_tasks):
     # Spend fields are intentionally not reset: cost_usd/tokens record
     # already-incurred spend and zeroing them would erase it from budget
     # accounting (AUD-311). The worker accumulates the new run's cost on top.
-    surreal_db.update_document(
+    # CAS on the non-active statuses admitted above so a doc that entered
+    # processing between the read and this write is not clobbered (AUD-433).
+    doc_ref = surreal_db.update_document_cas(
         doc_uuid,
         {
             "status": "PENDING",
@@ -473,7 +485,10 @@ def _restart_single_document(doc, request, cloud_tasks):
             CANCEL_REQUESTED: False,
             "updated_at": view_common.format_datetime(timezone.now()),
         },
+        allowed_statuses=["PENDING", "FAILED", "COMPLETED"],
     )
+    if doc_ref is None:
+        return False
 
     _enqueue_restarted_document(doc, doc_uuid, cloud_tasks, reembed_only=pending_reembed)
     # Reprocessing may change refined content; drop cached answers derived
@@ -845,7 +860,9 @@ class DocumentRetryView(LoginRequiredMixin, View):
         pending_reembed = (raw_doc.get(PENDING_OPERATION) or "") == "reembed"
 
         # Spend fields are not reset — see _restart_single_document (AUD-311).
-        doc_ref = surreal_db.update_document(
+        # CAS on non-active statuses so a concurrent transition between the
+        # permission/status read and this write cannot be clobbered (AUD-433).
+        doc_ref = surreal_db.update_document_cas(
             doc_uuid,
             {
                 "status": "PENDING",
@@ -854,7 +871,14 @@ class DocumentRetryView(LoginRequiredMixin, View):
                 "retry_count": 0 if is_restart else retry_cnt + 1,
                 CANCEL_REQUESTED: False,
             },
+            allowed_statuses=["PENDING", "FAILED", "COMPLETED"],
         )
+        if doc_ref is None:
+            err_msg = "Document changed state while retrying. Refresh and try again."
+            if is_ajax:
+                return JsonResponse({"error": err_msg}, status=409)
+            messages.error(request, err_msg)
+            return redirect("dashboard")
         doc_wrapped = view_common._wrap_surreal_doc(doc_ref, users_map)
 
         self._requeue_document_task(doc_wrapped, doc_uuid, request, reembed_only=pending_reembed)

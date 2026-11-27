@@ -1049,6 +1049,8 @@ def update_document_if_status(doc_uuid: str, data: dict, *, allowed_statuses: li
     Compare-and-swap guard for the stale-task reaper: a worker that completes or
     fails the document between the scan snapshot and this write makes the UPDATE
     match zero rows, so the reaper cannot overwrite a fresher terminal state.
+    Restricted to the reaper's narrow field set; views needing a full-payload
+    CAS must use ``update_document_cas`` instead.
     Returns the updated row, or None when the guard rejected the write.
     """
     doc_uuid = str(doc_uuid)
@@ -1057,6 +1059,82 @@ def update_document_if_status(doc_uuid: str, data: dict, *, allowed_statuses: li
     if getattr(settings, "SURREALDB_OFFLINE", False):
         return _conditional_update_document_offline(doc_uuid, data, allowed_statuses)
     return _conditional_update_document_surreal(doc_uuid, data, allowed_statuses)
+
+
+def _cas_update_document_offline(doc_uuid, data, allowed_statuses):
+    """Offline counterpart of ``_cas_update_document_surreal``: single-statement
+    UPDATE guarded by status so the check-and-write cannot interleave."""
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+
+    from extractor.models import SourceDocument
+
+    try:
+        lookup = _offline_document_lookup(doc_uuid)
+    except TypeError, ValueError:
+        return None
+
+    values = _offline_update_values(data, get_user_model())
+    if not values:
+        return None
+    values["updated_at"] = timezone.now()
+
+    updated = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses)).update(**values)
+    if updated != 1:
+        return None
+    try:
+        return _model_to_dict(SourceDocument.objects.get(**lookup))
+    except SourceDocument.DoesNotExist:
+        return None
+
+
+def _cas_update_document_surreal(doc_uuid, data, allowed_statuses):
+    """Full-payload CAS: same field handling as ``_update_document_surreal`` but
+    the WHERE clause additionally requires status IN allowed_statuses. Worker
+    task-name fencing is preserved when the ContextVar is set."""
+    payload = {k: v for k, v in data.items() if v is not None and k in VALID_DOCUMENT_FIELDS and k != "doc_uuid"}
+    if not payload:
+        return get_document(doc_uuid) or {}
+
+    set_parts = []
+    params: dict[str, Any] = {"doc_uuid": doc_uuid, "allowed_statuses": list(allowed_statuses)}
+    for k, v in payload.items():
+        _validate_field_name(k)
+        if v is CLEAR_FIELD:
+            set_parts.append(f"{k} = NONE")
+        elif k in ("created_at", "updated_at", "expires_at"):
+            set_parts.append(f"{k} = <datetime> ${k}")
+            params[k] = v
+        else:
+            set_parts.append(f"{k} = ${k}")
+            params[k] = v
+
+    if "updated_at" not in payload:
+        set_parts.append("updated_at = time::now()")
+
+    conditions = ["doc_uuid = $doc_uuid", "status IN $allowed_statuses"]
+    if task_name := document_task_name.get():
+        conditions.append("cloud_task_name = $expected_task AND cancel_requested != true")
+        params["expected_task"] = task_name
+    sql = f"UPDATE documents SET {', '.join(set_parts)} WHERE {' AND '.join(conditions)};"  # nosec B608 # noqa: S608
+    rows = _first_result(_run(sql, params))
+    return rows[0] if rows else None
+
+
+def update_document_cas(doc_uuid: str, data: dict, *, allowed_statuses: list[str]) -> dict | None:
+    """Update a document only while its status remains in ``allowed_statuses``.
+
+    General-purpose compare-and-swap for view-layer read-check-write flows:
+    unlike ``update_document_if_status`` (reaper field whitelist) this accepts
+    the full writable field set. Returns the updated row, or None when the
+    status guard rejected the write (the document changed state concurrently).
+    """
+    doc_uuid = str(doc_uuid)
+    from django.conf import settings
+
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        return _cas_update_document_offline(doc_uuid, data, allowed_statuses)
+    return _cas_update_document_surreal(doc_uuid, data, allowed_statuses)
 
 
 def claim_document_for_processing(doc_uuid: str) -> dict | None:
