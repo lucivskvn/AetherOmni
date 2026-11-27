@@ -120,8 +120,11 @@ def _extract_host_from_origin(origin: str) -> str | None:
         return None
 
 
+# A leading dot is valid: wildcard DB origins ("https://*.example.com") are
+# normalized to ".example.com" by _extract_host_from_origin, which is exactly
+# the ALLOWED_HOSTS wildcard form (AUD-426).
 _VALID_HOST_RE = re.compile(
-    r"^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$|^\[?[0-9a-fA-F:]+\]?$"
+    r"^(\*\.)?\.?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$|^\[?[0-9a-fA-F:]+\]?$"
 )
 
 
