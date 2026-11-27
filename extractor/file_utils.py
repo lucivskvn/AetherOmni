@@ -343,6 +343,11 @@ def _fetch_live_rates_with_fallback():
             data = json.loads(response.read().decode())
             if data.get("result") == "success":
                 rates = data.get("rates", {})
+                # A malformed upstream payload (rates as list/string) would be
+                # cached for 24h and then crash rates.get() on every rendered
+                # page — treat it as a fetch failure and use fallbacks (AUD-421).
+                if not isinstance(rates, dict):
+                    raise ValueError("Exchange-rate payload 'rates' is not an object.")
                 try:
                     from extractor import surreal_db
 
@@ -409,7 +414,7 @@ def get_locale_currency_details(request: Any) -> dict[str, Any]:
         currency, symbol = _resolve_currency_and_symbol(accept_language)
 
     rates = _get_exchange_rates()
-    rate = rates.get(currency, 1.0) if rates else 1.0
+    rate = rates.get(currency, 1.0) if isinstance(rates, dict) else 1.0
     # Exchange-rate API values are untrusted: keep only finite positive
     # numerics so a malformed upstream payload can't crash rendering or
     # display negative localized prices (AUD-381).

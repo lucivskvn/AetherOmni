@@ -45,6 +45,26 @@ _LOCAL_MAX_MARKDOWN_BYTES: int = 16 * 1024 * 1024
 _LOCAL_MAX_PDF_PAGES: int = 600
 
 
+def _verify_actual_uncompressed_size(zf: zipfile.ZipFile, limit: int, label: str) -> None:
+    """Stream-decompress every member and enforce the limit on REAL bytes.
+
+    Central-directory ``file_size`` fields are attacker-controlled: a forged
+    archive can declare small sizes while its deflate streams expand far
+    beyond the parser budget, and ``zf.read()`` would then load unbounded
+    data into memory (AUD-419). Reading incrementally caps decompression at
+    ``limit`` regardless of the declared sizes.
+    """
+    total = 0
+    for member in zf.infolist():
+        if member.is_dir():
+            continue
+        with zf.open(member) as src:
+            while chunk := src.read(1024 * 1024):
+                total += len(chunk)
+                if total > limit:
+                    raise ValueError(f"{label} expands beyond the {limit}-byte limit.")
+
+
 def validate_zip(zf: zipfile.ZipFile) -> None:
     """Guard against Zip Bomb (EDGE-05) and path traversal Zip Slip (SEC-03) attacks.
 
@@ -66,6 +86,7 @@ def validate_zip(zf: zipfile.ZipFile) -> None:
         raise ValueError(
             f"ZIP uncompressed size {total_uncompressed} bytes exceeds the {_ZIP_MAX_UNCOMPRESSED_BYTES}-byte limit."
         )
+    _verify_actual_uncompressed_size(zf, _ZIP_MAX_UNCOMPRESSED_BYTES, "ZIP archive")
 
 
 def _validate_xlsx_archive(zf: zipfile.ZipFile) -> None:
@@ -75,6 +96,9 @@ def _validate_xlsx_archive(zf: zipfile.ZipFile) -> None:
         raise ValueError("XLSX archive contains too many members.")
     if sum(member.file_size for member in members) > _XLSX_MAX_UNCOMPRESSED_BYTES:
         raise ValueError("XLSX archive expands beyond the parser budget.")
+    # Declared sizes are forgeable; verify the real decompressed total before
+    # openpyxl or the XML fallback reads any member into memory (AUD-419).
+    _verify_actual_uncompressed_size(zf, _XLSX_MAX_UNCOMPRESSED_BYTES, "XLSX archive")
     sheet_count = sum(
         member.filename.startswith("xl/worksheets/sheet") and member.filename.endswith(".xml") for member in members
     )
@@ -227,7 +251,10 @@ def _format_json_rows_as_table(title: str, items: list[dict]) -> str:
 
 
 def _format_json_dict_section(key: Any, value: Any) -> str:
-    title = str(key).replace("_", " ").title()
+    # JSON keys are attacker-controlled document content; collapse whitespace
+    # so a key cannot inject additional Markdown headings (AUD-420), matching
+    # the sheet-title guard in _format_markdown_table_sheet.
+    title = " ".join(str(key).replace("_", " ").title().split())
     if isinstance(value, list) and all(isinstance(x, dict) for x in value):
         return f"## {title}\n\n" + _format_json_rows_as_table(title, value)
     if isinstance(value, (dict, list)):
@@ -348,7 +375,9 @@ def _extract_zipxml_cell_value(c_el: Any, shared_strings: list[str]) -> str:
     v_el = c_el.find(".//{*}v")
     if v_el is None or not v_el.text:
         return ""
-    if cell_type == "s" and v_el.text.isdigit():
+    # Bound the index digits: int() rejects strings beyond ~4300 digits, and a
+    # malformed oversized index must not fail the whole worksheet parse.
+    if cell_type == "s" and v_el.text.isdigit() and len(v_el.text) <= 9:
         idx = int(v_el.text)
         return shared_strings[idx] if idx < len(shared_strings) else v_el.text
     return v_el.text
