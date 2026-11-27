@@ -1010,9 +1010,10 @@ def _conditional_update_document_offline(doc_uuid, data, allowed_statuses):
         return None
     payload["updated_at"] = timezone.now()
 
-    updated = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses), cancel_requested=False).update(
-        **payload
-    )
+    qs = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses), cancel_requested=False)
+    if task_name := document_task_name.get():
+        qs = qs.filter(cloud_task_name=task_name)
+    updated = qs.update(**payload)
     if updated != 1:
         return None
     try:
@@ -1039,10 +1040,13 @@ def _conditional_update_document_surreal(doc_uuid, data, allowed_statuses):
             params[k] = v
     set_parts.append("updated_at = time::now()")
 
-    sql = (
-        f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_uuid = $doc_uuid "  # nosec B608 # noqa: S608
-        "AND status IN $allowed_statuses AND cancel_requested != true RETURN AFTER;"
-    )
+    conditions = ["doc_uuid = $doc_uuid", "status IN $allowed_statuses", "cancel_requested != true"]
+    if task_name := document_task_name.get():
+        # Worker task-name fencing: a superseded worker must not mark FAILED a
+        # document now claimed by the replacement task.
+        conditions.append("cloud_task_name = $expected_task")
+        params["expected_task"] = task_name
+    sql = f"UPDATE documents SET {', '.join(set_parts)} WHERE {' AND '.join(conditions)} RETURN AFTER;"  # nosec B608 # noqa: S608
     rows = _first_result(_run(sql, params))
     return rows[0] if rows else None
 

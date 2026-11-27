@@ -701,37 +701,39 @@ def _sanitise_yaml_block(raw: str) -> str:
     embedded double-quotes.  This is safe because we only touch lines that
     look like plain YAML scalars and always preserve the key.
     """
-    import re
-
     fixed_lines = []
     # Matches: optional leading whitespace, key, colon+space, then the value
     line_re = re.compile(r"^(\s*\w+\s*:\s)(.+)$")
     for line in raw.splitlines():
         m = line_re.match(line)
-        if m:
-            prefix, value = m.group(1), m.group(2).strip()
-            # Leave values already properly double-quoted as-is
-            if value.startswith('"') and value.endswith('"'):
-                fixed_lines.append(line)
-                continue
-            # Strip single-quote wrapping that the LLM sometimes adds. Inside
-            # quotes '#' is literal, so comment-stripping must be skipped for
-            # these values (e.g. title 'Book #1' must keep the '#1').
-            was_single_quoted = value.startswith("'") and value.endswith("'") and len(value) > 1
-            if was_single_quoted:
-                value = value[1:-1]
-            else:
-                # Drop trailing " # comment" before quoting: in YAML plain
-                # scalars a space+hash starts a comment, so keeping it would
-                # bake the comment text into the stored value.
-                value = re.sub(r"\s+#.*$", "", value).rstrip()
-            # In double-quoted YAML scalars, backslashes are escape characters.
-            # Escape existing backslashes first, then escape double-quotes.
-            value = value.replace("\\", "\\\\").replace('"', '\\"')
-            fixed_lines.append(f'{prefix}"{value}"')
-        else:
-            fixed_lines.append(line)
+        fixed_lines.append(_sanitise_yaml_line(m, line) if m else line)
     return "\n".join(fixed_lines)
+
+
+def _sanitise_yaml_line(m, line: str) -> str:
+    """Quote one ``key: value`` line's scalar, or return it untouched."""
+    prefix, value = m.group(1), m.group(2).strip()
+    # Leave values already properly double-quoted as-is
+    if value.startswith('"') and value.endswith('"'):
+        return line
+    # Strip single-quote wrapping that the LLM sometimes adds. Inside
+    # quotes '#' is literal, so comment-stripping must be skipped for
+    # these values (e.g. title 'Book #1' must keep the '#1').
+    if value.startswith("'") and value.endswith("'") and len(value) > 1:
+        value = value[1:-1]
+    else:
+        # Drop trailing " # comment" before quoting: in YAML plain
+        # scalars a space+hash starts a comment, so keeping it would
+        # bake the comment text into the stored value. Linear scan —
+        # the previous \s+#.*$ regex backtracked super-linearly.
+        match = re.search(r"\s#", value)
+        if match:
+            value = value[: match.start()]
+        value = value.rstrip()
+    # In double-quoted YAML scalars, backslashes are escape characters.
+    # Escape existing backslashes first, then escape double-quotes.
+    value = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'{prefix}"{value}"'
 
 
 def _clean_val(val):

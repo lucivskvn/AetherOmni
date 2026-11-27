@@ -177,7 +177,10 @@ class DocumentSaveView(LoginRequiredMixin, View):
         # overwrite in-flight pipeline output (AUD-433).
         doc_ref = surreal_db.update_document_cas(doc_uuid, payload, allowed_statuses=["COMPLETED", "FAILED"])
         if doc_ref is None:
-            if raw_doc.get(CANCEL_REQUESTED):
+            # raw_doc is a pre-write snapshot; a stop/restart landing between
+            # the read and the rejected CAS would leave its cancel flag stale.
+            current_doc = surreal_db.get_document(doc_uuid) or {}
+            if current_doc.get(CANCEL_REQUESTED):
                 messages.error(
                     request,
                     "This document was stopped and cannot be edited. Retry processing first.",
