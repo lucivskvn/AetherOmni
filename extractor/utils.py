@@ -238,7 +238,7 @@ def broadcast_status_change(doc_uuid: str, status: str, owner_id: str | None = N
             }
         ).encode("utf-8")
 
-        app_ver = getattr(settings, "APP_VERSION", "1.5.0")
+        app_ver = getattr(settings, "APP_VERSION", "unknown")
         req = urllib.request.Request(
             broadcast_url,
             data=payload,

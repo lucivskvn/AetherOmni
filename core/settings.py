@@ -354,6 +354,9 @@ if (
 CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE") or os.getenv("GCP_QUEUE_NAME") or "extractor-tasks"
 # APP_URL is the fully-qualified URL of this Cloud Run service (used for task callbacks)
 APP_URL = os.getenv("APP_URL", "http://localhost:8080")
+# Release version injected by Cloud Build (RELEASE_VERSION) for outbound
+# User-Agent strings; APP_VERSION remains an explicit override.
+APP_VERSION = (os.getenv("APP_VERSION") or os.getenv("RELEASE_VERSION") or "").strip() or "unknown"
 # WORKER_URL is the fully-qualified URL of the korda-worker service
 WORKER_URL = os.getenv("WORKER_URL", "")
 WORKER_SERVICE_NAME = os.getenv("WORKER_SERVICE_NAME", "korda-worker")

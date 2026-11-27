@@ -48,6 +48,8 @@ def generate_unique_username(user_email: str) -> str:
 def _get_or_create_django_user(user_email: str, django_username: str) -> tuple[User, bool]:
     import uuid
 
+    from django.db import IntegrityError, transaction
+
     # Deterministic binding: order by pk so duplicate-email rows always resolve
     # to the same account, and warn so operators can deduplicate (AUD-295).
     email_matches = User.objects.filter(email__iexact=user_email).order_by("pk")
@@ -61,24 +63,28 @@ def _get_or_create_django_user(user_email: str, django_username: str) -> tuple[U
     if user:
         return user, False
 
-    try:
-        user = User.objects.create(
-            username=django_username,
-            email=user_email,
-            is_active=True,
-        )
-        return user, True
-    except Exception:
-        existing = User.objects.filter(email__iexact=user_email).first()
-        if existing:
-            return existing, False
-        fallback_username = f"{django_username[:130]}_{uuid.uuid4().hex[:8]}"
-        user = User.objects.create(
-            username=fallback_username,
-            email=user_email,
-            is_active=True,
-        )
-        return user, True
+    # Each create runs in its own savepoint: a concurrent first-login for the
+    # same email can trip the LOWER(email) unique index, and without a
+    # savepoint the IntegrityError would poison the caller's atomic block so
+    # the recovery lookup below raises TransactionManagementError instead
+    # (AUD-418).
+    candidates = [django_username, f"{django_username[:130]}_{uuid.uuid4().hex[:8]}"]
+    for index, candidate in enumerate(candidates):
+        try:
+            with transaction.atomic():
+                user = User.objects.create(
+                    username=candidate,
+                    email=user_email,
+                    is_active=True,
+                )
+            return user, True
+        except IntegrityError:
+            existing = User.objects.filter(email__iexact=user_email).first()
+            if existing:
+                return existing, False
+            if index == len(candidates) - 1:
+                raise
+    raise RuntimeError(f"Django user creation failed for {user_email}")
 
 
 def _evaluate_admin_claim(user_email: str, user_info: dict) -> bool:
@@ -270,7 +276,7 @@ def _request_supabase_token(
 ) -> dict | None:
     """POST the password grant to GoTrue; returns the token response or None."""
     url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
-    app_ver = getattr(settings, "APP_VERSION", "1.5.0")
+    app_ver = getattr(settings, "APP_VERSION", "unknown")
     headers = {
         "apikey": supabase_key,
         "Content-Type": APPLICATION_JSON,
@@ -286,7 +292,9 @@ def _request_supabase_token(
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         logger.warning("[Auth] Supabase authentication rejected: HTTP %s", e.code)
-        if e.code >= 500:
+        if e.code == 429 or e.code >= 500:
+            # Rate limiting and upstream outages are transient, not bad
+            # credentials — surface them as unavailable (AUD-417).
             _mark_auth_unavailable(request)
         return None
     except Exception as e:
