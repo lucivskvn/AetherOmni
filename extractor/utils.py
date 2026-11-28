@@ -130,6 +130,31 @@ def _resolve_audit_doc_uuid(document: Any) -> str | None:
     return None
 
 
+def _write_sqlite_audit(event: AuditEvent, audit_log_model) -> None:
+    """Persist one audit event to the Django ORM leg, never raising."""
+    try:
+        # Keep parity with the SurrealDB leg: fall back to metadata.details
+        # when the event carries no plain details, and record the actor id
+        # when no Django user object is linked so offline audit rows stay
+        # attributable.
+        details = event.details
+        meta = event.metadata or {}
+        if not details and meta.get("details"):
+            details = str(meta["details"])
+        has_user = bool(event.user and hasattr(event.user, "pk"))
+        if not has_user and event.actor_id:
+            details = f"{details} [actor_id={event.actor_id}]".strip()
+        audit_log_model.objects.create(
+            user=event.user if has_user else None,
+            action=event.action,
+            document=event.document if hasattr(event.document, "pk") else None,
+            details=details,
+            ip_address=event.ip_address,
+        )
+    except Exception as exc:
+        logger.warning("[AuditLog] Failed to write SQLite audit entry: %s", exc)
+
+
 def log_audit_event(event: AuditEvent) -> None:
     """
     Dual-write audit log to both SQLite (Django ORM) and SurrealDB.
@@ -144,16 +169,7 @@ def log_audit_event(event: AuditEvent) -> None:
     # its unbounded growth in production (AUD-265).
 
     if getattr(settings, "SURREALDB_OFFLINE", False) or getattr(settings, "DEBUG", False):
-        try:
-            AuditLog.objects.create(
-                user=event.user if hasattr(event.user, "pk") else None,
-                action=event.action,
-                document=event.document if hasattr(event.document, "pk") else None,
-                details=event.details,
-                ip_address=event.ip_address,
-            )
-        except Exception as exc:
-            logger.warning("[AuditLog] Failed to write SQLite audit entry: %s", exc)
+        _write_sqlite_audit(event, AuditLog)
 
     # Leg 2: SurrealDB audit_logs table
     try:

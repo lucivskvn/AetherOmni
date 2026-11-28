@@ -50,10 +50,18 @@ def _record_document_spend(doc_uuid: str, spend_month: datetime, cost: float, in
     return True
 
 
+# ── Monthly spend ledger ──────────────────────────────────────────────────────
+# IMPORTANT: this ledger tracks NON-DOCUMENT spend only (raw-lane anchor
+# extraction, quiz generation, memory distillation, stream/unified responses).
+# Document-pipeline spend (OCR/refinement) accumulates on documents.cost_usd and
+# is flushed to document_spend_reconciliations on delete — routing document
+# work through these helpers would double-count budget spend.
+
+
 def monthly_spend_ledger_add(year: int, month: int, cost_usd: float, input_tokens: int, output_tokens: int) -> bool:
     from extractor import surreal_db
 
-    """Append one spend event to the monthly ledger (atomic INSERT, no read-modify-write)."""
+    """Append one NON-DOCUMENT spend event to the monthly ledger (atomic INSERT, no read-modify-write)."""
     sql = (
         "CREATE monthly_spend_ledger CONTENT {"
         "year: $year, month: $month, cost_usd: $cost_usd, "
@@ -79,7 +87,7 @@ def monthly_spend_ledger_add(year: int, month: int, cost_usd: float, input_token
 def monthly_spend_ledger_total(year: int, month: int) -> dict[str, float] | None:
     from extractor import surreal_db
 
-    """Return summed ledger totals for a calendar month, or None on failure."""
+    """Return summed NON-DOCUMENT ledger totals for a calendar month, or None on failure."""
     sql = (
         "SELECT math::sum(cost_usd) AS cost_usd, math::sum(input_tokens) AS input_tokens, "
         "math::sum(output_tokens) AS output_tokens FROM monthly_spend_ledger "

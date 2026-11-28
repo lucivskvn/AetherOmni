@@ -227,15 +227,15 @@ class AuditLog(models.Model):
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
+        # SET_NULL cascades on user/document deletion arrive as update_fields
+        # subsets; every other mutation path is rejected.
         is_cascade_null = update_fields and set(update_fields).issubset({"user", "document"})
-        if self.pk and not kwargs.pop("force_update_allowed", False) and not is_cascade_null:
+        if self.pk and not is_cascade_null:
             raise PermissionError("AuditLog records are immutable append-only ledgers and cannot be modified.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        if not kwargs.pop("force_delete_allowed", False):
-            raise PermissionError("AuditLog records are immutable append-only ledgers and cannot be deleted.")
-        super().delete(*args, **kwargs)
+        raise PermissionError("AuditLog records are immutable append-only ledgers and cannot be deleted.")
 
     def __str__(self):
         return f"{self.created_at} - {self.user} - {self.action}"

@@ -419,14 +419,20 @@ class LLMGatewayTestCase(TestCase):
 
     @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
     def test_generate_query_embedding_uses_fallback_chain(self, mock_embed):
-        mock_embed.return_value = MagicMock(embeddings=[MagicMock(values=[0.5, 0.25])])
+        mock_embed.return_value = MagicMock(embeddings=[MagicMock(values=[0.5] * 768)])
 
         vec = generate_query_embedding("  what is the capital of France?  ")
 
-        self.assertEqual(vec, [0.5, 0.25])
+        self.assertEqual(vec, [0.5] * 768)
         mock_embed.assert_called_once()
         _args, kwargs = mock_embed.call_args
         self.assertEqual(kwargs["contents"], ["what is the capital of France?"])
+
+    @patch("extractor.llm_gateway.execute_embed_content_with_fallback")
+    def test_generate_query_embedding_rejects_wrong_dimension(self, mock_embed):
+        mock_embed.return_value = MagicMock(embeddings=[MagicMock(values=[0.5, 0.25])])
+
+        self.assertEqual(generate_query_embedding("query"), [])
 
     @patch("extractor.llm_gateway.execute_embed_content_with_fallback", side_effect=RuntimeError("down"))
     def test_generate_query_embedding_degrades_to_empty(self, _mock_embed):

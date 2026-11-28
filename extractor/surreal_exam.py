@@ -51,6 +51,9 @@ def save_exam_items(owner_id: str, items: list[dict[str, Any]], crystal_ids: lis
         return 0
 
     normalized = [_normalize_exam_item_payload(item) for item in items]
+    # RELATION tables do not dedupe (in, out) pairs, so crystal_ids must be
+    # unique up front and existing tests edges are cleared before re-relating.
+    unique_crystal_ids = [str(c) for c in dict.fromkeys(crystal_ids or [])]
 
     if getattr(settings, "SURREALDB_OFFLINE", False):
         for entry in normalized:
@@ -59,7 +62,7 @@ def save_exam_items(owner_id: str, items: list[dict[str, Any]], crystal_ids: lis
                 **existing,
                 **entry,
                 "owner_id": str(owner_id),
-                "crystal_ids": list(crystal_ids or []),
+                "crystal_ids": unique_crystal_ids,
                 "fsrs_stability": float(existing.get("fsrs_stability") or 1.0),
                 FIELD_FSRS_DIFFICULTY: float(existing.get(FIELD_FSRS_DIFFICULTY) or 5.0),
             }
@@ -85,6 +88,7 @@ def save_exam_items(owner_id: str, items: list[dict[str, Any]], crystal_ids: lis
         };
         FOR $cid IN $owned_crystals {
             LET $c = type::record("crystal", $cid);
+            DELETE tests WHERE in = $e AND out = $c;
             RELATE $e->tests->$c;
         };
     };
@@ -95,7 +99,7 @@ def save_exam_items(owner_id: str, items: list[dict[str, Any]], crystal_ids: lis
         {
             "owner_id": str(owner_id),
             "items": normalized,
-            "crystal_ids": [str(c) for c in (crystal_ids or [])],
+            "crystal_ids": unique_crystal_ids,
         },
     )
     surreal_db._check_surreal_error(res)

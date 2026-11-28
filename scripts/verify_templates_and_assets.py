@@ -27,7 +27,7 @@ os.environ.setdefault("SURREALDB_OFFLINE", "True")
 # No DATABASE_URL default: offline mode must not silently select SQLite when
 # a developer has SURREALDB_OFFLINE unset but no database configured.
 # Same local-verification key run_checks.sh exports; never a production value.
-os.environ.setdefault("DJANGO_SECRET_KEY", "local-verification-only-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df0Jy")
+os.environ.setdefault("DJANGO_SECRET_KEY", "local-verification-only-dummy-key")
 
 TEMPLATES_DIR = ROOT / "extractor" / "templates"
 STATIC_DIR = ROOT / "static"

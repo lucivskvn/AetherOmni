@@ -117,7 +117,11 @@ SECRET_KEY = _raw_secret
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip()
 
 # ALLOWED_HOSTS configuration
-django_allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,.run.app")
+# Loopback hosts are only a sensible default in debug mode; production deploys
+# must not accept Host: localhost/127.0.0.1 (Cloud Run's proxy would otherwise
+# let loopback Origins pass the trusted-origin check in middleware).
+_default_allowed_hosts = "localhost,127.0.0.1,.run.app" if DEBUG else ".run.app"
+django_allowed_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", _default_allowed_hosts)
 ALLOWED_HOSTS = []
 for host in django_allowed_hosts.split(","):
     host_clean = host.strip()

@@ -92,8 +92,14 @@ def search_rag_cache_hnsw(
 
 
 def purge_expired_rag_cache() -> int:
-    """Delete all expired RAG cache entries. Returns count of deleted rows."""
-    return _purge_expired_table("rag_cache")
+    """Delete all expired RAG cache entries. Returns count of deleted rows.
+
+    Rows with NULL/NONE expires_at are deleted too: upsert_rag_cache always
+    writes expires_at, so a NULL row is a legacy/manual orphan that would
+    otherwise never match `expires_at < time::now()` and grow the table
+    forever.
+    """
+    return _purge_expired_table("rag_cache", reap_null_expires_at=True)
 
 
 def purge_all_rag_cache() -> None:
@@ -103,18 +109,27 @@ def purge_all_rag_cache() -> None:
     surreal_db._run("DELETE FROM rag_cache;")
 
 
-def _purge_expired_table(table: str) -> int:
+def _purge_expired_table(table: str, *, reap_null_expires_at: bool = False) -> int:
     from extractor import surreal_db
 
-    """Delete expired rows from a table; rows with expires_at NONE are retained.
+    """Delete expired rows from a table.
+
+    NULL expires_at normally means "permanent" (kv_cache_set writes it for
+    non-expiring entries), so those rows are retained — except when
+    reap_null_expires_at is set, which purge_expired_rag_cache uses because
+    upsert_rag_cache always writes expires_at and a NULL rag_cache row is an
+    orphan rather than a permanent entry.
 
     Count and delete run in one transaction so the reported count matches the
     deleted set's snapshot (AUD-375).
     """
+    predicate = "expires_at < time::now()"
+    if reap_null_expires_at:
+        predicate += " OR expires_at IS NONE"
     sql = (
         "BEGIN TRANSACTION;"  # noqa: S608 -- table is a static literal
-        f"LET $c = (SELECT count() AS n FROM {table} WHERE expires_at < time::now() GROUP ALL);"  # nosec B608
-        f"DELETE FROM {table} WHERE expires_at < time::now();"  # nosec B608
+        f"LET $c = (SELECT count() AS n FROM {table} WHERE {predicate} GROUP ALL);"  # nosec B608
+        f"DELETE FROM {table} WHERE {predicate};"  # nosec B608
         "RETURN $c;"
         "COMMIT TRANSACTION;"
     )
@@ -325,6 +340,17 @@ def kv_cache_delete_pattern(prefix: str) -> None:
     surreal_db._run(sql, {"prefix": prefix})
 
 
+def _valid_embedding_dim(embedding: Any) -> bool:
+    """Accept only vectors matching the production embedding dimension.
+
+    Cached vectors bypass the generate_query_embedding dimension guard, so a
+    wrong-dim row written before that guard (or by any future path) would be
+    re-injected into new chunk sets forever. Reject anything that is not a
+    non-empty list of the expected length.
+    """
+    return isinstance(embedding, list) and len(embedding) == 768
+
+
 def find_chunk_embedding(text: str) -> list[float] | None:
     from extractor import surreal_db
 
@@ -333,10 +359,9 @@ def find_chunk_embedding(text: str) -> list[float] | None:
     # reusable one for identical content (AUD-372).
     sql = "SELECT embedding FROM chunks WHERE content = $text AND embedding != NONE LIMIT 1;"
     results = surreal_db._first_result(surreal_db._run(sql, {"text": text}))
-    if results and isinstance(results[0], dict):
-        emb = results[0].get("embedding")
-        if emb is not None:
-            return emb
+    if results and isinstance(results[0], dict) and "embedding" in results[0]:
+        emb = results[0]["embedding"]
+        return emb if _valid_embedding_dim(emb) else None
     return None
 
 
@@ -357,7 +382,12 @@ def find_chunk_embeddings_batch(texts: list[str]) -> dict[str, list[float]]:
     mapping: dict[str, list[float]] = {}
     if results and isinstance(results, list):
         for row in results:
-            if isinstance(row, dict) and "content" in row and row.get("embedding") is not None:
+            if (
+                isinstance(row, dict)
+                and "content" in row
+                and "embedding" in row
+                and _valid_embedding_dim(row["embedding"])
+            ):
                 mapping[row["content"]] = row["embedding"]
     return mapping
 

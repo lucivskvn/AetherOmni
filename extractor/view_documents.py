@@ -177,37 +177,52 @@ class DocumentSaveView(LoginRequiredMixin, View):
         # overwrite in-flight pipeline output (AUD-433).
         doc_ref = surreal_db.update_document_cas(doc_uuid, payload, allowed_statuses=["COMPLETED", "FAILED"])
         if doc_ref is None:
-            messages.error(
-                request,
-                "Document changed state while saving. Refresh and try again.",
-            )
+            # raw_doc is a pre-write snapshot; a stop/restart landing between
+            # the read and the rejected CAS would leave its cancel flag stale.
+            current_doc = surreal_db.get_document(doc_uuid) or {}
+            if current_doc.get(CANCEL_REQUESTED):
+                messages.error(
+                    request,
+                    "This document was stopped and cannot be edited. Retry processing first.",
+                )
+            else:
+                messages.error(
+                    request,
+                    "Document state changed while saving (it may be processing now). Please retry.",
+                )
             return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
         doc_wrapped = view_common._wrap_surreal_doc(doc_ref, users_map)
-
-        # Invalidate cached RAG answers derived from the pre-edit content.
-        view_common._invalidate_doc_rag_caches(str(doc_uuid), view_common.get_request_actor_id(request))
-
-        view_common._record_view_audit(
-            request,
-            AuditAction.DOCUMENT_EDITED,
-            f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
-            document=doc_wrapped,
-        )
-
-        # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes
-        from django.conf import settings
-
-        from extractor import cloud_tasks
-
-        if getattr(settings, "SURREALDB_OFFLINE", False):
-            doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
-            cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_id": doc_id})
-        else:
-            cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid})
-        broadcast_status_change(str(doc_uuid), "PENDING", owner_id=view_common._doc_owner_id(doc_wrapped))
-
-        messages.success(request, "Changes saved and re-indexing queued successfully!")
+        _finalize_document_save(request, doc_uuid, doc_wrapped)
         return redirect(view_common.ROUTE_DOCUMENT_DETAIL, doc_uuid=doc_uuid)
+
+
+def _finalize_document_save(request, doc_uuid, doc_wrapped) -> None:
+    """Invalidate caches, enqueue the re-embed, broadcast, audit, and confirm a save."""
+    from django.conf import settings
+
+    from extractor import cloud_tasks
+
+    # Invalidate cached RAG answers derived from the pre-edit content.
+    view_common._invalidate_doc_rag_caches(str(doc_uuid), view_common.get_request_actor_id(request))
+
+    # Re-embed after edit to keep SurrealDB HNSW memory in sync with editor changes
+    if getattr(settings, "SURREALDB_OFFLINE", False):
+        doc_id = doc_wrapped.get("id") if isinstance(doc_wrapped, dict) else getattr(doc_wrapped, "id", None)
+        cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_id": doc_id})
+    else:
+        cloud_tasks.enqueue(REEMBED_DOCUMENT_TASK, {"document_uuid": doc_uuid})
+    broadcast_status_change(str(doc_uuid), "PENDING", owner_id=view_common._doc_owner_id(doc_wrapped))
+
+    # Audit only after the re-embed enqueue succeeds; otherwise the audit
+    # row would claim "re-indexing queued" for a save whose enqueue failed.
+    view_common._record_view_audit(
+        request,
+        AuditAction.DOCUMENT_EDITED,
+        f"Document '{doc_wrapped.original_filename}' content modified and re-embedding queued.",
+        document=doc_wrapped,
+    )
+
+    messages.success(request, "Changes saved and re-indexing queued successfully!")
 
 
 class DocumentDeleteView(LoginRequiredMixin, View):
@@ -518,6 +533,7 @@ def _handle_bulk_restart(request, document_ids):
     from extractor import cloud_tasks
 
     restarted_count = 0
+    failed_count = 0
     if getattr(settings, "SURREALDB_OFFLINE", False):
         from extractor.surreal_db import _model_to_dict
 
@@ -527,9 +543,21 @@ def _handle_bulk_restart(request, document_ids):
         docs = surreal_db.get_documents(clean_ids)
 
     for doc in docs:
-        if _restart_single_document(doc, request, cloud_tasks):
-            restarted_count += 1
-    messages.success(request, f"Successfully queued {restarted_count} tasks for reprocessing.")
+        try:
+            if _restart_single_document(doc, request, cloud_tasks):
+                restarted_count += 1
+        except Exception:
+            # One enqueue/update failure must not abort the whole batch;
+            # matches _handle_bulk_delete's per-document isolation.
+            failed_count += 1
+            logger.exception(
+                "[Bulk Restart] Failed to restart document %s",
+                view_common._extract_clean_doc_uuid(doc),
+            )
+    if restarted_count:
+        messages.success(request, f"Successfully queued {restarted_count} tasks for reprocessing.")
+    if failed_count:
+        messages.warning(request, f"{failed_count} documents could not be re-enqueued.")
 
 
 def _cleanup_file_storage(file_rel_path, shared_references: int, default_storage) -> None:

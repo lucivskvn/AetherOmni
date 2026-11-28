@@ -188,7 +188,7 @@ class AnchorPayloadTests(SimpleTestCase):
         self.assertEqual(out[0]["anchor_id"], "src-1:v2:0")
         self.assertEqual(out[0]["page_num"], 3)
         self.assertNotIn("embedding", out[0])
-        self.assertEqual(out[1]["anchor_id"], "custom")
+        self.assertEqual(out[1]["anchor_id"], "src-1:custom")
         self.assertEqual(out[1]["start_sec"], 12.5)
 
     def test_build_anchor_payloads_empty(self):

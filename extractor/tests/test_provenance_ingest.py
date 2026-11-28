@@ -304,7 +304,7 @@ class ProvenanceIngestTests(TestCase):
                             "title": "GCS Zero Copy",
                             "summary": "Avoids bytes copy.",
                             "doc_slug": "guide",
-                            "anchor_ids": ["a1"],
+                            "anchor_ids": ["42:guide:a1"],
                         }
                     ),
                     content_type="application/json",

@@ -109,7 +109,16 @@ def _reserve_export_rate_limit(request) -> bool:
         try:
             from extractor import surreal_db
 
-            return surreal_db.check_rate_limit_atomic(f"export:{user_key}", max_requests=1, window_seconds=60)
+            # Enforce both actor and IP keys like the cache-backed path above;
+            # checking only the actor key would leave per-IP export flooding
+            # unthrottled during a cache outage.
+            user_ok = surreal_db.check_rate_limit_atomic(f"export:{user_key}", max_requests=1, window_seconds=60)
+            if not user_ok:
+                # Do not reserve the IP slot for a request the actor check
+                # already denied; the cache-backed path cleans up partial
+                # reservations the same way.
+                return False
+            return surreal_db.check_rate_limit_atomic(f"export:{ip_key}", max_requests=1, window_seconds=60)
         except Exception as surreal_err:
             logger.warning("[ExportRateLimit] SurrealDB rate limit fallback error: %s", surreal_err)
             return False

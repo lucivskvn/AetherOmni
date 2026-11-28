@@ -634,7 +634,10 @@ def _insert_sqlite_chunks(cursor: Any, doc: Any, doc_uuid: str, byte_budget: dic
         rows = _sqlite_chunk_rows(chunk, doc_uuid, title, author)
         if rows is None:
             continue
-        _charge_export_byte_budget(byte_budget, rows[0][5])
+        # Content is stored twice (chunks.content + chunks_fts.content) plus
+        # per-row title/author in the FTS table, so charge ~2x plus metadata
+        # to keep the serialized bundle within the configured byte budget.
+        _charge_export_byte_budget(byte_budget, rows[0][5] + rows[1][0] + rows[1][1] + rows[1][2])
         chunk_rows.append(rows[0])
         fts_rows.append(rows[1])
         if len(chunk_rows) == batch_size:

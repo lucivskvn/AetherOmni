@@ -66,7 +66,7 @@ echo -e "${CYAN}    Release Version: ${APP_VERSION}                             
 echo -e "${CYAN}    Automated Fix Mode: ${AUTOFIX}                                       ${NC}"
 echo -e "${CYAN}======================================================================${NC}"
 
-export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-local-verification-only-7Tn4Qp9Wm2Kx8Vz5Hr6Ls3Bc1Df0Jy}"
+export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-local-verification-only-dummy-key}"
 
 # Session-scoped temp directory — cleaned up on exit regardless of success/failure.
 # Used by the test-output capture step to avoid /tmp/ path collisions.
