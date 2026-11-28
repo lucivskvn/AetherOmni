@@ -1087,7 +1087,14 @@ def _cas_update_document_offline(doc_uuid, data, allowed_statuses, allowed_pendi
         return None
     values["updated_at"] = timezone.now()
 
-    qs = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses), cancel_requested=False)
+    qs = SourceDocument.objects.filter(**lookup, status__in=list(allowed_statuses))
+    # Guard only writes that do not carry the cancellation control field:
+    # restart/retry legitimately clears cancel_requested on a stopped doc, and
+    # filtering on the pre-write value would reject that CAS offline while the
+    # online path (which checks cancel_requested only under a worker task
+    # fence) allows it.
+    if "cancel_requested" not in data:
+        qs = qs.filter(cancel_requested=False)
     if allowed_pending_operations is not None:
         qs = qs.filter(pending_operation__in=list(allowed_pending_operations))
     updated = qs.update(**values)

@@ -79,7 +79,9 @@ DEFINE INDEX IF NOT EXISTS idx_chunks_doc  ON chunks FIELDS doc_uuid;
 -- HNSW index (768 dims = embedding model output, cosine similarity)
 DEFINE INDEX IF NOT EXISTS idx_chunks_hnsw ON chunks FIELDS embedding HNSW DIMENSION 768 DIST COSINE;
 -- BM25 full-text index for the sparse retrieval leg of hybrid RAG.
--- search_chunks_bm25 orders by search::score(1) against this index.
+-- NOTE: search_chunks_bm25 currently matches per-term with CONTAINS and ranks
+-- by query-term coverage in Python (AUD-323); this index is retained for
+-- analyzer/stemming-capable scored retrieval and is not on the query path.
 DEFINE INDEX IF NOT EXISTS idx_chunks_bm25 ON chunks FIELDS content FULLTEXT ANALYZER korda_bm25 BM25 HIGHLIGHTS;
 
 
