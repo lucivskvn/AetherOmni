@@ -140,9 +140,17 @@ jobs:
             ~/.cache/pip
             ~/.cache/uv
             ~/.npm
-            .semgrep-venv
           key: ${{ runner.os }}-deps-${{ hashFiles('**/requirements.txt', '**/package-lock.json', '**/uv.lock') }}
           restore-keys: ${{ runner.os }}-deps-
+
+      - name: Cache Semgrep scanner venv
+        # Separate key includes the workflow file so a Semgrep pin bump busts
+        # the cache; no restore-keys fallback — a venv built for different
+        # pins must never be restored.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .semgrep-venv
+          key: ${{ runner.os }}-semgrep-venv-${{ hashFiles('.github/workflows/ci.yml') }}
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
