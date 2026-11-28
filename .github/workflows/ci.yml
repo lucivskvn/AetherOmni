@@ -96,9 +96,15 @@ jobs:
           chmod +x "$RUNNER_TEMP/surreal"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
+      - name: Cache pip-audit toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-audit-2.10.1
+
       - name: Supply Chain Audit (pip-audit)
         run: |
-          pip install --no-cache-dir --only-binary :all: pip-audit==2.10.1 --quiet
+          pip install --only-binary :all: pip-audit==2.10.1 --quiet
           pip-audit -r requirements.txt
 
       - name: SurrealQL Schema Validation
@@ -134,6 +140,7 @@ jobs:
             ~/.cache/pip
             ~/.cache/uv
             ~/.npm
+            .semgrep-venv
           key: ${{ runner.os }}-deps-${{ hashFiles('**/requirements.txt', '**/package-lock.json', '**/uv.lock') }}
           restore-keys: ${{ runner.os }}-deps-
 
